@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-type BadgeColor = 'primary' | 'success' | 'warning' | 'error' | 'info' | 'light';
+type BadgeColor = 'primary' | 'success' | 'warning' | 'error' | 'info' | 'light' | 'gray';
 type BadgeVariant = 'solid' | 'light';
 type BadgeSize = 'sm' | 'md';
 
@@ -42,6 +42,11 @@ const colorMap: Record<BadgeColor, { bg: string; text: string; lightBg: string }
     bg: 'var(--color-surface-overlay)',
     text: 'var(--color-text-secondary)',
     lightBg: 'var(--color-surface-overlay)',
+  },
+  gray: {
+    bg: 'var(--color-surface-overlay)',
+    text: 'var(--color-text-muted)',
+    lightBg: 'rgba(107, 114, 128, 0.12)',
   },
 };
 
