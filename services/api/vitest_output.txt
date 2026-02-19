@@ -1,0 +1,121 @@
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+ RUN  v1.6.1 /Users/joshuakessell/Projects/ClubOperationsPOS/services/api
+
+stdout | tests/checkin.flow-command.test.ts > Check-in Flow Commands
+Database connection established
+
+{"level":30,"time":1770964457216,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-1","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1770964457222,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-1","statusCode":409,"error":"LaneNotAuthoritative","message":"Lane is LAN-authoritative; cloud writes are disabled for this lane while LAN fallback is enabled.","msg":"Failed to apply flow command"}
+{"level":30,"time":1770964457223,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-1","res":{"statusCode":409},"responseTime":7.052667006850243,"msg":"request completed"}
+{"level":30,"time":1770964457337,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-2","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > dedupes repeated commandId for same session
+STEP_CHANGE: LANGUAGE -> LANGUAGE (type: SET_STEP)
+
+{"level":30,"time":1770964457348,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-2","res":{"statusCode":200},"responseTime":11.268208011984825,"msg":"request completed"}
+{"level":30,"time":1770964457349,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-3","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1770964457355,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-3","res":{"statusCode":200},"responseTime":5.89562501013279,"msg":"request completed"}
+{"level":30,"time":1770964457467,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-4","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1770964457469,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-4","statusCode":409,"error":"VersionMismatch","message":"expectedFlowVersion 2 does not match current 3","msg":"Failed to apply flow command"}
+{"level":30,"time":1770964457469,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-4","res":{"statusCode":409},"responseTime":1.93087500333786,"msg":"request completed"}
+{"level":30,"time":1770964457580,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-5","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1770964457583,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-5","statusCode":400,"error":"InvalidTransition","message":"SET_STEP may only advance by one step (or jump backwards). LANGUAGE -> PAYMENT not allowed","msg":"Failed to apply flow command"}
+{"level":30,"time":1770964457583,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-5","res":{"statusCode":400},"responseTime":2.680541008710861,"msg":"request completed"}
+{"level":30,"time":1770964457699,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-6","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1770964457701,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-6","res":{"statusCode":400},"responseTime":1.3892079889774323,"msg":"request completed"}
+{"level":30,"time":1770964457814,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-7","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1770964457815,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-7","res":{"statusCode":400},"responseTime":0.8177910000085831,"msg":"request completed"}
+{"level":30,"time":1770964457939,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-8","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1770964457939,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-8","res":{"statusCode":400},"responseTime":0.4054579883813858,"msg":"request completed"}
+{"level":30,"time":1770964458055,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-9","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > WAITLIST_UPDATE applies waitlist desired + backup + requested resource fields
+STEP_CHANGE: WAITLIST_PREFERENCES -> WAITLIST_PREFERENCES (type: WAITLIST_UPDATE)
+
+{"level":30,"time":1770964458062,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-9","res":{"statusCode":200},"responseTime":6.556332990527153,"msg":"request completed"}
+{"level":30,"time":1770964458180,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-a","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > CONFIRM_SELECTION sets selection_confirmed and bumps step when needed
+STEP_CHANGE: RENTAL -> RENTAL (type: CONFIRM_SELECTION)
+
+{"level":30,"time":1770964458188,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-a","res":{"statusCode":200},"responseTime":7.395458996295929,"msg":"request completed"}
+{"level":30,"time":1770964458317,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-b","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > PROPOSE_SELECTION dedupes repeated commandId and does not double-apply
+STEP_CHANGE: LANGUAGE -> LANGUAGE (type: PROPOSE_SELECTION)
+
+{"level":30,"time":1770964458324,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-b","res":{"statusCode":200},"responseTime":6.903208002448082,"msg":"request completed"}
+{"level":30,"time":1770964458325,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-c","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":30,"time":1770964458329,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-c","res":{"statusCode":200},"responseTime":4.436000004410744,"msg":"request completed"}
+{"level":30,"time":1770964458460,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-d","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > CONFIRM_SELECTION locks selection and rejects version mismatch
+STEP_CHANGE: LANGUAGE -> LANGUAGE (type: PROPOSE_SELECTION)
+
+{"level":30,"time":1770964458466,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-d","res":{"statusCode":200},"responseTime":5.771999999880791,"msg":"request completed"}
+{"level":30,"time":1770964458466,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-e","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+{"level":50,"time":1770964458467,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-e","statusCode":409,"error":"VersionMismatch","message":"expectedFlowVersion 0 does not match current 1","msg":"Failed to apply flow command"}
+{"level":30,"time":1770964458467,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-e","res":{"statusCode":409},"responseTime":1.3455829918384552,"msg":"request completed"}
+{"level":30,"time":1770964458467,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-f","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > CONFIRM_SELECTION locks selection and rejects version mismatch
+STEP_CHANGE: LANGUAGE -> LANGUAGE (type: CONFIRM_SELECTION)
+
+{"level":30,"time":1770964458472,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-f","res":{"statusCode":200},"responseTime":4.755666002631187,"msg":"request completed"}
+{"level":30,"time":1770964458595,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-g","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > WAITLIST_UPDATE updates waitlist draft fields
+STEP_CHANGE: LANGUAGE -> LANGUAGE (type: WAITLIST_UPDATE)
+
+{"level":30,"time":1770964458601,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-g","res":{"statusCode":200},"responseTime":5.851833000779152,"msg":"request completed"}
+{"level":30,"time":1770964458720,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-h","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > BACK_STEP from PAYMENT clears payment + agreement state
+STEP_CHANGE: PAYMENT -> WAITLIST_BACKUP (type: BACK_STEP)
+
+{"level":30,"time":1770964458726,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-h","res":{"statusCode":200},"responseTime":5.860624998807907,"msg":"request completed"}
+{"level":30,"time":1770964458851,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-i","req":{"method":"POST","url":"/v1/checkin/lane/lane-flow-test/flow-command","host":"localhost:80","remoteAddress":"127.0.0.1"},"msg":"incoming request"}
+stderr | tests/checkin.flow-command.test.ts > Check-in Flow Commands > SET_STEP jump back to RENTAL clears selection + waitlist + payment + agreement
+STEP_CHANGE: AGREEMENT -> RENTAL (type: SET_STEP)
+
+{"level":30,"time":1770964458857,"pid":37840,"hostname":"Joshuas-Mac-Studio.local","reqId":"req-i","res":{"statusCode":200},"responseTime":6.234916999936104,"msg":"request completed"}
+ ❯ tests/checkin.flow-command.test.ts  (14 tests | 2 failed) 1967ms
+   ❯ tests/checkin.flow-command.test.ts > Check-in Flow Commands > CONFIRM_SELECTION sets selection_confirmed and bumps step when needed
+     → expected 'RENTAL' to be 'WAITLIST_PREFERENCES' // Object.is equality
+   ❯ tests/checkin.flow-command.test.ts > Check-in Flow Commands > SET_STEP jump back to RENTAL clears selection + waitlist + payment + agreement
+     → expected 'STANDARD' to be null
+stdout | tests/checkin.flow-command.test.ts
+Database connection pool closed
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/checkin.flow-command.test.ts > Check-in Flow Commands > CONFIRM_SELECTION sets selection_confirmed and bumps step when needed
+AssertionError: expected 'RENTAL' to be 'WAITLIST_PREFERENCES' // Object.is equality
+
+- Expected
++ Received
+
+- WAITLIST_PREFERENCES
++ RENTAL
+
+ ❯ tests/checkin.flow-command.test.ts:400:40
+    398|     expect(updated.rows[0]!.selection_confirmed_by).toBe('CUSTOMER');
+    399|     expect(updated.rows[0]!.desired_rental_type).toBe('STANDARD');
+    400|     expect(updated.rows[0]!.flow_step).toBe('WAITLIST_PREFERENCES');
+       |                                        ^
+    401|     expect(updated.rows[0]!.flow_version).toBe(3);
+    402|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/checkin.flow-command.test.ts > Check-in Flow Commands > SET_STEP jump back to RENTAL clears selection + waitlist + payment + agreement
+AssertionError: expected 'STANDARD' to be null
+ ❯ tests/checkin.flow-command.test.ts:672:50
+    670| 
+    671|     expect(updated.rows[0]!.flow_step).toBe('RENTAL');
+    672|     expect(updated.rows[0]!.desired_rental_type).toBeNull();
+       |                                                  ^
+    673|     expect(updated.rows[0]!.proposed_rental_type).toBeNull();
+    674|     expect(updated.rows[0]!.selection_confirmed).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 12 passed (14)
+   Start at  00:34:16
+   Duration  2.59s (transform 169ms, setup 32ms, collect 459ms, tests 1.97s, environment 0ms, prepare 63ms)
+

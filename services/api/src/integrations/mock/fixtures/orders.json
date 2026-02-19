@@ -1,0 +1,122 @@
+{
+  "orders": [
+    {
+      "externalId": "mock-order-1001",
+      "status": "PAID",
+      "subtotalCents": 5000,
+      "discountCents": 0,
+      "taxCents": 400,
+      "tipCents": 600,
+      "totalCents": 6000,
+      "currency": "USD",
+      "createdAt": "2026-01-26T18:45:00Z",
+      "metadata": {
+        "customerExternalId": "mock-cust-001",
+        "note": "split tender"
+      },
+      "lineItems": [
+        {
+          "kind": "RETAIL",
+          "sku": "SKU-LOCKER-1M",
+          "name": "Locker Rental (1 month)",
+          "quantity": 1,
+          "unitPriceCents": 3000,
+          "discountCents": 0,
+          "taxCents": 240,
+          "totalCents": 3240
+        },
+        {
+          "kind": "ADDON",
+          "sku": "SKU-TOWEL",
+          "name": "Towel Service",
+          "quantity": 1,
+          "unitPriceCents": 2000,
+          "discountCents": 0,
+          "taxCents": 160,
+          "totalCents": 2160
+        }
+      ]
+    },
+    {
+      "externalId": "mock-order-1002",
+      "status": "PAID",
+      "subtotalCents": 2500,
+      "discountCents": 0,
+      "taxCents": 200,
+      "tipCents": 0,
+      "totalCents": 2700,
+      "currency": "USD",
+      "createdAt": "2026-01-26T19:10:00Z",
+      "metadata": {
+        "customerExternalId": "mock-cust-002",
+        "note": "order exists but payment missing"
+      },
+      "lineItems": [
+        {
+          "kind": "RETAIL",
+          "sku": "SKU-DAYPASS",
+          "name": "Day Pass",
+          "quantity": 1,
+          "unitPriceCents": 2500,
+          "discountCents": 0,
+          "taxCents": 200,
+          "totalCents": 2700
+        }
+      ]
+    },
+    {
+      "externalId": "mock-order-1003",
+      "status": "PARTIALLY_REFUNDED",
+      "subtotalCents": 2800,
+      "discountCents": 0,
+      "taxCents": 200,
+      "tipCents": 500,
+      "totalCents": 3500,
+      "currency": "USD",
+      "createdAt": "2026-01-26T20:00:00Z",
+      "metadata": {
+        "customerExternalId": "mock-cust-003",
+        "note": "tip added after initial payment"
+      },
+      "lineItems": [
+        {
+          "kind": "UPGRADE",
+          "sku": "SKU-TRAINER",
+          "name": "Trainer Upgrade",
+          "quantity": 1,
+          "unitPriceCents": 2800,
+          "discountCents": 0,
+          "taxCents": 200,
+          "totalCents": 3000
+        }
+      ]
+    },
+    {
+      "externalId": "mock-order-1004",
+      "status": "CANCELED",
+      "subtotalCents": 1500,
+      "discountCents": 0,
+      "taxCents": 120,
+      "tipCents": 0,
+      "totalCents": 1620,
+      "currency": "USD",
+      "createdAt": "2026-01-26T21:00:00Z",
+      "metadata": {
+        "customerExternalId": "mock-cust-004",
+        "note": "authorized then canceled payment"
+      },
+      "lineItems": [
+        {
+          "kind": "MANUAL",
+          "sku": null,
+          "name": "Manual Adjustment",
+          "quantity": 1,
+          "unitPriceCents": 1500,
+          "discountCents": 0,
+          "taxCents": 120,
+          "totalCents": 1620
+        }
+      ]
+    }
+  ]
+}

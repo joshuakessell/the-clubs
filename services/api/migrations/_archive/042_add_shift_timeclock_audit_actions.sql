@@ -1,0 +1,11 @@
+-- Add audit actions for shift and timeclock operations
+
+ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'SHIFT_UPDATED';
+ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'TIMECLOCK_ADJUSTED';
+ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'TIMECLOCK_CLOSED';
+ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'DOCUMENT_UPLOADED';
+
+
+
+
+

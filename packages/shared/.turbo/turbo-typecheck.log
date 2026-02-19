@@ -1,0 +1,4 @@
+
+> @club-ops/shared@0.1.0 typecheck /Users/joshuakessell/Projects/ClubOperationsPOS/packages/shared
+> tsc --noEmit
+

@@ -1,0 +1,50 @@
+{
+  "shifts": [
+    {
+      "externalId": "mock-shift-01",
+      "employeeExternalId": "mock-emp-001",
+      "startsAt": "2026-01-26T13:00:00Z",
+      "endsAt": "2026-01-26T21:00:00Z",
+      "status": "CLOSED",
+      "metadata": {
+        "revisions": [
+          {
+            "changedAt": "2026-01-26T21:05:00Z",
+            "field": "endsAt",
+            "from": "2026-01-26T20:30:00Z",
+            "to": "2026-01-26T21:00:00Z",
+            "reason": "manual adjustment"
+          }
+        ]
+      }
+    },
+    {
+      "externalId": "mock-shift-02",
+      "employeeExternalId": "mock-emp-002",
+      "startsAt": "2026-01-27T08:00:00Z",
+      "endsAt": null,
+      "status": "OPEN",
+      "metadata": null
+    }
+  ],
+  "timeclockSessions": [
+    {
+      "externalId": "mock-timeclock-01",
+      "employeeExternalId": "mock-emp-001",
+      "clockInAt": "2026-01-26T12:55:00Z",
+      "clockOutAt": "2026-01-26T21:02:00Z",
+      "metadata": {
+        "shiftExternalId": "mock-shift-01"
+      }
+    },
+    {
+      "externalId": "mock-timeclock-02",
+      "employeeExternalId": "mock-emp-002",
+      "clockInAt": "2026-01-27T07:55:00Z",
+      "clockOutAt": null,
+      "metadata": {
+        "note": "open session"
+      }
+    }
+  ]
+}

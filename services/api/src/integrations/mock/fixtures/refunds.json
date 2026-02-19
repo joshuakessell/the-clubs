@@ -1,0 +1,21 @@
+{
+  "refunds": [
+    {
+      "provider": "mock",
+      "externalId": "mock-refund-3001",
+      "status": "PARTIALLY_REFUNDED",
+      "amount": {
+        "amountCents": 1000,
+        "currency": "USD"
+      },
+      "tipAmount": null,
+      "taxAmount": null,
+      "createdAt": "2026-01-26T20:30:00Z",
+      "metadata": {
+        "paymentExternalId": "mock-pay-2004",
+        "orderExternalId": "mock-order-1003",
+        "reason": "partial refund"
+      }
+    }
+  ]
+}

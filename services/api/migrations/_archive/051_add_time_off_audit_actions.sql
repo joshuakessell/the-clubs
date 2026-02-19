@@ -1,0 +1,9 @@
+-- Add time off request audit actions
+
+ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'TIME_OFF_REQUESTED';
+ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'TIME_OFF_APPROVED';
+ALTER TYPE audit_action ADD VALUE IF NOT EXISTS 'TIME_OFF_DENIED';
+
+
+
+

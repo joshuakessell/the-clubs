@@ -1,0 +1,14 @@
+
+
+> @club-ops/shared@0.1.0 build /Users/joshuakessell/Projects/ClubOperationsPOS/packages/shared
+> pnpm clean && pnpm exec tsc --build --force && pnpm check:esm
+
+
+> @club-ops/shared@0.1.0 clean /Users/joshuakessell/Projects/ClubOperationsPOS/packages/shared
+> node -e "require('fs').rmSync('dist', { recursive: true, force: true })"
+
+
+> @club-ops/shared@0.1.0 check:esm /Users/joshuakessell/Projects/ClubOperationsPOS/packages/shared
+> node ./scripts/check-esm.mjs
+
+[check:esm] OK (all relative specifiers in dist/**/*.js include an explicit extension).

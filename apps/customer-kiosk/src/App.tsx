@@ -1,35 +1,31 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from 'react';
+import { ErrorBoundary } from '@the-clubs/ui';
+import { IdleScreen } from './screens/IdleScreen';
+import { SelectionScreen } from './screens/SelectionScreen';
+import { AgreementScreen } from './screens/AgreementScreen';
+import { PaymentScreen } from './screens/PaymentScreen';
+import { CompleteScreen } from './screens/CompleteScreen';
 
-function App() {
-  const [count, setCount] = useState(0)
+export type KioskView = 'idle' | 'selection' | 'agreement' | 'payment' | 'complete';
+
+export default function App() {
+  const [view, setView] = useState<KioskView>('idle');
+
+  const navigate = (next: KioskView) => setView(next);
+  const reset = () => setView('idle');
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <ErrorBoundary>
+      <div
+        className="flex min-h-screen items-center justify-center"
+        style={{ backgroundColor: 'var(--color-surface-base)' }}
+      >
+        {view === 'idle' && <IdleScreen onStart={() => navigate('selection')} />}
+        {view === 'selection' && <SelectionScreen onNext={() => navigate('agreement')} onCancel={reset} />}
+        {view === 'agreement' && <AgreementScreen onAccept={() => navigate('payment')} onCancel={reset} />}
+        {view === 'payment' && <PaymentScreen onComplete={() => navigate('complete')} onCancel={reset} />}
+        {view === 'complete' && <CompleteScreen onDone={reset} />}
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    </ErrorBoundary>
+  );
 }
-
-export default App

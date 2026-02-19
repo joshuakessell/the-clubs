@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:15-alpine
+    platform: ${DOCKER_DEFAULT_PLATFORM:-linux/arm64}
+    container_name: club-ops-demo-db
+    ports:
+      - '5433:5432'
+    environment:
+      POSTGRES_DB: club_operations
+      POSTGRES_USER: clubops
+      POSTGRES_PASSWORD: club-ops-dev
+    volumes:
+      - club_ops_demo_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U clubops -d club_operations']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  club_ops_demo_db:

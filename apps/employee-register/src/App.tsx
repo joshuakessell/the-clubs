@@ -1,35 +1,47 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { BrowserRouter } from 'react-router-dom';
+import { ErrorBoundary, LockScreen, useAuthStore } from '@the-clubs/ui';
+import { AppLayout } from './layout/AppLayout';
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const session = useAuthStore((s) => s.session);
+  const isValidating = useAuthStore((s) => s.isValidating);
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <ErrorBoundary>
+      <BrowserRouter>
+        {isValidating ? (
+          <ValidatingScreen />
+        ) : !session ? (
+          <LockScreen appTitle="Employee Register" />
+        ) : (
+          <AppLayout />
+        )}
+      </BrowserRouter>
+    </ErrorBoundary>
+  );
 }
 
-export default App
+function ValidatingScreen() {
+  const clearSession = useAuthStore((s) => s.clearSession);
+
+  return (
+    <div
+      className="flex min-h-screen flex-col items-center justify-center gap-4 p-6"
+      style={{ backgroundColor: 'var(--color-surface-base)' }}
+    >
+      <div className="h-8 w-8 animate-spin rounded-full border-[3px]"
+        style={{ borderColor: 'var(--color-border-strong)', borderTopColor: 'var(--color-accent-primary)' }}
+      />
+      <h3 className="text-lg font-semibold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+        Validating session…
+      </h3>
+      <button
+        onClick={clearSession}
+        className="rounded-lg px-4 py-2 text-sm"
+        style={{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-default)' }}
+      >
+        Return to Login
+      </button>
+    </div>
+  );
+}

@@ -1,0 +1,110 @@
+{
+  "payments": [
+    {
+      "provider": "mock",
+      "externalId": "mock-pay-2001",
+      "status": "PAID",
+      "amount": {
+        "amountCents": 4100,
+        "currency": "USD"
+      },
+      "tipAmount": {
+        "amountCents": 600,
+        "currency": "USD"
+      },
+      "taxAmount": {
+        "amountCents": 400,
+        "currency": "USD"
+      },
+      "createdAt": "2026-01-26T18:46:00Z",
+      "metadata": {
+        "orderExternalId": "mock-order-1001",
+        "customerExternalId": "mock-cust-001",
+        "source": "CARD",
+        "splitTenderGroup": "split-1001"
+      }
+    },
+    {
+      "provider": "mock",
+      "externalId": "mock-pay-2002",
+      "status": "PAID",
+      "amount": {
+        "amountCents": 1900,
+        "currency": "USD"
+      },
+      "tipAmount": null,
+      "taxAmount": null,
+      "createdAt": "2026-01-26T18:47:00Z",
+      "metadata": {
+        "orderExternalId": "mock-order-1001",
+        "customerExternalId": "mock-cust-001",
+        "source": "CASH",
+        "splitTenderGroup": "split-1001"
+      }
+    },
+    {
+      "provider": "mock",
+      "externalId": "mock-pay-2003",
+      "status": "CANCELED",
+      "amount": {
+        "amountCents": 1620,
+        "currency": "USD"
+      },
+      "tipAmount": null,
+      "taxAmount": {
+        "amountCents": 120,
+        "currency": "USD"
+      },
+      "createdAt": "2026-01-26T21:01:00Z",
+      "metadata": {
+        "orderExternalId": "mock-order-1004",
+        "customerExternalId": "mock-cust-004",
+        "source": "CARD",
+        "previousStatus": "AUTHORIZED"
+      }
+    },
+    {
+      "provider": "mock",
+      "externalId": "mock-pay-2004",
+      "status": "PAID",
+      "amount": {
+        "amountCents": 3000,
+        "currency": "USD"
+      },
+      "tipAmount": {
+        "amountCents": 500,
+        "currency": "USD"
+      },
+      "taxAmount": {
+        "amountCents": 200,
+        "currency": "USD"
+      },
+      "createdAt": "2026-01-26T20:02:00Z",
+      "metadata": {
+        "orderExternalId": "mock-order-1003",
+        "customerExternalId": "mock-cust-003",
+        "source": "CARD",
+        "tip_revision_cents": 500,
+        "tip_adjusted_at": "2026-01-26T20:10:00Z"
+      }
+    },
+    {
+      "provider": "mock",
+      "externalId": "mock-pay-2005",
+      "status": "PAID",
+      "amount": {
+        "amountCents": 2200,
+        "currency": "USD"
+      },
+      "tipAmount": null,
+      "taxAmount": null,
+      "createdAt": "2026-01-26T19:30:00Z",
+      "metadata": {
+        "orderExternalId": "mock-order-9999",
+        "customerExternalId": null,
+        "source": "CARD",
+        "note": "payment exists but order missing"
+      }
+    }
+  ]
+}

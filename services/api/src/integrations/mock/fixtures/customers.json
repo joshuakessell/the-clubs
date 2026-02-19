@@ -1,0 +1,32 @@
+{
+  "customers": [
+    {
+      "externalId": "mock-cust-001",
+      "displayName": "Avery Hall",
+      "email": null,
+      "phone": "555-0001",
+      "metadata": { "source": "seed", "note": "duplicate phone" }
+    },
+    {
+      "externalId": "mock-cust-002",
+      "displayName": "Avery Hall Jr",
+      "email": "avery.jr@example.com",
+      "phone": "555-0001",
+      "metadata": { "source": "seed", "note": "duplicate phone" }
+    },
+    {
+      "externalId": "mock-cust-003",
+      "displayName": "Jordan Lee",
+      "email": "jordan@example.com",
+      "phone": null,
+      "metadata": null
+    },
+    {
+      "externalId": "mock-cust-004",
+      "displayName": "Casey Morgan",
+      "email": null,
+      "phone": null,
+      "metadata": { "vip": true }
+    }
+  ]
+}

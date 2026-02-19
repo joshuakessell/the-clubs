@@ -1,0 +1,15 @@
+node_modules
+**/dist
+
+# allow build artifacts needed for API image
+!services/api/dist
+!services/api/dist/**
+!packages/shared
+!packages/shared/**
+!packages/shared/dist
+!packages/shared/dist/**
+.env
+.git
+.turbo
+tests
+**/*.log

@@ -1,0 +1,60 @@
+{
+  "sessions": [
+    {
+      "externalId": "mock-drawer-01",
+      "registerSessionId": "mock-register-session-01",
+      "openedByStaffExternalId": "mock-staff-001",
+      "openedAt": "2026-01-26T15:00:00Z",
+      "openingFloatCents": 2000,
+      "closedByStaffExternalId": "mock-staff-002",
+      "closedAt": "2026-01-26T23:05:00Z",
+      "countedCashCents": 5100,
+      "expectedCashCents": 5300,
+      "overShortCents": -200,
+      "status": "CLOSED",
+      "notes": "counted short vs expected"
+    }
+  ],
+  "events": [
+    {
+      "externalId": "mock-drawer-event-01",
+      "cashDrawerSessionExternalId": "mock-drawer-01",
+      "occurredAt": "2026-01-26T16:00:00Z",
+      "type": "paid_in",
+      "amountCents": 500,
+      "reason": "midday float",
+      "createdByStaffExternalId": "mock-staff-001",
+      "metadata": null
+    },
+    {
+      "externalId": "mock-drawer-event-02",
+      "cashDrawerSessionExternalId": "mock-drawer-01",
+      "occurredAt": "2026-01-26T18:30:00Z",
+      "type": "paid_out",
+      "amountCents": 200,
+      "reason": "vendor change",
+      "createdByStaffExternalId": "mock-staff-001",
+      "metadata": null
+    },
+    {
+      "externalId": "mock-drawer-event-03",
+      "cashDrawerSessionExternalId": "mock-drawer-01",
+      "occurredAt": "2026-01-26T20:15:00Z",
+      "type": "drop",
+      "amountCents": 1000,
+      "reason": "safe drop",
+      "createdByStaffExternalId": "mock-staff-002",
+      "metadata": null
+    },
+    {
+      "externalId": "mock-drawer-event-04",
+      "cashDrawerSessionExternalId": "mock-drawer-01",
+      "occurredAt": "2026-01-26T22:00:00Z",
+      "type": "no_sale_open",
+      "amountCents": null,
+      "reason": "customer change",
+      "createdByStaffExternalId": "mock-staff-002",
+      "metadata": null
+    }
+  ]
+}

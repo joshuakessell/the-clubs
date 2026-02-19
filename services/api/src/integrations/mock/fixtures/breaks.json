@@ -1,0 +1,22 @@
+{
+  "breaks": [
+    {
+      "externalId": "mock-break-01",
+      "employeeExternalId": "mock-emp-001",
+      "startedAt": "2026-01-26T17:00:00Z",
+      "endedAt": null,
+      "breakType": "MEAL",
+      "metadata": {
+        "note": "open break not ended"
+      }
+    },
+    {
+      "externalId": "mock-break-02",
+      "employeeExternalId": "mock-emp-002",
+      "startedAt": "2026-01-27T11:00:00Z",
+      "endedAt": "2026-01-27T11:15:00Z",
+      "breakType": "REST",
+      "metadata": null
+    }
+  ]
+}

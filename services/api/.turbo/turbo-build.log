@@ -1,0 +1,4 @@
+
+> @club-ops/api@0.1.0 build /Users/joshuakessell/Projects/ClubOperationsPOS/services/api
+> tsc -p tsconfig.json
+
