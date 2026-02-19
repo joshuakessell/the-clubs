@@ -20,9 +20,12 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/customers',   label: 'Customers',   icon: <UsersIcon />,    adminOnly: true },
   { to: '/logs',        label: 'Logs',        icon: <FilesIcon />,    adminOnly: true },
   { to: '/late-alerts', label: 'Late Alerts', icon: <AlertIcon />,    adminOnly: true },
-  // Staff sections
-  { to: '/schedule',    label: 'Schedule',    icon: <CalendarIcon />, staffOnly: true },
-  { to: '/messages',    label: 'Messages',    icon: <ChatIcon />,     staffOnly: true },
+  { to: '/staff',       label: 'Staff',       icon: <StaffIcon />,    adminOnly: true },
+  { to: '/timeclock',   label: 'Timeclock',   icon: <ClockIcon />,    adminOnly: true },
+  { to: '/devices',     label: 'Devices',     icon: <DeviceIcon />,   adminOnly: true },
+  // Shared sections
+  { to: '/schedule',    label: 'Schedule',    icon: <CalendarIcon /> },
+  { to: '/messages',    label: 'Messages',    icon: <ChatIcon /> },
 ];
 
 export function Sidebar() {
@@ -195,6 +198,28 @@ function ChatIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+function StaffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="8.5" cy="7" r="4" />
+      <path d="M20 8v6" /><path d="M23 11h-6" />
+    </svg>
+  );
+}
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
+}
+function DeviceIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12.01" y2="18" />
     </svg>
   );
 }

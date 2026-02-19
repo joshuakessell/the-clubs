@@ -12,6 +12,9 @@ import { LogsView } from './views/LogsView';
 import { LateAlertsView } from './views/LateAlertsView';
 import { ScheduleView } from './views/ScheduleView';
 import { MessagesView } from './views/MessagesView';
+import { StaffView } from './views/StaffView';
+import { TimeclockView } from './views/TimeclockView';
+import { DevicesView } from './views/DevicesView';
 
 export default function App() {
   const session = useAuthStore((s) => s.session);
@@ -35,6 +38,9 @@ export default function App() {
               <Route path="/late-alerts" element={<LateAlertsView />} />
               <Route path="/schedule" element={<ScheduleView />} />
               <Route path="/messages" element={<MessagesView />} />
+              <Route path="/staff" element={<StaffView />} />
+              <Route path="/timeclock" element={<TimeclockView />} />
+              <Route path="/devices" element={<DevicesView />} />
               <Route path="*" element={<Navigate to="/overview" replace />} />
             </Routes>
           </DashboardLayout>
