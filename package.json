@@ -1,0 +1,19 @@
+{
+  "name": "the-clubs",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "setup:preline": "bash scripts/setup-preline.sh"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.27.0",
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.0",
+    "turbo": "^2.8.10",
+    "typescript": "^5.9.3"
+  }
+}
