@@ -1,0 +1,33 @@
+# Dependencies (keep lock files for reproducible builds)
+node_modules
+
+# Build outputs
+dist
+build
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Source control
+.git
+.gitignore
+
+# Environment
+.env
+.env.local
+
+# Logs
+logs
+*.log
+
+# Temporary
+tmp
+.turbo
+coverage

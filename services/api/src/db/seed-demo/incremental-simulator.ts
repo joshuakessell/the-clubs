@@ -167,9 +167,12 @@ export async function appendIncrementalDemoSimulation(params: {
 
   const intervalMs = 60 * 60 * 1000;
   const intervals = Math.max(1, Math.ceil(windowMs / intervalMs));
-  const maxVisits = Math.min(900, intervals * 70);
+  const maxVisits = Math.min(2500, intervals * 70);
 
   const useLockers = params.lockers.length > 0;
+
+  // Track which customers received at least one visit in this simulation window
+  const touchedCustomerIds = new Set<string>();
 
   let customerIndex = 0;
   let lockerIndex = 0;
@@ -291,6 +294,7 @@ export async function appendIncrementalDemoSimulation(params: {
       if (end > params.to) continue;
 
       const customer = params.customers[customerIndex++ % params.customers.length]!;
+      touchedCustomerIds.add(customer.id);
       const register = params.registerSessions[(customerIndex + j) % params.registerSessions.length]!;
       const staffMember = params.staff.find((s) => s.id === register.employee_id) ?? params.staff[0]!;
 
@@ -544,6 +548,169 @@ export async function appendIncrementalDemoSimulation(params: {
           checkinBlockId,
         ]
       );
+
+      created += 1;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Guarantee pass: every customer gets at least one complete visit
+  // ---------------------------------------------------------------------------
+  const untouchedCustomers = params.customers.filter((c) => !touchedCustomerIds.has(c.id));
+  if (untouchedCustomers.length > 0) {
+    // Spread guaranteed visits evenly across the simulation window
+    const guaranteeStep = Math.floor(windowMs / (untouchedCustomers.length + 1));
+    for (let gi = 0; gi < untouchedCustomers.length; gi++) {
+      const customer = untouchedCustomers[gi]!;
+      const register = params.registerSessions[gi % params.registerSessions.length]!;
+      const staffMember = params.staff.find((s) => s.id === register.employee_id) ?? params.staff[0]!;
+
+      // Place the visit somewhere within the window, avoiding the very end
+      let start = new Date(params.from.getTime() + (gi + 1) * guaranteeStep);
+      if (start > new Date(params.to.getTime() - 7 * 60 * 60 * 1000)) {
+        start = new Date(params.to.getTime() - (7 + Math.floor(rng() * 48)) * 60 * 60 * 1000);
+      }
+      start = floorTo15Min(start);
+
+      const stayMinutes = sampleStayMinutes(rng);
+      const scheduledEnd = ceilTo15Min(new Date(start.getTime() + stayMinutes * 60 * 1000));
+      const checkoutDeltaMinutes = sampleCheckoutDeltaMinutes(rng);
+      const end = new Date(scheduledEnd.getTime() - checkoutDeltaMinutes * 60 * 1000);
+      if (end <= start || end > params.to) continue;
+
+      const visitId = randomUUID();
+      const checkinBlockId = randomUUID();
+      let lockerId: string | null = null;
+      let roomId: string | null = null;
+      let rentalType = 'LOCKER';
+
+      if (useLockers && rng() < 0.62) {
+        const locker = params.lockers[lockerIndex++ % params.lockers.length]!;
+        lockerId = locker.id;
+      } else if (params.rooms.length > 0) {
+        const room = params.rooms[roomIndex++ % params.rooms.length]!;
+        roomId = room.id;
+        rentalType = room.type === 'DOUBLE' || room.type === 'SPECIAL' || room.type === 'STANDARD'
+          ? room.type : 'STANDARD';
+      } else if (useLockers) {
+        const locker = params.lockers[lockerIndex++ % params.lockers.length]!;
+        lockerId = locker.id;
+      }
+
+      await params.client.query(
+        `INSERT INTO visits (id, started_at, ended_at, customer_id, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, NOW(), NOW())`,
+        [visitId, start, end, customer.id]
+      );
+
+      const signedAt = new Date(start.getTime() + 3 * 60 * 1000);
+      await params.client.query(
+        `INSERT INTO checkin_blocks
+         (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id,
+          agreement_signed, agreement_signed_at, rental_type)
+         VALUES ($1, $2, 'INITIAL', $3, $4, $5, $6, true, $7, $8)`,
+        [checkinBlockId, visitId, start, scheduledEnd, lockerId, roomId, signedAt, rentalType]
+      );
+
+      await params.client.query(
+        `INSERT INTO agreement_signatures
+         (id, agreement_id, customer_name, membership_number, signed_at,
+          agreement_text_snapshot, agreement_version, checkin_block_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          randomUUID(), params.agreement.id, customer.name, customer.membership_number,
+          signedAt, params.agreement.body_text, params.agreement.version, checkinBlockId,
+        ]
+      );
+
+      // Checkin activity events
+      const checkinStartedAt = new Date(start.getTime() - 3 * 60 * 1000);
+      await params.client.query(
+        `INSERT INTO customer_activity_events
+           (occurred_at, customer_id, action_type, action_category, source_app,
+            actor_type, actor_staff_id, actor_staff_name, summary, metadata, search_blob, dedupe_key)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, $7::uuid, $8, $9, $10::jsonb, $11, $12)
+         ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+        [
+          checkinStartedAt, customer.id, 'CHECKIN_STARTED', 'CHECKIN', 'EMPLOYEE_REGISTER',
+          'STAFF', staffMember.id, staffMember.name, 'Check-in started',
+          { visitId, rentalType, registerNumber: register.register_number, registerSessionId: register.id },
+          `Check-in started ${customer.name} ${rentalType} ${visitId} ${staffMember.name}`,
+          `ACT:DEMO:G:CHECKIN_STARTED:${visitId}`,
+        ]
+      );
+
+      await params.client.query(
+        `INSERT INTO customer_activity_events
+           (occurred_at, customer_id, action_type, action_category, source_app,
+            actor_type, actor_staff_id, actor_staff_name, summary, metadata, search_blob, dedupe_key)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, $7::uuid, $8, $9, $10::jsonb, $11, $12)
+         ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+        [
+          start, customer.id, 'CHECKIN_COMPLETED', 'CHECKIN', 'EMPLOYEE_REGISTER',
+          'STAFF', staffMember.id, staffMember.name, 'Checked in',
+          { visitId, checkinBlockId, rentalType, registerNumber: register.register_number, registerSessionId: register.id },
+          `Checked in ${customer.name} ${rentalType} ${visitId} ${checkinBlockId} ${staffMember.name}`,
+          `ACT:DEMO:G:CHECKIN_COMPLETED:${checkinBlockId}`,
+        ]
+      );
+
+      // Checkout activity event
+      await params.client.query(
+        `INSERT INTO customer_activity_events
+           (occurred_at, customer_id, action_type, action_category, source_app,
+            actor_type, actor_staff_id, actor_staff_name, summary, metadata, search_blob, dedupe_key)
+         VALUES ($1, $2::uuid, $3, $4, $5, $6, $7::uuid, $8, $9, $10::jsonb, $11, $12)
+         ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+        [
+          end, customer.id, 'CHECKOUT_COMPLETED', 'CHECKOUT', 'EMPLOYEE_REGISTER',
+          'STAFF', staffMember.id, staffMember.name, 'Checked out',
+          { visitId, checkinBlockId, rentalType },
+          `Checked out ${customer.name} ${visitId} ${checkinBlockId} ${staffMember.name}`,
+          `ACT:DEMO:G:CHECKOUT_COMPLETED:${visitId}`,
+        ]
+      );
+
+      // CHECKIN_FEE spend ledger entry
+      const priceCents = checkinPriceCents(rentalType);
+      await params.client.query(
+        `INSERT INTO customer_spend_ledger_entries
+           (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+            source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+         VALUES ($1, $2::uuid, $3::uuid, 'CHECKIN_FEE', $4::bigint, $5,
+                 'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, 'Check-in fee', $8::jsonb, $9)
+         ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+        [
+          signedAt, customer.id, visitId, priceCents, currencyUSD(),
+          staffMember.id, staffMember.name,
+          { rentalType, priceCents },
+          `LEDGER:DEMO:G:CHECKIN_FEE:${checkinBlockId}`,
+        ]
+      );
+
+      // Payment intent + charge for the checkin fee
+      const paymentIntentId = randomUUID();
+      const chargeId = randomUUID();
+      await params.client.query(
+        `INSERT INTO payment_intents
+           (id, amount, tip_cents, status, quote_json, paid_at, created_at, updated_at)
+         VALUES ($1, $2, 0, 'PAID', $3, $4, $4, $4)`,
+        [paymentIntentId, priceCents / 100, { type: 'CHECKIN', rentalType, priceCents }, signedAt]
+      );
+      await params.client.query(
+        `INSERT INTO charges
+           (id, visit_id, checkin_block_id, type, amount, payment_intent_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [chargeId, visitId, checkinBlockId, rentalType, priceCents / 100, paymentIntentId, signedAt]
+      );
+
+      // Cleaning event for room visits
+      if (roomId) {
+        const cleaningStart = new Date(end.getTime() + (3 + Math.floor(rng() * 6)) * 60 * 1000);
+        const cleaningDone = new Date(cleaningStart.getTime() + (8 + Math.floor(rng() * 8)) * 60 * 1000);
+        const cleaner = params.staff[gi % params.staff.length]!;
+        cleaningEvents.push({ roomId, startedAt: cleaningStart, completedAt: cleaningDone, staffId: cleaner.id });
+      }
 
       created += 1;
     }

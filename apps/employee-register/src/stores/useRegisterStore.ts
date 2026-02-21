@@ -1,9 +1,10 @@
 import { create } from 'zustand';
+import { getApiUrl, type SessionUpdatedPayload } from '@the-clubs/shared';
 
 /* ────────────────────────────────────────────────────────
    Employee Register Store
-   Replaces useEmployeeRegisterState context from ClubOperationsPOS.
-   Uses mock data for now — real API integration in Phase 6.
+   Wired to real API endpoints for customer search, lane
+   session creation, and SSE-driven state updates.
    ──────────────────────────────────────────────────────── */
 
 /* Types */
@@ -11,8 +12,10 @@ export interface CustomerSuggestion {
   id: string;
   firstName: string;
   lastName: string;
+  name?: string;
   dobMonthDay?: string;
   membershipNumber?: string;
+  disambiguator?: string;
 }
 
 export interface ClubLogItem {
@@ -27,7 +30,19 @@ export interface ClubLogItem {
   summary?: string;
 }
 
+export interface ActiveCheckinInfo {
+  visitId: string;
+  resourceType: string;
+  resourceNumber: string;
+  checkinAt: string | null;
+  checkoutAt: string | null;
+  overdue: boolean;
+}
+
 interface RegisterState {
+  /* ── Lane ──────────────────────────────────── */
+  laneId: string;
+
   /* ── Scan ─────────────────────────────────── */
   scanReady: boolean;
   scanBlockedReason: string | null;
@@ -36,18 +51,24 @@ interface RegisterState {
   setScanCaptureSubmitting: (v: boolean) => void;
 
   /* ── Customer ─────────────────────────────── */
+  customerId: string | null;
   currentSessionId: string | null;
   customerName: string | null;
+  activeCheckinInfo: ActiveCheckinInfo | null;
   customerSearch: string;
   customerSearchLoading: boolean;
   customerSuggestions: CustomerSuggestion[];
-  setCustomerSearch: (v: string) => void;
+  setCustomerSearch: (v: string, authToken?: string | null) => void;
   setCustomerSuggestions: (v: CustomerSuggestion[]) => void;
   openCustomerAccount: (
     id: string,
     label: string,
-    opts?: { autoStart?: boolean; summary?: Record<string, string | undefined> }
+    opts?: { autoStart?: boolean; summary?: Record<string, string | undefined>; authToken?: string | null; activeCheckin?: ActiveCheckinInfo }
   ) => void;
+
+  /* ── Session (from SSE) ────────────────────── */
+  sessionPayload: SessionUpdatedPayload | null;
+  setSessionPayload: (p: SessionUpdatedPayload | null) => void;
 
   /* ── Manual Entry ─────────────────────────── */
   manualFirstName: string;
@@ -69,6 +90,13 @@ interface RegisterState {
   setManualIdNumber: (v: string) => void;
   setManualEntry: (v: boolean) => void;
   handleManualSubmit: (e: React.FormEvent) => Promise<void>;
+
+  /* ── Flow Commands ─────────────────────────── */
+  sendFlowCommand: (cmd: {
+    type: string;
+    payload?: Record<string, unknown>;
+  }) => Promise<void>;
+  cancelSession: () => Promise<void>;
 
   /* ── Navigation ───────────────────────────── */
   selectNavTab: (tab: string) => void;
@@ -106,17 +134,23 @@ function dobDigitsToIso(digits: string): string | null {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/* ── Mock data ───────────────────────────────── */
-const MOCK_LOG: ClubLogItem[] = [
-  { id: '1', occurredAt: new Date().toISOString(), eventDomain: 'CHECKIN', eventType: 'CHECKIN_STARTED', staffName: 'Demo Staff', customerName: 'John Smith', customerId: 'c1', summary: 'Customer scanned in' },
-  { id: '2', occurredAt: new Date(Date.now() - 60_000).toISOString(), eventDomain: 'SALES', eventType: 'SALE_COMPLETED', staffName: 'Demo Staff', amountCents: 2500, summary: 'Rental fee' },
-  { id: '3', occurredAt: new Date(Date.now() - 120_000).toISOString(), eventDomain: 'INVENTORY', eventType: 'ROOM_ASSIGNED', staffName: 'Demo Staff', customerName: 'Jane Doe', customerId: 'c2', summary: 'Room 204 assigned' },
-  { id: '4', occurredAt: new Date(Date.now() - 300_000).toISOString(), eventDomain: 'HR', eventType: 'REGISTER_SIGN_IN', staffName: 'Demo Staff', summary: 'Register session started' },
-  { id: '5', occurredAt: new Date(Date.now() - 600_000).toISOString(), eventDomain: 'CHECKOUT', eventType: 'CHECKOUT_COMPLETED', staffName: 'Demo Staff', customerName: 'Mike Wilson', customerId: 'c3', amountCents: 0, summary: 'Room 112 checked out' },
-];
+/** Derive lane ID from the URL pathname. e.g. /register-1 → register-1 */
+function deriveLaneIdFromUrl(): string {
+  const path = window.location.pathname.replace(/^\//, '').replace(/\/$/, '');
+  // If path looks like "register-N", use it directly
+  if (/^register-\d+$/.test(path)) return path;
+  // Fallback: use VITE_LANE_ID or default
+  return (import.meta as any).env?.VITE_LANE_ID || 'register-1';
+}
+
+/* ── Search debounce ────────────────────────── */
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
 /* ── Store ────────────────────────────────────── */
 export const useRegisterStore = create<RegisterState>((set, get) => ({
+  /* Lane */
+  laneId: deriveLaneIdFromUrl(),
+
   /* Scan */
   scanReady: true,
   scanBlockedReason: null,
@@ -125,34 +159,114 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   setScanCaptureSubmitting: (v) => set({ scanCaptureSubmitting: v }),
 
   /* Customer */
+  customerId: null,
   currentSessionId: null,
   customerName: null,
+  activeCheckinInfo: null,
   customerSearch: '',
   customerSearchLoading: false,
   customerSuggestions: [],
-  setCustomerSearch: (v) => {
+  setCustomerSearch: (v, authToken) => {
     set({ customerSearch: v });
-    // Mock search — in prod this hits the API
+
+    // Debounce real API search
+    if (searchTimer) clearTimeout(searchTimer);
+
     if (v.length >= 3) {
       set({ customerSearchLoading: true });
-      setTimeout(() => {
-        set({
-          customerSearchLoading: false,
-          customerSuggestions: [
-            { id: 'c1', firstName: 'John', lastName: 'Smith', dobMonthDay: '03/15', membershipNumber: 'M-10042' },
-            { id: 'c2', firstName: 'Jane', lastName: 'Doe', dobMonthDay: '07/22', membershipNumber: 'M-10099' },
-          ].filter((s) => `${s.firstName} ${s.lastName}`.toLowerCase().includes(v.toLowerCase())),
-        });
-      }, 400);
+      searchTimer = setTimeout(async () => {
+        try {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+          const res = await fetch(
+            getApiUrl(`/api/v1/customers/search?q=${encodeURIComponent(v)}&limit=10`),
+            { headers }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            set({
+              customerSearchLoading: false,
+              customerSuggestions: (data.suggestions ?? []).map((s: any) => ({
+                id: s.id,
+                firstName: s.firstName ?? s.name?.split(' ')[0] ?? '',
+                lastName: s.lastName ?? s.name?.split(' ').slice(1).join(' ') ?? '',
+                name: s.name,
+                dobMonthDay: s.dobMonthDay,
+                membershipNumber: s.membershipNumber,
+                disambiguator: s.disambiguator,
+              })),
+            });
+          } else {
+            set({ customerSearchLoading: false, customerSuggestions: [] });
+          }
+        } catch {
+          set({ customerSearchLoading: false, customerSuggestions: [] });
+        }
+      }, 300);
     } else {
-      set({ customerSuggestions: [] });
+      set({ customerSuggestions: [], customerSearchLoading: false });
     }
   },
   setCustomerSuggestions: (v) => set({ customerSuggestions: v }),
-  openCustomerAccount: (id, label) => {
-    set({ currentSessionId: id, customerName: label });
+
+  openCustomerAccount: (id, label, opts) => {
+    const { laneId } = get();
+
+    // Always set customer info for UI
+    set({ customerId: id, customerName: label, activeCheckinInfo: opts?.activeCheckin ?? null, isSubmitting: true });
     get().selectNavTab('account');
+
+    // If autoStart, call the real lane session API
+    if (opts?.autoStart) {
+      (async () => {
+        try {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (opts.authToken) headers['Authorization'] = `Bearer ${opts.authToken}`;
+
+          const res = await fetch(
+            getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/start`),
+            {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ customerId: id }),
+            }
+          );
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.alreadyCheckedIn) {
+              set({
+                isSubmitting: false,
+                successToastMessage: `${label} is already checked in`,
+              });
+            } else {
+              set({
+                currentSessionId: data.sessionId,
+                customerName: data.customerName ?? label,
+                isSubmitting: false,
+                successToastMessage: `Check-in started for ${data.customerName ?? label}`,
+              });
+            }
+          } else {
+            const errData = await res.json().catch(() => ({}));
+            set({
+              isSubmitting: false,
+              successToastMessage: errData.error ?? `Failed to start check-in (${res.status})`,
+            });
+          }
+        } catch {
+          set({ isSubmitting: false, successToastMessage: 'Network error starting check-in' });
+        }
+      })();
+    } else {
+      set({ isSubmitting: false });
+    }
   },
+
+  /* Session (from SSE) */
+  sessionPayload: null,
+  setSessionPayload: (p) => set({ sessionPayload: p }),
 
   /* Manual Entry */
   manualFirstName: '',
@@ -176,14 +290,100 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   handleManualSubmit: async (e) => {
     e.preventDefault();
     set({ manualEntrySubmitting: true });
-    // Mock submit
-    await new Promise((r) => setTimeout(r, 800));
-    const { manualFirstName, manualLastName } = get();
+    const {
+      manualFirstName, manualLastName, manualDobIso,
+      manualIdType, manualIdTypeOther, manualIdNumber,
+      manualIdExpirationIso, laneId, selectNavTab,
+    } = get();
+
+    try {
+      const token = (window as any).__authToken;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(
+        getApiUrl('/api/v1/checkin/scan'),
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            rawText: `MANUAL|${manualFirstName}|${manualLastName}|${manualDobIso}`,
+            registerId: laneId,
+            manualEntry: {
+              firstName: manualFirstName,
+              lastName: manualLastName,
+              dob: manualDobIso,
+              idType: manualIdType === 'OTHER' ? manualIdTypeOther : manualIdType,
+              idNumber: manualIdNumber || undefined,
+              idExpirationDate: manualIdExpirationIso || undefined,
+            },
+          }),
+        }
+      );
+
+      if (res.ok) {
+        const data = await res.json();
+        set({
+          manualEntrySubmitting: false,
+          currentSessionId: data.sessionId ?? data.customerId ?? `new-${Date.now()}`,
+          customerName: data.customerName ?? `${manualLastName}, ${manualFirstName}`,
+          successToastMessage: `Customer ${manualFirstName} ${manualLastName} added.`,
+        });
+        selectNavTab('account');
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        set({
+          manualEntrySubmitting: false,
+          successToastMessage: errData.error ?? `Failed to add customer (${res.status})`,
+        });
+      }
+    } catch {
+      set({ manualEntrySubmitting: false, successToastMessage: 'Network error adding customer' });
+    }
+  },
+
+  /* Flow Commands */
+  sendFlowCommand: async (cmd) => {
+    const { laneId, sessionPayload } = get();
+    if (!sessionPayload?.sessionId) return;
+    try {
+      const token = (window as any).__authToken;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(
+        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/flow-command`),
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            sessionId: sessionPayload.sessionId,
+            commandId: crypto.randomUUID(),
+            actor: 'EMPLOYEE',
+            expectedFlowVersion: sessionPayload.flowVersion ?? 0,
+            ...cmd,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        set({ successToastMessage: d.error ?? `Flow command failed (${res.status})` });
+      }
+    } catch {
+      set({ successToastMessage: 'Network error sending flow command' });
+    }
+  },
+  cancelSession: async () => {
+    const { sendFlowCommand } = get();
+    await sendFlowCommand({ type: 'CANCEL_STEP' });
     set({
-      manualEntrySubmitting: false,
-      currentSessionId: `mock-${Date.now()}`,
-      customerName: `${manualLastName}, ${manualFirstName}`,
-      successToastMessage: `Customer ${manualFirstName} ${manualLastName} added.`,
+      currentSessionId: null,
+      customerId: null,
+      customerName: null,
+      activeCheckinInfo: null,
+      sessionPayload: null,
+      successToastMessage: 'Check-in cancelled',
     });
   },
 
@@ -199,7 +399,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
 
   /* Club Log */
   clubLog: {
-    items: MOCK_LOG,
+    items: [],
     loading: false,
     error: null,
     q: '',
@@ -210,14 +410,63 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     setDomain: (v: string) => set((s) => ({ clubLog: { ...s.clubLog, domain: v } })),
     setCategory: (v: string) => set((s) => ({ clubLog: { ...s.clubLog, category: v } })),
     reload: async () => {
-      set((s) => ({ clubLog: { ...s.clubLog, loading: true } }));
-      await new Promise((r) => setTimeout(r, 500));
-      set((s) => ({ clubLog: { ...s.clubLog, loading: false, items: MOCK_LOG } }));
+      const { clubLog } = get();
+      set((s) => ({ clubLog: { ...s.clubLog, loading: true, error: null, items: [], nextCursor: null } }));
+      try {
+        const token = (window as any).__authToken;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const params = new URLSearchParams({ limit: '50' });
+        if (clubLog.q) params.set('search', clubLog.q);
+        if (clubLog.domain) params.set('domain', clubLog.domain);
+        if (clubLog.category) params.set('eventType', clubLog.category);
+
+        const res = await fetch(getApiUrl(`/api/v1/admin/club-log?${params}`), { headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        set((s) => ({
+          clubLog: {
+            ...s.clubLog,
+            loading: false,
+            items: data.events ?? [],
+            nextCursor: data.nextCursor ?? null,
+          },
+        }));
+      } catch (err: any) {
+        set((s) => ({ clubLog: { ...s.clubLog, loading: false, error: err.message ?? 'Failed to load' } }));
+      }
     },
     loadMore: async () => {
+      const { clubLog } = get();
+      if (!clubLog.nextCursor) return;
       set((s) => ({ clubLog: { ...s.clubLog, loading: true } }));
-      await new Promise((r) => setTimeout(r, 500));
-      set((s) => ({ clubLog: { ...s.clubLog, loading: false } }));
+      try {
+        const token = (window as any).__authToken;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const params = new URLSearchParams({ limit: '50', cursor: clubLog.nextCursor! });
+        if (clubLog.q) params.set('search', clubLog.q);
+        if (clubLog.domain) params.set('domain', clubLog.domain);
+        if (clubLog.category) params.set('eventType', clubLog.category);
+
+        const res = await fetch(getApiUrl(`/api/v1/admin/club-log?${params}`), { headers });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        set((s) => ({
+          clubLog: {
+            ...s.clubLog,
+            loading: false,
+            items: [...s.clubLog.items, ...(data.events ?? [])],
+            nextCursor: data.nextCursor ?? null,
+          },
+        }));
+      } catch (err: any) {
+        set((s) => ({ clubLog: { ...s.clubLog, loading: false, error: err.message ?? 'Failed to load' } }));
+      }
     },
   },
 }));

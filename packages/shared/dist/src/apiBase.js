@@ -1,4 +1,3 @@
-// Universal environment check (Node CJS + Vite ESM)
 const getEnv = () => {
     try {
         // In Vite/ESM, import.meta.env is available

@@ -393,6 +393,18 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
             }
           }
 
+          // Look up customer name for log attribution
+          let customerName: string | null = null;
+          if (paidOrder.customer_id) {
+            const custResult = await client.query<{ full_name: string }>(
+              `SELECT full_name FROM customers WHERE id = $1`,
+              [paidOrder.customer_id]
+            );
+            if (custResult.rows.length > 0) {
+              customerName = custResult.rows[0]!.full_name;
+            }
+          }
+
           // Emit unified club event for analytics
           await insertClubEvent(client, {
             eventType: saleEventType,
@@ -402,6 +414,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
             staffId: request.staff!.staffId,
             staffName: request.staff!.name,
             customerId: paidOrder.customer_id,
+            customerName,
             visitId: (paidOrder.metadata_json as any)?.visitId ?? null,
             orderId: paidOrder.id,
             amountCents: paidOrder.total_cents,

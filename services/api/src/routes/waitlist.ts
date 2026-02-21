@@ -40,6 +40,7 @@ interface WaitlistRow {
   visit_id: string;
   checkin_block_id: string;
   desired_tier: string;
+  desired_tiers: string[];
   backup_tier: string;
   locker_or_room_assigned_initially: string | null;
   room_id: string | null;
@@ -145,6 +146,7 @@ export async function waitlistRoutes(fastify: FastifyInstance): Promise<void> {
           checkinBlockId: row.checkin_block_id,
           customerId: row.customer_id,
           desiredTier: row.desired_tier,
+          desiredTiers: row.desired_tiers ?? [row.desired_tier],
           backupTier: row.backup_tier,
           status: row.status,
           createdAt: row.created_at,

@@ -1,97 +1,529 @@
-import { useState } from 'react';
-import { Button } from '@the-clubs/ui';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Button, useAuthStore } from '@the-clubs/ui';
+import { getApiUrl } from '@the-clubs/shared';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
 
-interface CartItem {
+/* ─── Types ─────────────────────────────────────────── */
+
+interface CatalogItem {
   id: string;
   name: string;
   price: number;
-  qty: number;
+  category: 'beverages' | 'snacks' | 'supplies';
 }
 
-const CATALOG = [
-  { id: 'water', name: 'Water', price: 300 },
-  { id: 'energy', name: 'Energy Drink', price: 500 },
-  { id: 'snack', name: 'Snack Bar', price: 250 },
-  { id: 'towel', name: 'Towel', price: 200 },
-  { id: 'flip-flops', name: 'Flip Flops', price: 800 },
-  { id: 'lock', name: 'Padlock', price: 600 },
+interface ActiveGuest {
+  customerId: string;
+  customerName: string;
+  resourceType: 'ROOM' | 'LOCKER';
+  number: string;
+  visitId: string;
+}
+
+/* ─── Catalog ───────────────────────────────────────── */
+
+const CATALOG: CatalogItem[] = [
+  { id: 'water',       name: 'Water',        price: 300,  category: 'beverages' },
+  { id: 'energy',      name: 'Energy Drink', price: 500,  category: 'beverages' },
+  { id: 'gatorade',    name: 'Gatorade',     price: 500,  category: 'beverages' },
+  { id: 'soda',        name: 'Soda',         price: 400,  category: 'beverages' },
+  { id: 'fruit-tea',   name: 'Fruit Tea',    price: 500,  category: 'beverages' },
+  { id: 'snack',       name: 'Snack Bar',     price: 250,  category: 'snacks' },
+  { id: 'towel',       name: 'Towel',         price: 200,  category: 'supplies' },
+  { id: 'flip-flops',  name: 'Flip Flops',    price: 800,  category: 'supplies' },
+  { id: 'lock',        name: 'Padlock',       price: 600,  category: 'supplies' },
+];
+
+const CATEGORIES: { key: CatalogItem['category']; label: string }[] = [
+  { key: 'beverages', label: 'Beverages' },
+  { key: 'snacks',    label: 'Snacks' },
+  { key: 'supplies',  label: 'Supplies' },
 ];
 
 function formatPrice(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-/**
- * RetailPanel — POS for retail items (water, snacks, supplies).
- */
+/* ─── Component ─────────────────────────────────────── */
+
 export function RetailPanel() {
+  const token = useAuthStore((s) => s.session?.sessionToken);
+
+  /* Cart state */
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const cartItems: CartItem[] = CATALOG
-    .filter((c) => (cart[c.id] ?? 0) > 0)
-    .map((c) => ({ ...c, qty: cart[c.id] }));
+  /* Guest lookup state */
+  const [guests, setGuests] = useState<ActiveGuest[]>([]);
+  const [guestsLoading, setGuestsLoading] = useState(false);
+  const [selectedGuest, setSelectedGuest] = useState<ActiveGuest | null>(null);
+  const [guestFilter, setGuestFilter] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const total = cartItems.reduce((sum, i) => sum + i.price * i.qty, 0);
+  /* Fetch active guests */
+  const fetchGuests = useCallback(async () => {
+    setGuestsLoading(true);
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(getApiUrl('/api/v1/retail/active-guests'), { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setGuests(data.guests ?? []);
+      }
+    } catch {
+      // Silently fail — guest lookup is optional
+    } finally {
+      setGuestsLoading(false);
+    }
+  }, [token]);
 
+  useEffect(() => { void fetchGuests(); }, [fetchGuests]);
+
+  /* Close dropdown on outside click */
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  /* Filtered guests */
+  const filteredGuests = useMemo(() => {
+    if (!guestFilter.trim()) return guests;
+    const q = guestFilter.toLowerCase();
+    return guests.filter(
+      (g) => g.number.toLowerCase().includes(q) || g.customerName.toLowerCase().includes(q)
+    );
+  }, [guests, guestFilter]);
+
+  const roomGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'ROOM'), [filteredGuests]);
+  const lockerGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'LOCKER'), [filteredGuests]);
+
+  /* Cart helpers */
   const addItem = (id: string) => setCart((p) => ({ ...p, [id]: (p[id] ?? 0) + 1 }));
   const removeItem = (id: string) => setCart((p) => {
     const next = { ...p };
     if ((next[id] ?? 0) <= 1) delete next[id]; else next[id]--;
     return next;
   });
+  const clearCart = () => { setCart({}); setSelectedGuest(null); setGuestFilter(''); };
+
+  const cartLines = useMemo(
+    () => CATALOG.filter((c) => (cart[c.id] ?? 0) > 0).map((c) => ({ ...c, qty: cart[c.id] })),
+    [cart]
+  );
+  const cartTotal = cartLines.reduce((sum, i) => sum + i.price * i.qty, 0);
+  const cartCount = cartLines.reduce((sum, i) => sum + i.qty, 0);
+
+  /* Complete sale — 3-step order flow */
+  const handleCompleteSale = async () => {
+    if (cartLines.length === 0) return;
+    setSubmitting(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // Step 1: Create order
+      const createRes = await fetch(getApiUrl('/api/v1/orders'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          customerId: selectedGuest?.customerId ?? null,
+          metadataJson: selectedGuest ? { visitId: selectedGuest.visitId } : null,
+        }),
+      });
+      if (!createRes.ok) {
+        const d = await createRes.json().catch(() => ({}));
+        throw new Error(d.error ?? `Create order failed: HTTP ${createRes.status}`);
+      }
+      const { orderId } = await createRes.json();
+
+      // Step 2: Add line items
+      const itemsRes = await fetch(getApiUrl(`/api/v1/orders/${orderId}/line-items`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          items: cartLines.map((i) => ({
+            kind: 'RETAIL',
+            sku: i.id,
+            name: i.name,
+            quantity: i.qty,
+            unitPriceCents: i.price,
+          })),
+        }),
+      });
+      if (!itemsRes.ok) {
+        const d = await itemsRes.json().catch(() => ({}));
+        throw new Error(d.error ?? `Add items failed: HTTP ${itemsRes.status}`);
+      }
+
+      // Step 3: Mark paid
+      const paidRes = await fetch(getApiUrl(`/api/v1/orders/${orderId}/mark-paid`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({}),
+      });
+      if (!paidRes.ok) {
+        const d = await paidRes.json().catch(() => ({}));
+        throw new Error(d.error ?? `Mark paid failed: HTTP ${paidRes.status}`);
+      }
+
+      clearCart();
+      const label = selectedGuest
+        ? `Sale completed for ${selectedGuest.customerName}!`
+        : 'Sale completed!';
+      setSuccess(label);
+      setTimeout(() => setSuccess(null), 4000);
+    } catch (err: any) {
+      setError(err.message ?? 'Failed to complete sale');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  /* ─── Render ────────────────────────────────────────── */
 
   return (
-    <PanelShell align="top" scroll="hidden">
-      <PanelHeader title="Retail" subtitle="Quick sale point of sale" />
+      <PanelShell align="top" scroll="hidden" card={false} className="w-full">
+      <PanelHeader
+        title="Retail"
+        subtitle="Point of sale"
+        layout="inline"
+        spacing="sm"
+      />
 
-      {/* Catalog grid */}
-      <div className="mt-4 grid grid-cols-3 gap-2">
-        {CATALOG.map((item) => (
-          <button key={item.id} className="flex flex-col items-center gap-1 rounded-lg border p-3 transition"
-            style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-accent-primary)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)'; }}
-            onClick={() => addItem(item.id)}
-          >
-            <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{item.name}</span>
-            <span className="text-xs" style={{ color: 'var(--color-accent-primary)' }}>{formatPrice(item.price)}</span>
-            {(cart[item.id] ?? 0) > 0 && (
-              <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold"
-                style={{ backgroundColor: 'var(--color-accent-primary)', color: 'var(--color-text-inverse)' }}>
-                {cart[item.id]}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Cart */}
-      {cartItems.length > 0 && (
-        <div className="mt-4 rounded-lg border p-3" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-          <div className="flex flex-col gap-1">
-            {cartItems.map((item) => (
-              <div key={item.id} className="flex items-center justify-between text-sm">
-                <span style={{ color: 'var(--color-text-secondary)' }}>
-                  {item.name} × {item.qty}
-                  <button className="ml-2 text-xs" style={{ color: 'var(--color-status-error)' }} onClick={() => removeItem(item.id)}>✕</button>
-                </span>
-                <span className="font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                  {formatPrice(item.price * item.qty)}
-                </span>
+      <div className="mt-3 flex flex-1 min-h-0 gap-4 w-full">
+        {/* ── Left: Product Grid ──────────────────────── */}
+        <div className="flex-[3] min-w-0 overflow-y-auto overflow-x-hidden pr-1">
+          {CATEGORIES.map((cat) => {
+            const items = CATALOG.filter((i) => i.category === cat.key);
+            return (
+              <div key={cat.key} className="mb-4">
+                <h3
+                  className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {cat.label}
+                </h3>
+                <div className="grid grid-cols-5 gap-2">
+                  {items.map((item) => {
+                    const qty = cart[item.id] ?? 0;
+                    return (
+                      <button
+                        key={item.id}
+                        className="group relative flex flex-col rounded-lg border p-3 text-left transition-all"
+                        style={{
+                          backgroundColor: 'var(--color-surface-input)',
+                          borderColor: qty > 0 ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (qty === 0) (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-strong)';
+                        }}
+                        onMouseLeave={(e) => {
+                          if (qty === 0) (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
+                        }}
+                        onClick={() => addItem(item.id)}
+                        aria-label={`Add ${item.name} to cart`}
+                      >
+                        <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                          {item.name}
+                        </span>
+                        <span className="text-xs tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                          {formatPrice(item.price)}
+                        </span>
+                        {qty > 0 ? (
+                          <span
+                            className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold"
+                            style={{
+                              backgroundColor: 'var(--color-accent-primary)',
+                              color: 'var(--color-text-inverse)',
+                            }}
+                          >
+                            {qty}
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            ))}
-          </div>
-          <div className="mt-2 flex items-center justify-between border-t pt-2" style={{ borderColor: 'var(--color-border-default)' }}>
-            <span className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Total</span>
-            <span className="text-base font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
-              {formatPrice(total)}
-            </span>
-          </div>
-          <Button fullWidth className="mt-3">Complete Sale</Button>
+            );
+          })}
         </div>
-      )}
+
+        {/* ── Right: Cart & Checkout ──────────────────── */}
+        <div
+          className="flex-[2] flex flex-col min-h-0 rounded-lg border"
+          style={{
+            backgroundColor: 'var(--color-surface-overlay)',
+            borderColor: 'var(--color-border-default)',
+          }}
+        >
+          {/* Customer lookup */}
+          <div className="border-b p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            <label
+              className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: 'var(--color-text-muted)' }}
+              htmlFor="guest-lookup"
+            >
+              Attribute to Guest
+              <span className="ml-1 font-normal normal-case tracking-normal">(optional)</span>
+            </label>
+
+            <div ref={dropdownRef} className="relative">
+              {selectedGuest ? (
+                <div
+                  className="flex items-center justify-between rounded-lg border px-3 py-2"
+                  style={{
+                    backgroundColor: 'var(--color-surface-input)',
+                    borderColor: 'var(--color-accent-primary)',
+                  }}
+                >
+                  <div>
+                    <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                      {selectedGuest.resourceType === 'ROOM' ? 'Room' : 'Locker'} {selectedGuest.number}
+                    </span>
+                    <span className="mx-1.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>—</span>
+                    <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                      {selectedGuest.customerName}
+                    </span>
+                  </div>
+                  <button
+                    className="ml-2 text-xs font-bold"
+                    style={{ color: 'var(--color-text-muted)' }}
+                    onClick={() => { setSelectedGuest(null); setGuestFilter(''); }}
+                    aria-label="Clear guest selection"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <input
+                  id="guest-lookup"
+                  type="text"
+                  className="h-9 w-full rounded-lg border px-3 text-sm"
+                  style={{
+                    backgroundColor: 'var(--color-surface-input)',
+                    borderColor: 'var(--color-border-default)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                  placeholder={guestsLoading ? 'Loading guests…' : 'Search by room/locker # or name…'}
+                  value={guestFilter}
+                  onChange={(e) => { setGuestFilter(e.target.value); setDropdownOpen(true); }}
+                  onFocus={() => setDropdownOpen(true)}
+                  autoComplete="off"
+                  disabled={guestsLoading}
+                />
+              )}
+
+              {/* Dropdown */}
+              {dropdownOpen && !selectedGuest && (roomGuests.length > 0 || lockerGuests.length > 0) ? (
+                <div
+                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg"
+                  style={{
+                    backgroundColor: 'var(--color-surface-raised)',
+                    borderColor: 'var(--color-border-default)',
+                  }}
+                >
+                  {roomGuests.length > 0 ? (
+                    <>
+                      <div className="sticky top-0 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest"
+                        style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-raised)' }}
+                      >
+                        Rooms
+                      </div>
+                      {roomGuests.map((g) => (
+                        <button
+                          key={`room-${g.number}`}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
+                          style={{ color: 'var(--color-text-primary)' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                          onClick={() => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
+                        >
+                          <span className="font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                            {g.number}
+                          </span>
+                          <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                          <span className="truncate">{g.customerName}</span>
+                        </button>
+                      ))}
+                    </>
+                  ) : null}
+
+                  {lockerGuests.length > 0 ? (
+                    <>
+                      <div className="sticky top-0 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest"
+                        style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-raised)' }}
+                      >
+                        Lockers
+                      </div>
+                      {lockerGuests.map((g) => (
+                        <button
+                          key={`locker-${g.number}`}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
+                          style={{ color: 'var(--color-text-primary)' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                          onClick={() => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
+                        >
+                          <span className="font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                            {g.number}
+                          </span>
+                          <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                          <span className="truncate">{g.customerName}</span>
+                        </button>
+                      ))}
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {/* Empty state */}
+              {dropdownOpen && !selectedGuest && filteredGuests.length === 0 && !guestsLoading ? (
+                <div
+                  className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border px-3 py-3 text-center text-xs"
+                  style={{
+                    backgroundColor: 'var(--color-surface-raised)',
+                    borderColor: 'var(--color-border-default)',
+                    color: 'var(--color-text-muted)',
+                  }}
+                >
+                  {guestFilter ? 'No matching guests' : 'No guests currently checked in'}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Cart items */}
+          <div className="flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: 'none' }}>
+            {cartLines.length === 0 ? (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  Tap items to add to cart
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {cartLines.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-md border p-2"
+                    style={{
+                      backgroundColor: 'var(--color-surface-input)',
+                      borderColor: 'var(--color-border-subtle)',
+                    }}
+                  >
+
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-xs font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {item.name}
+                      </span>
+                      <span className="text-[10px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                        {formatPrice(item.price)} each
+                      </span>
+                    </div>
+
+                    {/* Qty controls */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        className="flex h-5 w-5 items-center justify-center rounded text-xs font-bold transition"
+                        style={{
+                          backgroundColor: 'var(--color-surface-overlay)',
+                          color: 'var(--color-text-secondary)',
+                          border: '1px solid var(--color-border-default)',
+                        }}
+                        onClick={() => removeItem(item.id)}
+                        aria-label={`Remove one ${item.name}`}
+                      >
+                        −
+                      </button>
+                      <span
+                        className="w-5 text-center text-xs font-bold tabular-nums"
+                        style={{ color: 'var(--color-text-primary)' }}
+                      >
+                        {item.qty}
+                      </span>
+                      <button
+                        className="flex h-5 w-5 items-center justify-center rounded text-xs font-bold transition"
+                        style={{
+                          backgroundColor: 'var(--color-surface-overlay)',
+                          color: 'var(--color-text-secondary)',
+                          border: '1px solid var(--color-border-default)',
+                        }}
+                        onClick={() => addItem(item.id)}
+                        aria-label={`Add one more ${item.name}`}
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <span
+                      className="ml-1 text-xs font-bold tabular-nums"
+                      style={{ color: 'var(--color-text-primary)' }}
+                    >
+                      {formatPrice(item.price * item.qty)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="border-t p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+            {/* Status messages */}
+            {success ? (
+              <p className="mb-2 text-center text-xs font-medium" style={{ color: 'var(--color-status-success)' }}>
+                {success}
+              </p>
+            ) : null}
+            {error ? (
+              <p className="mb-2 text-center text-xs font-medium" style={{ color: 'var(--color-status-error)' }}>
+                {error}
+              </p>
+            ) : null}
+
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                Total ({cartCount} {cartCount === 1 ? 'item' : 'items'})
+              </span>
+              <span className="text-base font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                {formatPrice(cartTotal)}
+              </span>
+            </div>
+
+            <Button
+              fullWidth
+              disabled={cartLines.length === 0 || submitting}
+              onClick={() => void handleCompleteSale()}
+            >
+              {submitting ? 'Processing…' : 'Complete Sale'}
+            </Button>
+
+            {cartLines.length > 0 ? (
+              <button
+                className="mt-2 w-full text-center text-xs font-medium transition"
+                style={{ color: 'var(--color-text-muted)' }}
+                onClick={clearCart}
+              >
+                Clear Cart
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </PanelShell>
   );
 }

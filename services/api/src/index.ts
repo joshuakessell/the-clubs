@@ -24,6 +24,7 @@ import {
   registerRoutes,
   realtimeRoutes,
   realtimeLanRoutes,
+  realtimeSSERoutes,
   shiftsRoutes,
   timeclockRoutes,
   documentsRoutes,
@@ -33,10 +34,12 @@ import {
   cashDrawerRoutes,
   breakRoutes,
   orderRoutes,
+  retailRoutes,
   customerSpendLedgerRoutes,
 } from './routes';
 import { createBroadcaster, type Broadcaster } from './realtime/broadcaster';
 import { LocalLaneSockets } from './realtime/localSockets';
+import { LocalLaneSSEClients } from './realtime/localSSE';
 import { initializeDatabase, closeDatabase, getPool } from './db';
 import { runPendingMigrations } from './db/migrate';
 import { cleanupAbandonedRegisterSessions } from './routes/registers';
@@ -66,6 +69,7 @@ declare module 'fastify' {
     broadcaster: Broadcaster;
     dbHealthy: boolean;
     localLaneSockets?: LocalLaneSockets;
+    localLaneSSE?: LocalLaneSSEClients;
   }
 }
 
@@ -102,8 +106,10 @@ async function main() {
 
   // Create broadcaster for realtime events
   const localLaneSockets = new LocalLaneSockets();
+  const localLaneSSE = new LocalLaneSSEClients();
   fastify.decorate('localLaneSockets', localLaneSockets);
-  const broadcaster = createBroadcaster({ localLaneSockets });
+  fastify.decorate('localLaneSSE', localLaneSSE);
+  const broadcaster = createBroadcaster({ localLaneSockets, localLaneSSE });
 
   // Decorate fastify with broadcaster for access in routes
   fastify.decorate('broadcaster', broadcaster);
@@ -186,6 +192,7 @@ async function main() {
   await fastify.register(registerRoutes);
   await fastify.register(realtimeRoutes);
   await fastify.register(realtimeLanRoutes);
+  await fastify.register(realtimeSSERoutes);
   await fastify.register(shiftsRoutes);
   await fastify.register(timeclockRoutes);
   await fastify.register(documentsRoutes);
@@ -195,6 +202,7 @@ async function main() {
   await fastify.register(cashDrawerRoutes);
   await fastify.register(breakRoutes);
   await fastify.register(orderRoutes);
+  await fastify.register(retailRoutes);
   await fastify.register(customerSpendLedgerRoutes);
 
   // Auto-replay outbox (edge stack only)

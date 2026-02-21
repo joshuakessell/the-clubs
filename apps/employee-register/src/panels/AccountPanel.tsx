@@ -1,19 +1,43 @@
+import { useState, useEffect } from 'react';
 import { useRegisterStore } from '../stores/useRegisterStore';
-import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
+import { ProfileTab } from './account/ProfileTab';
+import { EmployeeAssistTab } from './account/EmployeeAssistTab';
+import { ChargesTab } from './account/ChargesTab';
+
+type AccountSubTab = 'profile' | 'assist' | 'charges';
+
+const TAB_CONFIG: { id: AccountSubTab; label: string; icon: string }[] = [
+  { id: 'profile', label: 'Profile', icon: '👤' },
+  { id: 'assist', label: 'Assist', icon: '📋' },
+  { id: 'charges', label: 'Charges', icon: '💰' },
+];
 
 /**
- * AccountPanel — Customer account management.
- * Shows customer profile, membership options, rental selection, and check-in flow.
+ * AccountPanel — 3-tab customer account view.
+ * - Profile: customer details, Start/Cancel check-in
+ * - Employee Assist: mirrors kiosk flow step by step
+ * - Charges: payment ledger for current session
  *
- * In the original ClubOperationsPOS this was 482 lines with a complex multi-step
- * state machine (CustomerProfileCard, EmployeeAssistPanel, etc).
- * This version provides the core shell — sub-components will be migrated incrementally.
+ * Auto-switches to Assist tab when a check-in session starts (scan/search auto-start),
+ * and defaults to Profile when a customer is opened via search (manual start).
  */
 export function AccountPanel() {
-  const { currentSessionId, customerName } = useRegisterStore();
+  const { currentSessionId, customerId, customerName, sessionPayload } = useRegisterStore();
+  const [activeTab, setActiveTab] = useState<AccountSubTab>('profile');
 
-  if (!currentSessionId) {
+  // Auto-switch to Assist tab when a flow step appears (session started)
+  useEffect(() => {
+    if (sessionPayload?.flowStep && activeTab === 'profile') {
+      setActiveTab('assist');
+    }
+    // Reset to profile when session and customer are cleared
+    if (!currentSessionId && !customerId) {
+      setActiveTab('profile');
+    }
+  }, [sessionPayload?.flowStep, currentSessionId, customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!currentSessionId && !customerId && !customerName) {
     return (
       <PanelShell align="center">
         <div className="flex flex-col items-center gap-3 text-center py-12">
@@ -30,48 +54,33 @@ export function AccountPanel() {
   }
 
   return (
-    <PanelShell align="top">
-      <PanelHeader
-        title={customerName ?? 'Customer Account'}
-        subtitle={`Session: ${currentSessionId.slice(0, 8)}…`}
-      />
-
-      {/* Customer Profile Section */}
-      <div className="mt-4 rounded-lg border p-4" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full text-lg font-bold"
-            style={{ backgroundColor: 'var(--color-accent-glow)', color: 'var(--color-accent-primary)', border: '1px solid var(--color-border-accent)' }}>
-            {customerName?.charAt(0)?.toUpperCase() ?? '?'}
-          </div>
-          <div>
-            <p className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-              {customerName}
-            </p>
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              Check-in flow ready
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        {[
-          { label: 'Membership', icon: '🎫', desc: 'Select membership type' },
-          { label: 'Room / Locker', icon: '🚪', desc: 'Choose rental option' },
-          { label: 'Agreement', icon: '📋', desc: 'Review terms' },
-          { label: 'Complete', icon: '✅', desc: 'Finalize check-in' },
-        ].map((action) => (
-          <button key={action.label} className="rounded-lg border p-3 text-left transition"
-            style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-accent-primary)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)'; }}
+    <PanelShell align="top" scroll="hidden">
+      {/* Tab bar */}
+      <div
+        className="flex rounded-lg border overflow-hidden"
+        style={{ borderColor: 'var(--color-border-default)' }}
+      >
+        {TAB_CONFIG.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold transition"
+            style={{
+              backgroundColor: activeTab === tab.id ? 'var(--color-accent-primary)' : 'transparent',
+              color: activeTab === tab.id ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
+            }}
           >
-            <span className="text-xl">{action.icon}</span>
-            <p className="mt-1 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{action.label}</p>
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{action.desc}</p>
+            <span className="text-sm">{tab.icon}</span>
+            {tab.label}
           </button>
         ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="mt-4 flex-1 overflow-y-auto">
+        {activeTab === 'profile' && <ProfileTab />}
+        {activeTab === 'assist' && <EmployeeAssistTab />}
+        {activeTab === 'charges' && <ChargesTab />}
       </div>
     </PanelShell>
   );

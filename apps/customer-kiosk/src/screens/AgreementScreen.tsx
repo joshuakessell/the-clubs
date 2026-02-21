@@ -8,7 +8,7 @@ interface Props {
 
 const AGREEMENT_TEXT = `
 <h3>Terms & Conditions</h3>
-<p>By signing below, you acknowledge and agree to the following terms and conditions for admission to The Clubs facility:</p>
+<p>By signing below, you acknowledge and agree to the following terms and conditions for admission to the Club Dallas facility:</p>
 <ol>
 <li>I understand that use of the facilities is at my own risk.</li>
 <li>I will follow all posted rules and directives from staff members.</li>

@@ -5,13 +5,13 @@
 
 /* ── Dark Tech Theme Tokens ──────────────────────────── */
 @theme {
-  --color-surface-base: #0a0a0f;
-  --color-surface-raised: #12121a;
-  --color-surface-overlay: #1a1a26;
-  --color-surface-input: #0e0e16;
+  --color-surface-base: #080810;
+  --color-surface-raised: #10101e;
+  --color-surface-overlay: #1c1c30;
+  --color-surface-input: #0c0c18;
 
-  --color-border-default: #1e1e2e;
-  --color-border-subtle: #16161f;
+  --color-border-default: #22223a;
+  --color-border-subtle: #161628;
   --color-border-strong: #2a2a3e;
   --color-border-accent: #00d4ff33;
 
@@ -38,6 +38,7 @@
 /* ── Base ────────────────────────────────────────────── */
 html {
   font-family: var(--font-body);
+  font-size: 20px;
   background-color: var(--color-surface-base);
   color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
@@ -64,4 +65,14 @@ h1, h2, h3, h4 {
 :focus-visible {
   outline: 2px solid var(--color-accent-primary);
   outline-offset: 2px;
+}
+
+/* ── Reduced motion ─────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

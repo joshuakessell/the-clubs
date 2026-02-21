@@ -1,0 +1,93 @@
+version: "3.9"
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: club-ops-db
+    environment:
+      POSTGRES_DB: ${DB_NAME:-club_operations}
+      POSTGRES_USER: ${DB_USER:-clubops}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-club-ops-dev}
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-clubops}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - club-ops-network
+
+  # API Service
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    container_name: club-ops-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      DATABASE_URL: postgresql://${DB_USER:-clubops}:${DB_PASSWORD:-club-ops-dev}@db:5432/${DB_NAME:-club_operations}
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); })"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - club-ops-network
+
+  # Customer Kiosk (React SPA)
+  customer-kiosk:
+    build:
+      context: .
+      dockerfile: apps/customer-kiosk/Dockerfile
+    container_name: club-ops-customer-kiosk
+    ports:
+      - "3001:80"
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3000}
+    networks:
+      - club-ops-network
+
+  # Employee Register (React SPA)
+  employee-register:
+    build:
+      context: .
+      dockerfile: apps/employee-register/Dockerfile
+    container_name: club-ops-employee-register
+    ports:
+      - "3002:80"
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3000}
+    networks:
+      - club-ops-network
+
+  # Office Dashboard (React SPA)
+  office-dashboard:
+    build:
+      context: .
+      dockerfile: apps/office-dashboard/Dockerfile
+    container_name: club-ops-office-dashboard
+    ports:
+      - "3003:80"
+    environment:
+      REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost:3000}
+    networks:
+      - club-ops-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  club-ops-network:
+    driver: bridge

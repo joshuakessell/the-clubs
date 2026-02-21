@@ -11,6 +11,7 @@ import type {
 } from '../../checkout/types';
 import { broadcastInventoryUpdate } from '../../inventory/broadcast';
 import { insertAuditLog } from '../../audit/auditLog';
+import { insertClubEvent } from '../../activity/clubEventLog';
 import { calculateLateFee, looksLikeUuid } from '../../checkout/utils';
 
 export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
@@ -464,6 +465,29 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
               [row.customer_id, row.occupancy_id, lateMinutes, feeAmount, banApplied]
             );
           }
+
+          // Emit unified club event for analytics
+          await insertClubEvent(client, {
+            eventType: 'CHECKOUT_COMPLETED',
+            eventDomain: 'CHECKOUT',
+            sourceApp: 'EMPLOYEE_REGISTER',
+            staffId: looksLikeUuid(staffId) ? staffId : null,
+            staffName: request.staff!.name,
+            customerId: row.customer_id,
+            customerName: row.customer_name,
+            visitId: row.visit_id,
+            summary: `Manual checkout completed — ${row.customer_name}`,
+            metadata: {
+              occupancyId: row.occupancy_id,
+              visitId: row.visit_id,
+              roomId: row.room_id,
+              lockerId: row.locker_id,
+              lateMinutes,
+              feeAmount,
+              banApplied,
+            },
+            dedupeKey: `CLUB:CHECKOUT_COMPLETED:MANUAL:${row.occupancy_id}`,
+          });
 
           return {
             alreadyCheckedOut: false,

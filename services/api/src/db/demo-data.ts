@@ -54,6 +54,7 @@ export interface DemoWaitlistEntry {
   visit_id: string;
   checkin_block_id: string;
   desired_tier: RentalType;
+  desired_tiers: RentalType[];
   backup_tier: RentalType;
   locker_or_room_assigned_initially: string | null;
   room_id: string | null;
@@ -434,12 +435,23 @@ function createWaitlistEntries(visits: DemoVisit[], now: Date): DemoWaitlistEntr
   const candidates = visits.filter((v) =>
     v.blocks.some((b) => b.rental_type !== RentalType.SPECIAL)
   );
-  const desiredTiers: RentalType[] = [RentalType.DOUBLE, RentalType.SPECIAL];
+
+  // Varied upgrade scenarios for demo column-spanning
+  const scenarios: { desired: RentalType; tiers: RentalType[] }[] = [
+    { desired: RentalType.STANDARD, tiers: [RentalType.STANDARD] },                                     // col 1 only
+    { desired: RentalType.STANDARD, tiers: [RentalType.STANDARD, RentalType.DOUBLE] },                  // cols 1-2
+    { desired: RentalType.STANDARD, tiers: [RentalType.STANDARD, RentalType.DOUBLE, RentalType.SPECIAL] }, // all cols
+    { desired: RentalType.DOUBLE,   tiers: [RentalType.DOUBLE] },                                        // col 2 only
+    { desired: RentalType.DOUBLE,   tiers: [RentalType.DOUBLE, RentalType.SPECIAL] },                    // cols 2-3
+    { desired: RentalType.SPECIAL,  tiers: [RentalType.SPECIAL] },                                       // col 3 only
+    { desired: RentalType.STANDARD, tiers: [RentalType.STANDARD, RentalType.DOUBLE] },                  // cols 1-2
+    { desired: RentalType.DOUBLE,   tiers: [RentalType.DOUBLE, RentalType.SPECIAL] },                    // cols 2-3
+  ];
 
   for (let i = 0; i < candidates.length && entries.length < 8; i++) {
     const visit = candidates[i]!;
     const block = visit.blocks[0]!;
-    const desired_tier = desiredTiers[entries.length % desiredTiers.length]!;
+    const scenario = scenarios[entries.length % scenarios.length]!;
     const backup_tier = block.rental_type;
     const waitlistId = randomUUID();
 
@@ -449,7 +461,8 @@ function createWaitlistEntries(visits: DemoVisit[], now: Date): DemoWaitlistEntr
       id: waitlistId,
       visit_id: visit.id,
       checkin_block_id: block.id,
-      desired_tier,
+      desired_tier: scenario.desired,
+      desired_tiers: scenario.tiers,
       backup_tier,
       locker_or_room_assigned_initially: block.room_id || block.locker_id || null,
       room_id: null,

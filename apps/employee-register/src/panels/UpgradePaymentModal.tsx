@@ -1,0 +1,195 @@
+/**
+ * UpgradePaymentModal — Payment flow for waitlist upgrades.
+ *
+ * Shows original charges, upgrade fee, total due.
+ * Payment buttons: Credit, Cash, Split (partial amounts).
+ * After payment, Complete button finalises the upgrade.
+ */
+
+interface UpgradePaymentModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  customerLabel: string;
+  newRoomNumber?: string | null;
+  originalCharges: Array<{ description: string; amount: number }>;
+  originalTotal: number | null;
+  upgradeFee: number | null;
+  paymentStatus: 'DUE' | 'PAID' | null;
+  isSubmitting: boolean;
+  canComplete: boolean;
+  onPayCredit: () => void;
+  onPayCash: () => void;
+  onComplete: () => void;
+}
+
+export function UpgradePaymentModal({
+  isOpen,
+  onClose,
+  customerLabel,
+  newRoomNumber,
+  originalCharges,
+  originalTotal,
+  upgradeFee,
+  paymentStatus,
+  isSubmitting,
+  canComplete,
+  onPayCredit,
+  onPayCash,
+  onComplete,
+}: UpgradePaymentModalProps) {
+  if (!isOpen) return null;
+
+  const totalDue = typeof upgradeFee === 'number' && Number.isFinite(upgradeFee) ? upgradeFee : 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="flex flex-col gap-5 rounded-xl border p-6 shadow-2xl"
+        style={{
+          backgroundColor: 'var(--color-surface-raised)',
+          borderColor: 'var(--color-border-default)',
+          maxWidth: '520px',
+          width: '100%',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div>
+          <h3
+            className="text-lg font-bold"
+            style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+          >
+            Upgrade Payment
+          </h3>
+          <p className="mt-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+            {customerLabel}
+            {newRoomNumber && <> — Room {newRoomNumber}</>}
+          </p>
+        </div>
+
+        {/* Already Paid section */}
+        <div
+          className="rounded-lg border p-3"
+          style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-subtle)' }}
+        >
+          <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
+            Already Paid
+          </div>
+          {originalCharges.length > 0 ? (
+            <>
+              {originalCharges.map((item, idx) => (
+                <div
+                  key={`${item.description}-${idx}`}
+                  className="flex justify-between text-sm"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  <span>{item.description}</span>
+                  <span>${item.amount.toFixed(2)}</span>
+                </div>
+              ))}
+              {originalTotal !== null && (
+                <div
+                  className="flex justify-between text-sm font-semibold mt-1 pt-1 border-t"
+                  style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border-subtle)' }}
+                >
+                  <span>Original total</span>
+                  <span>${originalTotal.toFixed(2)}</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="text-sm italic" style={{ color: 'var(--color-text-muted)' }}>
+              All prior charges are settled.
+            </div>
+          )}
+        </div>
+
+        {/* New Charge section */}
+        <div
+          className="rounded-lg border p-3"
+          style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-subtle)' }}
+        >
+          <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
+            New Charge
+          </div>
+          <div className="flex justify-between text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            <span>Upgrade Fee</span>
+            <span>${upgradeFee !== null && Number.isFinite(upgradeFee) ? upgradeFee.toFixed(2) : '—'}</span>
+          </div>
+        </div>
+
+        {/* Total Due */}
+        <div
+          className="flex items-center justify-between rounded-lg border p-3"
+          style={{
+            backgroundColor: 'var(--color-surface-overlay)',
+            borderColor: 'var(--color-border-accent)',
+          }}
+        >
+          <span className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Total Due</span>
+          <span className="text-lg font-extrabold" style={{ color: 'var(--color-status-warning)' }}>
+            ${totalDue.toFixed(2)}
+          </span>
+        </div>
+
+        {/* Payment buttons */}
+        {paymentStatus !== 'PAID' && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={onPayCredit}
+              disabled={isSubmitting}
+              className="rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
+              style={{ backgroundColor: 'var(--color-accent-primary)', color: 'var(--color-text-inverse)' }}
+            >
+              💳 Credit
+            </button>
+            <button
+              onClick={onPayCash}
+              disabled={isSubmitting}
+              className="rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
+              style={{ backgroundColor: 'var(--color-status-success)', color: '#000' }}
+            >
+              💵 Cash
+            </button>
+          </div>
+        )}
+
+        {/* Status + Complete */}
+        <div className="flex items-center justify-between">
+          <span
+            className="text-sm font-bold"
+            style={{ color: paymentStatus === 'PAID' ? 'var(--color-status-success)' : 'var(--color-status-warning)' }}
+          >
+            {paymentStatus === 'PAID' ? '✓ Payment Received' : '⏳ Payment Due'}
+          </span>
+          <button
+            onClick={onComplete}
+            disabled={!canComplete || isSubmitting}
+            className="rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
+            style={{
+              backgroundColor: canComplete ? 'var(--color-accent-primary)' : 'var(--color-surface-overlay)',
+              color: canComplete ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
+              cursor: canComplete ? 'pointer' : 'not-allowed',
+              opacity: canComplete ? 1 : 0.5,
+            }}
+          >
+            Complete Upgrade
+          </button>
+        </div>
+
+        {/* Close */}
+        <button
+          onClick={onClose}
+          className="text-xs text-center"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}

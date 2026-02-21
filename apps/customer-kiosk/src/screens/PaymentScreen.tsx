@@ -1,6 +1,12 @@
+import { useState, useCallback } from 'react';
+import { getApiUrl } from '@the-clubs/shared';
+import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { ScreenShell } from '../components/ScreenShell';
 
 interface Props {
+  laneId: string;
+  kioskToken?: string | null;
+  sessionPayload?: SessionUpdatedPayload | null;
   onComplete: () => void;
   onCancel: () => void;
 }
@@ -10,24 +16,73 @@ interface LineItem {
   amount: number;
 }
 
-const MOCK_ITEMS: LineItem[] = [
-  { description: 'Room Rental — Standard', amount: 35.00 },
-  { description: 'Towel', amount: 2.00 },
-];
-
-const TOTAL = MOCK_ITEMS.reduce((sum, li) => sum + li.amount, 0);
-
 function formatAmount(amount: number): string {
   const sign = amount < 0 ? '-' : '';
   return `${sign}$${Math.abs(amount).toFixed(2)}`;
 }
 
 /**
- * PaymentScreen — Shows charges breakdown and payment status.
+ * PaymentScreen — Shows charges breakdown with split payment option.
+ * Displays real line items from the session's price quote.
  * In production, an external card terminal collects payment.
- * This screen just displays total and waits for completion.
  */
-export function PaymentScreen({ onComplete, onCancel }: Props) {
+export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, onCancel }: Props) {
+  const [showSplitDialog, setShowSplitDialog] = useState(false);
+  const [splitAmount, setSplitAmount] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  /* ── Parse real line items from session payload ── */
+  const priceQuote = sessionPayload?.priceQuote as
+    | { lineItems?: LineItem[]; total?: number }
+    | null
+    | undefined;
+
+  const lineItems: LineItem[] = priceQuote?.lineItems ?? [
+    { description: 'Room Rental — Standard', amount: 35.0 },
+    { description: 'Towel', amount: 2.0 },
+  ];
+  const total = priceQuote?.total ?? lineItems.reduce((sum, li) => sum + li.amount, 0);
+
+  /* ── Demo: Take payment ── */
+  const demoTakePayment = useCallback(
+    async (outcome: 'CASH_SUCCESS' | 'CREDIT_SUCCESS', splitCardAmount?: number) => {
+      setSubmitting(true);
+      try {
+        const h: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (kioskToken) h['Authorization'] = `Bearer ${kioskToken}`;
+
+        const body: Record<string, unknown> = {
+          outcome,
+          sessionId: sessionPayload?.sessionId,
+        };
+        if (splitCardAmount !== undefined && splitCardAmount > 0) {
+          body.splitCardAmount = splitCardAmount;
+        }
+
+        const res = await fetch(
+          getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/demo-take-payment`),
+          { method: 'POST', headers: h, body: JSON.stringify(body) }
+        );
+
+        if (!res.ok) {
+          console.error('[PaymentScreen] Payment failed', await res.text());
+        }
+        onComplete();
+      } catch (err) {
+        console.error('[PaymentScreen] Error taking payment', err);
+      } finally {
+        setSubmitting(false);
+        setShowSplitDialog(false);
+      }
+    },
+    [kioskToken, laneId, sessionPayload?.sessionId, onComplete]
+  );
+
+  /* ── Split payment helpers ── */
+  const parsedSplit = parseFloat(splitAmount) || 0;
+  const cashDue = Math.max(0, total - parsedSplit);
+  const splitIsValid = parsedSplit > 0 && parsedSplit < total;
+
   return (
     <ScreenShell showWatermark>
       <div className="flex w-full max-w-md flex-col items-center gap-8 px-6 py-12">
@@ -41,7 +96,7 @@ export function PaymentScreen({ onComplete, onCancel }: Props) {
           </p>
 
           <div className="mt-4 flex flex-col gap-2">
-            {MOCK_ITEMS.map((li, idx) => (
+            {lineItems.map((li, idx) => (
               <div key={idx} className="flex items-center justify-between">
                 <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{li.description}</span>
                 <span className="text-sm font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
@@ -58,7 +113,7 @@ export function PaymentScreen({ onComplete, onCancel }: Props) {
                 className="text-2xl font-extrabold tabular-nums"
                 style={{ fontFamily: 'var(--font-display)', color: 'var(--color-accent-primary)' }}
               >
-                {formatAmount(TOTAL)}
+                {formatAmount(total)}
               </span>
             </div>
           </div>
@@ -87,28 +142,137 @@ export function PaymentScreen({ onComplete, onCancel }: Props) {
         </div>
 
         {/* Actions */}
-        <div className="flex w-full gap-3">
-          <button
-            type="button"
-            className="flex-1 rounded-lg border px-6 py-4 text-base font-semibold transition"
-            style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="flex-1 rounded-lg px-6 py-4 text-base font-bold transition"
-            style={{
-              backgroundColor: 'var(--color-status-success)',
-              color: 'white',
-            }}
-            onClick={onComplete}
-          >
-            Demo: Complete
-          </button>
+        <div className="flex w-full flex-col gap-3">
+          {/* Primary row */}
+          <div className="flex w-full gap-3">
+            <button
+              type="button"
+              className="flex-1 rounded-lg border px-6 py-4 text-base font-semibold transition"
+              style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
+              onClick={onCancel}
+              disabled={submitting}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded-lg px-6 py-4 text-base font-bold transition"
+              style={{ backgroundColor: 'var(--color-status-success)', color: 'white' }}
+              onClick={() => demoTakePayment('CREDIT_SUCCESS')}
+              disabled={submitting}
+            >
+              {submitting ? 'Processing…' : 'Demo: Pay Card'}
+            </button>
+          </div>
+          {/* Secondary row - split + cash */}
+          <div className="flex w-full gap-3">
+            <button
+              type="button"
+              className="flex-1 rounded-lg border px-4 py-3 text-sm font-semibold transition"
+              style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
+              onClick={() => setShowSplitDialog(true)}
+              disabled={submitting}
+            >
+              Split Payment
+            </button>
+            <button
+              type="button"
+              className="flex-1 rounded-lg border px-4 py-3 text-sm font-semibold transition"
+              style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
+              onClick={() => demoTakePayment('CASH_SUCCESS')}
+              disabled={submitting}
+            >
+              Demo: Pay Cash
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* ── Split Payment Dialog ── */}
+      {showSplitDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          onClick={() => setShowSplitDialog(false)}
+        >
+          <div
+            className="mx-4 w-full max-w-sm rounded-2xl border p-6"
+            style={{ backgroundColor: '#1e1e2e', borderColor: 'var(--color-border-default)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2
+              className="text-lg font-bold"
+              style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+            >
+              Split Payment
+            </h2>
+            <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              Enter card portion — the rest will be collected as cash.
+            </p>
+
+            <div className="mt-4">
+              <label className="text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
+                Card Amount
+              </label>
+              <div className="relative mt-1">
+                <span
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  $
+                </span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={(total - 0.01).toFixed(2)}
+                  className="w-full rounded-lg border py-3 pl-7 pr-3 text-right text-lg font-bold tabular-nums outline-none"
+                  style={{
+                    backgroundColor: 'var(--color-surface-base)',
+                    borderColor: 'var(--color-border-default)',
+                    color: 'var(--color-text-primary)',
+                  }}
+                  value={splitAmount}
+                  onChange={(e) => setSplitAmount(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            {parsedSplit > 0 && (
+              <div className="mt-3 flex items-center justify-between rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--color-surface-base)' }}>
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Cash remaining</span>
+                <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                  {formatAmount(cashDue)}
+                </span>
+              </div>
+            )}
+
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                className="flex-1 rounded-lg border px-4 py-3 text-sm font-semibold"
+                style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
+                onClick={() => setShowSplitDialog(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-lg px-4 py-3 text-sm font-bold"
+                style={{
+                  backgroundColor: splitIsValid ? 'var(--color-accent-primary)' : 'var(--color-surface-raised)',
+                  color: splitIsValid ? 'white' : 'var(--color-text-muted)',
+                }}
+                disabled={!splitIsValid || submitting}
+                onClick={() => demoTakePayment('CREDIT_SUCCESS', parsedSplit)}
+              >
+                {submitting ? 'Processing…' : 'Pay Card Portion'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </ScreenShell>
   );
 }

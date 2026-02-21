@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Badge, Button, Alert } from '@the-clubs/ui';
+import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../stores/useRegisterStore';
 
 const DOMAIN_OPTIONS = ['', 'HR', 'SALES', 'CHECKIN', 'CHECKOUT', 'INVENTORY', 'ADMIN'];
@@ -15,7 +16,7 @@ function domainColor(d: string): 'primary' | 'success' | 'warning' | 'error' | '
     case 'HR': return 'primary';
     case 'SALES': return 'success';
     case 'CHECKIN': case 'CHECKOUT': return 'warning';
-    case 'INVENTORY': return 'light';
+    case 'INVENTORY': return 'primary';
     case 'ADMIN': return 'error';
     default: return 'light';
   }
@@ -33,7 +34,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   UPGRADE_PAID: 'Upgrade Paid', LATE_FEE_CHARGED: 'Late Fee Charged',
   REFUND_ISSUED: 'Refund Issued', CHECKIN_STARTED: 'Check-in Started',
   CHECKIN_COMPLETED: 'Check-in Completed', MEMBERSHIP_SELECTED: 'Membership Selected',
-  CHECKOUT_REQUESTED: 'Checkout Requested', CHECKOUT_COMPLETED: 'Checkout Completed',
+  CHECKOUT_COMPLETED: 'Checkout Completed',
   ROOM_STATUS_CHANGED: 'Room Status Changed', ROOM_ASSIGNED: 'Room Assigned',
   LOCKER_ASSIGNED: 'Locker Assigned', NOTE_ADDED: 'Note Added',
   PAST_DUE_WAIVED: 'Past Due Waived', OVERRIDE_APPLIED: 'Override Applied',
@@ -54,6 +55,14 @@ export function ClubLogPanel() {
   } = clubLog;
 
   const rows = useMemo(() => items.slice(0, 600), [items]);
+
+  const token = useAuthStore((s) => s.session?.sessionToken);
+
+  // Set global auth token for store API calls and trigger reload on mount / filter change
+  useEffect(() => {
+    (window as any).__authToken = token;
+    void reload();
+  }, [token, q, domain, category]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex h-full flex-col gap-4 rounded-xl border p-5"
@@ -108,7 +117,6 @@ export function ClubLogPanel() {
                 <option value="CHECKIN_COMPLETED">Check-in Completed</option>
               </optgroup>
               <optgroup label="Checkout">
-                <option value="CHECKOUT_REQUESTED">Checkout Requested</option>
                 <option value="CHECKOUT_COMPLETED">Checkout Completed</option>
               </optgroup>
               <optgroup label="Inventory">

@@ -1,7 +1,13 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { useAuthStore, type StaffSession } from '../stores/authStore';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || '/api';
+
+interface StaffMember {
+  id: string;
+  name: string;
+  role: string;
+}
 
 interface LockScreenProps {
   appTitle?: string;
@@ -15,16 +21,104 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Auto-focus the name input
+  // Staff autocomplete state
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
+  const [filteredStaff, setFilteredStaff] = useState<StaffMember[]>([]);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
+  const [isLoadingStaff, setIsLoadingStaff] = useState(true);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pinRef = useRef<HTMLInputElement>(null);
+
+  // Fetch staff list on mount
   useEffect(() => {
-    const el = document.getElementById('staff-lookup');
-    el?.focus();
+    const fetchStaff = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/v1/auth/staff`);
+        if (res.ok) {
+          const data: { staff: StaffMember[] } = await res.json();
+          setStaffList(data.staff);
+          setFilteredStaff(data.staff);
+        }
+      } catch {
+        // Silently fail — user can still type manually
+      } finally {
+        setIsLoadingStaff(false);
+      }
+    };
+    void fetchStaff();
   }, []);
+
+  // Filter staff when input changes
+  useEffect(() => {
+    if (!staffLookup.trim()) {
+      setFilteredStaff(staffList);
+      return;
+    }
+    const q = staffLookup.toLowerCase();
+    setFilteredStaff(
+      staffList.filter(
+        (s) => s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
+      )
+    );
+    setHighlightedIndex(-1);
+  }, [staffLookup, staffList]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const selectStaff = useCallback(
+    (staff: StaffMember) => {
+      setSelectedStaff(staff);
+      setStaffLookup(staff.name);
+      setIsDropdownOpen(false);
+      setError(null);
+      // Focus the PIN input
+      setTimeout(() => pinRef.current?.focus(), 50);
+    },
+    []
+  );
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isDropdownOpen || filteredStaff.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev < filteredStaff.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredStaff.length - 1));
+    } else if (e.key === 'Enter' && highlightedIndex >= 0) {
+      e.preventDefault();
+      selectStaff(filteredStaff[highlightedIndex]!);
+    } else if (e.key === 'Escape') {
+      setIsDropdownOpen(false);
+    }
+  };
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedIndex < 0) return;
+    const el = document.getElementById(`staff-option-${highlightedIndex}`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex]);
 
   const handlePinSubmit = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!staffLookup.trim() || !pin.trim()) {
-      setError('Please enter your name/ID and PIN');
+    const lookup = selectedStaff ? selectedStaff.name : staffLookup.trim();
+    if (!lookup || !pin.trim()) {
+      setError('Please select a staff member and enter your PIN');
       return;
     }
 
@@ -36,7 +130,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          staffLookup: staffLookup.trim(),
+          staffLookup: lookup,
           deviceId,
           pin: pin.trim(),
         }),
@@ -60,12 +154,30 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       onLogin?.(session);
       setPin('');
       setStaffLookup('');
+      setSelectedStaff(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid credentials');
       setPin('');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const roleLabel = (role: string) => {
+    const labels: Record<string, string> = {
+      admin: 'Admin',
+      manager: 'Manager',
+      staff: 'Staff',
+      trainee: 'Trainee',
+    };
+    return labels[role.toLowerCase()] || role;
+  };
+
+  const roleColor = (role: string) => {
+    const r = role.toLowerCase();
+    if (r === 'admin') return 'var(--color-status-error)';
+    if (r === 'manager') return 'var(--color-accent-primary)';
+    return 'var(--color-text-muted)';
   };
 
   return (
@@ -77,10 +189,9 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
           <div className="mb-10">
             <div className="mb-4 flex items-center gap-3">
               <div
-                className="flex h-10 w-10 items-center justify-center rounded-lg"
-                style={{ backgroundColor: 'var(--color-accent-glow)', border: '1px solid var(--color-border-accent)' }}
+                className="flex h-10 w-10 items-center justify-center"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 2L2 7l10 5 10-5-10-5z" />
                   <path d="M2 17l10 5 10-5" />
                   <path d="M2 12l10 5 10-5" />
@@ -114,28 +225,131 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
 
           {/* Form */}
           <form onSubmit={(e) => void handlePinSubmit(e)} className="flex flex-col gap-4">
-            <div>
+            {/* Staff Autocomplete */}
+            <div ref={dropdownRef} className="relative">
               <label
                 htmlFor="staff-lookup"
                 className="mb-1.5 block text-xs font-medium uppercase tracking-wider"
                 style={{ color: 'var(--color-text-muted)' }}
               >
-                Name or Staff ID
+                Staff Member
               </label>
-              <input
-                id="staff-lookup"
-                type="text"
-                value={staffLookup}
-                onChange={(e) => setStaffLookup(e.target.value)}
-                disabled={isLoading}
-                placeholder="Enter your name or ID"
-                className="h-11 w-full rounded-lg border px-4 text-sm transition-all duration-200"
-                style={{
-                  backgroundColor: 'var(--color-surface-input)',
-                  borderColor: 'var(--color-border-default)',
-                  color: 'var(--color-text-primary)',
-                }}
-              />
+              <div className="relative">
+                <input
+                  ref={inputRef}
+                  id="staff-lookup"
+                  type="text"
+                  autoComplete="off"
+                  value={staffLookup}
+                  onChange={(e) => {
+                    setStaffLookup(e.target.value);
+                    setSelectedStaff(null);
+                    setIsDropdownOpen(true);
+                  }}
+                  onFocus={() => setIsDropdownOpen(true)}
+                  onKeyDown={handleKeyDown}
+                  disabled={isLoading}
+                  placeholder={isLoadingStaff ? 'Loading staff…' : 'Search or select staff…'}
+                  className="h-11 w-full rounded-lg border px-4 pr-10 text-sm transition-all duration-200"
+                  style={{
+                    backgroundColor: 'var(--color-surface-input)',
+                    borderColor: isDropdownOpen ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
+                    color: 'var(--color-text-primary)',
+                    boxShadow: isDropdownOpen ? '0 0 0 2px var(--color-accent-glow)' : 'none',
+                  }}
+                  role="combobox"
+                  aria-expanded={isDropdownOpen}
+                  aria-autocomplete="list"
+                  aria-controls="staff-listbox"
+                  aria-activedescendant={highlightedIndex >= 0 ? `staff-option-${highlightedIndex}` : undefined}
+                />
+                {/* Chevron icon */}
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => {
+                    setIsDropdownOpen(!isDropdownOpen);
+                    inputRef.current?.focus();
+                  }}
+                  className="absolute right-0 top-0 flex h-11 w-10 items-center justify-center"
+                  style={{ color: 'var(--color-text-muted)' }}
+                  aria-label="Toggle staff list"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ transform: isDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+                  >
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Dropdown */}
+              {isDropdownOpen && !isLoadingStaff && (
+                <div
+                  id="staff-listbox"
+                  role="listbox"
+                  className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border shadow-xl"
+                  style={{
+                    backgroundColor: 'var(--color-surface-raised)',
+                    borderColor: 'var(--color-border-default)',
+                    maxHeight: '240px',
+                    overflowY: 'auto',
+                  }}
+                >
+                  {filteredStaff.length === 0 ? (
+                    <div className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                      No staff found
+                    </div>
+                  ) : (
+                    filteredStaff.map((staff, i) => (
+                      <button
+                        key={staff.id}
+                        id={`staff-option-${i}`}
+                        type="button"
+                        role="option"
+                        aria-selected={highlightedIndex === i}
+                        onClick={() => selectStaff(staff)}
+                        onMouseEnter={() => setHighlightedIndex(i)}
+                        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors duration-100"
+                        style={{
+                          backgroundColor:
+                            selectedStaff?.id === staff.id
+                              ? 'var(--color-accent-glow)'
+                              : highlightedIndex === i
+                              ? 'var(--color-surface-hover)'
+                              : 'transparent',
+                          color: 'var(--color-text-primary)',
+                          borderBottom: i < filteredStaff.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Avatar circle */}
+                          <div
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold uppercase"
+                            style={{
+                              backgroundColor: 'var(--color-accent-glow)',
+                              color: 'var(--color-accent-primary)',
+                              border: '1px solid var(--color-border-accent)',
+                            }}
+                          >
+                            {staff.name.charAt(0)}
+                          </div>
+                          <span className="font-medium">{staff.name}</span>
+                        </div>
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+                          style={{
+                            color: roleColor(staff.role),
+                            backgroundColor: `color-mix(in srgb, ${roleColor(staff.role)} 10%, transparent)`,
+                          }}
+                        >
+                          {roleLabel(staff.role)}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             <div>
@@ -147,6 +361,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
                 PIN
               </label>
               <input
+                ref={pinRef}
                 id="pin-input"
                 type="password"
                 inputMode="numeric"
@@ -167,7 +382,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
 
             <button
               type="submit"
-              disabled={isLoading || !staffLookup.trim() || pin.length < 4}
+              disabled={isLoading || (!selectedStaff && !staffLookup.trim()) || pin.length < 4}
               className="mt-2 h-11 w-full rounded-lg text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
               style={{
                 backgroundColor: 'var(--color-accent-primary)',

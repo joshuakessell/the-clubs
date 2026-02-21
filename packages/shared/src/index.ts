@@ -166,3 +166,6 @@ export {
   type ClubEventSourceApp,
   type ClubEventRow,
 } from './clubEventSchemas.js';
+
+// SSE realtime hook (browser-only, requires React)
+export { useRealtimeSSE, type UseRealtimeSSEOptions, type UseRealtimeSSEResult } from './useRealtimeSSE.js';

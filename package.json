@@ -4,7 +4,24 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "kill-ports": "node scripts/kill-ports.cjs",
+    "db:start": "pnpm --filter @the-clubs/api db:start",
+    "db:stop": "pnpm --filter @the-clubs/api db:stop",
+    "db:reset": "pnpm --filter @the-clubs/api db:reset",
+    "db:migrate": "pnpm --filter @the-clubs/api db:migrate",
+    "db:seed": "pnpm --filter @the-clubs/api seed",
+    "dev": "pnpm demo:dev",
+    "dev:runner": "pnpm kill-ports && concurrently --names api,ck,er,od -c blue,green,magenta,cyan \"pnpm --filter @the-clubs/api dev\" \"pnpm --filter customer-kiosk dev\" \"pnpm --filter employee-register dev\" \"pnpm --filter office-dashboard dev\"",
+    "dev:fast": "concurrently --names api,ck,er,od -c blue,green,magenta,cyan \"pnpm --filter @the-clubs/api dev\" \"pnpm --filter customer-kiosk dev\" \"pnpm --filter employee-register dev\" \"pnpm --filter office-dashboard dev\"",
+    "demo:seed": "pnpm --filter @the-clubs/shared build && DEMO_MODE=true pnpm db:reset && DEMO_MODE=true pnpm --filter @the-clubs/api db:migrate && DEMO_MODE=true pnpm --filter @the-clubs/api seed && DEMO_MODE=true pnpm --filter @the-clubs/api exec tsx src/db/seed-demo.ts",
+    "demo:dev": "pnpm demo:seed && pnpm dev:runner",
+    "demo:reset": "DEMO_MODE=true DEMO_RESET_ON_STARTUP=true SEED_ON_STARTUP=false pnpm dev:runner",
+    "build": "pnpm -r run build",
+    "test": "pnpm build && pnpm -r run test",
+    "lint": "pnpm build && pnpm -r run lint",
+    "typecheck": "pnpm build && pnpm -r run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "setup:preline": "bash scripts/setup-preline.sh"
   },
   "keywords": [],
@@ -13,7 +30,14 @@
   "packageManager": "pnpm@10.27.0",
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.0",
+    "concurrently": "^9.2.1",
     "turbo": "^2.8.10",
     "typescript": "^5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bcrypt",
+      "esbuild"
+    ]
   }
 }

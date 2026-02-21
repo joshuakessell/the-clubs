@@ -51,18 +51,13 @@ export function Sidebar() {
         style={{ borderColor: 'var(--color-border-default)' }}
       >
         <div
-          className="flex h-8 w-8 items-center justify-center rounded-md"
-          style={{ backgroundColor: 'var(--color-accent-glow)', border: '1px solid var(--color-border-accent)' }}
+          className="flex h-8 w-8 items-center justify-center overflow-hidden shrink-0"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z" />
-            <path d="M2 17l10 5 10-5" />
-            <path d="M2 12l10 5 10-5" />
-          </svg>
+          <img src="/club-dallas-logo.svg" alt="Club Dallas" width="32" height="32" />
         </div>
         <div>
           <span className="text-sm font-bold block" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-            The Clubs
+            Club Dallas
           </span>
           <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
             Dashboard

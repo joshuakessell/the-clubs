@@ -16,15 +16,17 @@ export { LOCKER_NUMBERS, EXPECTED_LOCKER_COUNT, NONEXISTENT_ROOM_NUMBERS, ROOM_N
 // Agreement content (built-in HTML used by kiosk + PDF generation)
 export { AGREEMENT_LEGAL_BODY_HTML_BY_LANG } from './agreementContent.js';
 // Realtime helpers live in subpath exports to avoid server-side React deps.
-// Use @club-ops/shared/realtime/* in browser apps.
+// Use @the-clubs/shared/realtime/* in browser apps.
 // API base helpers for frontend apps
 export { API_BASE_URL, getApiUrl } from './apiBase.js';
 // Browser storage keys + migration helpers
 export { CLUBOPS_STORAGE_KEYS, CLUBOPS_STORAGE_LEGACY_KEYS, readStorageValueWithMigration, writeStorageValue, clearStorageValue, } from './storageKeys.js';
-// Type-guard utilities (moved from @club-ops/ui)
+// Type-guard utilities (moved from @the-clubs/ui)
 export { isRecord, getErrorMessage } from './typeGuards.js';
-// HTTP / JSON utilities (moved from @club-ops/ui)
+// HTTP / JSON utilities (moved from @the-clubs/ui)
 export { readJson, safeJsonParse } from './http.js';
 // Club Event Log schemas (analytics / unified event log)
 export { ClubEventDomainSchema, ClubEventTypeSchema, ClubEventSourceAppSchema, } from './clubEventSchemas.js';
+// SSE realtime hook (browser-only, requires React)
+export { useRealtimeSSE } from './useRealtimeSSE.js';
 //# sourceMappingURL=index.js.map

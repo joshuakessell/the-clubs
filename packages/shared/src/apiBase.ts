@@ -1,4 +1,5 @@
 // Universal environment check (Node CJS + Vite ESM)
+declare const process: { env: Record<string, string | undefined> } | undefined;
 const getEnv = () => {
   try {
     // In Vite/ESM, import.meta.env is available

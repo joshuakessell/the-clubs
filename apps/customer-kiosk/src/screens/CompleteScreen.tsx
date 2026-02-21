@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 
 interface Props {
+  customerName?: string;
+  assignedResourceType?: string | null;
+  assignedResourceNumber?: string | null;
   onDone: () => void;
 }
 
@@ -9,7 +12,7 @@ interface Props {
  * CompleteScreen — Room/locker assignment confirmation.
  * Auto-resets to idle after a timeout (demo: 10s).
  */
-export function CompleteScreen({ onDone }: Props) {
+export function CompleteScreen({ customerName, assignedResourceType, assignedResourceNumber, onDone }: Props) {
   const [countdown, setCountdown] = useState(10);
 
   useEffect(() => {
@@ -49,13 +52,13 @@ export function CompleteScreen({ onDone }: Props) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                Your Room
+                Your {assignedResourceType === 'locker' ? 'Locker' : 'Room'}
               </p>
               <p
                 className="mt-1 text-5xl font-extrabold tabular-nums"
                 style={{ fontFamily: 'var(--font-display)', color: 'var(--color-accent-primary)' }}
               >
-                204
+                {assignedResourceNumber ?? '—'}
               </p>
             </div>
             <div className="text-right">

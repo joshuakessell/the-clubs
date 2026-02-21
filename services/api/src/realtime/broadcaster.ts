@@ -29,6 +29,7 @@ import type {
 //   publishAppSyncEvent,
 // } from './appsyncEvents';
 import type { LocalLaneSockets } from './localSockets';
+import type { LocalLaneSSEClients } from './localSSE';
 
 /**
  * Room assignment event payload.
@@ -102,13 +103,14 @@ function isLanFallbackEnabled(): boolean {
   return process.env.LAN_FALLBACK === 'true';
 }
 
-export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets }): Broadcaster {
+export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets; localLaneSSE?: LocalLaneSSEClients }): Broadcaster {
   // DEPRECATED: AppSync variables preserved for future re-activation
   // const appSyncEnabled = isAppSyncEventsEnabled();
   // const channelNamespace = getAppSyncChannelNamespace();
   // const globalChannel = buildChannelPath(channelNamespace, 'global');
   // const laneChannel = (lane: string) => buildChannelPath(channelNamespace, 'lane', lane);
   const localLaneSockets = params?.localLaneSockets;
+  const localLaneSSE = params?.localLaneSSE;
   const lastLaneVersions = new Map<string, number>();
 
   // ──────────────────────────────────────────────────────────────
@@ -133,6 +135,8 @@ export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets
   };
 
   const publishToLaneLocal = (event: RealtimeEvent<unknown>, lane: string) => {
+    // SSE — always publish (not gated by LAN_FALLBACK)
+    localLaneSSE?.publishToLane(lane, event);
     if (!isLanFallbackEnabled()) return;
     localLaneSockets?.publishToLane(lane, event);
   };
@@ -155,6 +159,8 @@ export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets
 
   function broadcast<T>(event: RealtimeEvent<T>): void {
     publishGlobal(event as RealtimeEvent<unknown>);
+    // SSE global broadcast
+    localLaneSSE?.broadcast(event as RealtimeEvent<unknown>);
   }
 
   function broadcastToLane<T>(event: RealtimeEvent<T>, lane: string): void {

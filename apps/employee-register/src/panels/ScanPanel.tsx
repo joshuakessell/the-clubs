@@ -1,5 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Badge, Button, Spinner } from '@the-clubs/ui';
+import { useAuthStore } from '@the-clubs/ui';
+import { getApiUrl } from '@the-clubs/shared';
 import { useRegisterStore } from '../stores/useRegisterStore';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
@@ -20,7 +22,55 @@ export function ScanPanel() {
     scanBlockedReason,
     scanInputEnabled,
     scanCaptureSubmitting,
+    setScanCaptureSubmitting,
+    openCustomerAccount,
+    laneId,
   } = useRegisterStore();
+
+  const token = useAuthStore((s) => s.session?.sessionToken);
+  const [scanError, setScanError] = useState<string | null>(null);
+
+  const handleScanSubmit = async () => {
+    const rawText = scanInputRef.current?.value?.trim();
+    if (!rawText) return;
+
+    setScanCaptureSubmitting(true);
+    setScanError(null);
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(getApiUrl('/api/v1/checkin/scan'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ rawScanText: rawText, registerId: laneId }),
+      });
+
+      const data = await res.json();
+
+      if (data.result === 'MATCHED' && data.customer) {
+        // Customer found — open their account and start check-in
+        if (scanInputRef.current) scanInputRef.current.value = '';
+        openCustomerAccount(data.customer.id, data.customer.name, {
+          autoStart: true,
+          authToken: token,
+        });
+      } else if (data.result === 'NO_MATCH') {
+        setScanError('No matching customer found. Try Manual Entry.');
+        // Navigate to manual entry tab after a brief delay so staff can see the message
+        setTimeout(() => selectNavTab('manual'), 1500);
+      } else if (data.result === 'ERROR') {
+        setScanError(data.error?.message ?? 'Scan error');
+      } else {
+        setScanError('Unexpected response from scan');
+      }
+    } catch {
+      setScanError('Network error processing scan');
+    } finally {
+      setScanCaptureSubmitting(false);
+    }
+  };
 
   return (
     <PanelShell align="top">
@@ -38,7 +88,7 @@ export function ScanPanel() {
       {/* Demo badge */}
       <div className="mt-3 flex justify-center">
         <Badge color="info" variant="light" size="sm">
-          DEMO MODE
+          LIVE MODE
         </Badge>
       </div>
 
@@ -62,9 +112,25 @@ export function ScanPanel() {
         spellCheck={false}
         inputMode="text"
         disabled={!scanInputEnabled}
-        placeholder="Scan or type code here..."
+        placeholder="Scan or type code here…"
         rows={3}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            void handleScanSubmit();
+          }
+        }}
       />
+
+      {/* Submit button */}
+      <Button
+        fullWidth
+        className="mt-2"
+        disabled={scanCaptureSubmitting}
+        onClick={() => void handleScanSubmit()}
+      >
+        {scanCaptureSubmitting ? 'Processing…' : 'Submit Scan'}
+      </Button>
 
       {/* Processing overlay */}
       {scanCaptureSubmitting ? (
@@ -82,11 +148,18 @@ export function ScanPanel() {
         </div>
       ) : null}
 
+      {/* Error message */}
+      {scanError && (
+        <p className="mt-2 text-center text-xs font-medium" style={{ color: 'var(--color-status-error)' }}>
+          {scanError}
+        </p>
+      )}
+
       {/* Status text */}
       <p className="mt-3 text-center text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
         {scanReady
           ? scanCaptureSubmitting
-            ? 'Processing scan...'
+            ? 'Processing scan…'
             : 'Scanner ready'
           : `Scanner paused: ${scanBlockedReason || 'Unavailable'}`}
       </p>

@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect } from 'react';
 import { useAuthStore } from '@the-clubs/ui';
 import { TopNavbar } from './TopNavbar';
 import { ScanPanel } from '../panels/ScanPanel';
-import { SearchPanel } from '../panels/SearchPanel';
 import { InventoryPanel } from '../panels/InventoryPanel';
 import { UpgradesPanel } from '../panels/UpgradesPanel';
 import { RetailPanel } from '../panels/RetailPanel';
@@ -11,10 +10,10 @@ import { AccountPanel } from '../panels/AccountPanel';
 import { ClubLogPanel } from '../panels/ClubLogPanel';
 import { ManualEntryPanel } from '../panels/ManualEntryPanel';
 import { RoomCleaningPanel } from '../panels/RoomCleaningPanel';
+import { useRegisterStore } from '../stores/useRegisterStore';
 
 export type NavTab =
   | 'scan'
-  | 'search'
   | 'inventory'
   | 'upgrades'
   | 'retail'
@@ -26,7 +25,6 @@ export type NavTab =
 
 const PANELS: Record<NavTab, React.FC> = {
   scan: ScanPanel,
-  search: SearchPanel,
   inventory: InventoryPanel,
   upgrades: UpgradesPanel,
   retail: RetailPanel,
@@ -56,11 +54,11 @@ export function AppLayout() {
     });
   }, []);
 
-  // F-key shortcuts (F1–F10)
+  // F-key shortcuts (F1–F9)
   useEffect(() => {
-    const tabs: NavTab[] = ['scan', 'search', 'inventory', 'upgrades', 'retail', 'checkout', 'account', 'clubLog', 'firstTime', 'roomCleaning'];
+    const tabs: NavTab[] = ['scan', 'inventory', 'upgrades', 'retail', 'checkout', 'account', 'clubLog', 'firstTime', 'roomCleaning'];
     const fKeyMap: Record<string, number> = {
-      F1: 0, F2: 1, F3: 2, F4: 3, F5: 4, F6: 5, F7: 6, F8: 7, F9: 8, F10: 9,
+      F1: 0, F2: 1, F3: 2, F4: 3, F5: 4, F6: 5, F7: 6, F8: 7, F9: 8,
     };
 
     const handler = (e: KeyboardEvent) => {
@@ -75,6 +73,14 @@ export function AppLayout() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+  }, [handleNav]);
+
+  // Wire store's selectNavTab to our local handleNav
+  useEffect(() => {
+    useRegisterStore.setState({ selectNavTab: (tab: string) => handleNav(tab as NavTab) });
+    return () => {
+      useRegisterStore.setState({ selectNavTab: () => {} });
+    };
   }, [handleNav]);
 
   const ActivePanel = PANELS[activeTab];

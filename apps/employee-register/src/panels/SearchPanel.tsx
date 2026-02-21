@@ -1,4 +1,4 @@
-import { Spinner } from '@the-clubs/ui';
+import { Spinner, useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../stores/useRegisterStore';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
@@ -19,6 +19,7 @@ export function SearchPanel() {
     openCustomerAccount,
     isSubmitting,
   } = useRegisterStore();
+  const authToken = useAuthStore((s) => s.session?.sessionToken ?? null);
 
   return (
     <PanelShell align="top" scroll="hidden">
@@ -36,16 +37,17 @@ export function SearchPanel() {
         className="mt-3 h-11 w-full rounded-lg border px-4 text-sm"
         style={inputStyle}
         value={customerSearch}
-        onChange={(e) => setCustomerSearch(e.target.value)}
-        placeholder="Start typing name..."
+        onChange={(e) => setCustomerSearch(e.target.value, authToken)}
+        placeholder="Start typing name…"
         disabled={isSubmitting}
+        autoComplete="off"
       />
 
       {/* Loading indicator */}
       {customerSearchLoading && (
         <div className="mt-2 flex items-center gap-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
           <Spinner size="sm" />
-          Searching...
+          Searching…
         </div>
       )}
 
@@ -65,6 +67,7 @@ export function SearchPanel() {
                 onClick={() => {
                   openCustomerAccount(s.id, label, {
                     autoStart: true,
+                    authToken,
                     summary: {
                       name: `${s.firstName} ${s.lastName}`.trim(),
                       dobMonthDay: s.dobMonthDay,

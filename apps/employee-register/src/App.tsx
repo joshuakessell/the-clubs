@@ -1,10 +1,39 @@
+import { useCallback, useEffect } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { ErrorBoundary, LockScreen, useAuthStore } from '@the-clubs/ui';
 import { AppLayout } from './layout/AppLayout';
+import { useRegisterSSE } from './hooks/useRegisterSSE';
+import { useRegisterStore } from './stores/useRegisterStore';
+
+const kioskToken = (import.meta.env.VITE_KIOSK_TOKEN as string) || null;
 
 export default function App() {
   const session = useAuthStore((s) => s.session);
   const isValidating = useAuthStore((s) => s.isValidating);
+
+  // Lane ID from store (derived from URL path)
+  const laneId = useRegisterStore((s) => s.laneId);
+  const setSessionPayload = useRegisterStore((s) => s.setSessionPayload);
+
+  // Bridge: Expose auth token for store-level API calls (Zustand doesn't have React context)
+  useEffect(() => {
+    (window as any).__authToken = session?.sessionToken ?? null;
+  }, [session?.sessionToken]);
+
+  const onSessionUpdated = useCallback((event: any) => {
+    if (import.meta.env.DEV) console.log('[register-sse] SESSION_UPDATED', event);
+    // Update store with SSE session payload
+    if (event?.payload) {
+      setSessionPayload(event.payload);
+    }
+  }, [setSessionPayload]);
+
+  useRegisterSSE({
+    laneId,
+    staffToken: session?.sessionToken ?? null,
+    kioskToken,
+    onSessionUpdated,
+  });
 
   return (
     <ErrorBoundary>
@@ -12,7 +41,7 @@ export default function App() {
         {isValidating ? (
           <ValidatingScreen />
         ) : !session ? (
-          <LockScreen appTitle="Employee Register" />
+          <LockScreen appTitle="Club Dallas" />
         ) : (
           <AppLayout />
         )}

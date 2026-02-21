@@ -68,7 +68,7 @@ export function ManualEntryPanel() {
           </label>
           <input id="manualFirstName" type="text" className="h-11 w-full rounded-lg border px-4 text-sm" style={inputStyle}
             value={manualFirstName} onChange={(e) => setManualFirstName(e.target.value)}
-            placeholder="Enter first name" disabled={isSubmitting} required
+            placeholder="Enter first name" disabled={isSubmitting} required autoComplete="given-name"
           />
         </div>
 
@@ -79,7 +79,7 @@ export function ManualEntryPanel() {
           </label>
           <input id="manualLastName" type="text" className="h-11 w-full rounded-lg border px-4 text-sm" style={inputStyle}
             value={manualLastName} onChange={(e) => setManualLastName(e.target.value)}
-            placeholder="Enter last name" disabled={isSubmitting} required
+            placeholder="Enter last name" disabled={isSubmitting} required autoComplete="family-name"
           />
         </div>
 
@@ -91,7 +91,7 @@ export function ManualEntryPanel() {
           <input id="manualDob" type="text" inputMode="numeric" className="h-11 w-full rounded-lg border px-4 text-sm" style={inputStyle}
             value={formatDobMmDdYyyy(manualDobDigits)}
             onChange={(e) => setManualDobDigits(extractDobDigits(e.target.value))}
-            placeholder="MM/DD/YYYY" disabled={isSubmitting} required
+            placeholder="MM/DD/YYYY" disabled={isSubmitting} required autoComplete="bday"
           />
         </div>
 
@@ -157,7 +157,7 @@ export function ManualEntryPanel() {
       {/* Actions */}
       <div className="mt-6 flex justify-end gap-3">
         <Button type="submit" disabled={submitDisabled}>
-          {isSubmitting || manualEntrySubmitting ? 'Submitting...' : 'Add Customer'}
+          {isSubmitting || manualEntrySubmitting ? 'Submitting…' : 'Add Customer'}
         </Button>
         <Button variant="danger" disabled={isSubmitting || manualEntrySubmitting}
           onClick={() => {

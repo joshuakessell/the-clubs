@@ -37,7 +37,7 @@ const RealtimeEventBaseSchema = z.object({
 });
 
 const CustomerIdTypeSchema = z.enum(['STATE_ID', 'DRIVERS_LICENSE', 'PASSPORT', 'OTHER']);
-const CheckinFlowStepSchema: z.ZodType<CheckinFlowStep> = z.enum([
+const CheckinFlowStepSchema = z.enum([
   'LANGUAGE',
   'RENTAL',
   'WAITLIST_PREFERENCES',
@@ -46,14 +46,14 @@ const CheckinFlowStepSchema: z.ZodType<CheckinFlowStep> = z.enum([
   'AGREEMENT',
   'COMPLETE',
 ]);
-const CheckinFlowActorSchema: z.ZodType<CheckinFlowActor> = z.enum(['CUSTOMER', 'EMPLOYEE', 'SYSTEM']);
-const CheckinFlowCommandTypeSchema: z.ZodType<CheckinFlowCommandType> = z.enum([
+const CheckinFlowActorSchema = z.enum(['CUSTOMER', 'EMPLOYEE', 'SYSTEM']);
+const CheckinFlowCommandTypeSchema = z.enum([
   'SET_STEP',
   'BACK_STEP',
   'CANCEL_STEP',
 ]);
 
-export const CheckinFlowCommandRequestSchema: z.ZodType<CheckinFlowCommandRequest> = z
+export const CheckinFlowCommandRequestSchema = z
   .object({
     sessionId: z.string(),
     commandId: z.string(),
@@ -78,7 +78,7 @@ export const CheckinFlowCommandRequestSchema: z.ZodType<CheckinFlowCommandReques
 // Payload schemas (runtime validation)
 // ---------------------------------------------------------------------------
 
-export const SessionUpdatedPayloadSchema: z.ZodType<SessionUpdatedPayload, z.ZodTypeDef, unknown> =
+export const SessionUpdatedPayloadSchema =
   z
     .object({
       sessionId: z.string(),
@@ -212,7 +212,7 @@ export const SessionUpdatedPayloadSchema: z.ZodType<SessionUpdatedPayload, z.Zod
     })
     .passthrough();
 
-export const CheckinOptionHighlightedPayloadSchema: z.ZodType<CheckinOptionHighlightedPayload> = z
+export const CheckinOptionHighlightedPayloadSchema = z
   .object({
     sessionId: z.string(),
     step: z.enum(['LANGUAGE', 'MEMBERSHIP', 'WAITLIST_BACKUP']),
@@ -221,7 +221,7 @@ export const CheckinOptionHighlightedPayloadSchema: z.ZodType<CheckinOptionHighl
   })
   .passthrough();
 
-export const SelectionProposedPayloadSchema: z.ZodType<SelectionProposedPayload> = z
+export const SelectionProposedPayloadSchema = z
   .object({
     sessionId: z.string(),
     rentalType: z.string(),
@@ -229,7 +229,7 @@ export const SelectionProposedPayloadSchema: z.ZodType<SelectionProposedPayload>
   })
   .passthrough();
 
-export const SelectionLockedPayloadSchema: z.ZodType<SelectionLockedPayload> = z
+export const SelectionLockedPayloadSchema = z
   .object({
     sessionId: z.string(),
     rentalType: z.string(),
@@ -238,7 +238,7 @@ export const SelectionLockedPayloadSchema: z.ZodType<SelectionLockedPayload> = z
   })
   .passthrough();
 
-export const SelectionForcedPayloadSchema: z.ZodType<SelectionForcedPayload> = z
+export const SelectionForcedPayloadSchema = z
   .object({
     sessionId: z.string(),
     rentalType: z.string(),
@@ -246,14 +246,14 @@ export const SelectionForcedPayloadSchema: z.ZodType<SelectionForcedPayload> = z
   })
   .passthrough();
 
-export const SelectionAcknowledgedPayloadSchema: z.ZodType<SelectionAcknowledgedPayload> = z
+export const SelectionAcknowledgedPayloadSchema = z
   .object({
     sessionId: z.string(),
     acknowledgedBy: z.enum(['CUSTOMER', 'EMPLOYEE']),
   })
   .passthrough();
 
-export const CustomerConfirmationRequiredPayloadSchema: z.ZodType<CustomerConfirmationRequiredPayload> =
+export const CustomerConfirmationRequiredPayloadSchema =
   z
     .object({
       sessionId: z.string(),
@@ -263,7 +263,7 @@ export const CustomerConfirmationRequiredPayloadSchema: z.ZodType<CustomerConfir
     })
     .passthrough();
 
-export const CustomerConfirmedPayloadSchema: z.ZodType<CustomerConfirmedPayload> = z
+export const CustomerConfirmedPayloadSchema = z
   .object({
     sessionId: z.string(),
     confirmedType: z.string(),
@@ -271,14 +271,14 @@ export const CustomerConfirmedPayloadSchema: z.ZodType<CustomerConfirmedPayload>
   })
   .passthrough();
 
-export const CustomerDeclinedPayloadSchema: z.ZodType<CustomerDeclinedPayload> = z
+export const CustomerDeclinedPayloadSchema = z
   .object({
     sessionId: z.string(),
     requestedType: z.string(),
   })
   .passthrough();
 
-export const AssignmentCreatedPayloadSchema: z.ZodType<AssignmentCreatedPayload> = z
+export const AssignmentCreatedPayloadSchema = z
   .object({
     sessionId: z.string(),
     rentalType: z.string(),
@@ -289,7 +289,7 @@ export const AssignmentCreatedPayloadSchema: z.ZodType<AssignmentCreatedPayload>
   })
   .passthrough();
 
-export const AssignmentFailedPayloadSchema: z.ZodType<AssignmentFailedPayload> = z
+export const AssignmentFailedPayloadSchema = z
   .object({
     sessionId: z.string(),
     reason: z.string(),
@@ -304,7 +304,7 @@ const InventorySummarySchema = z.object({
   dirty: z.number(),
   total: z.number(),
 });
-const DetailedInventorySchema: z.ZodType<DetailedInventory> = z
+const DetailedInventorySchema = z
   .object({
     byType: z.object({
       STANDARD: InventorySummarySchema,
@@ -316,7 +316,7 @@ const DetailedInventorySchema: z.ZodType<DetailedInventory> = z
     lockers: InventorySummarySchema,
   })
   .passthrough();
-export const InventoryUpdatedPayloadSchema: z.ZodType<InventoryUpdatedPayload> = z
+export const InventoryUpdatedPayloadSchema = z
   .object({
     inventory: DetailedInventorySchema,
     available: z
@@ -343,7 +343,7 @@ export const InventoryUpdatedPayloadSchema: z.ZodType<InventoryUpdatedPayload> =
   })
   .passthrough();
 
-export const WaitlistCreatedPayloadSchema: z.ZodType<WaitlistCreatedPayload> = z
+export const WaitlistCreatedPayloadSchema = z
   .object({
     sessionId: z.string(),
     waitlistId: z.string(),
@@ -355,7 +355,7 @@ export const WaitlistCreatedPayloadSchema: z.ZodType<WaitlistCreatedPayload> = z
   })
   .passthrough();
 
-export const UpgradeHoldAvailablePayloadSchema: z.ZodType<UpgradeHoldAvailablePayload> = z
+export const UpgradeHoldAvailablePayloadSchema = z
   .object({
     waitlistId: z.string(),
     customerName: z.string(),
@@ -366,7 +366,7 @@ export const UpgradeHoldAvailablePayloadSchema: z.ZodType<UpgradeHoldAvailablePa
   })
   .passthrough();
 
-export const UpgradeOfferExpiredPayloadSchema: z.ZodType<UpgradeOfferExpiredPayload> = z
+export const UpgradeOfferExpiredPayloadSchema = z
   .object({
     waitlistId: z.string(),
     customerName: z.string(),
@@ -376,7 +376,7 @@ export const UpgradeOfferExpiredPayloadSchema: z.ZodType<UpgradeOfferExpiredPayl
   })
   .passthrough();
 
-export const RoomStatusChangedPayloadSchema: z.ZodType<RoomStatusChangedPayload> = z
+export const RoomStatusChangedPayloadSchema = z
   .object({
     roomId: z.string(),
     previousStatus: z.nativeEnum(RoomStatus),
@@ -387,7 +387,7 @@ export const RoomStatusChangedPayloadSchema: z.ZodType<RoomStatusChangedPayload>
   })
   .passthrough();
 
-export const CheckoutRequestSummarySchema: z.ZodType<CheckoutRequestSummary> = z
+export const CheckoutRequestSummarySchema = z
   .object({
     requestId: z.string(),
     customerName: z.string(),
@@ -404,20 +404,20 @@ export const CheckoutRequestSummarySchema: z.ZodType<CheckoutRequestSummary> = z
   })
   .passthrough();
 
-export const CheckoutRequestedPayloadSchema: z.ZodType<CheckoutRequestedPayload> = z
+export const CheckoutRequestedPayloadSchema = z
   .object({
     request: CheckoutRequestSummarySchema,
   })
   .passthrough();
 
-export const CheckoutClaimedPayloadSchema: z.ZodType<CheckoutClaimedPayload> = z
+export const CheckoutClaimedPayloadSchema = z
   .object({
     requestId: z.string(),
     claimedBy: z.string(),
   })
   .passthrough();
 
-export const CheckoutUpdatedPayloadSchema: z.ZodType<CheckoutUpdatedPayload> = z
+export const CheckoutUpdatedPayloadSchema = z
   .object({
     requestId: z.string(),
     itemsConfirmed: z.boolean(),
@@ -425,7 +425,7 @@ export const CheckoutUpdatedPayloadSchema: z.ZodType<CheckoutUpdatedPayload> = z
   })
   .passthrough();
 
-export const CheckoutCompletedPayloadSchema: z.ZodType<CheckoutCompletedPayload> = z
+export const CheckoutCompletedPayloadSchema = z
   .object({
     requestId: z.string(),
     kioskDeviceId: z.string(),
