@@ -10,7 +10,7 @@ interface CatalogItem {
   id: string;
   name: string;
   price: number;
-  category: 'beverages' | 'snacks' | 'supplies';
+  category: string;
 }
 
 interface ActiveGuest {
@@ -21,25 +21,7 @@ interface ActiveGuest {
   visitId: string;
 }
 
-/* ─── Catalog ───────────────────────────────────────── */
-
-const CATALOG: CatalogItem[] = [
-  { id: 'water',       name: 'Water',        price: 300,  category: 'beverages' },
-  { id: 'energy',      name: 'Energy Drink', price: 500,  category: 'beverages' },
-  { id: 'gatorade',    name: 'Gatorade',     price: 500,  category: 'beverages' },
-  { id: 'soda',        name: 'Soda',         price: 400,  category: 'beverages' },
-  { id: 'fruit-tea',   name: 'Fruit Tea',    price: 500,  category: 'beverages' },
-  { id: 'snack',       name: 'Snack Bar',     price: 250,  category: 'snacks' },
-  { id: 'towel',       name: 'Towel',         price: 200,  category: 'supplies' },
-  { id: 'flip-flops',  name: 'Flip Flops',    price: 800,  category: 'supplies' },
-  { id: 'lock',        name: 'Padlock',       price: 600,  category: 'supplies' },
-];
-
-const CATEGORIES: { key: CatalogItem['category']; label: string }[] = [
-  { key: 'beverages', label: 'Beverages' },
-  { key: 'snacks',    label: 'Snacks' },
-  { key: 'supplies',  label: 'Supplies' },
-];
+/* ─── Helpers ───────────────────────────────────────── */
 
 function formatPrice(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -49,6 +31,10 @@ function formatPrice(cents: number) {
 
 export function RetailPanel() {
   const token = useAuthStore((s) => s.session?.sessionToken);
+
+  /* Product catalog from API */
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
 
   /* Cart state */
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -63,6 +49,32 @@ export function RetailPanel() {
   const [guestFilter, setGuestFilter] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  /* Fetch product catalog */
+  const fetchCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(getApiUrl('/api/v1/admin/products'), { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const items: CatalogItem[] = (data.products ?? [])
+          .filter((p: { isActive?: boolean }) => p.isActive !== false)
+          .map((p: { id: string; name: string; priceCents: number; category?: string }) => ({
+            id: p.id,
+            name: p.name,
+            price: p.priceCents,
+            category: (p.category ?? 'RETAIL').toLowerCase(),
+          }));
+        setCatalog(items);
+      }
+    } catch {
+      // Silently fail — will show empty catalog
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [token]);
 
   /* Fetch active guests */
   const fetchGuests = useCallback(async () => {
@@ -82,7 +94,18 @@ export function RetailPanel() {
     }
   }, [token]);
 
-  useEffect(() => { void fetchGuests(); }, [fetchGuests]);
+  useEffect(() => { void fetchCatalog(); void fetchGuests(); }, [fetchCatalog, fetchGuests]);
+
+  /* Derive categories dynamically from catalog */
+  const categories = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const item of catalog) {
+      if (!seen.has(item.category)) {
+        seen.set(item.category, item.category.charAt(0).toUpperCase() + item.category.slice(1));
+      }
+    }
+    return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
+  }, [catalog]);
 
   /* Close dropdown on outside click */
   useEffect(() => {
@@ -117,11 +140,11 @@ export function RetailPanel() {
   const clearCart = () => { setCart({}); setSelectedGuest(null); setGuestFilter(''); };
 
   const cartLines = useMemo(
-    () => CATALOG.filter((c) => (cart[c.id] ?? 0) > 0).map((c) => ({ ...c, qty: cart[c.id] })),
-    [cart]
+    () => catalog.filter((c) => (cart[c.id] ?? 0) > 0).map((c) => ({ ...c, qty: cart[c.id] })),
+    [cart, catalog]
   );
-  const cartTotal = cartLines.reduce((sum, i) => sum + i.price * i.qty, 0);
-  const cartCount = cartLines.reduce((sum, i) => sum + i.qty, 0);
+  const cartTotal = cartLines.reduce((sum: number, i) => sum + i.price * i.qty, 0);
+  const cartCount = cartLines.reduce((sum: number, i) => sum + i.qty, 0);
 
   /* Complete sale — 3-step order flow */
   const handleCompleteSale = async () => {
@@ -206,8 +229,16 @@ export function RetailPanel() {
       <div className="mt-3 flex flex-1 min-h-0 gap-4 w-full">
         {/* ── Left: Product Grid ──────────────────────── */}
         <div className="flex-[3] min-w-0 overflow-y-auto overflow-x-hidden pr-1">
-          {CATEGORIES.map((cat) => {
-            const items = CATALOG.filter((i) => i.category === cat.key);
+          {catalogLoading ? (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading products…</p>
+            </div>
+          ) : catalog.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No products available. Add products in the Office Dashboard.</p>
+            </div>
+          ) : categories.map((cat) => {
+            const items = catalog.filter((i) => i.category === cat.key);
             return (
               <div key={cat.key} className="mb-4">
                 <h3

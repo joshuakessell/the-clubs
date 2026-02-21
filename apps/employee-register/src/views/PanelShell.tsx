@@ -29,7 +29,7 @@ export function PanelShell<T extends ElementType = 'div'>({
 }: PanelShellProps<T>) {
   const Component = as ?? 'div';
 
-  const alignClass = align === 'center' ? 'items-center justify-center' : 'items-start';
+  const alignClass = align === 'center' ? 'items-center justify-center' : 'items-stretch';
   const scrollClass = scroll === 'hidden' ? 'overflow-hidden' : 'overflow-y-auto';
 
   const classes = [

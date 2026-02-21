@@ -288,6 +288,14 @@ async function orderRoutes(fastify) {
                         registerId = `register-${regResult.rows[0].register_number}`;
                     }
                 }
+                // Look up customer name for log attribution
+                let customerName = null;
+                if (paidOrder.customer_id) {
+                    const custResult = await client.query(`SELECT full_name FROM customers WHERE id = $1`, [paidOrder.customer_id]);
+                    if (custResult.rows.length > 0) {
+                        customerName = custResult.rows[0].full_name;
+                    }
+                }
                 // Emit unified club event for analytics
                 await (0, clubEventLog_1.insertClubEvent)(client, {
                     eventType: saleEventType,
@@ -297,6 +305,7 @@ async function orderRoutes(fastify) {
                     staffId: request.staff.staffId,
                     staffName: request.staff.name,
                     customerId: paidOrder.customer_id,
+                    customerName,
                     visitId: paidOrder.metadata_json?.visitId ?? null,
                     orderId: paidOrder.id,
                     amountCents: paidOrder.total_cents,

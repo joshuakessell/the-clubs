@@ -10,6 +10,7 @@ const loadEnv_1 = require("./env/loadEnv");
 const routes_1 = require("./routes");
 const broadcaster_1 = require("./realtime/broadcaster");
 const localSockets_1 = require("./realtime/localSockets");
+const localSSE_1 = require("./realtime/localSSE");
 const db_1 = require("./db");
 const migrate_1 = require("./db/migrate");
 const registers_1 = require("./routes/registers");
@@ -59,8 +60,10 @@ async function main() {
     await fastify.register(websocket_1.default);
     // Create broadcaster for realtime events
     const localLaneSockets = new localSockets_1.LocalLaneSockets();
+    const localLaneSSE = new localSSE_1.LocalLaneSSEClients();
     fastify.decorate('localLaneSockets', localLaneSockets);
-    const broadcaster = (0, broadcaster_1.createBroadcaster)({ localLaneSockets });
+    fastify.decorate('localLaneSSE', localLaneSSE);
+    const broadcaster = (0, broadcaster_1.createBroadcaster)({ localLaneSockets, localLaneSSE });
     // Decorate fastify with broadcaster for access in routes
     fastify.decorate('broadcaster', broadcaster);
     fastify.decorate('dbHealthy', SKIP_DB);
@@ -141,6 +144,7 @@ async function main() {
     await fastify.register(routes_1.registerRoutes);
     await fastify.register(routes_1.realtimeRoutes);
     await fastify.register(routes_1.realtimeLanRoutes);
+    await fastify.register(routes_1.realtimeSSERoutes);
     await fastify.register(routes_1.shiftsRoutes);
     await fastify.register(routes_1.timeclockRoutes);
     await fastify.register(routes_1.documentsRoutes);
@@ -150,6 +154,7 @@ async function main() {
     await fastify.register(routes_1.cashDrawerRoutes);
     await fastify.register(routes_1.breakRoutes);
     await fastify.register(routes_1.orderRoutes);
+    await fastify.register(routes_1.retailRoutes);
     await fastify.register(routes_1.customerSpendLedgerRoutes);
     // Auto-replay outbox (edge stack only)
     const autoReplayAbort = new AbortController();

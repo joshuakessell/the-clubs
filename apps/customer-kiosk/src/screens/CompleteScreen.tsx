@@ -41,7 +41,7 @@ export function CompleteScreen({ customerName, assignedResourceType, assignedRes
           className="text-3xl font-extrabold"
           style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
         >
-          You're All Set!
+          You{customerName ? `'re All Set, ${customerName}` : "'re All Set"}!
         </h1>
 
         {/* Assignment card */}

@@ -15,7 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  * Run via: `pnpm exec tsx src/db/seed-ci.ts`
  */
 const index_js_1 = require("./index.js");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const utils_js_1 = require("../auth/utils.js");
 async function seedCI() {
     console.log('[CI Seed] Initializing database connection...');

@@ -1,10 +1,27 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../../stores/useRegisterStore';
 
 /**
- * ProfileTab — Customer details derived from the session payload.
+ * Fetched customer profile from the API (used as fallback when no sessionPayload from SSE).
+ */
+type FetchedProfile = {
+  name: string;
+  dob: string | null;
+  membershipNumber: string | null;
+  membershipValidUntil: string | null;
+  idNumber: string | null;
+  idType: string | null;
+  idTypeOther: string | null;
+  idExpirationDate: string | null;
+  primaryLanguage: 'EN' | 'ES' | null;
+  lastVisitAt: string | null;
+  pastDueBalance: number;
+};
+
+/**
+ * ProfileTab — Customer details derived from the session payload or fetched profile.
  * Shows customer info, membership status, language toggle, and
  * Start/Cancel Check-In or Checkout controls.
  */
@@ -23,10 +40,66 @@ export function ProfileTab() {
   const sp = sessionPayload;
 
   const [checkingOut, setCheckingOut] = useState(false);
+  const [fetchedProfile, setFetchedProfile] = useState<FetchedProfile | null>(null);
+
+  // Fetch customer profile from API when no sessionPayload is available
+  const cid = customerId ?? sp?.customerId;
+  useEffect(() => {
+    if (!cid || sp) {
+      setFetchedProfile(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(getApiUrl(`/api/v1/customers/${encodeURIComponent(cid)}`), { headers });
+        if (!res.ok || cancelled) return;
+
+        const data = await res.json();
+        if (cancelled) return;
+        const c = data.customer;
+        if (c) {
+          setFetchedProfile({
+            name: c.name ?? null,
+            dob: c.dob ?? null,
+            membershipNumber: c.membershipNumber ?? null,
+            membershipValidUntil: c.membershipValidUntil ?? null,
+            idNumber: c.idNumber ?? null,
+            idType: c.idType ?? null,
+            idTypeOther: c.idTypeOther ?? null,
+            idExpirationDate: c.idExpirationDate ?? null,
+            primaryLanguage: c.primaryLanguage ?? null,
+            lastVisitAt: c.lastVisitAt ?? null,
+            pastDueBalance: c.pastDueBalance ?? 0,
+          });
+        }
+      } catch {
+        // Silently fail — profile fields just remain empty
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [cid, sp, token]);
+
+  // Convenience accessors: prefer sessionPayload, fall back to fetchedProfile
+  const displayName = sp?.customerName ?? fetchedProfile?.name ?? customerName ?? 'Customer';
+  const dob = sp?.customerDob ?? fetchedProfile?.dob ?? undefined;
+  const membershipNumber = sp?.membershipNumber ?? fetchedProfile?.membershipNumber ?? undefined;
+  const membershipValidUntil = sp?.customerMembershipValidUntil ?? fetchedProfile?.membershipValidUntil ?? undefined;
+  const primaryLanguage = sp?.customerPrimaryLanguage ?? fetchedProfile?.primaryLanguage ?? undefined;
+  const lastVisitAt = sp?.customerLastVisitAt ?? fetchedProfile?.lastVisitAt ?? undefined;
+  const idType = sp?.customerIdType ?? fetchedProfile?.idType ?? undefined;
+  const idNumber = sp?.customerIdNumber ?? fetchedProfile?.idNumber ?? undefined;
+  const idExpirationDate = sp?.customerIdExpirationDate ?? fetchedProfile?.idExpirationDate ?? undefined;
+  const pastDueBalance = sp?.pastDueBalance ?? fetchedProfile?.pastDueBalance ?? 0;
 
   const hasMembership =
-    sp?.customerMembershipValidUntil &&
-    new Date(sp.customerMembershipValidUntil) >= new Date();
+    membershipValidUntil &&
+    new Date(membershipValidUntil) >= new Date();
 
   const membershipLabel = hasMembership
     ? 'Member'
@@ -39,6 +112,7 @@ export function ProfileTab() {
     : sp?.membershipChoice === 'SIX_MONTH'
       ? 'var(--color-status-warning)'
       : 'var(--color-text-muted)';
+
 
   const handleStartCheckin = () => {
     const cid = customerId ?? sp?.customerId;
@@ -96,14 +170,14 @@ export function ProfileTab() {
             fontFamily: 'var(--font-display)',
           }}
         >
-          {(sp?.customerName ?? customerName ?? '?')[0]?.toUpperCase()}
+          {displayName[0]?.toUpperCase() ?? '?'}
         </div>
         <div>
           <h2
             className="text-lg font-bold"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
           >
-            {sp?.customerName ?? customerName ?? 'Customer'}
+            {displayName}
           </h2>
           <span
             className="inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
@@ -122,14 +196,14 @@ export function ProfileTab() {
           borderColor: 'var(--color-border-subtle)',
         }}
       >
-        <Field label="Membership #" value={sp?.membershipNumber} />
-        <Field label="DOB" value={sp?.customerDob} />
-        <Field label="Language" value={sp?.customerPrimaryLanguage === 'ES' ? 'Español' : 'English'} />
-        <Field label="Last Visit" value={sp?.customerLastVisitAt ? new Date(sp.customerLastVisitAt).toLocaleDateString() : undefined} />
-        <Field label="ID Type" value={sp?.customerIdType ?? undefined} />
-        <Field label="ID #" value={sp?.customerIdNumber} />
-        <Field label="ID Exp." value={sp?.customerIdExpirationDate} />
-        <Field label="Past Due" value={sp?.pastDueBalance ? `$${(sp.pastDueBalance / 100).toFixed(2)}` : '$0.00'} color={sp?.pastDueBalance ? 'var(--color-status-error)' : undefined} />
+        <Field label="Membership #" value={membershipNumber} />
+        <Field label="DOB" value={dob} />
+        <Field label="Language" value={primaryLanguage === 'ES' ? 'Español' : primaryLanguage ? 'English' : undefined} />
+        <Field label="Last Visit" value={lastVisitAt ? new Date(lastVisitAt).toLocaleDateString() : undefined} />
+        <Field label="ID Type" value={idType === 'DRIVERS_LICENSE' ? 'DL' : idType === 'STATE_ID' ? 'State ID' : idType === 'PASSPORT' ? 'Passport' : idType === 'OTHER' ? 'Other' : (idType ?? undefined)} />
+        <Field label="ID #" value={idNumber} />
+        <Field label="ID Exp." value={idExpirationDate} />
+        <Field label="Past Due" value={pastDueBalance ? `$${(pastDueBalance / 100).toFixed(2)}` : '$0.00'} color={pastDueBalance ? 'var(--color-status-error)' : undefined} />
       </div>
 
       {/* Active visit info (opened from Rentals) */}
@@ -159,29 +233,7 @@ export function ProfileTab() {
         </div>
       )}
 
-      {/* Session info */}
-      {currentSessionId && (
-        <div className="rounded-lg border p-3" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                Session
-              </span>
-              <p className="mt-0.5 font-mono text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                {sp?.sessionId ?? currentSessionId}
-              </p>
-            </div>
-            {sp?.flowStep && (
-              <span
-                className="rounded-md px-2 py-1 text-xs font-bold"
-                style={{ backgroundColor: 'rgba(0,212,255,0.1)', color: 'var(--color-accent-primary)' }}
-              >
-                {sp.flowStep}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
+
 
       {/* Actions */}
       <div className="flex gap-3">

@@ -88,6 +88,7 @@ async function waitlistRoutes(fastify) {
                 checkinBlockId: row.checkin_block_id,
                 customerId: row.customer_id,
                 desiredTier: row.desired_tier,
+                desiredTiers: row.desired_tiers ?? [row.desired_tier],
                 backupTier: row.backup_tier,
                 status: row.status,
                 createdAt: row.created_at,

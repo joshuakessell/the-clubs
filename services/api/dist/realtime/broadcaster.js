@@ -11,6 +11,7 @@ function createBroadcaster(params) {
     // const globalChannel = buildChannelPath(channelNamespace, 'global');
     // const laneChannel = (lane: string) => buildChannelPath(channelNamespace, 'lane', lane);
     const localLaneSockets = params?.localLaneSockets;
+    const localLaneSSE = params?.localLaneSSE;
     const lastLaneVersions = new Map();
     // ──────────────────────────────────────────────────────────────
     // DEPRECATED: AppSync publishing disabled (AWS services torn down 2026-02-18).
@@ -32,6 +33,8 @@ function createBroadcaster(params) {
         // });
     };
     const publishToLaneLocal = (event, lane) => {
+        // SSE — always publish (not gated by LAN_FALLBACK)
+        localLaneSSE?.publishToLane(lane, event);
         if (!isLanFallbackEnabled())
             return;
         localLaneSockets?.publishToLane(lane, event);
@@ -52,6 +55,8 @@ function createBroadcaster(params) {
     };
     function broadcast(event) {
         publishGlobal(event);
+        // SSE global broadcast
+        localLaneSSE?.broadcast(event);
     }
     function broadcastToLane(event, lane) {
         if (!isMonotonicForLane(lane, event)) {

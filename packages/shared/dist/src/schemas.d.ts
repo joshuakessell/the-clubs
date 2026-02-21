@@ -1,39 +1,58 @@
 import { z } from 'zod';
-import { RoomStatus, RoomType } from './enums.js';
 /**
  * Zod schema for RoomStatus enum validation.
  */
-export declare const RoomStatusSchema: z.ZodNativeEnum<typeof RoomStatus>;
+export declare const RoomStatusSchema: z.ZodNativeEnum<{
+    readonly DIRTY: "DIRTY";
+    readonly CLEANING: "CLEANING";
+    readonly CLEAN: "CLEAN";
+    readonly OCCUPIED: "OCCUPIED";
+}>;
 /**
  * Zod schema for RoomType enum validation.
  */
-export declare const RoomTypeSchema: z.ZodNativeEnum<typeof RoomType>;
+export declare const RoomTypeSchema: z.ZodNativeEnum<{
+    readonly STANDARD: "STANDARD";
+    readonly DOUBLE: "DOUBLE";
+    readonly SPECIAL: "SPECIAL";
+    readonly LOCKER: "LOCKER";
+}>;
 /**
  * Zod schema for Room entity.
  */
 export declare const RoomSchema: z.ZodObject<{
     id: z.ZodString;
     number: z.ZodString;
-    type: z.ZodNativeEnum<typeof RoomType>;
-    status: z.ZodNativeEnum<typeof RoomStatus>;
+    type: z.ZodNativeEnum<{
+        readonly STANDARD: "STANDARD";
+        readonly DOUBLE: "DOUBLE";
+        readonly SPECIAL: "SPECIAL";
+        readonly LOCKER: "LOCKER";
+    }>;
+    status: z.ZodNativeEnum<{
+        readonly DIRTY: "DIRTY";
+        readonly CLEANING: "CLEANING";
+        readonly CLEAN: "CLEAN";
+        readonly OCCUPIED: "OCCUPIED";
+    }>;
     floor: z.ZodNumber;
     lastStatusChange: z.ZodDate;
     assignedToCustomerId: z.ZodOptional<z.ZodString>;
     overrideFlag: z.ZodBoolean;
 }, "strip", z.ZodTypeAny, {
     number: string;
-    type: RoomType;
-    status: RoomStatus;
     id: string;
+    type: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER";
+    status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
     floor: number;
     lastStatusChange: Date;
     overrideFlag: boolean;
     assignedToCustomerId?: string | undefined;
 }, {
     number: string;
-    type: RoomType;
-    status: RoomStatus;
     id: string;
+    type: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER";
+    status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
     floor: number;
     lastStatusChange: Date;
     overrideFlag: boolean;
@@ -44,19 +63,24 @@ export declare const RoomSchema: z.ZodObject<{
  */
 export declare const RoomStatusUpdateSchema: z.ZodObject<{
     roomId: z.ZodString;
-    newStatus: z.ZodNativeEnum<typeof RoomStatus>;
+    newStatus: z.ZodNativeEnum<{
+        readonly DIRTY: "DIRTY";
+        readonly CLEANING: "CLEANING";
+        readonly CLEAN: "CLEAN";
+        readonly OCCUPIED: "OCCUPIED";
+    }>;
     override: z.ZodDefault<z.ZodBoolean>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     roomId: string;
-    newStatus: RoomStatus;
+    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
     override: boolean;
     reason?: string | undefined;
 }, {
     roomId: string;
-    newStatus: RoomStatus;
-    reason?: string | undefined;
+    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
     override?: boolean | undefined;
+    reason?: string | undefined;
 }>;
 /**
  * Zod schema for inventory summary.
@@ -82,19 +106,24 @@ export declare const InventorySummarySchema: z.ZodObject<{
  */
 export declare const BatchStatusUpdateSchema: z.ZodObject<{
     roomIds: z.ZodArray<z.ZodString, "many">;
-    newStatus: z.ZodNativeEnum<typeof RoomStatus>;
+    newStatus: z.ZodNativeEnum<{
+        readonly DIRTY: "DIRTY";
+        readonly CLEANING: "CLEANING";
+        readonly CLEAN: "CLEAN";
+        readonly OCCUPIED: "OCCUPIED";
+    }>;
     override: z.ZodDefault<z.ZodBoolean>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    newStatus: RoomStatus;
+    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
     override: boolean;
     roomIds: string[];
     reason?: string | undefined;
 }, {
-    newStatus: RoomStatus;
+    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
     roomIds: string[];
-    reason?: string | undefined;
     override?: boolean | undefined;
+    reason?: string | undefined;
 }>;
 export declare const CustomerIdTypeSchema: z.ZodEnum<["STATE_ID", "DRIVERS_LICENSE", "PASSPORT", "OTHER"]>;
 /**
@@ -123,7 +152,7 @@ export declare const IdScanPayloadSchema: z.ZodEffects<z.ZodObject<{
     idNumber?: string | undefined;
     issuer?: string | undefined;
     jurisdiction?: string | undefined;
-    idType?: "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined;
+    idType?: "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined;
     idTypeOther?: string | undefined;
 }, {
     raw?: string | undefined;
@@ -135,7 +164,7 @@ export declare const IdScanPayloadSchema: z.ZodEffects<z.ZodObject<{
     idNumber?: string | undefined;
     issuer?: string | undefined;
     jurisdiction?: string | undefined;
-    idType?: "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined;
+    idType?: "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined;
     idTypeOther?: string | undefined;
 }>, {
     raw?: string | undefined;
@@ -147,7 +176,7 @@ export declare const IdScanPayloadSchema: z.ZodEffects<z.ZodObject<{
     idNumber?: string | undefined;
     issuer?: string | undefined;
     jurisdiction?: string | undefined;
-    idType?: "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined;
+    idType?: "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined;
     idTypeOther?: string | undefined;
 }, {
     raw?: string | undefined;
@@ -159,7 +188,7 @@ export declare const IdScanPayloadSchema: z.ZodEffects<z.ZodObject<{
     idNumber?: string | undefined;
     issuer?: string | undefined;
     jurisdiction?: string | undefined;
-    idType?: "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined;
+    idType?: "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined;
     idTypeOther?: string | undefined;
 }>;
 export type RoomInput = z.infer<typeof RoomSchema>;

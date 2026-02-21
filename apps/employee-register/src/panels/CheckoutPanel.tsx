@@ -3,11 +3,13 @@ import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
+import { useRegisterStore } from '../stores/useRegisterStore';
 
 interface Candidate {
   occupancyId: string;
   resourceType: string;
   number: string;
+  customerId: string;
   customerName: string;
   checkinAt: string;
   scheduledCheckoutAt: string;
@@ -25,6 +27,7 @@ export function CheckoutPanel() {
   const [checkingOut, setCheckingOut] = useState<string | null>(null);
   const [confirmCandidate, setConfirmCandidate] = useState<Candidate | null>(null);
   const token = useAuthStore((s) => s.session?.sessionToken);
+  const openCustomerAccount = useRegisterStore((s) => s.openCustomerAccount);
 
   const fetchCandidates = useCallback(async () => {
     setLoading(true);
@@ -112,7 +115,8 @@ export function CheckoutPanel() {
             <tr className="border-b" style={{ borderColor: 'var(--color-border-default)' }}>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Room</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Customer</th>
-              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Since</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Check-In</th>
+              <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Checkout</th>
               <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Type</th>
               <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Action</th>
             </tr>
@@ -133,8 +137,28 @@ export function CheckoutPanel() {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{c.customerName}</td>
+                <td className="px-4 py-3 text-sm">
+                  <button
+                    type="button"
+                    onClick={() => openCustomerAccount(c.customerId, c.customerName, {
+                      authToken: token,
+                      activeCheckin: {
+                        visitId: c.occupancyId,
+                        resourceType: c.resourceType === 'LOCKER' ? 'locker' : 'room',
+                        resourceNumber: c.number,
+                        checkinAt: c.checkinAt,
+                        checkoutAt: c.scheduledCheckoutAt,
+                        overdue: c.isOverdue,
+                      },
+                    })}
+                    className="text-left font-medium transition hover:underline"
+                    style={{ color: 'var(--color-accent-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+                  >
+                    {c.customerName}
+                  </button>
+                </td>
                 <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>{formatTime(c.checkinAt)}</td>
+                <td className="px-4 py-3 text-sm" style={{ color: c.isOverdue ? 'var(--color-status-error)' : 'var(--color-text-muted)' }}>{formatTime(c.scheduledCheckoutAt)}</td>
                 <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>{c.resourceType}</td>
                 <td className="px-4 py-3 text-right">
                   <button
@@ -154,7 +178,7 @@ export function CheckoutPanel() {
             ))}
             {candidates.length === 0 && !loading && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                <td colSpan={6} className="px-4 py-6 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
                   No rooms are due for checkout.
                 </td>
               </tr>

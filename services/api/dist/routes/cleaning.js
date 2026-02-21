@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.cleaningRoutes = cleaningRoutes;
 const zod_1 = require("zod");
 const db_1 = require("../db");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const broadcast_1 = require("../inventory/broadcast");
 const auditLog_1 = require("../audit/auditLog");
 const clubEventLog_1 = require("../activity/clubEventLog");

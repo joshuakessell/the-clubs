@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateDemoData = generateDemoData;
 const crypto_1 = require("crypto");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 // Curated list of typical male full names (~120) to make demo search reliable.
 const MALE_FULL_NAMES = [
     'James Smith',
@@ -330,11 +330,21 @@ function planVisitsForCustomer(customerId, now, rooms, lockers, activeSlots, wee
 function createWaitlistEntries(visits, now) {
     const entries = [];
     const candidates = visits.filter((v) => v.blocks.some((b) => b.rental_type !== shared_1.RentalType.SPECIAL));
-    const desiredTiers = [shared_1.RentalType.DOUBLE, shared_1.RentalType.SPECIAL];
+    // Varied upgrade scenarios for demo column-spanning
+    const scenarios = [
+        { desired: shared_1.RentalType.STANDARD, tiers: [shared_1.RentalType.STANDARD] }, // col 1 only
+        { desired: shared_1.RentalType.STANDARD, tiers: [shared_1.RentalType.STANDARD, shared_1.RentalType.DOUBLE] }, // cols 1-2
+        { desired: shared_1.RentalType.STANDARD, tiers: [shared_1.RentalType.STANDARD, shared_1.RentalType.DOUBLE, shared_1.RentalType.SPECIAL] }, // all cols
+        { desired: shared_1.RentalType.DOUBLE, tiers: [shared_1.RentalType.DOUBLE] }, // col 2 only
+        { desired: shared_1.RentalType.DOUBLE, tiers: [shared_1.RentalType.DOUBLE, shared_1.RentalType.SPECIAL] }, // cols 2-3
+        { desired: shared_1.RentalType.SPECIAL, tiers: [shared_1.RentalType.SPECIAL] }, // col 3 only
+        { desired: shared_1.RentalType.STANDARD, tiers: [shared_1.RentalType.STANDARD, shared_1.RentalType.DOUBLE] }, // cols 1-2
+        { desired: shared_1.RentalType.DOUBLE, tiers: [shared_1.RentalType.DOUBLE, shared_1.RentalType.SPECIAL] }, // cols 2-3
+    ];
     for (let i = 0; i < candidates.length && entries.length < 8; i++) {
         const visit = candidates[i];
         const block = visit.blocks[0];
-        const desired_tier = desiredTiers[entries.length % desiredTiers.length];
+        const scenario = scenarios[entries.length % scenarios.length];
         const backup_tier = block.rental_type;
         const waitlistId = (0, crypto_1.randomUUID)();
         block.waitlist_id = waitlistId;
@@ -342,7 +352,8 @@ function createWaitlistEntries(visits, now) {
             id: waitlistId,
             visit_id: visit.id,
             checkin_block_id: block.id,
-            desired_tier,
+            desired_tier: scenario.desired,
+            desired_tiers: scenario.tiers,
             backup_tier,
             locker_or_room_assigned_initially: block.room_id || block.locker_id || null,
             room_id: null,

@@ -3,10 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckoutManualRoutes = registerCheckoutManualRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const db_1 = require("../../db");
 const broadcast_1 = require("../../inventory/broadcast");
 const auditLog_1 = require("../../audit/auditLog");
+const clubEventLog_1 = require("../../activity/clubEventLog");
 const utils_1 = require("../../checkout/utils");
 function registerCheckoutManualRoutes(fastify) {
     /**
@@ -370,6 +371,28 @@ function registerCheckoutManualRoutes(fastify) {
                     await client.query(`INSERT INTO late_checkout_events (customer_id, occupancy_id, checkout_request_id, late_minutes, fee_amount, ban_applied)
                VALUES ($1, $2, NULL, $3, $4, $5)`, [row.customer_id, row.occupancy_id, lateMinutes, feeAmount, banApplied]);
                 }
+                // Emit unified club event for analytics
+                await (0, clubEventLog_1.insertClubEvent)(client, {
+                    eventType: 'CHECKOUT_COMPLETED',
+                    eventDomain: 'CHECKOUT',
+                    sourceApp: 'EMPLOYEE_REGISTER',
+                    staffId: (0, utils_1.looksLikeUuid)(staffId) ? staffId : null,
+                    staffName: request.staff.name,
+                    customerId: row.customer_id,
+                    customerName: row.customer_name,
+                    visitId: row.visit_id,
+                    summary: `Manual checkout completed — ${row.customer_name}`,
+                    metadata: {
+                        occupancyId: row.occupancy_id,
+                        visitId: row.visit_id,
+                        roomId: row.room_id,
+                        lockerId: row.locker_id,
+                        lateMinutes,
+                        feeAmount,
+                        banApplied,
+                    },
+                    dedupeKey: `CLUB:CHECKOUT_COMPLETED:MANUAL:${row.occupancy_id}`,
+                });
                 return {
                     alreadyCheckedOut: false,
                     row,

@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.agreementsRoutes = agreementsRoutes;
 const db_1 = require("../db");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 /**
  * Agreement routes.
  */

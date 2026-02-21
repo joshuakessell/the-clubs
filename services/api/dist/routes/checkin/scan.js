@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinScanRoutes = registerCheckinScanRoutes;
 const zod_1 = require("zod");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const middleware_1 = require("../../auth/middleware");
 const identity_1 = require("../../checkin/identity");
 const payload_1 = require("../../checkin/payload");

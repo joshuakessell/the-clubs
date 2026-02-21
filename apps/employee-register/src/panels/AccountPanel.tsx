@@ -1,41 +1,19 @@
-import { useState, useEffect } from 'react';
 import { useRegisterStore } from '../stores/useRegisterStore';
 import { PanelShell } from '../views/PanelShell';
 import { ProfileTab } from './account/ProfileTab';
 import { EmployeeAssistTab } from './account/EmployeeAssistTab';
 import { ChargesTab } from './account/ChargesTab';
 
-type AccountSubTab = 'profile' | 'assist' | 'charges';
-
-const TAB_CONFIG: { id: AccountSubTab; label: string; icon: string }[] = [
-  { id: 'profile', label: 'Profile', icon: '👤' },
-  { id: 'assist', label: 'Assist', icon: '📋' },
-  { id: 'charges', label: 'Charges', icon: '💰' },
-];
-
 /**
- * AccountPanel — 3-tab customer account view.
- * - Profile: customer details, Start/Cancel check-in
- * - Employee Assist: mirrors kiosk flow step by step
- * - Charges: payment ledger for current session
+ * AccountPanel — Responsive customer account view.
  *
- * Auto-switches to Assist tab when a check-in session starts (scan/search auto-start),
- * and defaults to Profile when a customer is opened via search (manual start).
+ * Layout adapts based on customer state:
+ *  - Not checked in → Profile only (full width)
+ *  - Checked in (from Rentals) → Profile + Charges (2 columns)
+ *  - Checking in (active session) → Profile + Assist + Charges (3 columns)
  */
 export function AccountPanel() {
-  const { currentSessionId, customerId, customerName, sessionPayload } = useRegisterStore();
-  const [activeTab, setActiveTab] = useState<AccountSubTab>('profile');
-
-  // Auto-switch to Assist tab when a flow step appears (session started)
-  useEffect(() => {
-    if (sessionPayload?.flowStep && activeTab === 'profile') {
-      setActiveTab('assist');
-    }
-    // Reset to profile when session and customer are cleared
-    if (!currentSessionId && !customerId) {
-      setActiveTab('profile');
-    }
-  }, [sessionPayload?.flowStep, currentSessionId, customerId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const { currentSessionId, customerId, customerName, activeCheckinInfo } = useRegisterStore();
 
   if (!currentSessionId && !customerId && !customerName) {
     return (
@@ -53,34 +31,77 @@ export function AccountPanel() {
     );
   }
 
+  const hasSession = !!currentSessionId;
+  const isCheckedIn = !!activeCheckinInfo;
+  const showAssist = hasSession;
+  const showCharges = hasSession || isCheckedIn;
+
   return (
     <PanelShell align="top" scroll="hidden">
-      {/* Tab bar */}
-      <div
-        className="flex rounded-lg border overflow-hidden"
-        style={{ borderColor: 'var(--color-border-default)' }}
-      >
-        {TAB_CONFIG.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className="flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-xs font-semibold transition"
+      <div className="flex flex-1 min-h-0 gap-4 w-full">
+        {/* Column 1: Profile — always shown */}
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+          <h3
+            className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            👤 Profile
+          </h3>
+          <div
+            className="flex-1 overflow-y-auto rounded-lg border p-4"
             style={{
-              backgroundColor: activeTab === tab.id ? 'var(--color-accent-primary)' : 'transparent',
-              color: activeTab === tab.id ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
+              backgroundColor: 'var(--color-surface-overlay)',
+              borderColor: 'var(--color-border-subtle)',
+              scrollbarWidth: 'thin',
             }}
           >
-            <span className="text-sm">{tab.icon}</span>
-            {tab.label}
-          </button>
-        ))}
-      </div>
+            <ProfileTab />
+          </div>
+        </div>
 
-      {/* Tab content */}
-      <div className="mt-4 flex-1 overflow-y-auto">
-        {activeTab === 'profile' && <ProfileTab />}
-        {activeTab === 'assist' && <EmployeeAssistTab />}
-        {activeTab === 'charges' && <ChargesTab />}
+        {/* Column 2: Assist — only during active check-in session */}
+        {showAssist && (
+          <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+            <h3
+              className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              📋 Assist
+            </h3>
+            <div
+              className="flex-1 overflow-y-auto rounded-lg border p-4"
+              style={{
+                backgroundColor: 'var(--color-surface-overlay)',
+                borderColor: 'var(--color-border-subtle)',
+                scrollbarWidth: 'thin',
+              }}
+            >
+              <EmployeeAssistTab />
+            </div>
+          </div>
+        )}
+
+        {/* Column 3: Charges — during active session or when checked in */}
+        {showCharges && (
+          <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+            <h3
+              className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              💰 Charges
+            </h3>
+            <div
+              className="flex-1 overflow-y-auto rounded-lg border p-4"
+              style={{
+                backgroundColor: 'var(--color-surface-overlay)',
+                borderColor: 'var(--color-border-subtle)',
+                scrollbarWidth: 'thin',
+              }}
+            >
+              <ChargesTab />
+            </div>
+          </div>
+        )}
       </div>
     </PanelShell>
   );

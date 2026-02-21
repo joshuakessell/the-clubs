@@ -2,8 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.seed = seed;
 const index_1 = require("./index");
-const shared_1 = require("@club-ops/shared");
-const shared_2 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
+const shared_2 = require("@the-clubs/shared");
 const utils_1 = require("../auth/utils");
 const loadEnv_1 = require("../env/loadEnv");
 (0, loadEnv_1.loadEnvFromDotEnvIfPresent)();

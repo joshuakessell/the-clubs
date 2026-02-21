@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.seedBusySaturdayDemo = seedBusySaturdayDemo;
 const crypto_1 = require("crypto");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const faker_1 = require("@faker-js/faker");
 const identity_1 = require("../../checkin/identity");
 const index_1 = require("../index");

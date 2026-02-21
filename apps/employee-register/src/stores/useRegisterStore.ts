@@ -307,8 +307,8 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
           method: 'POST',
           headers,
           body: JSON.stringify({
-            rawText: `MANUAL|${manualFirstName}|${manualLastName}|${manualDobIso}`,
-            registerId: laneId,
+            rawScanText: `MANUAL|${manualFirstName}|${manualLastName}|${manualDobIso}`,
+            laneId,
             manualEntry: {
               firstName: manualFirstName,
               lastName: manualLastName,

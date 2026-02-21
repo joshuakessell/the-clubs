@@ -32,16 +32,11 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
   const [submitting, setSubmitting] = useState(false);
 
   /* ── Parse real line items from session payload ── */
-  const priceQuote = sessionPayload?.priceQuote as
-    | { lineItems?: LineItem[]; total?: number }
-    | null
-    | undefined;
-
-  const lineItems: LineItem[] = priceQuote?.lineItems ?? [
+  const lineItems: LineItem[] = sessionPayload?.paymentLineItems ?? [
     { description: 'Room Rental — Standard', amount: 35.0 },
     { description: 'Towel', amount: 2.0 },
   ];
-  const total = priceQuote?.total ?? lineItems.reduce((sum, li) => sum + li.amount, 0);
+  const total = sessionPayload?.paymentTotal ?? lineItems.reduce((sum, li) => sum + li.amount, 0);
 
   /* ── Demo: Take payment ── */
   const demoTakePayment = useCallback(

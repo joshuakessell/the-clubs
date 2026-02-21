@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRoomTier = getRoomTier;
 exports.computeWaitlistInfo = computeWaitlistInfo;
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 function getRoomTier(roomNumber) {
     return (0, shared_1.getRoomTierFromNumber)(parseInt(roomNumber, 10));
 }

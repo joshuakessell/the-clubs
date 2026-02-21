@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinAgreementRoutes = registerCheckinAgreementRoutes;
 const middleware_1 = require("../../auth/middleware");
 const kioskToken_1 = require("../../auth/kioskToken");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const db_1 = require("../../db");
 const payload_1 = require("../../checkin/payload");
 const helpers_1 = require("../../checkin/helpers");

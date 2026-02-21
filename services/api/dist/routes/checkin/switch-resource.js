@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinSwitchResourceRoutes = registerCheckinSwitchResourceRoutes;
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const middleware_1 = require("../../auth/middleware");
 const auditLog_1 = require("../../audit/auditLog");
 const db_1 = require("../../db");

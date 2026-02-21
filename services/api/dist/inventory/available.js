@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.computeInventoryAvailable = computeInventoryAvailable;
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 function getRoomTier(roomNumber) {
     const num = parseInt(roomNumber, 10);
     return (0, shared_1.getRoomTierFromNumber)(num);

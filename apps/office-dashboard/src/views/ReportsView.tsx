@@ -1,22 +1,54 @@
-const INVENTORY = [
-  { tier: 'Standard', total: 20, clean: 12, cleaning: 3, dirty: 5 },
-  { tier: 'Double', total: 12, clean: 4, cleaning: 2, dirty: 6 },
-  { tier: 'Special', total: 6, clean: 2, cleaning: 1, dirty: 3 },
-  { tier: 'Lockers', total: 30, clean: 22, cleaning: 0, dirty: 8 },
-];
+import { useDashboardFetch } from '../hooks/useDashboardFetch';
 
-const CASH_SUMMARY = [
-  { register: 1, method: 'Card', total: 1245.00 },
-  { register: 1, method: 'Cash', total: 320.00 },
-  { register: 2, method: 'Card', total: 890.00 },
-  { register: 2, method: 'Cash', total: 155.00 },
-];
+interface CashRow {
+  register: number;
+  method: string;
+  total: number;
+}
+
+interface InventoryRow {
+  tier: string;
+  total: number;
+  clean: number;
+  cleaning: number;
+  dirty: number;
+}
+
+interface Kpi {
+  roomsClean: number;
+  roomsCleaning: number;
+  roomsDirty: number;
+  roomsOccupied: number;
+  lockersOccupied: number;
+  lockersAvailable: number;
+}
 
 export function ReportsView() {
-  const grandTotal = CASH_SUMMARY.reduce((s, r) => s + r.total, 0);
+  const { data: cashData, loading: cashLoading } = useDashboardFetch<{ rows: CashRow[] }>(
+    '/api/v1/admin/reports/cash-totals',
+  );
+  const cashRows = cashData?.rows ?? [];
+  const grandTotal = cashRows.reduce((s, r) => s + r.total, 0);
+
+  const { data: kpi, loading: kpiLoading } = useDashboardFetch<Kpi>('/api/v1/admin/kpi');
+
+  // Build inventory rows from KPI data
+  const inventory: InventoryRow[] = kpi ? [
+    { tier: 'Rooms', total: kpi.roomsClean + kpi.roomsCleaning + kpi.roomsDirty + kpi.roomsOccupied, clean: kpi.roomsClean, cleaning: kpi.roomsCleaning, dirty: kpi.roomsDirty },
+    { tier: 'Lockers', total: kpi.lockersOccupied + kpi.lockersAvailable, clean: kpi.lockersAvailable, cleaning: 0, dirty: 0 },
+  ] : [];
+
+  const loading = cashLoading || kpiLoading;
 
   return (
     <div className="flex flex-col gap-6">
+      {loading && (
+        <div className="flex items-center justify-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
+            style={{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }} />
+        </div>
+      )}
+
       {/* Inventory summary */}
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Inventory Summary</h2>
@@ -30,7 +62,7 @@ export function ReportsView() {
               </tr>
             </thead>
             <tbody>
-              {INVENTORY.map((r) => (
+              {inventory.map((r) => (
                 <tr key={r.tier} className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
                   <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{r.tier}</td>
                   <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{r.total}</td>
@@ -57,20 +89,27 @@ export function ReportsView() {
               </tr>
             </thead>
             <tbody>
-              {CASH_SUMMARY.map((r, i) => (
+              {cashRows.map((r, i) => (
                 <tr key={i} className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
                   <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>Register {r.register}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{r.method}</td>
                   <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>${r.total.toFixed(2)}</td>
                 </tr>
               ))}
+              {cashRows.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No cash data for today</td>
+                </tr>
+              )}
             </tbody>
-            <tfoot>
-              <tr className="border-t" style={{ borderColor: 'var(--color-border-default)' }}>
-                <td colSpan={2} className="px-4 py-3 text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Grand Total</td>
-                <td className="px-4 py-3 text-base font-extrabold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>${grandTotal.toFixed(2)}</td>
-              </tr>
-            </tfoot>
+            {cashRows.length > 0 && (
+              <tfoot>
+                <tr className="border-t" style={{ borderColor: 'var(--color-border-default)' }}>
+                  <td colSpan={2} className="px-4 py-3 text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Grand Total</td>
+                  <td className="px-4 py-3 text-base font-extrabold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>${grandTotal.toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
       </div>

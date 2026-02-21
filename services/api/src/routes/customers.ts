@@ -36,6 +36,7 @@ interface CustomerProfileRow {
   id_expiration_date: string | Date | null;
   primary_language: string | null;
   id_scan_hash: string | null;
+  past_due_balance: number | string | null;
 }
 
 function normalizeScanText(raw: string): string {
@@ -485,7 +486,8 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
             id_type_other,
             id_expiration_date,
             primary_language,
-            id_scan_hash
+            id_scan_hash,
+            past_due_balance
           FROM customers
           WHERE ${looksLikeUuid ? 'id = $1' : 'membership_number = $1'}
           LIMIT 1
@@ -522,6 +524,10 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
             ? toIsoTimestamp(lastVisitResult.rows[0]!.starts_at)
             : null;
 
+        const pastDueBalance = typeof row.past_due_balance === 'string'
+          ? parseInt(row.past_due_balance, 10) || 0
+          : (row.past_due_balance ?? 0);
+
         return reply.send({
           customer: {
             id: row.id,
@@ -540,6 +546,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
               ? (row.primary_language as 'EN' | 'ES')
               : null,
             lastVisitAt,
+            pastDueBalance,
             hasEncryptedLookupMarker: Boolean(row.id_scan_hash),
           },
         });

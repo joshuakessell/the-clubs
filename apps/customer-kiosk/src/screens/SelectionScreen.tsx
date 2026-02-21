@@ -170,12 +170,13 @@ export function SelectionScreen({
         backupRentalType: backupTier,
         rentalType: backupTier,
       });
+      onNext();
     } catch {
       // ignore
     } finally {
       setSubmitting(false);
     }
-  }, [sendFlowCommand, backupTier]);
+  }, [sendFlowCommand, backupTier, onNext]);
 
   /* ── Handle normal rental selection → continue ── */
   const handleRentalSelect = useCallback(async () => {
@@ -186,12 +187,13 @@ export function SelectionScreen({
         step: 'PAYMENT',
         rentalType: selected,
       });
+      onNext();
     } catch {
       // ignore
     } finally {
       setSubmitting(false);
     }
-  }, [sendFlowCommand, selected]);
+  }, [sendFlowCommand, selected, onNext]);
 
   /* ── Render ── */
 
@@ -210,7 +212,7 @@ export function SelectionScreen({
             <p className="mt-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
               {t
                 ? 'Selecciona qué tipo(s) de habitación te gustaría si se hacen disponibles.'
-                : 'Select which room type(s) you'd like if they become available.'}
+                : "Select which room type(s) you'd like if they become available."}
             </p>
           </div>
 
@@ -487,7 +489,7 @@ export function SelectionScreen({
           </div>
 
           {/* Join Waitlist button — shown when any rooms are unavailable */}
-          {hasUnavailable && availabilityLoaded && (
+          {hasUnavailable && availabilityLoaded && !isWaitlistFlow && (
             <button
               type="button"
               className="w-full rounded-lg border-2 border-dashed px-6 py-3.5 text-sm font-semibold transition"

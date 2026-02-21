@@ -1,7 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
+import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../../stores/useRegisterStore';
+
+type FlowCommandFn = (cmd: { type: string; payload?: Record<string, unknown> }) => Promise<void>;
 
 interface RoomOption {
   id: string;
@@ -110,8 +113,8 @@ function RentalStep({
   sendFlowCommand,
   token,
 }: {
-  sp: NonNullable<ReturnType<typeof useRegisterStore>['sessionPayload']>;
-  sendFlowCommand: ReturnType<typeof useRegisterStore>['sendFlowCommand'];
+  sp: SessionUpdatedPayload;
+  sendFlowCommand: FlowCommandFn;
   token?: string | null;
 }) {
   const [inventory, setInventory] = useState<AvailableInventory | null>(null);
@@ -276,8 +279,8 @@ function PaymentStep({
   sp,
   sendFlowCommand,
 }: {
-  sp: NonNullable<ReturnType<typeof useRegisterStore>['sessionPayload']>;
-  sendFlowCommand: ReturnType<typeof useRegisterStore>['sendFlowCommand'];
+  sp: SessionUpdatedPayload;
+  sendFlowCommand: FlowCommandFn;
 }) {
   const isPaid = sp.paymentStatus === 'PAID';
   const [loading, setLoading] = useState(false);
@@ -303,7 +306,7 @@ function PaymentStep({
       {/* Line items */}
       {sp.paymentLineItems && sp.paymentLineItems.length > 0 && (
         <div className="rounded-lg border p-3" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-          {sp.paymentLineItems.map((item, i) => (
+          {sp.paymentLineItems.map((item: { description: string; amount: number }, i: number) => (
             <div key={i} className="flex items-center justify-between py-1.5 text-sm">
               <span style={{ color: 'var(--color-text-secondary)' }}>{item.description}</span>
               <span className="font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
@@ -373,8 +376,8 @@ function AgreementStep({
   sp,
   sendFlowCommand,
 }: {
-  sp: NonNullable<ReturnType<typeof useRegisterStore>['sessionPayload']>;
-  sendFlowCommand: ReturnType<typeof useRegisterStore>['sendFlowCommand'];
+  sp: SessionUpdatedPayload;
+  sendFlowCommand: FlowCommandFn;
 }) {
   const signed = sp.agreementSigned;
   const [loading, setLoading] = useState(false);
@@ -441,7 +444,7 @@ function AgreementStep({
 function CompleteStep({
   sp,
 }: {
-  sp: NonNullable<ReturnType<typeof useRegisterStore>['sessionPayload']>;
+  sp: SessionUpdatedPayload;
 }) {
   const { cancelSession } = useRegisterStore();
 
@@ -486,8 +489,8 @@ function WaitlistStep({
   sp,
   sendFlowCommand,
 }: {
-  sp: NonNullable<ReturnType<typeof useRegisterStore>['sessionPayload']>;
-  sendFlowCommand: ReturnType<typeof useRegisterStore>['sendFlowCommand'];
+  sp: SessionUpdatedPayload;
+  sendFlowCommand: FlowCommandFn;
 }) {
   return (
     <div className="flex flex-col gap-4">

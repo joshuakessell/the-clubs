@@ -3,9 +3,9 @@ declare const process: { env: Record<string, string | undefined> } | undefined;
 const getEnv = () => {
   try {
     // In Vite/ESM, import.meta.env is available
-    // @ts-expect-error - import.meta is not available in all environments
+    // @ts-ignore -- import.meta.env exists at runtime in Vite apps
     if (typeof import.meta !== 'undefined' && import.meta.env) {
-      // @ts-expect-error - import.meta is not available in all environments
+      // @ts-ignore -- import.meta.env exists at runtime in Vite apps
       return import.meta.env as KeyValue;
     }
   } catch {

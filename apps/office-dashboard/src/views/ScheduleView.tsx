@@ -1,51 +1,100 @@
 import { Badge } from '@the-clubs/ui';
+import { useDashboardFetch } from '../hooks/useDashboardFetch';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-const SHIFTS = [
-  { employee: 'Sarah J.', role: 'STAFF', shifts: [true, true, true, true, true, false, false] },
-  { employee: 'Mike T.', role: 'STAFF', shifts: [false, true, true, true, true, true, false] },
-  { employee: 'Lisa K.', role: 'ADMIN', shifts: [true, true, true, false, false, true, true] },
-  { employee: 'Tom B.', role: 'STAFF', shifts: [true, false, false, true, true, true, true] },
-];
+interface WeeklySummaryEntry {
+  employeeId: string;
+  employeeName: string;
+  totalHours: number;
+  shiftCount: number;
+  netHours: number;
+  overtimeFlag: boolean;
+}
+
+/** Compute the Monday of the current week in YYYY-MM-DD. */
+function currentWeekStart(): string {
+  const now = new Date();
+  const day = now.getDay();          // 0 = Sun .. 6 = Sat
+  const diff = day === 0 ? -6 : 1 - day;  // offset to Monday
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diff);
+  return monday.toISOString().slice(0, 10);
+}
+
+const weekStart = currentWeekStart();
 
 export function ScheduleView() {
+  const { data, loading, error, refetch } = useDashboardFetch<{ summary: WeeklySummaryEntry[] }>(
+    `/api/v1/admin/shifts/weekly-summary?weekStart=${weekStart}`,
+  );
+  const raw = data?.summary;
+  const summary: WeeklySummaryEntry[] = Array.isArray(raw) ? raw : [];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Weekly Schedule</h2>
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Feb 17 – Feb 23, 2026</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Weekly Schedule</h2>
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              Week of {new Date(weekStart + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+            </p>
+          </div>
+          <button type="button" className="rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+            style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
+            onClick={() => refetch()}>Refresh</button>
+        </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
-        <table className="w-full">
-          <thead>
-            <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Employee</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Role</th>
-              {DAYS.map((d) => (
-                <th key={d} className="px-3 py-3 text-center text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{d}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {SHIFTS.map((s) => (
-              <tr key={s.employee} className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.employee}</td>
-                <td className="px-4 py-3"><Badge color={s.role === 'ADMIN' ? 'primary' : 'gray'} variant="light" size="sm">{s.role}</Badge></td>
-                {s.shifts.map((on, i) => (
-                  <td key={i} className="px-3 py-3 text-center">
-                    <span
-                      className="inline-block h-4 w-4 rounded-full"
-                      style={{ backgroundColor: on ? 'var(--color-status-success)' : 'var(--color-surface-overlay)' }}
-                    />
-                  </td>
+      {error && (
+        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'rgba(239, 68, 68, 0.06)', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-status-error)' }}>
+          {error}
+        </div>
+      )}
+
+      {loading && summary.length === 0 ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
+            style={{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }} />
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
+                {['Employee', 'Shifts', 'Total Hours', 'Net Hours', 'Status'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {summary.map((s) => (
+                <tr key={s.employeeId} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
+                  onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                  onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
+                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.employeeName}</td>
+                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{s.shiftCount}</td>
+                  <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>{s.totalHours.toFixed(1)}h</td>
+                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{s.netHours.toFixed(1)}h</td>
+                  <td className="px-4 py-3">
+                    <Badge color={s.overtimeFlag ? 'warning' : 'success'} variant="light" size="sm">
+                      {s.overtimeFlag ? 'Overtime' : 'Normal'}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+              {summary.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                    No shifts scheduled this week
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

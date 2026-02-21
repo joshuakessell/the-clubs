@@ -5,7 +5,7 @@ const db_1 = require("../db");
 const middleware_1 = require("../auth/middleware");
 const middleware_2 = require("../auth/middleware");
 const kioskToken_1 = require("../auth/kioskToken");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const available_1 = require("../inventory/available");
 /**
  * Map room number to tier (Special, Double, or Standard).

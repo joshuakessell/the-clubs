@@ -364,6 +364,9 @@ async function seedDemoData(options = {}) {
                     if (DEMO_SHIFT_REGENERATE_PDFS) {
                         await regenerateAgreementPdfs(client);
                     }
+                    // Close any open register sessions so the kiosk starts on the sign-in
+                    // screen rather than auto-resuming a stale session from the snapshot.
+                    await client.query(`UPDATE register_sessions SET signed_out_at = NOW() WHERE signed_out_at IS NULL`);
                 }
                 catch (error) {
                     console.error('❌ Demo seed restore/shift failed:', formatPgError(error));
@@ -705,7 +708,7 @@ async function seedDemoData(options = {}) {
 }
 // ---------------------------------------------------------------------------
 // CLI entrypoint
-// Allows running: DEMO_MODE=true pnpm --filter @club-ops/api exec tsx src/db/seed-demo.ts
+// Allows running: DEMO_MODE=true pnpm --filter @the-clubs/api exec tsx src/db/seed-demo.ts
 // ---------------------------------------------------------------------------
 if (require.main === module) {
     seedDemoData()

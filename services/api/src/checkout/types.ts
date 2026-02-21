@@ -68,6 +68,7 @@ export interface ManualCheckoutCandidateRow {
   occupancy_id: string;
   resource_type: ManualCheckoutResourceType;
   number: string;
+  customer_id: string;
   customer_name: string;
   checkin_at: Date;
   scheduled_checkout_at: Date;

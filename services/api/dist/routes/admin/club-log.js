@@ -4,7 +4,7 @@ exports.registerAdminClubLogRoutes = registerAdminClubLogRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const db_1 = require("../../db");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 // ---------------------------------------------------------------------------
 // Query schema — all optional filters
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.orderRoutes = exports.breakRoutes = exports.cashDrawerRoutes = exports.timeoffRoutes = exports.scheduleRoutes = exports.sessionDocumentsRoutes = exports.documentsRoutes = exports.timeclockRoutes = exports.shiftsRoutes = exports.realtimeLanRoutes = exports.realtimeRoutes = exports.registerRoutes = exports.checkinRoutes = exports.checkoutRoutes = exports.visitRoutes = exports.metricsRoutes = exports.waitlistRoutes = exports.upgradeRoutes = exports.registerAdminLateCheckoutBanAlertRoutes = exports.agreementsRoutes = exports.adminRoutes = exports.cleaningRoutes = exports.keysRoutes = exports.roomsRoutes = exports.inventoryRoutes = exports.customerSpendLedgerRoutes = exports.customerRoutes = exports.webauthnRoutes = exports.authRoutes = exports.healthRoutes = void 0;
+exports.retailRoutes = exports.orderRoutes = exports.breakRoutes = exports.cashDrawerRoutes = exports.timeoffRoutes = exports.scheduleRoutes = exports.sessionDocumentsRoutes = exports.documentsRoutes = exports.timeclockRoutes = exports.shiftsRoutes = exports.realtimeSSERoutes = exports.realtimeLanRoutes = exports.realtimeRoutes = exports.registerRoutes = exports.checkinRoutes = exports.checkoutRoutes = exports.visitRoutes = exports.metricsRoutes = exports.waitlistRoutes = exports.upgradeRoutes = exports.registerAdminLateCheckoutBanAlertRoutes = exports.agreementsRoutes = exports.adminRoutes = exports.cleaningRoutes = exports.keysRoutes = exports.roomsRoutes = exports.inventoryRoutes = exports.customerSpendLedgerRoutes = exports.customerRoutes = exports.webauthnRoutes = exports.authRoutes = exports.healthRoutes = void 0;
 /**
  * Routes barrel file.
  * All route modules are exported here for registration in the main server.
@@ -47,6 +47,8 @@ var realtime_1 = require("./realtime");
 Object.defineProperty(exports, "realtimeRoutes", { enumerable: true, get: function () { return realtime_1.realtimeRoutes; } });
 var realtime_lan_1 = require("./realtime-lan");
 Object.defineProperty(exports, "realtimeLanRoutes", { enumerable: true, get: function () { return realtime_lan_1.realtimeLanRoutes; } });
+var realtime_sse_1 = require("./realtime-sse");
+Object.defineProperty(exports, "realtimeSSERoutes", { enumerable: true, get: function () { return realtime_sse_1.realtimeSSERoutes; } });
 var shifts_1 = require("./shifts");
 Object.defineProperty(exports, "shiftsRoutes", { enumerable: true, get: function () { return shifts_1.shiftsRoutes; } });
 var timeclock_1 = require("./timeclock");
@@ -65,3 +67,5 @@ var breaks_1 = require("./breaks");
 Object.defineProperty(exports, "breakRoutes", { enumerable: true, get: function () { return breaks_1.breakRoutes; } });
 var orders_1 = require("./orders");
 Object.defineProperty(exports, "orderRoutes", { enumerable: true, get: function () { return orders_1.orderRoutes; } });
+var retail_1 = require("./retail");
+Object.defineProperty(exports, "retailRoutes", { enumerable: true, get: function () { return retail_1.retailRoutes; } });

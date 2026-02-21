@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.upgradeRoutes = upgradeRoutes;
 const db_1 = require("../db");
 const middleware_1 = require("../auth/middleware");
-const shared_1 = require("@club-ops/shared");
+const shared_1 = require("@the-clubs/shared");
 const broadcast_1 = require("../inventory/broadcast");
 const auditLog_1 = require("../audit/auditLog");
 const customerActivityLog_1 = require("../activity/customerActivityLog");

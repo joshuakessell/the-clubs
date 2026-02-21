@@ -44,7 +44,7 @@ export function ScanPanel() {
       const res = await fetch(getApiUrl('/api/v1/checkin/scan'), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ rawScanText: rawText, registerId: laneId }),
+        body: JSON.stringify({ rawScanText: rawText, laneId }),
       });
 
       const data = await res.json();
