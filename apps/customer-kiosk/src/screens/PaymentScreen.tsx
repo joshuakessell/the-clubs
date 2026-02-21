@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { ScreenShell } from '../components/ScreenShell';
+import { useI18n } from '../i18n';
 
 interface Props {
   laneId: string;
@@ -27,6 +28,7 @@ function formatAmount(amount: number): string {
  * In production, an external card terminal collects payment.
  */
 export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, onCancel }: Props) {
+  const { t } = useI18n();
   const [showSplitDialog, setShowSplitDialog] = useState(false);
   const [splitAmount, setSplitAmount] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +89,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
           style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
         >
           <p className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-            Your Charges
+            {t('payment.yourCharges')}
           </p>
 
           <div className="mt-4 flex flex-col gap-2">
@@ -103,7 +105,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
 
           <div className="mt-4 border-t pt-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <div className="flex items-center justify-between">
-              <span className="text-base font-bold" style={{ color: 'var(--color-text-primary)' }}>Total Due</span>
+              <span className="text-base font-bold" style={{ color: 'var(--color-text-primary)' }}>{t('totalDue')}</span>
               <span
                 className="text-2xl font-extrabold tabular-nums"
                 style={{ fontFamily: 'var(--font-display)', color: 'var(--color-accent-primary)' }}
@@ -129,10 +131,10 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
             </svg>
           </div>
           <p className="text-lg font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
-            Insert or tap card on terminal
+            {t('payment.insertOrTapCard')}
           </p>
           <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            Waiting for payment...
+            {t('payment.waitingForPayment')}
           </p>
         </div>
 
@@ -147,7 +149,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
               onClick={onCancel}
               disabled={submitting}
             >
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -156,7 +158,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
               onClick={() => demoTakePayment('CREDIT_SUCCESS')}
               disabled={submitting}
             >
-              {submitting ? 'Processing…' : 'Demo: Pay Card'}
+              {submitting ? t('payment.processing') : t('payment.demoPayCard')}
             </button>
           </div>
           {/* Secondary row - split + cash */}
@@ -168,7 +170,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
               onClick={() => setShowSplitDialog(true)}
               disabled={submitting}
             >
-              Split Payment
+              {t('payment.splitPayment')}
             </button>
             <button
               type="button"
@@ -177,7 +179,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
               onClick={() => demoTakePayment('CASH_SUCCESS')}
               disabled={submitting}
             >
-              Demo: Pay Cash
+              {t('payment.demoPayCash')}
             </button>
           </div>
         </div>
@@ -199,15 +201,15 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
               className="text-lg font-bold"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
             >
-              Split Payment
+              {t('payment.splitPayment')}
             </h2>
             <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-              Enter card portion — the rest will be collected as cash.
+              {t('payment.splitCardSubtitle')}
             </p>
 
             <div className="mt-4">
               <label className="text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
-                Card Amount
+                {t('payment.cardAmount')}
               </label>
               <div className="relative mt-1">
                 <span
@@ -236,7 +238,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
 
             {parsedSplit > 0 && (
               <div className="mt-3 flex items-center justify-between rounded-lg px-3 py-2" style={{ backgroundColor: 'var(--color-surface-base)' }}>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Cash remaining</span>
+                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{t('payment.cashRemaining')}</span>
                 <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
                   {formatAmount(cashDue)}
                 </span>
@@ -250,7 +252,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
                 style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
                 onClick={() => setShowSplitDialog(false)}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -262,7 +264,7 @@ export function PaymentScreen({ laneId, kioskToken, sessionPayload, onComplete, 
                 disabled={!splitIsValid || submitting}
                 onClick={() => demoTakePayment('CREDIT_SUCCESS', parsedSplit)}
               >
-                {submitting ? 'Processing…' : 'Pay Card Portion'}
+                {submitting ? t('payment.processing') : t('payment.payCardPortion')}
               </button>
             </div>
           </div>

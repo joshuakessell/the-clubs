@@ -1,32 +1,18 @@
 import { useRef, useState, useCallback } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
+import { useI18n } from '../i18n';
 
 interface Props {
   onAccept: () => void;
   onCancel: () => void;
 }
 
-const AGREEMENT_TEXT = `
-<h3>Terms & Conditions</h3>
-<p>By signing below, you acknowledge and agree to the following terms and conditions for admission to the Club Dallas facility:</p>
-<ol>
-<li>I understand that use of the facilities is at my own risk.</li>
-<li>I will follow all posted rules and directives from staff members.</li>
-<li>I agree to vacate my assigned room/locker by the designated checkout time.</li>
-<li>I will not bring outside food or beverages into the facility (except sealed water).</li>
-<li>Any damage to facility property will be charged to my account.</li>
-<li>I understand that management reserves the right to refuse service.</li>
-<li>I will keep my personal belongings secured; the facility is not responsible for lost/stolen items.</li>
-<li>I certify that I am at least 18 years of age.</li>
-</ol>
-<p><em>This agreement is valid for this visit only.</em></p>
-`.trim();
-
 /**
  * AgreementScreen — Customer reads and signs the agreement.
  * Signature canvas modal + agreement text + submit flow.
  */
 export function AgreementScreen({ onAccept, onCancel }: Props) {
+  const { t } = useI18n();
   const [signed, setSigned] = useState(false);
   const [showSignModal, setShowSignModal] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -84,7 +70,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
             className="px-6 pt-6 text-xl font-bold"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
           >
-            Facility Agreement
+            {t('agreement.facilityAgreement')}
           </h2>
 
           {/* Scrollable text */}
@@ -92,7 +78,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
             <div
               className="prose prose-sm prose-invert max-w-none text-sm leading-relaxed"
               style={{ color: 'var(--color-text-secondary)' }}
-              dangerouslySetInnerHTML={{ __html: AGREEMENT_TEXT }}
+              dangerouslySetInnerHTML={{ __html: t('agreement.legalBodyHtml') }}
             />
           </div>
 
@@ -109,7 +95,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
               disabled={signed}
               onClick={() => { clearCanvas(); setShowSignModal(true); }}
             >
-              {signed ? '✓ Signed' : 'Tap to Sign'}
+              {signed ? `✓ ${t('agreement.signed')}` : t('agreement.tapToSign')}
             </button>
           </div>
         </div>
@@ -122,7 +108,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
             style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
             onClick={onCancel}
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             type="button"
@@ -134,7 +120,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
             disabled={!signed}
             onClick={onAccept}
           >
-            Submit Agreement
+            {t('agreement.submitAgreement')}
           </button>
         </div>
       </div>
@@ -145,7 +131,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
           className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md"
           style={{ backgroundColor: 'rgba(10, 10, 15, 0.8)' }}
           role="dialog"
-          aria-label="Signature"
+          aria-label={t('a11y.signatureDialog')}
         >
           <div
             className="flex flex-col gap-4 rounded-2xl border p-6 shadow-2xl"
@@ -153,7 +139,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-              Sign Below
+              {t('agreement.signBelow')}
             </h3>
 
             <canvas
@@ -178,7 +164,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
                 style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
                 onClick={() => { clearCanvas(); setShowSignModal(false); }}
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button
                 type="button"
@@ -186,7 +172,7 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
                 style={{ backgroundColor: 'var(--color-accent-primary)', color: 'var(--color-text-inverse)' }}
                 onClick={() => { setSigned(true); setShowSignModal(false); }}
               >
-                Confirm Signature
+                {t('agreement.confirmSignature')}
               </button>
             </div>
           </div>

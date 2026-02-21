@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { ScreenShell } from '../components/ScreenShell';
+import { useI18n } from '../i18n';
 
 interface Props {
   laneId: string;
@@ -23,6 +24,7 @@ interface Product {
  * Customer can pick towels, drinks, etc. before proceeding to agreement/payment.
  */
 export function AddOnsScreen({ laneId, kioskToken, sessionPayload, onNext, onSkip }: Props) {
+  const { t } = useI18n();
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -121,10 +123,10 @@ export function AddOnsScreen({ laneId, kioskToken, sessionPayload, onNext, onSki
             className="text-3xl font-extrabold tracking-tight"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
           >
-            Add-Ons
+            {t('addons.title')}
           </h1>
           <p className="mt-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            Would you like to add anything to your visit?
+            {t('addons.subtitle')}
           </p>
         </div>
 
@@ -138,7 +140,7 @@ export function AddOnsScreen({ laneId, kioskToken, sessionPayload, onNext, onSki
           </div>
         ) : products.length === 0 ? (
           <p className="py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            No add-ons available right now.
+            {t('addons.noneAvailable')}
           </p>
         ) : (
           <div className="grid w-full grid-cols-2 gap-3">
@@ -232,7 +234,7 @@ export function AddOnsScreen({ laneId, kioskToken, sessionPayload, onNext, onSki
             }}
           >
             <span className="text-sm font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
-              Add-on total
+              {t('addons.total')}
             </span>
             <span
               className="text-lg font-extrabold tabular-nums"
@@ -252,7 +254,7 @@ export function AddOnsScreen({ laneId, kioskToken, sessionPayload, onNext, onSki
             onClick={onSkip}
             disabled={submitting}
           >
-            No Thanks
+            {t('addons.noThanks')}
           </button>
           <button
             type="button"
@@ -266,7 +268,7 @@ export function AddOnsScreen({ laneId, kioskToken, sessionPayload, onNext, onSki
             disabled={submitting || selectedItems.length === 0}
             onClick={handleContinue}
           >
-            {submitting ? 'Adding…' : `Add & Continue`}
+            {submitting ? t('addons.adding') : t('addons.addAndContinue')}
           </button>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { ScreenShell } from '../components/ScreenShell';
+import { useI18n } from '../i18n';
 
 /**
  * IdleScreen — Visible when no customer is actively checking in.
@@ -6,6 +7,8 @@ import { ScreenShell } from '../components/ScreenShell';
  * from the backend to activate — there is no manual "tap to start".
  */
 export function IdleScreen() {
+  const { t } = useI18n();
+
   return (
     <ScreenShell>
       <div className="flex flex-col items-center gap-10 text-center p-12">
@@ -19,7 +22,7 @@ export function IdleScreen() {
             }}
           />
           <div className="relative flex items-center justify-center">
-            <img src="/club-dallas-logo.svg" alt="Club Dallas" width="96" height="96" style={{ filter: 'drop-shadow(0 0 12px var(--color-accent-glow))' }} />
+            <img src="/club-dallas-logo.svg" alt={t('brand.clubName')} width="96" height="96" style={{ filter: 'drop-shadow(0 0 12px var(--color-accent-glow))' }} />
           </div>
         </div>
 
@@ -29,10 +32,10 @@ export function IdleScreen() {
             className="text-5xl font-extrabold tracking-tight"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
           >
-            Club Dallas
+            {t('brand.clubName')}
           </h1>
           <p className="mt-4 text-xl" style={{ color: 'var(--color-text-secondary)' }}>
-            Please present a valid form of ID
+            {t('idle.presentId')}
           </p>
         </div>
 
@@ -49,7 +52,7 @@ export function IdleScreen() {
             className="h-2 w-2 rounded-full animate-pulse"
             style={{ backgroundColor: 'var(--color-status-success)' }}
           />
-          Ready for check-in
+          {t('idle.readyForCheckin')}
         </div>
       </div>
     </ScreenShell>

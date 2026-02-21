@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
+import { useI18n } from '../i18n';
 
 interface Props {
   customerName?: string;
@@ -13,6 +14,7 @@ interface Props {
  * Auto-resets to idle after a timeout (demo: 10s).
  */
 export function CompleteScreen({ customerName, assignedResourceType, assignedResourceNumber, onDone }: Props) {
+  const { t } = useI18n();
   const [countdown, setCountdown] = useState(10);
 
   useEffect(() => {
@@ -20,6 +22,8 @@ export function CompleteScreen({ customerName, assignedResourceType, assignedRes
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [countdown, onDone]);
+
+  const isLocker = assignedResourceType === 'locker';
 
   return (
     <ScreenShell showWatermark>
@@ -41,7 +45,9 @@ export function CompleteScreen({ customerName, assignedResourceType, assignedRes
           className="text-3xl font-extrabold"
           style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
         >
-          You{customerName ? `'re All Set, ${customerName}` : "'re All Set"}!
+          {customerName
+            ? t('complete.allSetWithName', { name: customerName })
+            : t('complete.allSet')}
         </h1>
 
         {/* Assignment card */}
@@ -52,7 +58,7 @@ export function CompleteScreen({ customerName, assignedResourceType, assignedRes
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                Your {assignedResourceType === 'locker' ? 'Locker' : 'Room'}
+                {isLocker ? t('complete.yourLocker') : t('complete.yourRoom')}
               </p>
               <p
                 className="mt-1 text-5xl font-extrabold tabular-nums"
@@ -63,13 +69,13 @@ export function CompleteScreen({ customerName, assignedResourceType, assignedRes
             </div>
             <div className="text-right">
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-                Checkout By
+                {t('complete.checkoutBy')}
               </p>
               <p className="mt-1 text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
                 11:00 PM
               </p>
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                Today
+                {t('complete.today')}
               </p>
             </div>
           </div>
@@ -86,7 +92,7 @@ export function CompleteScreen({ customerName, assignedResourceType, assignedRes
           }}
           onClick={onDone}
         >
-          OK ({countdown}s)
+          {t('common.ok')} ({countdown}s)
         </button>
       </div>
     </ScreenShell>

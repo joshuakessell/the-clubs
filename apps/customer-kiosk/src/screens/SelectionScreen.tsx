@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { ScreenShell } from '../components/ScreenShell';
+import { useI18n } from '../i18n';
 
 interface Props {
   customerName?: string;
@@ -15,12 +16,12 @@ interface Props {
 
 type RentalType = 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL';
 
-/* ── Display labels ── */
-const RENTAL_LABELS: Record<RentalType, { en: string; es: string }> = {
-  LOCKER:   { en: 'Locker',        es: 'Casillero' },
-  STANDARD: { en: 'Private Room',  es: 'Habitación Privada' },
-  DOUBLE:   { en: 'Double Room',   es: 'Habitación Doble' },
-  SPECIAL:  { en: 'Special Room',  es: 'Habitación Especial' },
+/* ── Rental type → translation key mapping ── */
+const RENTAL_LABEL_KEYS: Record<RentalType, string> = {
+  LOCKER:   'locker',
+  STANDARD: 'rental.standardDisplay',
+  DOUBLE:   'rental.doubleDisplay',
+  SPECIAL:  'rental.specialDisplay',
 };
 
 const ROOM_TIERS: RentalType[] = ['STANDARD', 'DOUBLE', 'SPECIAL'];
@@ -34,16 +35,14 @@ const ROOM_TIERS: RentalType[] = ['STANDARD', 'DOUBLE', 'SPECIAL'];
  */
 export function SelectionScreen({
   customerName,
-  language: initialLang,
   sessionPayload,
   laneId,
   kioskToken,
   onNext,
   onCancel,
 }: Props) {
-  const [lang, setLang] = useState<'EN' | 'ES'>(initialLang ?? 'EN');
+  const { t, lang } = useI18n();
   const [selected, setSelected] = useState<RentalType | null>(null);
-  const t = lang === 'ES';
 
   /* ── Real availability state ── */
   const [availability, setAvailability] = useState<Record<string, number>>({
@@ -195,6 +194,12 @@ export function SelectionScreen({
     }
   }, [sendFlowCommand, selected, onNext]);
 
+  /* ── Helper: get display label for a rental type ── */
+  const rentalLabel = (type: RentalType | string): string => {
+    const key = RENTAL_LABEL_KEYS[type as RentalType];
+    return key ? t(key) : type;
+  };
+
   /* ── Render ── */
 
   // Waitlist preferences step — select which upgrade tiers customer wants
@@ -207,12 +212,10 @@ export function SelectionScreen({
               className="text-2xl font-extrabold tracking-tight"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
             >
-              {t ? 'Lista de Espera' : 'Join Upgrade Waitlist'}
+              {t('waitlist.joinUpgradeWaitlist')}
             </h1>
             <p className="mt-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              {t
-                ? 'Selecciona qué tipo(s) de habitación te gustaría si se hacen disponibles.'
-                : "Select which room type(s) you'd like if they become available."}
+              {t('waitlist.selectRoomTypes')}
             </p>
           </div>
 
@@ -221,12 +224,12 @@ export function SelectionScreen({
             style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
           >
             <h2 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--color-text-muted)' }}>
-              {t ? 'Opciones de Mejora' : 'Upgrade Options'}
+              {t('waitlist.upgradeOptions')}
             </h2>
             <div className="flex flex-col gap-2">
               {unavailableTiers.map((tier) => {
                 const checked = desiredTiers.has(tier);
-                const label = RENTAL_LABELS[tier]?.[t ? 'es' : 'en'] ?? tier;
+                const label = rentalLabel(tier);
                 return (
                   <label
                     key={tier}
@@ -265,7 +268,7 @@ export function SelectionScreen({
               onClick={() => { setShowWaitlistPanel(false); }}
               disabled={submitting}
             >
-              {t ? 'Atrás' : 'Back'}
+              {t('waitlist.backToPreferences')}
             </button>
             <button
               type="button"
@@ -278,7 +281,7 @@ export function SelectionScreen({
               disabled={desiredTiers.size === 0 || submitting}
               onClick={() => void handlePreferencesToBackup()}
             >
-              {t ? 'Siguiente' : 'Next'}
+              {t('common.continue')}
             </button>
           </div>
         </div>
@@ -296,12 +299,10 @@ export function SelectionScreen({
               className="text-2xl font-extrabold tracking-tight"
               style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
             >
-              {t ? 'Seleccionar Opción Temporal' : 'Select Your Option for Now'}
+              {t('waitlist.selectOptionForNow')}
             </h1>
             <p className="mt-2 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              {t
-                ? 'Se te notificará cuando tu mejora esté disponible.'
-                : 'You\'ll be notified when your upgrade becomes available.'}
+              {t('waitlist.notifiedWhenAvailable')}
             </p>
           </div>
 
@@ -310,12 +311,12 @@ export function SelectionScreen({
             style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
           >
             <h2 className="text-sm font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--color-text-muted)' }}>
-              {t ? 'Opciones Disponibles' : 'Available Options'}
+              {t('waitlist.availableOptions')}
             </h2>
             <div className="flex flex-col gap-2">
               {backupOptions.map((tier) => {
                 const isSelected = backupTier === tier;
-                const label = RENTAL_LABELS[tier as RentalType]?.[t ? 'es' : 'en'] ?? tier;
+                const label = rentalLabel(tier);
                 const count = availability[tier] ?? 0;
                 return (
                   <button
@@ -334,7 +335,7 @@ export function SelectionScreen({
                       {label}
                     </span>
                     <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                      {count} {t ? 'disponible' : 'available'}
+                      {count} {t('waitlist.available')}
                     </span>
                   </button>
                 );
@@ -350,7 +351,7 @@ export function SelectionScreen({
               onClick={() => void sendFlowCommand({ step: 'WAITLIST_PREFERENCES' })}
               disabled={submitting}
             >
-              {t ? 'Atrás' : 'Back'}
+              {t('waitlist.backToPreferences')}
             </button>
             <button
               type="button"
@@ -363,7 +364,7 @@ export function SelectionScreen({
               disabled={!backupTier || submitting}
               onClick={() => void handleBackupConfirm()}
             >
-              {t ? 'Continuar' : 'Continue'}
+              {t('common.continue')}
             </button>
           </div>
         </div>
@@ -388,10 +389,10 @@ export function SelectionScreen({
             className="text-3xl font-extrabold tracking-tight"
             style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
           >
-            {t ? 'Bienvenido' : 'Welcome'}
+            {t('welcome')}
           </h1>
           <p className="mt-1 text-lg" style={{ color: 'var(--color-text-muted)' }}>
-            {customerName ?? 'Customer'}
+            {customerName ?? ''}
           </p>
         </div>
 
@@ -400,7 +401,11 @@ export function SelectionScreen({
           type="button"
           className="rounded-lg border px-4 py-2 text-sm font-semibold transition"
           style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
-          onClick={() => setLang((l) => (l === 'EN' ? 'ES' : 'EN'))}
+          onClick={() => {
+            // Toggle is informational — the I18nProvider controls actual language
+            // This sends a flow command to change the session language
+            void sendFlowCommand({ step: flowStep ?? 'LANGUAGE', language: lang === 'EN' ? 'ES' : 'EN' });
+          }}
         >
           {lang === 'EN' ? '¿Español?' : 'English?'}
         </button>
@@ -414,7 +419,7 @@ export function SelectionScreen({
           }}
         >
           <h2 className="text-base font-bold" style={{ color: 'var(--color-text-primary)' }}>
-            {t ? 'Selecciona tu opción' : 'Select Your Option'}
+            {t('selection.selectYourOption')}
           </h2>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
@@ -423,7 +428,7 @@ export function SelectionScreen({
               const count = availability[rental.type] ?? 0;
               const isLow = count > 0 && count <= 3;
               const isGone = count === 0 && availabilityLoaded;
-              const label = RENTAL_LABELS[rental.type]?.[t ? 'es' : 'en'] ?? rental.type;
+              const label = rentalLabel(rental.type);
 
               return (
                 <button
@@ -448,12 +453,12 @@ export function SelectionScreen({
                   </span>
                   {isLow && (
                     <span className="text-xs font-semibold" style={{ color: 'var(--color-status-warning)' }}>
-                      {t ? `Solo ${count}` : `Only ${count} left`}
+                      {t('selection.onlyLeft', { count })}
                     </span>
                   )}
                   {isGone && (
                     <span className="text-xs" style={{ color: 'var(--color-status-error)' }}>
-                      {t ? 'No disponible' : 'Unavailable'}
+                      {t('availability.unavailable')}
                     </span>
                   )}
                 </button>
@@ -471,7 +476,7 @@ export function SelectionScreen({
               style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
               onClick={onCancel}
             >
-              {t ? 'Cancelar' : 'Cancel'}
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -484,7 +489,7 @@ export function SelectionScreen({
               disabled={!selected || submitting}
               onClick={() => void handleRentalSelect()}
             >
-              {t ? 'Continuar' : 'Continue'}
+              {t('common.continue')}
             </button>
           </div>
 
@@ -501,9 +506,7 @@ export function SelectionScreen({
               onClick={() => void handleJoinWaitlist()}
               disabled={submitting}
             >
-              {t
-                ? '⏳ Unirme a la Lista de Espera para Mejora'
-                : '⏳ Join Upgrade Waitlist'}
+              ⏳ {t('waitlist.joinUpgradeWaitlist')}
             </button>
           )}
         </div>

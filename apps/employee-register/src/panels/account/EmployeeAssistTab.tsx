@@ -57,7 +57,7 @@ export function EmployeeAssistTab() {
       <FlowIndicator step={flowStep} />
 
       {/* Step-specific UI */}
-      {flowStep === 'RENTAL' && (
+      {(flowStep === 'LANGUAGE' || flowStep === 'RENTAL') && (
         <RentalStep sp={sp} sendFlowCommand={sendFlowCommand} token={token} />
       )}
       {flowStep === 'PAYMENT' && (
@@ -162,13 +162,8 @@ function RentalStep({
   const handleTap = async (rentalType: string) => {
     setLoading(true);
     try {
-      if (proposed === rentalType && !confirmed) {
-        // Second tap → confirm
-        await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
-      } else {
-        // First tap → propose
-        await sendFlowCommand({ type: 'PROPOSE_SELECTION', payload: { rentalType } });
-      }
+      // Use SET_STEP to match the kiosk flow — advances directly to PAYMENT
+      await sendFlowCommand({ type: 'SET_STEP', payload: { step: 'PAYMENT', rentalType } });
     } finally {
       setLoading(false);
     }
@@ -267,6 +262,39 @@ function RentalStep({
         <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(34,197,94,0.05)', borderColor: 'rgba(34,197,94,0.2)' }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
             ✓ {proposed} selected — waiting for next step
+          </span>
+        </div>
+      )}
+
+      {/* 6-Month Membership option — employee-only */}
+      {!hasMembership && sp.membershipChoice !== 'SIX_MONTH' && (
+        <button
+          disabled={loading}
+          onClick={async () => {
+            setLoading(true);
+            try {
+              await sendFlowCommand({
+                type: 'SET_STEP',
+                payload: { step: 'RENTAL', membershipChoice: 'SIX_MONTH' },
+              });
+            } finally {
+              setLoading(false);
+            }
+          }}
+          className="w-full rounded-lg border-2 border-dashed px-4 py-3 text-sm font-bold transition"
+          style={{
+            borderColor: 'var(--color-accent-secondary, #a78bfa)',
+            color: 'var(--color-accent-secondary, #a78bfa)',
+            backgroundColor: 'rgba(167, 139, 250, 0.05)',
+          }}
+        >
+          🏷️ Add 6-Month Membership
+        </button>
+      )}
+      {sp.membershipChoice === 'SIX_MONTH' && !hasMembership && (
+        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(167,139,250,0.05)', borderColor: 'rgba(167,139,250,0.2)' }}>
+          <span className="text-sm font-semibold" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
+            🏷️ 6-Month Membership added
           </span>
         </div>
       )}
