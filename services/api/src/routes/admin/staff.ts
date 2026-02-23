@@ -265,52 +265,44 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
   );
 
   /**
-   * POST /v1/admin/staff/:id/pin-reset - Reset a staff member's PIN
+   * POST /v1/admin/staff/:id/pin-reset - Reset a staff member's PIN to 000000
    *
-   * Requires re-authentication for security.
+   * Sets pin_hash to hash of '000000' and force_pin_change = true.
+   * Requires re-authentication for security (skipped in DEMO_MODE).
    */
   fastify.post<{
     Params: { id: string };
-    Body: { newPin: string };
   }>(
     '/v1/admin/staff/:id/pin-reset',
     {
-      preHandler: [requireReauthForAdmin],
+      preHandler:
+        process.env.DEMO_MODE === 'true'
+          ? [requireAuth, requireAdmin]
+          : [requireReauthForAdmin],
     },
     async (request, reply) => {
       if (!request.staff) {
         return reply.status(401).send({ error: 'Unauthorized' });
       }
 
-      const PinResetSchema = z.object({
-        newPin: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
-      });
-
-      let body;
-      try {
-        body = PinResetSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
-
       try {
         const { hashPin } = await import('../../auth/utils');
-        const pinHash = await hashPin(body.newPin);
+        const pinHash = await hashPin('000000');
 
-        const result = await query<{ id: string }>(
+        // Look up staff name for the response
+        const staffResult = await query<{ id: string; name: string }>(
           `UPDATE staff
-         SET pin_hash = $1, force_pin_change = true, updated_at = NOW()
-         WHERE id = $2
-         RETURNING id`,
+           SET pin_hash = $1, force_pin_change = true, updated_at = NOW()
+           WHERE id = $2
+           RETURNING id, name`,
           [pinHash, request.params.id]
         );
 
-        if (result.rows.length === 0) {
+        if (staffResult.rows.length === 0) {
           return reply.status(404).send({ error: 'Staff not found' });
         }
+
+        const staff = staffResult.rows[0]!;
 
         // Log audit action
         await insertAuditLogQuery(query, {
@@ -320,7 +312,7 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
           entityId: request.params.id,
         });
 
-        return reply.send({ success: true });
+        return reply.send({ success: true, name: staff.name });
       } catch (error) {
         request.log.error(error, 'Failed to reset PIN');
         return reply.status(500).send({ error: 'Internal server error' });

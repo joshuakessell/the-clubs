@@ -238,10 +238,10 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
         }
 
         if (!row) return reply.status(404).send({ error: 'Active occupancy not found' });
-    const scheduledCheckoutAt =
-      row.scheduled_checkout_at instanceof Date
-        ? row.scheduled_checkout_at
-        : new Date(row.scheduled_checkout_at);
+        const scheduledCheckoutAt =
+          row.scheduled_checkout_at instanceof Date
+            ? row.scheduled_checkout_at
+            : new Date(row.scheduled_checkout_at);
         const lateMinutes = Math.max(
           0,
           Math.floor((Date.now() - scheduledCheckoutAt.getTime()) / (1000 * 60))
@@ -273,6 +273,8 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
 
   const ManualCompleteSchema = z.object({
     occupancyId: z.string().uuid(),
+    payAtCheckout: z.boolean().optional().default(false),
+    paymentMethod: z.enum(['CREDIT', 'CASH']).optional(),
   });
 
   /**
@@ -438,27 +440,58 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
 
           // Update past due balance + itemized charge if fee > 0
           if (feeAmount > 0) {
-            await client.query(
-              `UPDATE customers
-               SET past_due_balance = past_due_balance + $1,
-                   updated_at = NOW()
-               WHERE id = $2`,
-              [feeAmount, row.customer_id]
-            );
-            // Record as an itemized charge tied to the visit/block (idempotent per occupancy).
-            const existingLate = await client.query<{ id: string }>(
-              `SELECT id FROM charges WHERE checkin_block_id = $1 AND type = 'LATE_FEE' LIMIT 1`,
-              [row.occupancy_id]
-            );
-            if (existingLate.rows.length === 0) {
-              await client.query(
-                `INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id)
-                 VALUES ($1, $2, 'LATE_FEE', $3, NULL)`,
-                [row.visit_id, row.occupancy_id, feeAmount]
+            if (body.payAtCheckout) {
+              // Fee settled at checkout — record payment_intent, do NOT add to past_due_balance
+              const paymentIntent = await client.query<{ id: string }>(
+                `INSERT INTO payment_intents
+                 (amount, status, quote_json, payment_method, paid_at, paid_by_staff_id)
+                 VALUES ($1, 'PAID', $2, $3, NOW(), $4)
+                 RETURNING id`,
+                [
+                  feeAmount,
+                  JSON.stringify({ type: 'LATE_FEE', total: feeAmount }),
+                  body.paymentMethod ?? null,
+                  staffId,
+                ]
               );
-            }
+              const paymentIntentId = paymentIntent.rows[0]!.id;
 
+              // Record as an itemized charge tied to the visit/block (idempotent per occupancy).
+              const existingLate = await client.query<{ id: string }>(
+                `SELECT id FROM charges WHERE checkin_block_id = $1 AND type = 'LATE_FEE' LIMIT 1`,
+                [row.occupancy_id]
+              );
+              if (existingLate.rows.length === 0) {
+                await client.query(
+                  `INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id)
+                   VALUES ($1, $2, 'LATE_FEE', $3, $4)`,
+                  [row.visit_id, row.occupancy_id, feeAmount, paymentIntentId]
+                );
+              }
+            } else {
+              // Fee NOT settled — add to past_due_balance (must pay before next check-in)
+              await client.query(
+                `UPDATE customers
+                 SET past_due_balance = past_due_balance + $1,
+                     updated_at = NOW()
+                 WHERE id = $2`,
+                [feeAmount, row.customer_id]
+              );
+              // Record as an itemized charge tied to the visit/block (idempotent per occupancy).
+              const existingLate = await client.query<{ id: string }>(
+                `SELECT id FROM charges WHERE checkin_block_id = $1 AND type = 'LATE_FEE' LIMIT 1`,
+                [row.occupancy_id]
+              );
+              if (existingLate.rows.length === 0) {
+                await client.query(
+                  `INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id)
+                   VALUES ($1, $2, 'LATE_FEE', $3, NULL)`,
+                  [row.visit_id, row.occupancy_id, feeAmount]
+                );
+              }
+            }
           }
+
 
           // Log late checkout event if late >= 30 minutes
           if (lateMinutes >= 30) {

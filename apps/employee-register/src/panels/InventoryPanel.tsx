@@ -96,173 +96,199 @@ export function InventoryPanel() {
     void fetchData();
   }, [fetchData]);
 
+  // Sort order: occupied first, empty (CLEAN) last
+  const STATUS_SORT: Record<string, number> = {
+    OCCUPIED: 0,
+    DIRTY: 1,
+    CLEANING: 2,
+    OUT_OF_SERVICE: 3,
+    CLEAN: 4,
+  };
+  const sortItems = (items: InventoryItem[]) =>
+    [...items].sort(
+      (a, b) => (STATUS_SORT[a.status] ?? 5) - (STATUS_SORT[b.status] ?? 5),
+    );
+
   // Group rooms by tier, lockers separately
   const grouped: Record<string, InventoryItem[]> = {
-    LOCKER: lockers,
-    STANDARD: rooms.filter((r) => r.tier === 'STANDARD'),
-    DOUBLE: rooms.filter((r) => r.tier === 'DOUBLE'),
-    SPECIAL: rooms.filter((r) => r.tier === 'SPECIAL'),
+    LOCKER: sortItems(lockers),
+    STANDARD: sortItems(rooms.filter((r) => r.tier === 'STANDARD')),
+    DOUBLE: sortItems(rooms.filter((r) => r.tier === 'DOUBLE')),
+    SPECIAL: sortItems(rooms.filter((r) => r.tier === 'SPECIAL')),
   };
 
   return (
-    <PanelShell align="top" scroll="hidden">
-      <div className="flex items-center justify-between">
-        <PanelHeader title="Rentals" subtitle="Live inventory by type" />
-        <button
-          onClick={() => void fetchData()}
-          disabled={loading}
-          className="rounded-md px-3 py-1 text-xs font-semibold transition"
-          style={{
-            backgroundColor: 'var(--color-surface-overlay)',
-            color: 'var(--color-text-secondary)',
-            border: '1px solid var(--color-border-default)',
-          }}
+    <PanelShell align= "top" scroll = "hidden" >
+      <div className="flex items-center justify-between" >
+        <PanelHeader title="Rentals" subtitle = "Live inventory by type" />
+          <button
+          onClick={ () => void fetchData() }
+  disabled = { loading }
+  className = "rounded-md px-3 py-1 text-xs font-semibold transition"
+  style = {{
+    backgroundColor: 'var(--color-surface-overlay)',
+      color: 'var(--color-text-secondary)',
+        border: '1px solid var(--color-border-default)',
+          }
+}
         >
-          {loading ? 'Loading…' : '↻ Refresh'}
-        </button>
-      </div>
+  { loading? 'Loading…': '↻ Refresh' }
+  </button>
+  </div>
 
-      {error && (
-        <p className="mt-2 text-xs font-medium" style={{ color: 'var(--color-status-error)' }}>
-          {error}
-        </p>
+{
+  error && (
+    <p className="mt-2 text-xs font-medium" style = {{ color: 'var(--color-status-error)' }
+}>
+  { error }
+  </p>
       )}
 
-      {/* 4-column grid */}
-      <div className="mt-3 grid grid-cols-4 gap-3" style={{ height: 'calc(100% - 60px)', overflow: 'hidden' }}>
-        {COLUMNS.map((col) => {
-          const items = grouped[col.key] ?? [];
-          const occupied = items.filter((i) => i.status === 'OCCUPIED').length;
-          const available = items.filter((i) => i.status === 'CLEAN').length;
+{/* 4-column grid */ }
+<div className="mt-3 grid grid-cols-4 gap-3" style = {{ height: 'calc(100% - 60px)', overflow: 'hidden' }}>
+{
+  COLUMNS.map((col) => {
+    const items = grouped[col.key] ?? [];
+    const occupied = items.filter((i) => i.status === 'OCCUPIED').length;
+    const available = items.filter((i) => i.status === 'CLEAN').length;
 
-          return (
-            <div
-              key={col.key}
-              className="flex flex-col rounded-lg border"
-              style={{
-                backgroundColor: 'var(--color-surface-overlay)',
-                borderColor: 'var(--color-border-subtle)',
-                overflow: 'hidden',
-              }}
+    return (
+      <div
+              key= { col.key }
+    className = "flex flex-col rounded-lg border"
+    style = {{
+      backgroundColor: 'var(--color-surface-overlay)',
+        borderColor: 'var(--color-border-subtle)',
+          overflow: 'hidden',
+              }
+  }
             >
-              {/* Column header */}
-              <div
-                className="flex items-center justify-between px-3 py-2"
-                style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm">{col.emoji}</span>
-                  <span
-                    className="text-xs font-bold"
-                    style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+    {/* Column header */ }
+    < div
+                className = "flex items-center justify-between px-3 py-2"
+                style = {{ borderBottom: '1px solid var(--color-border-subtle)' }}
+  >
+  <div className="flex items-center gap-1.5" >
+    <span className="text-sm" > { col.emoji } </span>
+      < span
+className = "text-sm font-bold"
+style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
                   >
-                    {col.label}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px]">
-                  <span style={{ color: 'var(--color-status-success)' }}>{available}</span>
-                  <span style={{ color: 'var(--color-text-muted)' }}>/</span>
-                  <span style={{ color: 'var(--color-text-muted)' }}>{items.length}</span>
-                </div>
-              </div>
+  { col.label }
+  </span>
+  </div>
+  < div className = "flex items-center gap-2 text-xs" >
+    <span style={ { color: 'var(--color-status-success)' } }> { available } </span>
+      < span style = {{ color: 'var(--color-text-muted)' }}> /</span >
+        <span style={ { color: 'var(--color-text-muted)' } }> { items.length } </span>
+          </div>
+          </div>
 
-              {/* Scrollable item list */}
-              <div className="flex-1 overflow-y-auto">
-                {items.length === 0 && (
-                  <p className="px-3 py-4 text-center text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-                    None
-                  </p>
+{/* Scrollable item list */ }
+<div className="flex-1 overflow-y-auto" >
+{
+  items.length === 0 && (
+    <p className="px-3 py-4 text-center text-xs" style = {{ color: 'var(--color-text-muted)' }}>
+      None
+      </p>
                 )}
-                {items.map((item) => {
-                  const overdue = isOverdue(item.checkoutAt);
-                  const statusDot = STATUS_DOT[item.status] ?? 'var(--color-text-muted)';
+{
+  items.map((item) => {
+    const overdue = isOverdue(item.checkoutAt);
+    const statusDot = STATUS_DOT[item.status] ?? 'var(--color-text-muted)';
 
-                  return (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-2 px-3 py-1.5"
-                      style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+    return (
+      <div
+                      key= { item.id }
+    className = "flex items-center gap-1.5 px-2 py-1"
+    style = {{ borderBottom: '1px solid var(--color-border-subtle)' }
+  }
                     >
-                      {/* Status dot */}
-                      <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: statusDot }} />
+    {/* Status dot */ }
+    < span className = "h-2 w-2 shrink-0 rounded-full" style = {{ backgroundColor: statusDot }} />
 
-                      {/* Number */}
-                      <span
-                        className="w-8 shrink-0 text-xs font-bold tabular-nums"
-                        style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+{/* Number */ }
+<span
+                        className="w-7 shrink-0 text-sm font-bold tabular-nums"
+style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
                       >
-                        {item.number}
-                      </span>
+  { item.number }
+  </span>
 
-                      {/* Customer name + checkout */}
-                      <div className="min-w-0 flex-1">
-                        {item.assignedMemberName ? (
-                          <>
-                            <button
-                              type="button"
+{/* Customer name + checkout */ }
+<div className="min-w-0 flex-1" style = {{ containerType: 'inline-size' }}>
+{
+  item.assignedMemberName ? (
+    <>
+    <button
+                              type= "button"
                               onClick={() => {
-                                if (item.assignedTo) {
-                                  openCustomerAccount(item.assignedTo, item.assignedMemberName ?? '', {
-                                    authToken: token,
-                                    activeCheckin: item.status === 'OCCUPIED' && item.occupancyId ? {
-                                      visitId: item.occupancyId,
-                                      resourceType: col.key === 'LOCKER' ? 'locker' : 'room',
-                                      resourceNumber: item.number,
-                                      checkinAt: item.checkinAt ?? null,
-                                      checkoutAt: item.checkoutAt ?? null,
-                                      overdue: isOverdue(item.checkoutAt),
-                                    } : undefined,
-                                  });
-                                }
+  if (item.assignedTo) {
+    openCustomerAccount(item.assignedTo, item.assignedMemberName ?? '', {
+      authToken: token,
+      returnTab: 'inventory',
+      activeCheckin: item.status === 'OCCUPIED' && item.occupancyId ? {
+        visitId: item.occupancyId,
+        resourceType: col.key === 'LOCKER' ? 'locker' : 'room',
+        resourceNumber: item.number,
+        checkinAt: item.checkinAt ?? null,
+        checkoutAt: item.checkoutAt ?? null,
+        overdue: isOverdue(item.checkoutAt),
+      } : undefined,
+    });
+  }
+}}
+className = "text-left font-medium leading-tight w-full"
+style = {{
+  color: 'var(--color-accent-primary)',
+    cursor: item.assignedTo ? 'pointer' : 'default',
+      background: 'none',
+        border: 'none',
+          padding: 0,
+            fontSize: 'clamp(10px, 7cqw, 14px)',
+              whiteSpace: 'nowrap',
+                overflow: 'hidden',
                               }}
-                              className="truncate text-[11px] font-medium leading-tight text-left"
-                              style={{
-                                color: 'var(--color-accent-primary)',
-                                cursor: item.assignedTo ? 'pointer' : 'default',
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                              }}
-                              title={`View ${item.assignedMemberName}'s profile`}
+title = {`View ${item.assignedMemberName}'s profile`}
                             >
-                              {item.assignedMemberName}
-                            </button>
-                            <p
-                              className="text-[10px] leading-tight tabular-nums"
-                              style={{
-                                color: overdue ? 'var(--color-status-error)' : 'var(--color-text-muted)',
-                                fontWeight: overdue ? 600 : 400,
+  { item.assignedMemberName }
+  </button>
+  < p
+className = "text-xs leading-tight tabular-nums"
+style = {{
+  color: overdue ? 'var(--color-status-error)' : 'var(--color-text-muted)',
+    fontWeight: overdue ? 600 : 400,
                               }}
                             >
-                              {overdue ? 'OVERDUE' : `Out ${formatTime(item.checkoutAt)}`}
-                            </p>
-                          </>
+  { overdue? 'OVERDUE': `Out ${formatTime(item.checkoutAt)}` }
+  </p>
+  </>
                         ) : (
-                          <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
-                            {STATUS_LABEL[item.status] ?? item.status}
-                          </p>
+  <p className= "text-xs" style = {{ color: 'var(--color-text-muted)' }}>
+    { STATUS_LABEL[item.status] ?? item.status }
+    </p>
                         )}
-                      </div>
-                    </div>
+</div>
+  </div>
                   );
                 })}
-              </div>
+</div>
 
-              {/* Column footer — occupied count */}
-              <div
-                className="flex items-center justify-center px-3 py-1.5 text-[10px] font-semibold"
-                style={{
-                  borderTop: '1px solid var(--color-border-subtle)',
-                  color: 'var(--color-text-muted)',
-                  backgroundColor: 'var(--color-surface-input)',
+{/* Column footer — occupied count */ }
+<div
+                className="flex items-center justify-center px-3 py-2 text-xs font-semibold"
+style = {{
+  borderTop: '1px solid var(--color-border-subtle)',
+    color: 'var(--color-text-muted)',
+      backgroundColor: 'var(--color-surface-input)',
                 }}
               >
-                {occupied} occupied
-              </div>
-            </div>
+  { occupied } occupied
+    </div>
+    </div>
           );
         })}
-      </div>
-    </PanelShell>
+</div>
+  </PanelShell>
   );
 }

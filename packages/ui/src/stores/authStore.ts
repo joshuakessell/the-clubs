@@ -16,6 +16,8 @@ interface AuthState {
   setSession: (session: StaffSession | null) => void;
   clearSession: () => void;
   setValidating: (v: boolean) => void;
+  /** Validate stored session against the API. Clears session if invalid/expired. */
+  validateSession: () => Promise<void>;
 }
 
 const STORAGE_KEY = 'the-clubs:staff-session';
@@ -38,9 +40,11 @@ function loadOrCreateDeviceId(): string {
   return id;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '/api';
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: loadSession(),
-  isValidating: false,  // No backend validation yet — will add in Phase 6
+  isValidating: false,
   deviceId: loadOrCreateDeviceId(),
 
   setSession: (session) => {
@@ -58,4 +62,28 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   setValidating: (isValidating) => set({ isValidating }),
+
+  validateSession: async () => {
+    const { session } = get();
+    if (!session?.sessionToken) return;
+
+    set({ isValidating: true });
+    try {
+      const res = await fetch(`${API_BASE}/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${session.sessionToken}` },
+      });
+      if (res.status === 401) {
+        // Session is no longer valid — clear it to redirect to login
+        localStorage.removeItem(STORAGE_KEY);
+        set({ session: null, isValidating: false });
+        return;
+      }
+      // Session is valid
+      set({ isValidating: false });
+    } catch {
+      // Network error — don't clear session (server might be temporarily down)
+      set({ isValidating: false });
+    }
+  },
 }));
+

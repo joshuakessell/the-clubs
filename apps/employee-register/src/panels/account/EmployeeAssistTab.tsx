@@ -21,10 +21,10 @@ interface RoomsByTier {
 }
 
 const RENTAL_OPTIONS = [
-  { type: 'LOCKER', label: 'Locker', emoji: '🔐' },
-  { type: 'STANDARD', label: 'Standard Room', emoji: '🛏️' },
-  { type: 'DOUBLE', label: 'Double Room', emoji: '🛋️' },
-  { type: 'SPECIAL', label: 'Special Room', emoji: '⭐' },
+  { type: 'LOCKER', label: 'Locker' },
+  { type: 'STANDARD', label: 'Standard Room' },
+  { type: 'DOUBLE', label: 'Double Room' },
+  { type: 'SPECIAL', label: 'Special Room' },
 ] as const;
 
 /**
@@ -60,6 +60,12 @@ export function EmployeeAssistTab() {
       {(flowStep === 'LANGUAGE' || flowStep === 'RENTAL') && (
         <RentalStep sp={sp} sendFlowCommand={sendFlowCommand} token={token} />
       )}
+      {flowStep === 'WAITLIST_PREFERENCES' && (
+        <WaitlistPreferencesStep sp={sp} sendFlowCommand={sendFlowCommand} token={token} />
+      )}
+      {flowStep === 'WAITLIST_BACKUP' && (
+        <WaitlistStep sp={sp} sendFlowCommand={sendFlowCommand} />
+      )}
       {flowStep === 'PAYMENT' && (
         <PaymentStep sp={sp} sendFlowCommand={sendFlowCommand} />
       )}
@@ -68,9 +74,6 @@ export function EmployeeAssistTab() {
       )}
       {flowStep === 'COMPLETE' && (
         <CompleteStep sp={sp} />
-      )}
-      {(flowStep === 'WAITLIST_PREFERENCES' || flowStep === 'WAITLIST_BACKUP') && (
-        <WaitlistStep sp={sp} sendFlowCommand={sendFlowCommand} />
       )}
     </div>
   );
@@ -159,11 +162,28 @@ function RentalStep({
     sp.customerMembershipValidUntil &&
     new Date(sp.customerMembershipValidUntil) >= new Date();
 
-  const handleTap = async (rentalType: string) => {
+  const handleTap = async (rentalType: string, isUnavailable: boolean) => {
     setLoading(true);
     try {
-      // Use SET_STEP to match the kiosk flow — advances directly to PAYMENT
-      await sendFlowCommand({ type: 'SET_STEP', payload: { step: 'PAYMENT', rentalType } });
+      if (isUnavailable) {
+        // Unavailable room — "Join Waitlist" flow
+        if (proposed === rentalType) {
+          // Second tap on same unavailable type — confirm selection (advances to WAITLIST_PREFERENCES)
+          await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
+        } else {
+          // First tap — propose this type (highlights on both screens)
+          await sendFlowCommand({ type: 'PROPOSE_SELECTION', payload: { rentalType } });
+        }
+      } else {
+        // Available room — standard propose/confirm flow
+        if (proposed === rentalType) {
+          // Second tap on same type — confirm (advances to PAYMENT via WAITLIST_PREFERENCES)
+          await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
+        } else {
+          // First tap — propose this type
+          await sendFlowCommand({ type: 'PROPOSE_SELECTION', payload: { rentalType } });
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -175,23 +195,58 @@ function RentalStep({
         Select Rental Type
       </h3>
 
-      {/* Membership indicator */}
-      <div className="flex items-center gap-2">
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold"
+      {/* Membership indicator — only show for members and pending */}
+      {(hasMembership || sp.membershipChoice === 'SIX_MONTH') && (
+        <div className="flex items-center gap-2">
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold"
+            style={{
+              backgroundColor: hasMembership ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+              color: hasMembership ? 'var(--color-status-success)' : 'var(--color-status-warning)',
+            }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: hasMembership ? 'var(--color-status-success)' : 'var(--color-status-warning)' }} />
+            {hasMembership ? 'Member' : 'Membership Pending'}
+          </span>
+        </div>
+      )}
+
+      {/* 6-Month Membership option — employee-only, positioned ABOVE rental cards */}
+      {!hasMembership && sp.membershipChoice !== 'SIX_MONTH' && (
+        <button
+          disabled={loading}
+          onClick={async () => {
+            setLoading(true);
+            try {
+              await sendFlowCommand({
+                type: 'SET_STEP',
+                payload: { step: 'RENTAL', membershipChoice: 'SIX_MONTH' },
+              });
+            } finally {
+              setLoading(false);
+            }
+          }}
+          className="w-full rounded-lg border-2 border-dashed px-4 py-3 text-sm font-bold transition"
           style={{
-            backgroundColor: hasMembership ? 'rgba(34,197,94,0.1)' : 'rgba(156,163,175,0.1)',
-            color: hasMembership ? 'var(--color-status-success)' : 'var(--color-text-muted)',
+            borderColor: 'var(--color-accent-secondary, #a78bfa)',
+            color: 'var(--color-accent-secondary, #a78bfa)',
+            backgroundColor: 'rgba(167, 139, 250, 0.05)',
           }}
         >
-          <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: hasMembership ? 'var(--color-status-success)' : 'var(--color-text-muted)' }} />
-          {hasMembership ? 'Member' : sp.membershipChoice === 'SIX_MONTH' ? 'Membership Pending' : 'Non-Member'}
-        </span>
-      </div>
+          🏷️ Add 6-Month Membership — $43.00
+        </button>
+      )}
+      {sp.membershipChoice === 'SIX_MONTH' && !hasMembership && (
+        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(167,139,250,0.05)', borderColor: 'rgba(167,139,250,0.2)' }}>
+          <span className="text-sm font-semibold" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
+            🏷️ 6-Month Membership added — $43.00
+          </span>
+        </div>
+      )}
 
       {/* Rental cards */}
       <div className="grid grid-cols-2 gap-3">
-        {RENTAL_OPTIONS.map(({ type, label, emoji }) => {
+        {RENTAL_OPTIONS.map(({ type, label }) => {
           const isProposed = proposed === type;
           const count =
             type === 'LOCKER'
@@ -204,8 +259,8 @@ function RentalStep({
           return (
             <button
               key={type}
-              disabled={loading || isUnavailable || !allowed || confirmed === true}
-              onClick={() => void handleTap(type)}
+              disabled={loading || !allowed || confirmed === true}
+              onClick={() => void handleTap(type, isUnavailable)}
               className="flex flex-col items-center gap-1.5 rounded-xl border p-4 transition"
               style={{
                 backgroundColor: isProposed
@@ -215,20 +270,26 @@ function RentalStep({
                   ? 'var(--color-accent-primary)'
                   : 'var(--color-border-default)',
                 borderWidth: isProposed ? 2 : 1,
-                opacity: isUnavailable || !allowed ? 0.4 : 1,
-                cursor: isUnavailable || !allowed || confirmed === true ? 'not-allowed' : 'pointer',
+                opacity: !allowed ? 0.4 : 1,
+                cursor: !allowed || confirmed === true ? 'not-allowed' : 'pointer',
               }}
             >
-              <span className="text-2xl">{emoji}</span>
+
               <span className="text-sm font-semibold" style={{ color: isProposed ? 'var(--color-accent-primary)' : 'var(--color-text-primary)' }}>
                 {label}
               </span>
-              <span className="text-xs tabular-nums" style={{ color: available <= 3 && available > 0 ? 'var(--color-status-warning)' : 'var(--color-text-muted)' }}>
-                {isUnavailable ? 'Unavailable' : `${count} available`}
+              <span className="text-xs tabular-nums" style={{
+                color: isUnavailable
+                  ? 'var(--color-accent-secondary, #a78bfa)'
+                  : available <= 3 && available > 0
+                    ? 'var(--color-status-warning)'
+                    : 'var(--color-text-muted)',
+              }}>
+                {isUnavailable ? '📋 Join Waitlist' : `${count} available`}
               </span>
               {isProposed && !confirmed && (
                 <span className="mt-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-primary)' }}>
-                  Tap again to confirm
+                  {isUnavailable ? 'Tap again to join waitlist' : 'Tap again to confirm'}
                 </span>
               )}
             </button>
@@ -237,7 +298,7 @@ function RentalStep({
       </div>
 
       {/* Room picker — shown when type is proposed and it's a room (not locker) */}
-      {proposed && proposed !== 'LOCKER' && !confirmed && (
+      {proposed && proposed !== 'LOCKER' && !confirmed && !isTypeUnavailable(proposed, inventory) && (
         <div className="rounded-lg border p-3" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
           <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
             Assign Specific Room (Optional)
@@ -265,39 +326,237 @@ function RentalStep({
           </span>
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* 6-Month Membership option — employee-only */}
-      {!hasMembership && sp.membershipChoice !== 'SIX_MONTH' && (
-        <button
-          disabled={loading}
-          onClick={async () => {
-            setLoading(true);
-            try {
-              await sendFlowCommand({
-                type: 'SET_STEP',
-                payload: { step: 'RENTAL', membershipChoice: 'SIX_MONTH' },
-              });
-            } finally {
-              setLoading(false);
+/** Helper to check if a rental type is unavailable */
+function isTypeUnavailable(type: string, inventory: AvailableInventory | null): boolean {
+  if (!inventory) return false;
+  if (type === 'LOCKER') return inventory.lockers === 0;
+  return (inventory.rooms?.[type] ?? 0) === 0;
+}
+
+/* ────── WAITLIST PREFERENCES step ────── */
+function WaitlistPreferencesStep({
+  sp,
+  sendFlowCommand,
+  token,
+}: {
+  sp: SessionUpdatedPayload;
+  sendFlowCommand: FlowCommandFn;
+  token?: string | null;
+}) {
+  const [inventory, setInventory] = useState<AvailableInventory | null>(null);
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(sp.waitlistDesiredTypes ?? []);
+  const [loading, setLoading] = useState(false);
+  const [estimatedWaits, setEstimatedWaits] = useState<Record<string, number>>({});
+
+  // Sync selectedTypes from session payload (e.g. when customer toggles on kiosk)
+  useEffect(() => {
+    if (sp.waitlistDesiredTypes) {
+      setSelectedTypes(sp.waitlistDesiredTypes);
+    }
+  }, [sp.waitlistDesiredTypes]);
+
+  // Fetch current inventory to know which types are unavailable
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(getApiUrl('/api/v1/inventory/available'), { headers });
+        if (res.ok) setInventory(await res.json());
+      } catch { /* ignore */ }
+    })();
+  }, [token]);
+
+  // Fetch estimated wait times
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(getApiUrl('/api/v1/inventory/detailed'), { headers });
+        if (res.ok) {
+          const data = await res.json();
+          const waits: Record<string, number> = {};
+          // Calculate estimated wait from earliest checkout times
+          for (const roomType of ['STANDARD', 'DOUBLE', 'SPECIAL']) {
+            const rooms = (data.rooms ?? []).filter(
+              (r: any) => r.type === roomType && r.status === 'OCCUPIED' && r.checkoutAt
+            );
+            if (rooms.length > 0) {
+              const soonest = rooms
+                .map((r: any) => new Date(r.checkoutAt).getTime())
+                .sort((a: number, b: number) => a - b)[0];
+              const minutesUntil = Math.max(0, Math.round((soonest - Date.now()) / 60000));
+              waits[roomType] = minutesUntil;
             }
-          }}
-          className="w-full rounded-lg border-2 border-dashed px-4 py-3 text-sm font-bold transition"
-          style={{
-            borderColor: 'var(--color-accent-secondary, #a78bfa)',
-            color: 'var(--color-accent-secondary, #a78bfa)',
-            backgroundColor: 'rgba(167, 139, 250, 0.05)',
-          }}
-        >
-          🏷️ Add 6-Month Membership
-        </button>
-      )}
-      {sp.membershipChoice === 'SIX_MONTH' && !hasMembership && (
-        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(167,139,250,0.05)', borderColor: 'rgba(167,139,250,0.2)' }}>
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
-            🏷️ 6-Month Membership added
+          }
+          setEstimatedWaits(waits);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [token]);
+
+  const ROOM_TYPES = [
+    { type: 'STANDARD', label: 'Standard Room' },
+    { type: 'DOUBLE', label: 'Double Room' },
+    { type: 'SPECIAL', label: 'Special Room' },
+  ] as const;
+
+  const unavailableTypes = ROOM_TYPES.filter(
+    ({ type }) => inventory && (inventory.rooms?.[type] ?? 0) === 0
+  );
+
+  const toggleType = (type: string) => {
+    const next = selectedTypes.includes(type)
+      ? selectedTypes.filter((t) => t !== type)
+      : [...selectedTypes, type];
+    setSelectedTypes(next);
+    // Sync to server for bidirectional sync with customer kiosk
+    void sendFlowCommand({
+      type: 'WAITLIST_UPDATE',
+      payload: {
+        waitlistDesiredTypes: next,
+        waitlistDesiredType: next[0] ?? null,
+      },
+    });
+  };
+
+  const handleContinue = async () => {
+    if (selectedTypes.length === 0) return;
+    setLoading(true);
+    try {
+      // Send waitlist preferences, then advance to WAITLIST_BACKUP
+      await sendFlowCommand({
+        type: 'WAITLIST_UPDATE',
+        payload: {
+          waitlistDesiredTypes: selectedTypes,
+          waitlistDesiredType: selectedTypes[0],
+        },
+      });
+      await sendFlowCommand({
+        type: 'SET_STEP',
+        payload: { step: 'WAITLIST_BACKUP' },
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatWait = (minutes: number): string => {
+    if (minutes < 60) return `~${minutes} min`;
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins > 0 ? `~${hrs}h ${mins}m` : `~${hrs}h`;
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+        Upgrade Waitlist Preferences
+      </h3>
+
+      {/* Disclaimer */}
+      <div className="rounded-lg border p-4" style={{ backgroundColor: 'rgba(245,158,11,0.05)', borderColor: 'rgba(245,158,11,0.2)' }}>
+        <p className="text-xs font-semibold" style={{ color: 'var(--color-status-warning)' }}>
+          To join the waitlist, you must rent a locker.
+        </p>
+        <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          Note: When an upgrade becomes available, you may accept it (upgrade fees apply, and are due at that time).
+        </p>
+      </div>
+
+      {/* Room type checkboxes */}
+      <div className="flex flex-col gap-2">
+        <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+          Select room types to wait for:
+        </label>
+        {ROOM_TYPES.map(({ type, label }) => {
+          const isSelected = selectedTypes.includes(type);
+          const wait = estimatedWaits[type];
+          const isAvailable = inventory ? (inventory.rooms?.[type] ?? 0) > 0 : false;
+
+          return (
+            <button
+              key={type}
+              onClick={() => toggleType(type)}
+              className="flex items-center justify-between gap-3 rounded-lg border p-3 text-left transition"
+              style={{
+                backgroundColor: isSelected ? 'rgba(0, 212, 255, 0.08)' : 'var(--color-surface-input)',
+                borderColor: isSelected ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
+                borderWidth: isSelected ? 2 : 1,
+              }}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-5 w-5 items-center justify-center rounded border"
+                  style={{
+                    backgroundColor: isSelected ? 'var(--color-accent-primary)' : 'transparent',
+                    borderColor: isSelected ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
+                  }}
+                >
+                  {isSelected && <span className="text-xs text-white">✓</span>}
+                </div>
+                <div>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                    {label}
+                  </span>
+                  {isAvailable && (
+                    <span className="ml-2 text-xs" style={{ color: 'var(--color-status-success)' }}>
+                      Available now
+                    </span>
+                  )}
+                </div>
+              </div>
+              {wait !== undefined && !isAvailable && (
+                <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                  Est. wait: {formatWait(wait)}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Estimated wait summary */}
+      {selectedTypes.length > 0 && (
+        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
+          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            Waiting for: {selectedTypes.map((t) => {
+              const label = ROOM_TYPES.find((rt) => rt.type === t)?.label ?? t;
+              const wait = estimatedWaits[t];
+              return wait !== undefined ? `${label} (${formatWait(wait)})` : label;
+            }).join(', ')}
           </span>
         </div>
       )}
+
+      {/* Continue button */}
+      <button
+        disabled={loading || selectedTypes.length === 0}
+        onClick={() => void handleContinue()}
+        className="w-full rounded-lg px-4 py-3 text-sm font-bold transition"
+        style={{
+          backgroundColor: selectedTypes.length > 0 ? 'var(--color-accent-primary)' : 'var(--color-surface-overlay)',
+          color: selectedTypes.length > 0 ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
+          opacity: selectedTypes.length === 0 ? 0.5 : 1,
+          boxShadow: selectedTypes.length > 0 ? '0 0 20px var(--color-accent-glow)' : 'none',
+        }}
+      >
+        {loading ? 'Processing…' : 'Continue'}
+      </button>
+
+      {/* Back button */}
+      <button
+        onClick={() => void sendFlowCommand({ type: 'BACK_STEP' })}
+        className="self-start text-xs font-semibold"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        ← Back to Rental
+      </button>
     </div>
   );
 }
@@ -474,7 +733,51 @@ function CompleteStep({
 }: {
   sp: SessionUpdatedPayload;
 }) {
-  const { cancelSession } = useRegisterStore();
+  const { cancelSession, laneId } = useRegisterStore();
+  const token = useAuthStore((s) => s.session?.sessionToken);
+  const [membershipCardNumber, setMembershipCardNumber] = useState('');
+  const [membershipSaving, setMembershipSaving] = useState(false);
+  const [membershipSaved, setMembershipSaved] = useState(false);
+  const [membershipError, setMembershipError] = useState('');
+
+  // Show membership entry if 6-month was purchased and not yet completed
+  const needsMembershipEntry =
+    (sp.membershipChoice === 'SIX_MONTH' || !!sp.membershipPurchaseIntent) &&
+    !membershipSaved &&
+    !sp.membershipNumber; // Already has a membership number = already completed
+
+  const handleSaveMembership = async () => {
+    if (!membershipCardNumber.trim()) return;
+    setMembershipSaving(true);
+    setMembershipError('');
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(
+        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/complete-membership-purchase`),
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            sessionId: sp.sessionId,
+            membershipNumber: membershipCardNumber.trim(),
+          }),
+        }
+      );
+
+      if (res.ok) {
+        setMembershipSaved(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setMembershipError(data.error ?? `Failed to save membership (${res.status})`);
+      }
+    } catch {
+      setMembershipError('Network error saving membership');
+    } finally {
+      setMembershipSaving(false);
+    }
+  };
 
   return (
     <div className="flex flex-col items-center gap-4 py-4">
@@ -497,6 +800,69 @@ function CompleteStep({
         )}
       </div>
 
+      {/* Membership card number entry — shown when 6-month membership was purchased */}
+      {needsMembershipEntry && (
+        <div className="w-full rounded-xl border-2 border-dashed p-4" style={{
+          borderColor: 'var(--color-accent-secondary, #a78bfa)',
+          backgroundColor: 'rgba(167, 139, 250, 0.05)',
+        }}>
+          <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
+            🏷️ Enter Membership Card Number
+          </label>
+          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            Scan or type the physical membership card number to complete the 6-month membership.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <input
+              type="text"
+              autoFocus
+              value={membershipCardNumber}
+              onChange={(e) => setMembershipCardNumber(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleSaveMembership();
+              }}
+              placeholder="Membership card #"
+              className="flex-1 rounded-lg border px-3 py-2 text-sm"
+              style={{
+                backgroundColor: 'var(--color-surface-input)',
+                borderColor: 'var(--color-border-default)',
+                color: 'var(--color-text-primary)',
+              }}
+            />
+            <button
+              disabled={membershipSaving || !membershipCardNumber.trim()}
+              onClick={() => void handleSaveMembership()}
+              className="rounded-lg px-4 py-2 text-sm font-bold transition"
+              style={{
+                backgroundColor: membershipCardNumber.trim()
+                  ? 'var(--color-accent-secondary, #a78bfa)'
+                  : 'var(--color-surface-overlay)',
+                color: membershipCardNumber.trim()
+                  ? '#fff'
+                  : 'var(--color-text-muted)',
+                opacity: membershipSaving ? 0.6 : 1,
+              }}
+            >
+              {membershipSaving ? '…' : 'Save'}
+            </button>
+          </div>
+          {membershipError && (
+            <p className="mt-2 text-xs font-semibold" style={{ color: 'var(--color-status-error, #ef4444)' }}>
+              {membershipError}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Membership saved confirmation */}
+      {membershipSaved && (
+        <div className="w-full rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(34,197,94,0.05)', borderColor: 'rgba(34,197,94,0.2)' }}>
+          <span className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
+            ✓ 6-Month Membership activated — Card #{membershipCardNumber}
+          </span>
+        </div>
+      )}
+
       <button
         onClick={() => void cancelSession()}
         className="rounded-lg px-6 py-3 text-sm font-bold transition"
@@ -512,7 +878,7 @@ function CompleteStep({
   );
 }
 
-/* ────── WAITLIST step ────── */
+/* ────── WAITLIST BACKUP step ────── */
 function WaitlistStep({
   sp,
   sendFlowCommand,
@@ -523,12 +889,12 @@ function WaitlistStep({
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-        {sp.flowStep === 'WAITLIST_PREFERENCES' ? 'Upgrade Preferences' : 'Backup Selection'}
+        Backup Selection
       </h3>
 
       <div className="rounded-lg border p-4 text-center" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
         <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-          Customer is selecting waitlist preferences on the kiosk.
+          Customer is selecting a backup rental on the kiosk while waiting for an upgrade.
         </p>
         {sp.waitlistDesiredType && (
           <p className="mt-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>

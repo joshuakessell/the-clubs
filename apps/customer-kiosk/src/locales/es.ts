@@ -257,6 +257,7 @@ export const es: Record<keyof typeof en, string> = {
   'waitlist.notifiedWhenAvailable': 'Se te notificará cuando tu mejora esté disponible.',
   'waitlist.availableOptions': 'Opciones disponibles',
   'waitlist.available': 'disponible',
+  'waitlist.disclaimer': 'Para unirse a la lista de espera, debe alquilar un casillero. Nota: Cuando haya una mejora disponible, puede aceptarla (se aplican tarifas de mejora y se pagan en ese momento).',
 
   // General
   membership: 'Membresía',

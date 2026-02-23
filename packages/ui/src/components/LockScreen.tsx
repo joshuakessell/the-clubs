@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type FormEvent, type KeyboardEvent, type ClipboardEvent } from 'react';
 import { useAuthStore, type StaffSession } from '../stores/authStore';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || '/api';
@@ -14,24 +14,40 @@ interface LockScreenProps {
   onLogin?: (session: StaffSession) => void;
 }
 
+/** Light themes use the black logo; dark themes use the white logo. */
+const LIGHT_THEMES = new Set(['theme-arctic-bloom', 'theme-solar-flare']);
+
 export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps) {
   const { deviceId, setSession } = useAuthStore();
-  const [staffLookup, setStaffLookup] = useState('');
-  const [pin, setPin] = useState('');
+  const [pinDigits, setPinDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Staff autocomplete state
+  // Staff picker state (select-only, no search)
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
-  const [filteredStaff, setFilteredStaff] = useState<StaffMember[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
   const [isLoadingStaff, setIsLoadingStaff] = useState(true);
 
+  // Theme detection for logo
+  const [isLightTheme, setIsLightTheme] = useState(() =>
+    LIGHT_THEMES.has(document.documentElement.getAttribute('data-theme') ?? '')
+  );
+
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const pinRef = useRef<HTMLInputElement>(null);
+  const pinRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const PIN_LENGTH = 6;
+
+  // Watch for theme changes
+  useEffect(() => {
+    const update = () =>
+      setIsLightTheme(LIGHT_THEMES.has(document.documentElement.getAttribute('data-theme') ?? ''));
+    const obs = new MutationObserver(update);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
 
   // Fetch staff list on mount
   useEffect(() => {
@@ -41,31 +57,15 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
         if (res.ok) {
           const data: { staff: StaffMember[] } = await res.json();
           setStaffList(data.staff);
-          setFilteredStaff(data.staff);
         }
       } catch {
-        // Silently fail — user can still type manually
+        // Silently fail
       } finally {
         setIsLoadingStaff(false);
       }
     };
     void fetchStaff();
   }, []);
-
-  // Filter staff when input changes
-  useEffect(() => {
-    if (!staffLookup.trim()) {
-      setFilteredStaff(staffList);
-      return;
-    }
-    const q = staffLookup.toLowerCase();
-    setFilteredStaff(
-      staffList.filter(
-        (s) => s.name.toLowerCase().includes(q) || s.id.toLowerCase().includes(q)
-      )
-    );
-    setHighlightedIndex(-1);
-  }, [staffLookup, staffList]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -78,30 +78,26 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const selectStaff = useCallback(
-    (staff: StaffMember) => {
-      setSelectedStaff(staff);
-      setStaffLookup(staff.name);
-      setIsDropdownOpen(false);
-      setError(null);
-      // Focus the PIN input
-      setTimeout(() => pinRef.current?.focus(), 50);
-    },
-    []
-  );
+  const selectStaff = useCallback((staff: StaffMember) => {
+    setSelectedStaff(staff);
+    setIsDropdownOpen(false);
+    setError(null);
+    // Focus the first PIN digit
+    setTimeout(() => pinRefs.current[0]?.focus(), 50);
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (!isDropdownOpen || filteredStaff.length === 0) return;
+    if (!isDropdownOpen || staffList.length === 0) return;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlightedIndex((prev) => (prev < filteredStaff.length - 1 ? prev + 1 : 0));
+      setHighlightedIndex((prev) => (prev < staffList.length - 1 ? prev + 1 : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : filteredStaff.length - 1));
+      setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : staffList.length - 1));
     } else if (e.key === 'Enter' && highlightedIndex >= 0) {
       e.preventDefault();
-      selectStaff(filteredStaff[highlightedIndex]!);
+      selectStaff(staffList[highlightedIndex]!);
     } else if (e.key === 'Escape') {
       setIsDropdownOpen(false);
     }
@@ -114,10 +110,70 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
     el?.scrollIntoView({ block: 'nearest' });
   }, [highlightedIndex]);
 
-  const handlePinSubmit = async (e?: FormEvent) => {
+  // --- PIN digit handlers ---
+  const clearPin = useCallback(() => {
+    setPinDigits(['', '', '', '', '', '']);
+    setTimeout(() => pinRefs.current[0]?.focus(), 30);
+  }, []);
+
+  const submitRef = useRef<(pin: string) => void>(() => { });
+
+  const handleDigitChange = useCallback((index: number, value: string) => {
+    const digit = value.replace(/\D/g, '').slice(-1);
+    setPinDigits((prev) => {
+      const next = [...prev];
+      next[index] = digit;
+      if (digit && index === PIN_LENGTH - 1 && next.every((d) => d !== '')) {
+        setTimeout(() => submitRef.current(next.join('')), 0);
+      }
+      return next;
+    });
+    if (digit && index < PIN_LENGTH - 1) {
+      pinRefs.current[index + 1]?.focus();
+    }
+  }, []);
+
+  const handleDigitKeyDown = useCallback((index: number, e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      setPinDigits((prev) => {
+        const next = [...prev];
+        if (next[index]) {
+          next[index] = '';
+        } else if (index > 0) {
+          next[index - 1] = '';
+          setTimeout(() => pinRefs.current[index - 1]?.focus(), 0);
+        }
+        return next;
+      });
+    } else if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault();
+      pinRefs.current[index - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && index < PIN_LENGTH - 1) {
+      e.preventDefault();
+      pinRefs.current[index + 1]?.focus();
+    }
+  }, []);
+
+  const handlePaste = useCallback((e: ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, PIN_LENGTH);
+    if (!pasted) return;
+    const next = ['', '', '', '', '', ''];
+    for (let i = 0; i < pasted.length; i++) next[i] = pasted[i]!;
+    setPinDigits(next);
+    const focusIdx = Math.min(pasted.length, PIN_LENGTH - 1);
+    setTimeout(() => pinRefs.current[focusIdx]?.focus(), 0);
+    if (pasted.length === PIN_LENGTH) {
+      setTimeout(() => submitRef.current(pasted), 0);
+    }
+  }, []);
+
+  const handlePinSubmit = async (e?: FormEvent, pinOverride?: string) => {
     e?.preventDefault();
-    const lookup = selectedStaff ? selectedStaff.name : staffLookup.trim();
-    if (!lookup || !pin.trim()) {
+    const lookup = selectedStaff?.name;
+    const pinValue = pinOverride ?? pinDigits.join('');
+    if (!lookup || pinValue.length < PIN_LENGTH) {
       setError('Please select a staff member and enter your PIN');
       return;
     }
@@ -129,11 +185,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       const response = await fetch(`${API_BASE}/v1/auth/login-pin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          staffLookup: lookup,
-          deviceId,
-          pin: pin.trim(),
-        }),
+        body: JSON.stringify({ staffLookup: lookup, deviceId, pin: pinValue }),
       });
 
       if (!response.ok) {
@@ -152,24 +204,20 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
 
       setSession(session);
       onLogin?.(session);
-      setPin('');
-      setStaffLookup('');
+      clearPin();
       setSelectedStaff(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid credentials');
-      setPin('');
+      clearPin();
     } finally {
       setIsLoading(false);
     }
   };
 
+  submitRef.current = (pin: string) => void handlePinSubmit(undefined, pin);
+
   const roleLabel = (role: string) => {
-    const labels: Record<string, string> = {
-      admin: 'Admin',
-      manager: 'Manager',
-      staff: 'Staff',
-      trainee: 'Trainee',
-    };
+    const labels: Record<string, string> = { admin: 'Admin', manager: 'Manager', staff: 'Staff', trainee: 'Trainee' };
     return labels[role.toLowerCase()] || role;
   };
 
@@ -180,289 +228,261 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
     return 'var(--color-text-muted)';
   };
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex" style={{ backgroundColor: 'var(--color-surface-base)' }}>
-      {/* Left: Login Form */}
-      <div className="flex flex-1 flex-col items-center justify-center px-8 py-12">
-        <div className="w-full max-w-sm">
-          {/* Logo + Title */}
-          <div className="mb-10">
-            <div className="mb-4 flex items-center gap-3">
-              <div
-                className="flex h-10 w-10 items-center justify-center"
-              >
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                  <path d="M2 17l10 5 10-5" />
-                  <path d="M2 12l10 5 10-5" />
-                </svg>
-              </div>
-              <span className="text-xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-                The Clubs
-              </span>
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-              Staff Login
-            </h1>
-            <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              Sign in to {appTitle}
-            </p>
-          </div>
+  const logoSrc = isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg';
 
-          {/* Error */}
-          {error && (
-            <div
-              className="mb-4 rounded-lg border px-4 py-3 text-sm"
-              style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                borderColor: 'rgba(239, 68, 68, 0.2)',
-                color: 'var(--color-status-error)',
-              }}
+  return (
+    <div className= "fixed inset-0 z-[9999] flex" style = {{ backgroundColor: 'var(--color-surface-base)' }
+}>
+  {/* Left: Login Form */ }
+  < div className = "flex flex-1 flex-col items-center justify-center px-8 py-12" >
+    <div className="w-full max-w-sm" >
+      {/* Title */ }
+      < div className = "mb-10" >
+        <h1
+className = "text-2xl font-bold tracking-tight"
+style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
             >
-              {error}
-            </div>
+  Staff Login
+    </h1>
+    < p className = "mt-1 text-sm" style = {{ color: 'var(--color-text-muted)' }}>
+      Sign in to { appTitle }
+</p>
+  </div>
+
+{/* Error */ }
+{
+  error && (
+    <div
+              className="mb-4 rounded-lg border px-4 py-3 text-sm"
+  style = {{
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+      borderColor: 'rgba(239, 68, 68, 0.2)',
+        color: 'var(--color-status-error)',
+              }
+}
+            >
+  { error }
+  </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={(e) => void handlePinSubmit(e)} className="flex flex-col gap-4">
-            {/* Staff Autocomplete */}
-            <div ref={dropdownRef} className="relative">
-              <label
-                htmlFor="staff-lookup"
+{/* Form */ }
+<form onSubmit={ (e) => void handlePinSubmit(e) } className = "flex flex-col gap-4" >
+  {/* Staff Select Dropdown (no search) */ }
+  < div ref = { dropdownRef } className = "relative" >
+    <label
                 className="mb-1.5 block text-xs font-medium uppercase tracking-wider"
-                style={{ color: 'var(--color-text-muted)' }}
+style = {{ color: 'var(--color-text-muted)' }}
               >
-                Staff Member
-              </label>
-              <div className="relative">
-                <input
-                  ref={inputRef}
-                  id="staff-lookup"
-                  type="text"
-                  autoComplete="off"
-                  value={staffLookup}
-                  onChange={(e) => {
-                    setStaffLookup(e.target.value);
-                    setSelectedStaff(null);
-                    setIsDropdownOpen(true);
-                  }}
-                  onFocus={() => setIsDropdownOpen(true)}
-                  onKeyDown={handleKeyDown}
-                  disabled={isLoading}
-                  placeholder={isLoadingStaff ? 'Loading staff…' : 'Search or select staff…'}
-                  className="h-11 w-full rounded-lg border px-4 pr-10 text-sm transition-all duration-200"
-                  style={{
-                    backgroundColor: 'var(--color-surface-input)',
-                    borderColor: isDropdownOpen ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
-                    color: 'var(--color-text-primary)',
-                    boxShadow: isDropdownOpen ? '0 0 0 2px var(--color-accent-glow)' : 'none',
-                  }}
-                  role="combobox"
-                  aria-expanded={isDropdownOpen}
-                  aria-autocomplete="list"
-                  aria-controls="staff-listbox"
-                  aria-activedescendant={highlightedIndex >= 0 ? `staff-option-${highlightedIndex}` : undefined}
-                />
-                {/* Chevron icon */}
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => {
-                    setIsDropdownOpen(!isDropdownOpen);
-                    inputRef.current?.focus();
-                  }}
-                  className="absolute right-0 top-0 flex h-11 w-10 items-center justify-center"
-                  style={{ color: 'var(--color-text-muted)' }}
-                  aria-label="Toggle staff list"
+  Staff Member
+    </label>
+    < button
+type = "button"
+onClick = {() => setIsDropdownOpen(!isDropdownOpen)}
+onKeyDown = { handleKeyDown }
+disabled = { isLoading || isLoadingStaff}
+className = "flex h-11 w-full items-center justify-between rounded-lg border px-4 text-sm transition-all duration-200"
+style = {{
+  backgroundColor: 'var(--color-surface-input)',
+    borderColor: isDropdownOpen ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
+      color: selectedStaff ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+        boxShadow: isDropdownOpen ? '0 0 0 2px var(--color-accent-glow)' : 'none',
+                }}
+role = "combobox"
+aria-expanded={ isDropdownOpen }
+aria-controls="staff-listbox"
+aria-haspopup="listbox"
+  >
+  <span>{ isLoadingStaff? 'Loading staff…': selectedStaff ? selectedStaff.name : 'Select staff member…' } </span>
+  < svg
+width = "16" height = "16" viewBox = "0 0 24 24" fill = "none" stroke = "currentColor"
+strokeWidth = "2" strokeLinecap = "round" strokeLinejoin = "round"
+style = {{ transform: isDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                    style={{ transform: isDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
-                  >
-                    <path d="M6 9l6 6 6-6" />
-                  </svg>
-                </button>
-              </div>
+  <path d="M6 9l6 6 6-6" />
+    </svg>
+    </button>
 
-              {/* Dropdown */}
-              {isDropdownOpen && !isLoadingStaff && (
-                <div
+{/* Dropdown list */ }
+{
+  isDropdownOpen && !isLoadingStaff && (
+    <div
                   id="staff-listbox"
-                  role="listbox"
-                  className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border shadow-xl"
-                  style={{
-                    backgroundColor: 'var(--color-surface-raised)',
-                    borderColor: 'var(--color-border-default)',
-                    maxHeight: '240px',
-                    overflowY: 'auto',
-                  }}
+  role = "listbox"
+  className = "absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border shadow-xl"
+  style = {{
+    backgroundColor: 'var(--color-surface-raised)',
+      borderColor: 'var(--color-border-default)',
+        maxHeight: '240px',
+          overflowY: 'auto',
+                  }
+}
                 >
-                  {filteredStaff.length === 0 ? (
-                    <div className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                      No staff found
-                    </div>
+{
+  staffList.length === 0 ? (
+    <div className= "px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+      No staff found
+        </div>
                   ) : (
-                    filteredStaff.map((staff, i) => (
-                      <button
-                        key={staff.id}
-                        id={`staff-option-${i}`}
-                        type="button"
-                        role="option"
-                        aria-selected={highlightedIndex === i}
-                        onClick={() => selectStaff(staff)}
-                        onMouseEnter={() => setHighlightedIndex(i)}
-                        className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors duration-100"
-                        style={{
-                          backgroundColor:
-                            selectedStaff?.id === staff.id
-                              ? 'var(--color-accent-glow)'
-                              : highlightedIndex === i
-                              ? 'var(--color-surface-hover)'
-                              : 'transparent',
-                          color: 'var(--color-text-primary)',
-                          borderBottom: i < filteredStaff.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
-                        }}
+  staffList.map((staff, i) => (
+    <button
+                        key= { staff.id }
+                        id = {`staff-option-${i}`}
+    type = "button"
+                        role = "option"
+                        aria-selected={ selectedStaff?.id === staff.id}
+    onClick = {() => selectStaff(staff)}
+    onMouseEnter = {() => setHighlightedIndex(i)}
+    className = "flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors duration-100"
+                        style = {{
+    backgroundColor:
+      selectedStaff?.id === staff.id
+        ? 'var(--color-accent-glow)'
+        : highlightedIndex === i
+          ? 'var(--color-surface-hover)'
+          : 'transparent',
+    color: 'var(--color-text-primary)',
+    borderBottom: i < staffList.length - 1 ? '1px solid var(--color-border-subtle)' : 'none',
+  }}
                       >
-                        <div className="flex items-center gap-3">
-                          {/* Avatar circle */}
-                          <div
+    <div className="flex items-center gap-3" >
+  <div
                             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold uppercase"
-                            style={{
-                              backgroundColor: 'var(--color-accent-glow)',
-                              color: 'var(--color-accent-primary)',
-                              border: '1px solid var(--color-border-accent)',
-                            }}
+                            style = {{
+    backgroundColor: 'var(--color-accent-glow)',
+    color: 'var(--color-accent-primary)',
+    border: '1px solid var(--color-border-accent)',
+  }}
                           >
-                            {staff.name.charAt(0)}
-                          </div>
-                          <span className="font-medium">{staff.name}</span>
-                        </div>
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-                          style={{
-                            color: roleColor(staff.role),
-                            backgroundColor: `color-mix(in srgb, ${roleColor(staff.role)} 10%, transparent)`,
-                          }}
+    { staff.name.charAt(0) }
+    </div>
+    < span className = "font-medium" > { staff.name } </span>
+    </div>
+    < span
+                          className = "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
+                          style = {{
+    color: roleColor(staff.role),
+    backgroundColor: `color-mix(in srgb, ${roleColor(staff.role)} 10%, transparent)`,
+  }}
                         >
-                          {roleLabel(staff.role)}
-                        </span>
-                      </button>
+    { roleLabel(staff.role)}
+</span>
+  </button>
                     ))
                   )}
-                </div>
+</div>
               )}
-            </div>
+</div>
 
-            <div>
-              <label
-                htmlFor="pin-input"
+{/* PIN — 6 individual digit boxes */ }
+<div>
+  <label
                 className="mb-1.5 block text-xs font-medium uppercase tracking-wider"
-                style={{ color: 'var(--color-text-muted)' }}
+style = {{ color: 'var(--color-text-muted)' }}
               >
-                PIN
-              </label>
-              <input
-                ref={pinRef}
-                id="pin-input"
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                value={pin}
-                onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                disabled={isLoading}
-                placeholder="••••••"
-                className="h-11 w-full rounded-lg border px-4 text-sm tracking-[0.3em] transition-all duration-200"
-                style={{
-                  backgroundColor: 'var(--color-surface-input)',
-                  borderColor: 'var(--color-border-default)',
-                  color: 'var(--color-text-primary)',
-                  fontFamily: 'var(--font-display)',
-                }}
-              />
-            </div>
+  PIN
+  </label>
+  < div className = "flex items-center justify-between gap-2" >
+  {
+    pinDigits.map((digit, i) => (
+      <input
+                    key= { i }
+                    ref = {(el) => { pinRefs.current[i] = el; }}
+type = "text"
+inputMode = "numeric"
+autoComplete = "off"
+maxLength = { 1}
+value = { digit }
+onChange = {(e) => handleDigitChange(i, e.target.value)}
+onKeyDown = {(e) => handleDigitKeyDown(i, e)}
+onPaste = { i === 0 ? handlePaste : undefined}
+onFocus = {(e) => e.target.select()}
+disabled = { isLoading }
+aria-label={ `PIN digit ${i + 1}` }
+className = "h-12 w-12 rounded-lg border text-center text-lg font-bold transition-all duration-200 outline-none"
+style = {{
+  backgroundColor: 'var(--color-surface-input)',
+    borderColor: digit ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
+      color: 'var(--color-text-primary)',
+        fontFamily: 'var(--font-display)',
+          WebkitTextSecurity: 'disc' as any,
+            boxShadow: digit ? '0 0 0 1px var(--color-accent-glow)' : 'none',
+              caretColor: 'transparent',
+                    }}
+                  />
+                ))}
+</div>
+  </div>
 
-            <button
-              type="submit"
-              disabled={isLoading || (!selectedStaff && !staffLookup.trim()) || pin.length < 4}
-              className="mt-2 h-11 w-full rounded-lg text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
-              style={{
-                backgroundColor: 'var(--color-accent-primary)',
-                color: 'var(--color-text-inverse)',
-              }}
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
-                  </svg>
-                  Signing in…
-                </span>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </form>
-        </div>
-      </div>
+{/* Loading indicator */ }
+{
+  isLoading && (
+    <div className="mt-2 flex items-center justify-center gap-2" >
+      <svg className="h-4 w-4 animate-spin" viewBox = "0 0 24 24" fill = "none" >
+        <circle className="opacity-25" cx = "12" cy = "12" r = "10" stroke = "currentColor" strokeWidth = "4" />
+          <path className="opacity-75" fill = "currentColor" d = "M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z" />
+            </svg>
+            < span className = "text-sm" style = {{ color: 'var(--color-text-muted)' }
+}> Signing in…</span>
+  </div>
+            )}
+</form>
+  </div>
+  </div>
 
-      {/* Right: Branding Panel */}
-      <div
+{/* Right: Branding Panel */ }
+<div
         className="relative hidden w-[45%] items-center justify-center overflow-hidden lg:flex"
-        style={{ backgroundColor: 'var(--color-surface-raised)' }}
+style = {{ backgroundColor: 'var(--color-surface-raised)' }}
       >
-        {/* Grid pattern background */}
-        <div className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `
+  {/* Grid pattern background */ }
+  < div
+className = "absolute inset-0 opacity-[0.03]"
+style = {{
+  backgroundImage: `
               linear-gradient(var(--color-accent-primary) 1px, transparent 1px),
               linear-gradient(90deg, var(--color-accent-primary) 1px, transparent 1px)
             `,
-            backgroundSize: '40px 40px',
+    backgroundSize: '40px 40px',
           }}
         />
 
-        {/* Glow effect */}
-        <div
+{/* Glow effect */ }
+<div
           className="absolute left-1/2 top-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[120px]"
-          style={{ backgroundColor: 'var(--color-accent-glow)' }}
+style = {{ backgroundColor: 'var(--color-accent-glow)' }}
         />
 
-        {/* Content */}
-        <div className="relative z-10 flex flex-col items-center gap-8 px-12 text-center">
-          <div
-            className="flex h-24 w-24 items-center justify-center rounded-2xl"
-            style={{
-              backgroundColor: 'rgba(0, 212, 255, 0.05)',
-              border: '1px solid var(--color-border-accent)',
-              boxShadow: '0 0 40px var(--color-accent-glow)',
-            }}
-          >
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-              <path d="M2 17l10 5 10-5" />
-              <path d="M2 12l10 5 10-5" />
-            </svg>
-          </div>
+{/* Content */ }
+<div className="relative z-10 flex flex-col items-center gap-8 px-12 text-center" >
+  <img
+            src={ logoSrc }
+alt = "Club Dallas"
+className = "h-48"
+style = {{ objectFit: 'contain' }}
+          />
 
-          <div>
-            <h2
+  < div >
+  <h2
               className="text-3xl font-extrabold tracking-tight"
-              style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
             >
-              The Clubs
-            </h2>
-            <p className="mt-2 text-base" style={{ color: 'var(--color-text-muted)' }}>
-              {appTitle}
-            </p>
-          </div>
-
-          <div className="h-px w-20" style={{ background: 'linear-gradient(to right, transparent, var(--color-border-strong), transparent)' }} />
-
-          <p className="max-w-[280px] text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-            Manage check-ins, rentals, upgrades, and customer accounts — all from one place.
-          </p>
-        </div>
+  Club Dallas
+    </h2>
+    < p className = "mt-2 text-base" style = {{ color: 'var(--color-text-muted)' }}>
+      { appTitle }
+      </p>
       </div>
-    </div>
+
+      < div
+className = "h-px w-20"
+style = {{ background: 'linear-gradient(to right, transparent, var(--color-border-strong), transparent)' }}
+          />
+
+  < p className = "max-w-[280px] text-sm leading-relaxed" style = {{ color: 'var(--color-text-secondary)' }}>
+    User Administration and Reporting
+      </p>
+      </div>
+      </div>
+      </div>
   );
 }

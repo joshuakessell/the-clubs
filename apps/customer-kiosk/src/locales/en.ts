@@ -56,7 +56,7 @@ export const en = {
   pastDueBlocked: 'Please see the front desk to resolve your balance.',
 
   // Payment
-  paymentPending: 'Please present payment to the employee',
+  paymentPending: 'Please provide cash or card to the employee to process your payment.',
   'payment.charges': 'Charges',
   totalDue: 'Total Due',
   paymentIssueSeeAttendant: 'Payment issue — please see attendant',
@@ -265,6 +265,7 @@ export const en = {
   'waitlist.notifiedWhenAvailable': "You'll be notified when your upgrade becomes available.",
   'waitlist.availableOptions': 'Available Options',
   'waitlist.available': 'available',
+  'waitlist.disclaimer': 'To join the waitlist, you must rent a locker. Note: When an upgrade becomes available, you may accept it (upgrade fees apply, and are due at that time).',
 
   // General
   membership: 'Membership',

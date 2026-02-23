@@ -144,7 +144,14 @@ export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets
   const isMonotonicForLane = (lane: string, event: RealtimeEvent<unknown>): boolean => {
     if (event.type !== 'SESSION_UPDATED') return true;
 
-    const payload = event.payload as { flowVersion?: unknown };
+    const payload = event.payload as { flowVersion?: unknown; status?: unknown };
+
+    // Terminal statuses must always be delivered regardless of version ordering
+    if (payload.status === 'COMPLETED' || payload.status === 'CANCELLED') {
+      lastLaneVersions.delete(lane);
+      return true;
+    }
+
     const flowVersion = typeof payload.flowVersion === 'number' ? payload.flowVersion : null;
     if (flowVersion === null) return true;
 

@@ -776,6 +776,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
     firstName: z.string().min(1),
     lastName: z.string().min(1),
     dob: z.string().min(1), // YYYY-MM-DD
+    idNumber: z.string().optional(),
   });
 
   fastify.post(
@@ -801,6 +802,37 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
       if (!inputParts) return reply.status(400).send({ error: 'Invalid name' });
 
       try {
+        // 1) Check by ID number first (exact match, highest priority)
+        if (body.idNumber?.trim()) {
+          const byIdNumber = await query<{
+            id: string;
+            name: string;
+            dob: string | Date | null;
+            membership_number: string | null;
+          }>(
+            `SELECT id, name, dob, membership_number
+             FROM customers
+             WHERE UPPER(id_number) = UPPER($1)
+             LIMIT 1`,
+            [body.idNumber.trim()]
+          );
+
+          if (byIdNumber.rows.length > 0) {
+            const row = byIdNumber.rows[0]!;
+            return reply.send({
+              matchCount: 1,
+              matchReason: 'ID_NUMBER',
+              bestMatch: {
+                id: row.id,
+                name: row.name,
+                dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob,
+                membershipNumber: row.membership_number,
+              },
+            });
+          }
+        }
+
+        // 2) Fuzzy match by name + DOB
         const res = await query<{
           id: string;
           name: string;
@@ -919,6 +951,67 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       try {
+        // Dedup: check if a customer with the same ID number already exists
+        if (idScanValue) {
+          const byIdNumber = await query<{
+            id: string;
+            name: string;
+            dob: Date | null;
+            membership_number: string | null;
+          }>(
+            `SELECT id, name, dob, membership_number
+             FROM customers
+             WHERE UPPER(id_number) = UPPER($1)
+             LIMIT 1`,
+            [idScanValue]
+          );
+          if (byIdNumber.rows.length > 0) {
+            const row = byIdNumber.rows[0]!;
+            return reply.send({
+              created: false,
+              existing: true,
+              matchReason: 'ID_NUMBER',
+              customer: {
+                id: row.id,
+                name: row.name,
+                dob: row.dob ? row.dob.toISOString().slice(0, 10) : null,
+                membershipNumber: row.membership_number,
+              },
+            });
+          }
+        }
+
+        // Dedup: check if a customer with same name + DOB already exists
+        {
+          const byNameDob = await query<{
+            id: string;
+            name: string;
+            dob: Date | null;
+            membership_number: string | null;
+          }>(
+            `SELECT id, name, dob, membership_number
+             FROM customers
+             WHERE dob = $1::date
+               AND LOWER(name) = LOWER($2)
+             LIMIT 1`,
+            [dob, name]
+          );
+          if (byNameDob.rows.length > 0) {
+            const row = byNameDob.rows[0]!;
+            return reply.send({
+              created: false,
+              existing: true,
+              matchReason: 'NAME_DOB',
+              customer: {
+                id: row.id,
+                name: row.name,
+                dob: row.dob ? row.dob.toISOString().slice(0, 10) : null,
+                membershipNumber: row.membership_number,
+              },
+            });
+          }
+        }
+
         const inserted = await query<{
           id: string;
           name: string;

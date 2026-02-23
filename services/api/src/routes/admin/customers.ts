@@ -12,6 +12,7 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
    */
   fastify.get<{
     Querystring: {
+      q?: string;
       search?: string;
       limit?: string;
     };
@@ -21,7 +22,7 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
       preHandler: [requireAuth, requireAdmin],
     },
     async (request, reply) => {
-      const search = (request.query.search || '').trim();
+      const search = (request.query.q || request.query.search || '').trim();
       const limit = Math.min(Math.max(parseInt(request.query.limit || '25', 10) || 25, 1), 100);
 
       if (search.length < 2) {

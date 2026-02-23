@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { useI18n } from '../i18n';
 
@@ -9,52 +10,68 @@ import { useI18n } from '../i18n';
 export function IdleScreen() {
   const { t } = useI18n();
 
+  const [activeTheme, setActiveTheme] = useState(() => document.documentElement.getAttribute('data-theme') ?? '');
+  useEffect(() => {
+    const obs = new MutationObserver(() => setActiveTheme(document.documentElement.getAttribute('data-theme') ?? ''));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+  const isLightTheme = ['theme-arctic-bloom', 'theme-solar-flare'].includes(activeTheme);
+
   return (
     <ScreenShell>
-      <div className="flex flex-col items-center gap-10 text-center p-12">
-        {/* Animated glow ring */}
-        <div className="relative">
-          <div
-            className="absolute inset-0 rounded-full animate-pulse"
-            style={{
-              boxShadow: '0 0 60px 20px var(--color-accent-glow)',
-              opacity: 0.4,
-            }}
+    <div className= "flex flex-col items-center gap-12 text-center p-12" >
+    {/* Animated glow ring + logo */ }
+    < div className = "relative" >
+      <div
+            className="absolute inset-6 rounded-full animate-pulse"
+  style = {{
+    boxShadow: '0 0 80px 30px var(--color-accent-glow)',
+      opacity: 0.5,
+            }
+}
           />
-          <div className="relative flex items-center justify-center">
-            <img src="/club-dallas-logo.svg" alt={t('brand.clubName')} width="96" height="96" style={{ filter: 'drop-shadow(0 0 12px var(--color-accent-glow))' }} />
-          </div>
-        </div>
+  < div className = "relative flex items-center justify-center" >
+    <img
+              src={ isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg' }
+alt = { t('brand.clubName') }
+className = "kiosk-logo"
+width = "200"
+height = "200"
+style = {{ width: 240, height: 240, filter: 'drop-shadow(0 0 20px var(--color-accent-glow))' }}
+            />
+  </div>
+  </div>
 
-        {/* Brand */}
-        <div>
-          <h1
+{/* Brand */ }
+<div>
+  <h1
             className="text-5xl font-extrabold tracking-tight"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
           >
-            {t('brand.clubName')}
-          </h1>
-          <p className="mt-4 text-xl" style={{ color: 'var(--color-text-secondary)' }}>
-            {t('idle.presentId')}
-          </p>
-        </div>
+  { t('brand.clubName') }
+  </h1>
+  < p className = "mt-4 text-xl" style = {{ color: 'var(--color-text-secondary)' }}>
+    { t('idle.presentId') }
+    </p>
+    </div>
 
-        {/* Status indicator */}
-        <div
+{/* Status indicator */ }
+<div
           className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
-          style={{
-            backgroundColor: 'var(--color-surface-overlay)',
-            color: 'var(--color-text-muted)',
-            border: '1px solid var(--color-border-subtle)',
+style = {{
+  backgroundColor: 'var(--color-surface-overlay)',
+    color: 'var(--color-text-muted)',
+      border: '1px solid var(--color-border-subtle)',
           }}
         >
-          <div
+  <div
             className="h-2 w-2 rounded-full animate-pulse"
-            style={{ backgroundColor: 'var(--color-status-success)' }}
+style = {{ backgroundColor: 'var(--color-status-success)' }}
           />
-          {t('idle.readyForCheckin')}
-        </div>
-      </div>
-    </ScreenShell>
+{ t('idle.readyForCheckin') }
+</div>
+  </div>
+  </ScreenShell>
   );
 }

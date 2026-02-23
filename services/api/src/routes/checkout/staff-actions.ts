@@ -643,12 +643,12 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
               customerId: checkoutRequest.customer_id,
               visitId: block.visit_id,
               entryType: 'LATE_FEE',
-              amountCents: feeAmount,
+              amountCents: feeAmount * 100,
               sourceApp: 'EMPLOYEE_REGISTER',
               actorType: 'STAFF',
               actorStaffId: staffId,
               actorStaffName: request.staff!.name,
-              summary: `Late fee assessed ($${(feeAmount / 100).toFixed(2)})`,
+              summary: `Late fee assessed ($${feeAmount.toFixed(2)})`,
               metadata: {
                 checkoutRequestId: checkoutRequest.id,
                 occupancyId: checkoutRequest.occupancy_id,
@@ -661,9 +661,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
             // Record a customer note for late checkouts (common staff practice).
             // This is separate from the activity log so it shows prominently on the account.
             if (checkoutRequest.late_minutes >= 30) {
-              const noteText = `Late checkout: ${checkoutRequest.late_minutes} minutes late. Fee assessed: $${(
-                feeAmount / 100
-              ).toFixed(2)}${checkoutRequest.ban_applied ? ' (ban applied)' : ''}.`;
+              const noteText = `Late checkout: ${checkoutRequest.late_minutes} minutes late. Fee assessed: $${feeAmount.toFixed(2)}${checkoutRequest.ban_applied ? ' (ban applied)' : ''}.`;
               const noteResult = await client.query<{ id: string }>(
                 `INSERT INTO customer_notes
                    (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)

@@ -44,7 +44,7 @@ export function useRealtimeSSE({
 
   // Build URL with auth query params (EventSource doesn't support custom headers)
   const buildUrl = useCallback(() => {
-    const u = new URL(url);
+    const u = new URL(url, window.location.origin);
     if (authParams) {
       for (const [key, value] of Object.entries(authParams)) {
         if (value) u.searchParams.set(key, value);

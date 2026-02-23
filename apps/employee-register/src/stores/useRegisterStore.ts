@@ -63,7 +63,7 @@ interface RegisterState {
   openCustomerAccount: (
     id: string,
     label: string,
-    opts?: { autoStart?: boolean; summary?: Record<string, string | undefined>; authToken?: string | null; activeCheckin?: ActiveCheckinInfo }
+    opts?: { autoStart?: boolean; summary?: Record<string, string | undefined>; authToken?: string | null; activeCheckin?: ActiveCheckinInfo; returnTab?: string }
   ) => void;
 
   /* ── Session (from SSE) ────────────────────── */
@@ -100,6 +100,7 @@ interface RegisterState {
 
   /* ── Navigation ───────────────────────────── */
   selectNavTab: (tab: string) => void;
+  returnTab: string | null;
 
   /* ── Toast ─────────────────────────────────── */
   successToastMessage: string | null;
@@ -163,6 +164,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   currentSessionId: null,
   customerName: null,
   activeCheckinInfo: null,
+  returnTab: null,
   customerSearch: '',
   customerSearchLoading: false,
   customerSuggestions: [],
@@ -213,9 +215,50 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   openCustomerAccount: (id, label, opts) => {
     const { laneId } = get();
 
-    // Always set customer info for UI
-    set({ customerId: id, customerName: label, activeCheckinInfo: opts?.activeCheckin ?? null, isSubmitting: true });
+    // Always set customer info for UI immediately
+    set({ customerId: id, customerName: label, activeCheckinInfo: opts?.activeCheckin ?? null, returnTab: opts?.returnTab ?? null, isSubmitting: true });
     get().selectNavTab('account');
+
+    // If no activeCheckin was provided (e.g. opened from top search bar),
+    // auto-detect whether this customer is currently checked in to a room/locker.
+    if (!opts?.activeCheckin && !opts?.autoStart) {
+      (async () => {
+        try {
+          const headers: Record<string, string> = {};
+          if (opts?.authToken) headers['Authorization'] = `Bearer ${opts.authToken}`;
+
+          const res = await fetch(getApiUrl('/api/v1/inventory/detailed'), { headers });
+          if (res.ok) {
+            const data = await res.json();
+            const allItems = [
+              ...(data.rooms ?? []).map((r: any) => ({ ...r, resourceType: 'room' as const })),
+              ...(data.lockers ?? []).map((l: any) => ({ ...l, resourceType: 'locker' as const })),
+            ];
+            const match = allItems.find(
+              (item: any) => item.assignedTo === id && item.status === 'OCCUPIED' && item.occupancyId
+            );
+            if (match) {
+              const checkinInfo = {
+                visitId: match.occupancyId as string,
+                resourceType: match.resourceType as 'room' | 'locker',
+                resourceNumber: match.number as string,
+                checkinAt: match.checkinAt ?? null,
+                checkoutAt: match.checkoutAt ?? null,
+                overdue: match.checkoutAt ? new Date(match.checkoutAt) < new Date() : false,
+              };
+              set({ activeCheckinInfo: checkinInfo, isSubmitting: false });
+            } else {
+              set({ isSubmitting: false });
+            }
+          } else {
+            set({ isSubmitting: false });
+          }
+        } catch {
+          set({ isSubmitting: false });
+        }
+      })();
+      return;
+    }
 
     // If autoStart, call the real lane session API
     if (opts?.autoStart) {
@@ -246,13 +289,37 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
                 customerName: data.customerName ?? label,
                 isSubmitting: false,
                 successToastMessage: `Check-in started for ${data.customerName ?? label}`,
+                // Seed sessionPayload so EmployeeAssistTab renders immediately
+                // (SSE will overwrite with the full payload shortly after)
+                sessionPayload: {
+                  sessionId: data.sessionId,
+                  customerId: data.customerId ?? id,
+                  customerName: data.customerName ?? label,
+                  membershipNumber: data.membershipNumber,
+                  customerMembershipValidUntil: data.customerMembershipValidUntil,
+                  allowedRentals: data.allowedRentals ?? [],
+                  mode: data.mode ?? 'CHECKIN',
+                  flowStep: 'RENTAL',
+                  flowVersion: 0,
+                  status: 'ACTIVE',
+                  pastDueBalance: data.pastDueBalance,
+                  pastDueBlocked: data.pastDueBlocked,
+                },
               });
             }
           } else {
             const errData = await res.json().catch(() => ({}));
+            let errorMsg = errData.error ?? `Failed to start check-in (${res.status})`;
+            // Format ban date for employee readability
+            const banMatch = errorMsg.match(/banned until (\d{4}-\d{2}-\d{2}T[^\s]+)/i);
+            if (banMatch) {
+              const banDate = new Date(banMatch[1]);
+              const formatted = banDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              errorMsg = `⛔ Customer is banned until ${formatted}`;
+            }
             set({
               isSubmitting: false,
-              successToastMessage: errData.error ?? `Failed to start check-in (${res.status})`,
+              successToastMessage: errorMsg,
             });
           }
         } catch {
@@ -263,6 +330,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       set({ isSubmitting: false });
     }
   },
+
 
   /* Session (from SSE) */
   sessionPayload: null,
@@ -286,14 +354,14 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   setManualIdType: (v) => set({ manualIdType: v }),
   setManualIdTypeOther: (v) => set({ manualIdTypeOther: v }),
   setManualIdNumber: (v) => set({ manualIdNumber: v }),
-  setManualEntry: () => {},
+  setManualEntry: () => { },
   handleManualSubmit: async (e) => {
     e.preventDefault();
     set({ manualEntrySubmitting: true });
     const {
       manualFirstName, manualLastName, manualDobIso,
       manualIdType, manualIdTypeOther, manualIdNumber,
-      manualIdExpirationIso, laneId, selectNavTab,
+      manualIdExpirationIso, openCustomerAccount,
     } = get();
 
     try {
@@ -301,35 +369,90 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(
-        getApiUrl('/api/v1/checkin/scan'),
+      // Step 1: Check for existing customer (by ID number and name+DOB)
+      const matchRes = await fetch(
+        getApiUrl('/api/v1/customers/match-identity'),
         {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            rawScanText: `MANUAL|${manualFirstName}|${manualLastName}|${manualDobIso}`,
-            laneId,
-            manualEntry: {
-              firstName: manualFirstName,
-              lastName: manualLastName,
-              dob: manualDobIso,
-              idType: manualIdType === 'OTHER' ? manualIdTypeOther : manualIdType,
-              idNumber: manualIdNumber || undefined,
-              idExpirationDate: manualIdExpirationIso || undefined,
-            },
+            firstName: manualFirstName,
+            lastName: manualLastName,
+            dob: manualDobIso,
+            idNumber: manualIdNumber || undefined,
+          }),
+        }
+      );
+
+      if (matchRes.ok) {
+        const matchData = await matchRes.json();
+        if (matchData.bestMatch) {
+          // Existing customer found — open their account instead of creating
+          const existing = matchData.bestMatch;
+          set({
+            manualEntrySubmitting: false,
+            manualFirstName: '',
+            manualLastName: '',
+            manualDobDigits: '',
+            manualDobIso: null,
+            manualIdExpirationDigits: '',
+            manualIdExpirationIso: null,
+            manualIdType: '',
+            manualIdTypeOther: '',
+            manualIdNumber: '',
+            successToastMessage: `Existing customer found: ${existing.name} — opening their account.`,
+          });
+          openCustomerAccount(existing.id, existing.name, {
+            autoStart: true,
+            authToken: token,
+          });
+          return;
+        }
+      }
+
+      // Step 2: No match found — create new customer
+      const res = await fetch(
+        getApiUrl('/api/v1/customers/create-manual'),
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            firstName: manualFirstName,
+            lastName: manualLastName,
+            dob: manualDobIso,
+            idType: manualIdType || 'STATE_ID',
+            idTypeOther: manualIdType === 'OTHER' ? manualIdTypeOther : undefined,
+            idNumber: manualIdNumber || undefined,
+            idExpirationDate: manualIdExpirationIso || undefined,
           }),
         }
       );
 
       if (res.ok) {
         const data = await res.json();
+        const customer = data.customer;
+        const isExisting = data.existing === true;
+        // Clear form fields
         set({
           manualEntrySubmitting: false,
-          currentSessionId: data.sessionId ?? data.customerId ?? `new-${Date.now()}`,
-          customerName: data.customerName ?? `${manualLastName}, ${manualFirstName}`,
-          successToastMessage: `Customer ${manualFirstName} ${manualLastName} added.`,
+          manualFirstName: '',
+          manualLastName: '',
+          manualDobDigits: '',
+          manualDobIso: null,
+          manualIdExpirationDigits: '',
+          manualIdExpirationIso: null,
+          manualIdType: '',
+          manualIdTypeOther: '',
+          manualIdNumber: '',
+          successToastMessage: isExisting
+            ? `Existing customer found: ${customer.name} — opening their account.`
+            : `Customer ${manualFirstName} ${manualLastName} added successfully.`,
         });
-        selectNavTab('account');
+        // Open customer account and start check-in on kiosk
+        openCustomerAccount(customer.id, customer.name, {
+          autoStart: true,
+          authToken: token,
+        });
       } else {
         const errData = await res.json().catch(() => ({}));
         set({
@@ -375,8 +498,19 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     }
   },
   cancelSession: async () => {
-    const { sendFlowCommand } = get();
-    await sendFlowCommand({ type: 'CANCEL_STEP' });
+    const { laneId } = get();
+    try {
+      const token = (window as any).__authToken;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      await fetch(
+        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/reset`),
+        { method: 'POST', headers }
+      );
+    } catch {
+      // Best-effort — clear local state regardless
+    }
     set({
       currentSessionId: null,
       customerId: null,
@@ -388,7 +522,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   },
 
   /* Navigation — will be wired to AppLayout's setActiveTab */
-  selectNavTab: () => {},
+  selectNavTab: () => { },
 
   /* Toast */
   successToastMessage: null,

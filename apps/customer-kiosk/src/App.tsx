@@ -96,7 +96,7 @@ export default function App() {
       (async () => {
         try {
           const headers: Record<string, string> = {};
-          if (kioskToken) headers['Authorization'] = `Bearer ${kioskToken}`;
+          if (kioskToken) headers['x-kiosk-token'] = kioskToken;
           const res = await fetch(
             getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`),
             { headers }
@@ -130,63 +130,72 @@ export default function App() {
   if (!laneId) {
     return (
       <ErrorBoundary>
-        <I18nProvider lang="EN">
-          <LaneSelectScreen
-            lanes={LANES.map((l) => ({ slug: l.slug, label: l.label }))}
+      <I18nProvider lang= "EN" >
+      <LaneSelectScreen
+            lanes={ LANES.map((l) => ({ slug: l.slug, label: l.label })) }
           />
-        </I18nProvider>
+      </I18nProvider>
       </ErrorBoundary>
     );
   }
 
   return (
     <ErrorBoundary>
-      <I18nProvider lang={language as 'EN' | 'ES'}>
-        <div
+    <I18nProvider lang= { language as 'EN' | 'ES' } >
+    <div
           className="flex min-h-screen items-center justify-center"
-          style={{ backgroundColor: 'var(--color-surface-base)' }}
+  style = {{ backgroundColor: 'var(--color-surface-base)' }
+}
         >
-          {view === 'idle' && <IdleScreen />}
-          {view === 'selection' && (
-            <SelectionScreen
-              customerName={customerName}
-              language={language as 'EN' | 'ES'}
-              sessionPayload={sessionPayload}
-              laneId={laneId}
-              kioskToken={kioskToken}
-              onNext={() => navigate('addons')}
-              onCancel={reset}
+  { view === 'idle' && <IdleScreen />}
+{
+  view === 'selection' && (
+    <SelectionScreen
+              customerName={ customerName }
+  language = { language as 'EN' | 'ES' }
+  sessionPayload = { sessionPayload }
+  laneId = { laneId }
+  kioskToken = { kioskToken }
+  onNext = {() => navigate('payment')
+}
+onCancel = { reset }
+  />
+          )}
+{
+  view === 'addons' && (
+    <AddOnsScreen
+              laneId={ laneId }
+  kioskToken = { kioskToken }
+  sessionPayload = { sessionPayload }
+  onNext = {() => navigate('agreement')
+}
+onSkip = {() => navigate('agreement')}
             />
           )}
-          {view === 'addons' && (
-            <AddOnsScreen
-              laneId={laneId}
-              kioskToken={kioskToken}
-              sessionPayload={sessionPayload}
-              onNext={() => navigate('agreement')}
-              onSkip={() => navigate('agreement')}
-            />
+{ view === 'agreement' && <AgreementScreen onAccept={ () => navigate('payment') } onCancel = { reset } />}
+{
+  view === 'payment' && (
+    <PaymentScreen
+              laneId={ laneId }
+  kioskToken = { kioskToken }
+  sessionPayload = { sessionPayload }
+  onComplete = {() => navigate('complete')
+}
+onCancel = { reset }
+  />
           )}
-          {view === 'agreement' && <AgreementScreen onAccept={() => navigate('payment')} onCancel={reset} />}
-          {view === 'payment' && (
-            <PaymentScreen
-              laneId={laneId}
-              kioskToken={kioskToken}
-              sessionPayload={sessionPayload}
-              onComplete={() => navigate('complete')}
-              onCancel={reset}
-            />
-          )}
-          {view === 'complete' && (
-            <CompleteScreen
-              customerName={customerName}
-              assignedResourceType={sessionPayload?.assignedResourceType}
-              assignedResourceNumber={sessionPayload?.assignedResourceNumber}
-              onDone={reset}
-            />
-          )}
-        </div>
-      </I18nProvider>
-    </ErrorBoundary>
+{
+  view === 'complete' && (
+    <CompleteScreen
+              customerName={ customerName }
+  assignedResourceType = { sessionPayload?.assignedResourceType }
+  assignedResourceNumber = { sessionPayload?.assignedResourceNumber }
+  onDone = { reset }
+    />
+          )
+}
+</div>
+  </I18nProvider>
+  </ErrorBoundary>
   );
 }

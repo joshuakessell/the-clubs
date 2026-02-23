@@ -21,6 +21,14 @@ export function StaffView() {
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<'STAFF' | 'ADMIN'>('STAFF');
 
+  /* ── Toast state ── */
+  const [toast, setToast] = useState<string | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(null), 6000);
+  }, []);
+
   const handleCreate = useCallback(async () => {
     if (!newName) return;
     try {
@@ -33,10 +41,13 @@ export function StaffView() {
 
   const handlePinReset = useCallback(async (id: string) => {
     try {
-      await dashboardMutate(`/api/v1/admin/staff/${id}/pin-reset`, 'POST');
-      alert('PIN has been reset.');
+      const result = await dashboardMutate(`/api/v1/admin/staff/${id}/pin-reset`, 'POST', {}) as any;
+      const name = result?.name || 'Staff member';
+      showToast(
+        `${name}'s PIN has been reset to 000000. They will be prompted to change it upon signing in for the first time.`
+      );
     } catch { /* ignore */ }
-  }, []);
+  }, [showToast]);
 
   const handleToggle = useCallback(async (id: string, active: boolean) => {
     try {
@@ -47,6 +58,25 @@ export function StaffView() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Toast notification */}
+      {toast && (
+        <div
+          className="fixed left-1/2 top-1/2 z-[10000] -translate-x-1/2 -translate-y-1/2 rounded-xl border px-8 py-5 text-center text-sm font-medium shadow-2xl"
+          style={{
+            backgroundColor: 'var(--color-surface-raised)',
+            borderColor: 'var(--color-accent-primary)',
+            color: 'var(--color-text-primary)',
+            maxWidth: '480px',
+            boxShadow: '0 0 60px rgba(0,0,0,0.3)',
+          }}
+        >
+          <div className="mb-2 text-base font-bold" style={{ color: 'var(--color-accent-primary)' }}>
+            PIN Reset
+          </div>
+          {toast}
+        </div>
+      )}
+
       {/* Header */}
       <div className="rounded-xl border p-6"
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>

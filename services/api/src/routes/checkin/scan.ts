@@ -558,7 +558,8 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
                       a.row.created_at.getTime() - b.row.created_at.getTime()
                   );
 
-                if (scored.length > 0) {
+                if (scored.length === 1) {
+                  // Single fuzzy match — auto-select
                   const matched = scored[0]!.row;
                   checkBanned(matched);
                   await maybeAttachScanIdentifiers({
@@ -619,6 +620,22 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
                     extracted,
                     enriched: Boolean(!matched.id_scan_hash || !matched.id_scan_value),
                   };
+                } else if (scored.length > 1) {
+                  // Multiple fuzzy matches — return candidates for employee selection
+                  return {
+                    result: 'CANDIDATES' as const,
+                    scanType: 'STATE_ID' as const,
+                    normalizedRawScanText: idScanValue,
+                    idScanHash,
+                    extracted,
+                    candidates: scored.slice(0, 10).map((s) => ({
+                      id: s.row.id,
+                      name: s.row.name,
+                      dob: s.row.dob ? s.row.dob.toISOString().slice(0, 10) : null,
+                      membershipNumber: s.row.membership_number,
+                      matchScore: s.matchScore,
+                    })),
+                  };
                 }
               }
             }
@@ -667,6 +684,45 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
               dob: matched.dob ? matched.dob.toISOString().slice(0, 10) : null,
               membershipNumber: matched.membership_number,
             },
+          };
+        }
+
+        // Check if input looks like a passport number (short alphanumeric, 5-20 chars)
+        const trimmedInput = normalized.trim();
+        const isLikelyPassport = /^[A-Z0-9]{5,20}$/i.test(trimmedInput) && !/^\d{11,}$/.test(trimmedInput);
+
+        if (isLikelyPassport) {
+          // Search by id_number for passport matches
+          const byPassport = await client.query<CustomerIdentityRow>(
+            `SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
+             FROM customers
+             WHERE UPPER(id_number) = UPPER($1)
+             LIMIT 1`,
+            [trimmedInput]
+          );
+
+          if (byPassport.rows.length > 0) {
+            const matched = byPassport.rows[0]!;
+            checkBanned(matched);
+            return {
+              result: 'MATCHED' as const,
+              scanType: 'PASSPORT' as const,
+              normalizedRawScanText: normalized,
+              customer: {
+                id: matched.id,
+                name: matched.name,
+                dob: matched.dob ? matched.dob.toISOString().slice(0, 10) : null,
+                membershipNumber: matched.membership_number,
+              },
+            };
+          }
+
+          // No passport match — return for manual entry prefill
+          return {
+            result: 'NO_MATCH' as const,
+            scanType: 'PASSPORT' as const,
+            normalizedRawScanText: normalized,
+            passportNumber: trimmedInput,
           };
         }
 

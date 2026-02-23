@@ -1,0 +1,634 @@
+@import "preline/css/themes/theme.css";
+
+/* ============================================== */
+/* Theme: Solar Flare                            */
+/* Warm cream surfaces · vivid orange-coral      */
+/* Primary: amber-orange (hue 30) · bright light */
+/* ============================================== */
+
+
+@theme theme-solar-flare inline {
+  /* ============================================ */
+  /* CUSTOM COLOR PALETTES                        */
+  /* ============================================ */
+
+  /* -------------------------------------------- */
+  /* BRAND PALETTE (vibrant)                     */
+  /* -------------------------------------------- */
+
+  --color-solar-flare-50: oklch(92.8% 0.08 30);
+  --color-solar-flare-100: oklch(88.6% 0.1 30);
+  --color-solar-flare-200: oklch(80.4% 0.12 30);
+  --color-solar-flare-300: oklch(72.4% 0.14 30);
+  --color-solar-flare-400: oklch(64.6% 0.16 30);
+  --color-solar-flare-500: oklch(57% 0.14 30);
+  --color-solar-flare-600: oklch(49.6% 0.12 30);
+  --color-solar-flare-700: oklch(42.4% 0.1 30);
+  --color-solar-flare-800: oklch(35.4% 0.08 30);
+  --color-solar-flare-900: oklch(28.6% 0.06 30);
+  --color-solar-flare-950: oklch(25.3% 0.05 30);
+
+  /* -------------------------------------------- */
+  /* GRAY PALETTE (bell curve chroma)             */
+  /* -------------------------------------------- */
+
+  --color-solar-flare-gray-50: oklch(98% 0.002 30);
+  --color-solar-flare-gray-100: oklch(95.5% 0.004 30);
+  --color-solar-flare-gray-200: oklch(89.7% 0.008 30);
+  --color-solar-flare-gray-300: oklch(82.7% 0.012 30);
+  --color-solar-flare-gray-400: oklch(73% 0.018 30);
+  --color-solar-flare-gray-500: oklch(62.5% 0.02 30);
+  --color-solar-flare-gray-600: oklch(52.8% 0.016 30);
+  --color-solar-flare-gray-700: oklch(41.4% 0.012 30);
+  --color-solar-flare-gray-800: oklch(26.9% 0.006 30);
+  --color-solar-flare-gray-900: oklch(20.5% 0.004 30);
+  --color-solar-flare-gray-950: oklch(14.1% 0.002 30);
+}
+
+:root[data-theme="theme-solar-flare"],
+[data-theme="theme-solar-flare"] {
+
+  /* ============================================ */
+  /* GLOBAL SURFACES + TEXT                       */
+  /* ============================================ */
+
+  --background: var(--color-white);
+  --background-1: var(--color-solar-flare-gray-50);
+  --background-2: var(--color-solar-flare-gray-100);
+  --background-plain: var(--color-white);
+  --foreground: var(--color-solar-flare-gray-800);
+  --foreground-inverse: var(--color-white);
+
+  --inverse: var(--color-solar-flare-gray-800);
+
+  /* ============================================ */
+  /* BORDERS (Full Scale)                         */
+  /* ============================================ */
+
+  --border: var(--color-solar-flare-gray-200);
+  --border-line-inverse: var(--color-white);
+  --border-line-1: var(--color-solar-flare-gray-100);
+  --border-line-2: var(--color-solar-flare-gray-200);
+  --border-line-3: var(--color-solar-flare-gray-300);
+  --border-line-4: var(--color-solar-flare-gray-400);
+  --border-line-5: var(--color-solar-flare-gray-500);
+  --border-line-6: var(--color-solar-flare-gray-600);
+  --border-line-7: var(--color-solar-flare-gray-700);
+  --border-line-8: var(--color-solar-flare-gray-800);
+
+  /* ============================================ */
+  /* PRIMARY RAMP (Full 11-shade scale)           */
+  /* ============================================ */
+
+  --primary-50: var(--color-solar-flare-50);
+  --primary-100: var(--color-solar-flare-100);
+  --primary-200: var(--color-solar-flare-200);
+  --primary-300: var(--color-solar-flare-300);
+  --primary-400: var(--color-solar-flare-400);
+  --primary-500: var(--color-solar-flare-500);
+  --primary-600: var(--color-solar-flare-600);
+  --primary-700: var(--color-solar-flare-700);
+  --primary-800: var(--color-solar-flare-800);
+  --primary-900: var(--color-solar-flare-900);
+  --primary-950: var(--color-solar-flare-950);
+
+  /* PRIMARY STATES */
+  --primary: var(--color-primary-600);
+  --primary-line: transparent;
+  --primary-foreground: var(--color-white);
+  --primary-hover: var(--color-primary-700);
+  --primary-focus: var(--color-primary-700);
+  --primary-active: var(--color-primary-700);
+  --primary-checked: var(--color-primary-600);
+
+  /* ============================================ */
+  /* SECONDARY                                    */
+  /* ============================================ */
+
+  --secondary: var(--color-solar-flare-gray-900);
+  --secondary-line: transparent;
+  --secondary-foreground: var(--color-white);
+  --secondary-hover: var(--color-solar-flare-gray-800);
+  --secondary-focus: var(--color-solar-flare-gray-800);
+  --secondary-active: var(--color-solar-flare-gray-800);
+
+  /* ============================================ */
+  /* LAYER                                        */
+  /* ============================================ */
+
+  --layer: var(--color-white);
+  --layer-line: var(--color-solar-flare-gray-200);
+  --layer-foreground: var(--color-solar-flare-gray-800);
+  --layer-hover: var(--color-solar-flare-gray-50);
+  --layer-focus: var(--color-solar-flare-gray-50);
+  --layer-active: var(--color-solar-flare-gray-50);
+
+  /* ============================================ */
+  /* SURFACE                                      */
+  /* ============================================ */
+
+  --surface: var(--color-solar-flare-gray-100);
+  --surface-1: var(--color-solar-flare-gray-200);
+  --surface-2: var(--color-solar-flare-gray-300);
+  --surface-3: var(--color-solar-flare-gray-400);
+  --surface-4: var(--color-solar-flare-gray-500);
+  --surface-5: var(--color-solar-flare-gray-600);
+  --surface-line: transparent;
+  --surface-foreground: var(--color-solar-flare-gray-800);
+  --surface-hover: var(--color-solar-flare-gray-200);
+  --surface-focus: var(--color-solar-flare-gray-200);
+  --surface-active: var(--color-solar-flare-gray-200);
+
+  /* ============================================ */
+  /* MUTED                                        */
+  /* ============================================ */
+
+  --muted: var(--color-solar-flare-gray-50);
+  --muted-foreground: var(--color-solar-flare-gray-500);
+  --muted-foreground-1: var(--color-solar-flare-gray-600);
+  --muted-foreground-2: var(--color-solar-flare-gray-700);
+  --muted-hover: var(--color-solar-flare-gray-100);
+  --muted-focus: var(--color-solar-flare-gray-100);
+  --muted-active: var(--color-solar-flare-gray-100);
+
+  /* ============================================ */
+  /* DESTRUCTIVE                                  */
+  /* ============================================ */
+
+  --destructive: var(--color-red-500);
+  --destructive-foreground: var(--color-white);
+  --destructive-hover: var(--color-red-600);
+  --destructive-focus: var(--color-red-600);
+
+  /* ============================================ */
+  /* NAVBAR                                       */
+  /* ============================================ */
+
+  --navbar: var(--color-white);
+  --navbar-line: var(--color-solar-flare-gray-200);
+  --navbar-divider: var(--color-solar-flare-gray-200);
+  --navbar-nav-foreground: var(--color-solar-flare-gray-800);
+  --navbar-nav-hover: var(--color-solar-flare-gray-100);
+  --navbar-nav-focus: var(--color-solar-flare-gray-100);
+  --navbar-nav-active: var(--color-solar-flare-gray-100);
+  --navbar-nav-list-divider: var(--color-solar-flare-gray-200);
+  --navbar-inverse: var(--color-primary-950);
+
+  --navbar-1: var(--color-solar-flare-gray-50);
+  --navbar-1-line: var(--color-solar-flare-gray-200);
+  --navbar-1-divider: var(--color-solar-flare-gray-200);
+  --navbar-1-nav-foreground: var(--color-solar-flare-gray-800);
+  --navbar-1-nav-hover: var(--color-solar-flare-gray-200);
+  --navbar-1-nav-focus: var(--color-solar-flare-gray-200);
+  --navbar-1-nav-active: var(--color-solar-flare-gray-200);
+  --navbar-1-nav-list-divider: var(--color-solar-flare-gray-200);
+
+  --navbar-2: var(--color-solar-flare-gray-100);
+  --navbar-2-line: transparent;
+  --navbar-2-divider: var(--color-solar-flare-gray-300);
+  --navbar-2-nav-foreground: var(--color-solar-flare-gray-800);
+  --navbar-2-nav-hover: var(--color-solar-flare-gray-200);
+  --navbar-2-nav-focus: var(--color-solar-flare-gray-200);
+  --navbar-2-nav-active: var(--color-solar-flare-gray-200);
+  --navbar-2-nav-list-divider: var(--color-solar-flare-gray-200);
+
+  /* ============================================ */
+  /* SIDEBAR                                      */
+  /* ============================================ */
+
+  --sidebar: var(--color-white);
+  --sidebar-line: var(--color-solar-flare-gray-200);
+  --sidebar-divider: var(--color-solar-flare-gray-200);
+  --sidebar-nav-foreground: var(--color-solar-flare-gray-800);
+  --sidebar-nav-hover: var(--color-solar-flare-gray-100);
+  --sidebar-nav-focus: var(--color-solar-flare-gray-100);
+  --sidebar-nav-active: var(--color-solar-flare-gray-100);
+  --sidebar-nav-list-divider: var(--color-solar-flare-gray-200);
+  --sidebar-inverse: var(--color-primary-950);
+
+  --sidebar-1: var(--color-solar-flare-gray-50);
+  --sidebar-1-line: var(--color-solar-flare-gray-200);
+  --sidebar-1-divider: var(--color-solar-flare-gray-200);
+  --sidebar-1-nav-foreground: var(--color-solar-flare-gray-800);
+  --sidebar-1-nav-hover: var(--color-solar-flare-gray-200);
+  --sidebar-1-nav-focus: var(--color-solar-flare-gray-200);
+  --sidebar-1-nav-active: var(--color-solar-flare-gray-200);
+  --sidebar-1-nav-list-divider: var(--color-solar-flare-gray-200);
+
+  --sidebar-2: var(--color-solar-flare-gray-100);
+  --sidebar-2-line: transparent;
+  --sidebar-2-divider: var(--color-solar-flare-gray-200);
+  --sidebar-2-nav-foreground: var(--color-solar-flare-gray-800);
+  --sidebar-2-nav-hover: var(--color-solar-flare-gray-200);
+  --sidebar-2-nav-focus: var(--color-solar-flare-gray-200);
+  --sidebar-2-nav-active: var(--color-solar-flare-gray-200);
+  --sidebar-2-nav-list-divider: var(--color-solar-flare-gray-200);
+
+  /* ============================================ */
+  /* CARD                                         */
+  /* ============================================ */
+
+  --card: var(--color-white);
+  --card-line: var(--color-solar-flare-gray-200);
+  --card-divider: var(--color-solar-flare-gray-200);
+  --card-header: var(--color-solar-flare-gray-200);
+  --card-footer: var(--color-solar-flare-gray-200);
+  --card-inverse: var(--color-primary-950);
+
+  /* ============================================ */
+  /* DROPDOWN                                     */
+  /* ============================================ */
+
+  --dropdown: var(--color-white);
+  --dropdown-1: var(--color-white);
+  --dropdown-line: transparent;
+  --dropdown-divider: var(--color-solar-flare-gray-200);
+  --dropdown-header: var(--color-solar-flare-gray-200);
+  --dropdown-footer: var(--color-solar-flare-gray-200);
+  --dropdown-item-foreground: var(--color-solar-flare-gray-800);
+  --dropdown-item-hover: var(--color-solar-flare-gray-100);
+  --dropdown-item-focus: var(--color-solar-flare-gray-100);
+  --dropdown-item-active: var(--color-solar-flare-gray-100);
+  --dropdown-inverse: var(--color-solar-flare-gray-900);
+
+  /* ============================================ */
+  /* SELECT                                       */
+  /* ============================================ */
+
+  --select: var(--color-white);
+  --select-1: var(--color-white);
+  --select-line: transparent;
+  --select-item-foreground: var(--color-solar-flare-gray-800);
+  --select-item-hover: var(--color-solar-flare-gray-100);
+  --select-item-focus: var(--color-solar-flare-gray-100);
+  --select-item-active: var(--color-solar-flare-gray-100);
+  --select-inverse: var(--color-solar-flare-gray-900);
+
+  /* ============================================ */
+  /* OVERLAY                                      */
+  /* ============================================ */
+
+  --overlay: var(--color-white);
+  --overlay-line: transparent;
+  --overlay-divider: var(--color-solar-flare-gray-200);
+  --overlay-header: var(--color-solar-flare-gray-200);
+  --overlay-footer: var(--color-solar-flare-gray-200);
+  --overlay-inverse: var(--color-solar-flare-gray-900);
+
+  /* ============================================ */
+  /* POPOVER                                      */
+  /* ============================================ */
+
+  --popover: var(--color-white);
+  --popover-line: var(--color-solar-flare-gray-100);
+
+  /* ============================================ */
+  /* TOOLTIP                                      */
+  /* ============================================ */
+
+  --tooltip: var(--color-solar-flare-gray-900);
+  --tooltip-foreground: var(--color-white);
+  --tooltip-line: transparent;
+
+  /* ============================================ */
+  /* TABLE                                        */
+  /* ============================================ */
+
+  --table-line: var(--color-solar-flare-gray-200);
+
+  /* ============================================ */
+  /* SWITCH                                       */
+  /* ============================================ */
+
+  --switch: var(--color-white);
+
+  /* ============================================ */
+  /* FOOTER                                       */
+  /* ============================================ */
+
+  --footer: var(--color-white);
+  --footer-line: var(--color-solar-flare-gray-200);
+  --footer-inverse: var(--color-solar-flare-gray-900);
+
+  /* ============================================ */
+  /* SCROLLBAR                                    */
+  /* ============================================ */
+
+  --scrollbar-track: var(--color-solar-flare-gray-100);
+  --scrollbar-thumb: var(--color-solar-flare-gray-300);
+  --scrollbar-track-inverse: transparent;
+  --scrollbar-thumb-inverse: var(--color-white);
+  /* ============================================ */
+  /* CHARTS (Apexcharts)                          */
+  /* ============================================ */
+  /* NOTE: -hex tokens use valid hex for Apexcharts compatibility */
+
+  --chart-colors-background-inverse: var(--color-solar-flare-gray-900);
+  --chart-colors-foreground: var(--color-solar-flare-gray-700);
+
+  --chart-primary: var(--color-solar-flare-500);
+  --chart-colors-primary: var(--color-solar-flare-500);
+  --chart-colors-primary-inverse: var(--color-solar-flare-300);
+  --chart-colors-primary-hex: #b54c3d;
+  --chart-colors-primary-hex-inverse: #f09080;
+
+  --chart-1: oklch(55% 0.14 30);
+  --chart-colors-chart-1: oklch(55% 0.14 30);
+  --chart-colors-chart-1-inverse: oklch(75% 0.12600000000000003 30);
+  --chart-colors-chart-1-hex: #b54c3d;
+  --chart-colors-chart-1-hex-inverse: #f38e7e;
+  --chart-2: oklch(60% 0.12 60);
+  --chart-colors-chart-2: oklch(60% 0.12 60);
+  --chart-colors-chart-2-inverse: oklch(80% 0.108 60);
+  --chart-colors-chart-2-hex: #b36d2a;
+  --chart-colors-chart-2-hex-inverse: #f1ad75;
+  --chart-3: oklch(58% 0.12 0);
+  --chart-colors-chart-3: oklch(58% 0.12 0);
+  --chart-colors-chart-3-inverse: oklch(78% 0.108 0);
+  --chart-colors-chart-3-hex: #b25977;
+  --chart-colors-chart-3-hex-inverse: #f09ab4;
+  --chart-4: oklch(55% 0.13 210);
+  --chart-colors-chart-4: oklch(55% 0.13 210);
+  --chart-colors-chart-4-inverse: oklch(75% 0.117 210);
+  --chart-colors-chart-4-hex: #00849b;
+  --chart-colors-chart-4-hex-inverse: #37c2d7;
+  --chart-5: oklch(60% 0.11 180);
+  --chart-colors-chart-5: oklch(60% 0.11 180);
+  --chart-colors-chart-5-inverse: oklch(80% 0.099 180);
+  --chart-colors-chart-5-hex: #009583;
+  --chart-colors-chart-5-hex-inverse: #6ed3c0;
+  --chart-6: oklch(58% 0.11 240);
+  --chart-colors-chart-6: oklch(58% 0.11 240);
+  --chart-colors-chart-6-inverse: oklch(78% 0.099 240);
+  --chart-colors-chart-6-hex: #3082b5;
+  --chart-colors-chart-6-hex-inverse: #7ac0f0;
+  --chart-7: oklch(62% 0.1 90);
+  --chart-colors-chart-7: oklch(62% 0.1 90);
+  --chart-colors-chart-7-inverse: oklch(82% 0.09000000000000001 90);
+  --chart-colors-chart-7-hex: #9e8337;
+  --chart-colors-chart-7-hex-inverse: #dbc27f;
+  --chart-8: oklch(56% 0.1 330);
+  --chart-colors-chart-8: oklch(56% 0.1 330);
+  --chart-colors-chart-8-inverse: oklch(76% 0.09000000000000001 330);
+  --chart-colors-chart-8-hex: #955e90;
+  --chart-colors-chart-8-hex-inverse: #d29ccc;
+  --chart-9: oklch(60% 0.09 120);
+  --chart-colors-chart-9: oklch(60% 0.09 120);
+  --chart-colors-chart-9-inverse: oklch(80% 0.081 120);
+  --chart-colors-chart-9-hex: #798848;
+  --chart-colors-chart-9-hex-inverse: #b7c68b;
+  --chart-10: oklch(58% 0.09 300);
+  --chart-colors-chart-10: oklch(58% 0.09 300);
+  --chart-colors-chart-10-inverse: oklch(78% 0.081 300);
+  --chart-colors-chart-10-hex: #826ea8;
+  --chart-colors-chart-10-hex-inverse: #bface4;
+
+  --chart-colors-candlestick-upward: var(--color-green-500);
+  --chart-colors-candlestick-upward-inverse: var(--color-green-400);
+  --chart-colors-candlestick-downward: var(--color-red-500);
+  --chart-colors-candlestick-downward-inverse: var(--color-red-400);
+
+  --chart-colors-labels: var(--color-solar-flare-gray-600);
+  --chart-colors-labels-inverse: var(--color-solar-flare-gray-400);
+  --chart-colors-xaxis-labels: var(--color-solar-flare-gray-500);
+  --chart-colors-xaxis-labels-inverse: var(--color-solar-flare-gray-400);
+  --chart-colors-yaxis-labels: var(--color-solar-flare-gray-500);
+  --chart-colors-yaxis-labels-inverse: var(--color-solar-flare-gray-400);
+
+  --chart-colors-grid-border: var(--color-solar-flare-gray-200);
+  --chart-colors-grid-border-inverse: var(--color-solar-flare-gray-700);
+  --chart-colors-bar-ranges: var(--color-solar-flare-gray-200);
+  --chart-colors-bar-ranges-inverse: var(--color-solar-flare-gray-700);
+  /* ============================================ */
+  /* MAPS (jsvectormap)                           */
+  /* ============================================ */
+
+  --map-colors-primary: var(--color-solar-flare-500);
+  --map-colors-primary-inverse: var(--color-solar-flare-400);
+  --map-colors-default: var(--color-solar-flare-gray-200);
+  --map-colors-default-inverse: var(--color-solar-flare-gray-700);
+  --map-colors-highlight: var(--color-solar-flare-300);
+  --map-colors-highlight-inverse: var(--color-solar-flare-500);
+  --map-colors-border: var(--color-solar-flare-gray-300);
+  --map-colors-border-inverse: var(--color-solar-flare-gray-600);
+}
+
+/* ============================================== */
+/* DARK MODE OVERRIDES                            */
+/* ============================================== */
+
+[data-theme="theme-solar-flare"].dark {
+
+  /* ============================================ */
+  /* DARK MODE - Tailwind stone */
+  /* ============================================ */
+
+  /* BACKGROUNDS */
+  --background: var(--color-stone-800);
+  --background-1: var(--color-stone-900);
+  --background-2: var(--color-stone-900);
+  --background-plain: var(--color-stone-800);
+
+  /* TEXT */
+  --foreground: var(--color-stone-200);
+
+  --inverse: var(--color-stone-950);
+
+  /* BORDERS */
+  --border: var(--color-stone-700);
+  --border-line-inverse: var(--color-stone-200);
+  --border-line-1: var(--color-stone-800);
+  --border-line-2: var(--color-stone-700);
+  --border-line-3: var(--color-stone-600);
+  --border-line-4: var(--color-stone-500);
+  --border-line-5: var(--color-stone-400);
+  --border-line-6: var(--color-stone-300);
+  --border-line-7: var(--color-stone-200);
+  --border-line-8: var(--color-stone-100);
+
+  /* PRIMARY STATES */
+  --primary: var(--color-solar-flare-400);
+  --primary-foreground: var(--color-white);
+  --primary-hover: var(--color-solar-flare-500);
+  --primary-focus: var(--color-solar-flare-500);
+  --primary-active: var(--color-solar-flare-500);
+  --primary-checked: var(--color-solar-flare-400);
+
+  /* SECONDARY */
+  --secondary: var(--color-white);
+  --secondary-foreground: var(--color-stone-800);
+  --secondary-hover: var(--color-stone-100);
+  --secondary-focus: var(--color-stone-100);
+  --secondary-active: var(--color-stone-100);
+
+  /* LAYER */
+  --layer: var(--color-stone-800);
+  --layer-line: var(--color-stone-700);
+  --layer-foreground: var(--color-white);
+  --layer-hover: var(--color-stone-700);
+  --layer-focus: var(--color-stone-700);
+  --layer-active: var(--color-stone-700);
+
+  /* SURFACE */
+  --surface: var(--color-stone-700);
+  --surface-1: var(--color-stone-600);
+  --surface-2: var(--color-stone-500);
+  --surface-3: var(--color-stone-600);
+  --surface-4: var(--color-stone-500);
+  --surface-5: var(--color-stone-400);
+  --surface-foreground: var(--color-stone-200);
+  --surface-hover: var(--color-stone-600);
+  --surface-focus: var(--color-stone-600);
+  --surface-active: var(--color-stone-600);
+
+  /* MUTED */
+  --muted: var(--color-stone-800);
+  --muted-foreground: var(--color-stone-500);
+  --muted-foreground-1: var(--color-stone-400);
+  --muted-foreground-2: var(--color-stone-300);
+  --muted-hover: var(--color-stone-700);
+  --muted-focus: var(--color-stone-700);
+  --muted-active: var(--color-stone-700);
+
+  /* DESTRUCTIVE */
+  --destructive: var(--color-red-500);
+  --destructive-foreground: var(--color-white);
+  --destructive-hover: var(--color-red-600);
+  --destructive-focus: var(--color-red-600);
+
+  /* NAVBAR */
+  --navbar: var(--color-stone-800);
+  --navbar-line: var(--color-stone-700);
+  --navbar-divider: var(--color-stone-700);
+  --navbar-nav-foreground: var(--color-stone-200);
+  --navbar-nav-hover: var(--color-stone-700);
+  --navbar-nav-focus: var(--color-stone-700);
+  --navbar-nav-active: var(--color-stone-700);
+  --navbar-nav-list-divider: var(--color-stone-700);
+  --navbar-inverse: var(--color-solar-flare-950);
+
+  --navbar-1: var(--color-stone-900);
+  --navbar-1-line: var(--color-stone-700);
+  --navbar-1-divider: var(--color-stone-700);
+  --navbar-1-nav-foreground: var(--color-stone-200);
+  --navbar-1-nav-hover: var(--color-stone-700);
+  --navbar-1-nav-focus: var(--color-stone-700);
+  --navbar-1-nav-active: var(--color-stone-700);
+  --navbar-1-nav-list-divider: var(--color-stone-700);
+
+  --navbar-2: var(--color-stone-900);
+  --navbar-2-line: transparent;
+  --navbar-2-divider: var(--color-stone-700);
+  --navbar-2-nav-foreground: var(--color-stone-200);
+  --navbar-2-nav-hover: var(--color-stone-800);
+  --navbar-2-nav-focus: var(--color-stone-800);
+  --navbar-2-nav-active: var(--color-stone-800);
+  --navbar-2-nav-list-divider: var(--color-stone-800);
+
+  /* SIDEBAR */
+  --sidebar: var(--color-stone-800);
+  --sidebar-line: var(--color-stone-700);
+  --sidebar-divider: var(--color-stone-700);
+  --sidebar-nav-foreground: var(--color-stone-200);
+  --sidebar-nav-hover: var(--color-stone-700);
+  --sidebar-nav-focus: var(--color-stone-700);
+  --sidebar-nav-active: var(--color-stone-700);
+  --sidebar-nav-list-divider: var(--color-stone-700);
+  --sidebar-inverse: var(--color-solar-flare-950);
+
+  --sidebar-1: var(--color-stone-900);
+  --sidebar-1-line: var(--color-stone-700);
+  --sidebar-1-divider: var(--color-stone-700);
+  --sidebar-1-nav-foreground: var(--color-stone-200);
+  --sidebar-1-nav-hover: var(--color-stone-700);
+  --sidebar-1-nav-focus: var(--color-stone-700);
+  --sidebar-1-nav-active: var(--color-stone-700);
+  --sidebar-1-nav-list-divider: var(--color-stone-700);
+
+  --sidebar-2: var(--color-stone-900);
+  --sidebar-2-line: transparent;
+  --sidebar-2-divider: var(--color-stone-800);
+  --sidebar-2-nav-foreground: var(--color-stone-200);
+  --sidebar-2-nav-hover: var(--color-stone-800);
+  --sidebar-2-nav-focus: var(--color-stone-800);
+  --sidebar-2-nav-active: var(--color-stone-800);
+  --sidebar-2-nav-list-divider: var(--color-stone-800);
+
+  /* CARD */
+  --card: var(--color-stone-800);
+  --card-line: var(--color-stone-700);
+  --card-divider: var(--color-stone-700);
+  --card-header: var(--color-stone-700);
+  --card-footer: var(--color-stone-700);
+  --card-inverse: var(--color-stone-900);
+
+  /* DROPDOWN */
+  --dropdown: var(--color-stone-900);
+  --dropdown-1: var(--color-stone-950);
+  --dropdown-line: transparent;
+  --dropdown-divider: var(--color-stone-800);
+  --dropdown-header: var(--color-stone-700);
+  --dropdown-footer: var(--color-stone-700);
+  --dropdown-item-foreground: var(--color-stone-200);
+  --dropdown-item-hover: var(--color-stone-800);
+  --dropdown-item-focus: var(--color-stone-800);
+  --dropdown-item-active: var(--color-stone-800);
+  --dropdown-inverse: var(--color-stone-900);
+
+  /* SELECT */
+  --select: var(--color-stone-900);
+  --select-1: var(--color-stone-950);
+  --select-line: transparent;
+  --select-item-foreground: var(--color-stone-200);
+  --select-item-hover: var(--color-stone-800);
+  --select-item-focus: var(--color-stone-800);
+  --select-item-active: var(--color-stone-800);
+  --select-inverse: var(--color-stone-900);
+
+  /* OVERLAY */
+  --overlay: var(--color-stone-800);
+  --overlay-line: transparent;
+  --overlay-divider: var(--color-stone-700);
+  --overlay-header: var(--color-stone-700);
+  --overlay-footer: var(--color-stone-700);
+  --overlay-inverse: var(--color-stone-900);
+
+  /* POPOVER */
+  --popover: var(--color-stone-900);
+  --popover-line: var(--color-stone-700);
+
+  /* TOOLTIP */
+  --tooltip: var(--color-white);
+  --tooltip-foreground: var(--color-stone-800);
+  --tooltip-line: transparent;
+
+  /* TABLE */
+  --table-line: var(--color-stone-700);
+
+  /* SWITCH */
+  --switch: var(--color-white);
+
+  /* FOOTER */
+  --footer: var(--color-stone-800);
+  --footer-line: var(--color-stone-700);
+  --footer-inverse: var(--color-stone-900);
+
+  /* SCROLLBAR */
+  --scrollbar-track: var(--color-stone-700);
+  --scrollbar-thumb: var(--color-stone-500);
+  --scrollbar-track-inverse: var(--color-stone-500);
+  --scrollbar-thumb-inverse: var(--color-stone-700);
+
+  /* CHARTS - dark mode adjustments */
+  --chart-colors-background-inverse: var(--color-stone-100);
+  --chart-colors-foreground: var(--color-stone-300);
+  --chart-colors-labels: var(--color-stone-400);
+  --chart-colors-xaxis-labels: var(--color-stone-400);
+  --chart-colors-yaxis-labels: var(--color-stone-400);
+  --chart-colors-grid-border: var(--color-stone-700);
+  --chart-colors-bar-ranges: var(--color-stone-700);
+
+  /* MAPS - dark mode adjustments */
+  --map-colors-default: var(--color-stone-700);
+  --map-colors-border: var(--color-stone-600);
+}

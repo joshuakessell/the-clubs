@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "preline-theme-generator": {
+      "source": "htmlstreamofficial/preline",
+      "sourceType": "github",
+      "computedHash": "945262531988cff7cbdf74ccf341bdc6320988b435213f1fdf0318a4ef2016a7"
+    }
+  }
+}
