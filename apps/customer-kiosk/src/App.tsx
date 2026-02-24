@@ -3,16 +3,16 @@ import { ErrorBoundary } from '@the-clubs/ui';
 import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { getApiUrl } from '@the-clubs/shared';
 import { IdleScreen } from './screens/IdleScreen';
-import { SelectionScreen } from './screens/SelectionScreen';
+import { CheckingInScreen } from './screens/CheckingInScreen';
 import { AgreementScreen } from './screens/AgreementScreen';
-import { PaymentScreen } from './screens/PaymentScreen';
+// PaymentScreen no longer used — employee handles payment
 import { AddOnsScreen } from './screens/AddOnsScreen';
 import { CompleteScreen } from './screens/CompleteScreen';
 import { LaneSelectScreen } from './screens/LaneSelectScreen';
 import { useKioskSSE } from './hooks/useKioskSSE';
 import { I18nProvider } from './i18n';
 
-export type KioskView = 'idle' | 'selection' | 'addons' | 'agreement' | 'payment' | 'complete';
+export type KioskView = 'idle' | 'checkin' | 'addons' | 'agreement' | 'payment' | 'complete';
 
 /* ── Lane configuration ── */
 const LANES = [
@@ -33,12 +33,12 @@ function flowStepToView(flowStep: string | undefined | null): KioskView {
   switch (flowStep) {
     case 'LANGUAGE':
     case 'RENTAL':
-      return 'selection';
+      return 'checkin';
     case 'WAITLIST_PREFERENCES':
     case 'WAITLIST_BACKUP':
-      return 'selection'; // waitlist happens on the selection screen
+      return 'checkin';
     case 'PAYMENT':
-      return 'payment';
+      return 'checkin'; // Employee handles payment; kiosk shows charges
     case 'AGREEMENT':
       return 'agreement';
     case 'COMPLETE':
@@ -149,18 +149,11 @@ export default function App() {
         >
   { view === 'idle' && <IdleScreen />}
 {
-  view === 'selection' && (
-    <SelectionScreen
-              customerName={ customerName }
-  language = { language as 'EN' | 'ES' }
-  sessionPayload = { sessionPayload }
-  laneId = { laneId }
-  kioskToken = { kioskToken }
-  onNext = {() => navigate('payment')
-}
-onCancel = { reset }
-  />
-          )}
+  view === 'checkin' && (
+    <CheckingInScreen
+      sessionPayload={ sessionPayload }
+    />
+  )}
 {
   view === 'addons' && (
     <AddOnsScreen
@@ -172,18 +165,7 @@ onCancel = { reset }
 onSkip = {() => navigate('agreement')}
             />
           )}
-{ view === 'agreement' && <AgreementScreen onAccept={ () => navigate('payment') } onCancel = { reset } />}
-{
-  view === 'payment' && (
-    <PaymentScreen
-              laneId={ laneId }
-  kioskToken = { kioskToken }
-  sessionPayload = { sessionPayload }
-  onComplete = {() => navigate('complete')
-}
-onCancel = { reset }
-  />
-          )}
+{ view === 'agreement' && <AgreementScreen onAccept={ () => navigate('complete') } onCancel = { reset } />}
 {
   view === 'complete' && (
     <CompleteScreen

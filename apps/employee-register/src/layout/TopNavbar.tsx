@@ -92,8 +92,8 @@ width = "28"
 height = "28"
   />
   </div>
-  < span className = "text-sm font-bold" style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-    Club Dallas — Register #{ laneId.replace(/\D/g, '') || '1' }
+  <span className="text-sm font-bold uppercase" style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}>
+    Club Dallas — Register #{laneId.replace(/\D/g, '') || '1'}
 </span>
   </div>
 

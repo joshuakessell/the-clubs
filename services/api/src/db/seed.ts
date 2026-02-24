@@ -154,36 +154,21 @@ async function seed() {
     console.log('\nSeeding staff users...');
 
     const staffUsers = [
-      {
-        name: 'John Erikson',
-        role: 'STAFF',
-        qrToken: 'STAFF-001',
-        pin: '111111',
-      },
-      {
-        name: 'Manager Club',
-        role: 'ADMIN',
-        qrToken: 'STAFF-002',
-        pin: '222222',
-      },
-      {
-        name: 'Manager Dallas',
-        role: 'ADMIN',
-        qrToken: 'STAFF-003',
-        pin: '333333',
-      },
-      {
-        name: 'Employee One',
-        role: 'STAFF',
-        qrToken: 'STAFF-004',
-        pin: '444444',
-      },
-      {
-        name: 'Employee Two',
-        role: 'STAFF',
-        qrToken: 'STAFF-005',
-        pin: '555555',
-      },
+      // ── Full-time employees (6) ─────────────────────────────────
+      { name: 'John Erikson',      role: 'STAFF', qrToken: 'STAFF-001', pin: '111111' },
+      { name: 'Marcus Rivera',     role: 'STAFF', qrToken: 'STAFF-002', pin: '222222' },
+      { name: 'Tyler Brooks',      role: 'STAFF', qrToken: 'STAFF-003', pin: '333333' },
+      { name: 'Ryan Mitchell',     role: 'STAFF', qrToken: 'STAFF-004', pin: '444444' },
+      { name: 'Derek Nguyen',      role: 'STAFF', qrToken: 'STAFF-005', pin: '555555' },
+      { name: 'Chris Patterson',   role: 'STAFF', qrToken: 'STAFF-006', pin: '666666' },
+      // ── Part-time employees (4) ─────────────────────────────────
+      { name: 'Jason Morales',     role: 'STAFF', qrToken: 'STAFF-007', pin: '777777' },
+      { name: 'Brandon Reyes',     role: 'STAFF', qrToken: 'STAFF-008', pin: '888888' },
+      { name: 'Kyle Foster',       role: 'STAFF', qrToken: 'STAFF-009', pin: '999999' },
+      { name: 'Sean Caldwell',     role: 'STAFF', qrToken: 'STAFF-010', pin: '101010' },
+      // ── Management ──────────────────────────────────────────────
+      { name: 'Manager Club',      role: 'ADMIN', qrToken: 'STAFF-011', pin: '123456' },
+      { name: 'Manager Dallas',    role: 'ADMIN', qrToken: 'STAFF-012', pin: '654321' },
     ];
 
     // Check if staff already exist

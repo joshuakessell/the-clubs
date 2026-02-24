@@ -64,6 +64,16 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
       sessionId: row.id,
     };
 
+    // Sliding window: extend session expiry on each authenticated request.
+    // Only fires if less than 23h remain (throttles to ~1 write/hour max).
+    query(
+      `UPDATE staff_sessions
+       SET expires_at = NOW() + INTERVAL '24 hours'
+       WHERE session_token = $1
+         AND expires_at - NOW() < INTERVAL '23 hours'`,
+      [token]
+    ).catch(() => {}); // fire-and-forget, non-blocking
+
     return true;
   } catch (error) {
     request.log.error(error, 'Error validating session token');

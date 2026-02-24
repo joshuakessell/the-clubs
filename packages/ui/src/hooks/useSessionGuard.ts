@@ -27,6 +27,17 @@ export function useSessionGuard() {
         }
     }, [session?.sessionToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
+    // Heartbeat: ping /auth/me every 10 minutes to keep session alive
+    // and detect expiry proactively before the user tries an action.
+    useEffect(() => {
+        if (!session) return;
+        const HEARTBEAT_MS = 10 * 60 * 1000; // 10 minutes
+        const id = setInterval(() => {
+            void validateSession();
+        }, HEARTBEAT_MS);
+        return () => clearInterval(id);
+    }, [session?.sessionToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
     // Patch fetch to intercept 401s on API calls
     useEffect(() => {
         if (patchedRef.current) return;

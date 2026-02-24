@@ -1,5 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 @import "preline/css/themes/theme.css";
 @import "preline/css/themes/ocean.css";
@@ -10,6 +11,7 @@
 @theme {
   --font-display: 'JetBrains Mono', ui-monospace, monospace;
   --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-brand: 'Archivo', system-ui, sans-serif;
 
   --color-surface-base: var(--background);
   --color-surface-raised: var(--background-1);

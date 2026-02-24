@@ -53,11 +53,11 @@ export function ChargesTab() {
         if (cancelled) return;
 
         const entries: LedgerEntry[] = (data.entries ?? []).map((e: any) => ({
-          description: e.description ?? e.entry_type ?? 'Charge',
-          amount: typeof e.amount === 'string' ? parseInt(e.amount, 10) : (e.amount ?? 0),
+          description: e.summary ?? e.entryType ?? 'Charge',
+          amount: typeof e.amountCents === 'number' ? e.amountCents : (typeof e.amountCents === 'string' ? parseInt(e.amountCents, 10) : 0),
         }));
 
-        const total = entries.reduce((sum, e) => sum + e.amount, 0);
+        const total = data.totals?.netCents ?? entries.reduce((sum, e) => sum + e.amount, 0);
         setVisitEntries(entries);
         setVisitTotal(total);
       } catch {

@@ -80,13 +80,21 @@ function isFridayOrSaturdayPeak(d: Date): boolean {
 }
 
 function visitStartRatePerHour(d: Date): number {
-  if (isFridayOrSaturdayPeak(d)) return 36;
+  // Facility capacity: 163 resources (55 rooms + 108 lockers) with 6-hour blocks
+  // = ~27 customers/hour at steady-state capacity.
+  // Rates below reflect realistic daily patterns capped at capacity.
+  // Weekdays (Mon–Thu) operate at half the weekend rate.
+  const day = d.getDay(); // 0=Sun..6=Sat
+  const isWeekend = day === 0 || day === 5 || day === 6; // Fri, Sat, Sun
+  if (isFridayOrSaturdayPeak(d)) return 27; // capacity
   const hour = hourOf(d);
-  if (hour >= 12 && hour <= 16) return 10;
-  if (hour >= 17 && hour <= 19) return 18;
-  if (hour >= 20 && hour <= 23) return 22;
-  if (hour >= 0 && hour <= 3) return 14;
-  return 6;
+  let rate: number;
+  if (hour >= 12 && hour <= 16) rate = 8;    // afternoon lull
+  else if (hour >= 17 && hour <= 19) rate = 18;   // evening ramp-up
+  else if (hour >= 20 && hour <= 23) rate = 24;   // peak hours — busy
+  else if (hour >= 0 && hour <= 3) rate = 27;     // late night — at capacity
+  else rate = 20;                                  // early morning winding down
+  return isWeekend ? rate : Math.round(rate / 2);
 }
 
 function samplePoisson(rng: () => number, lambda: number): number {
@@ -146,6 +154,72 @@ function nightKey(d: Date): string {
     adjusted.setDate(adjusted.getDate() - 1);
   }
   return adjusted.toISOString().slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// New customer generation (for 20% new-customer flow)
+// ---------------------------------------------------------------------------
+const FIRST_NAMES = [
+  'James', 'Robert', 'Michael', 'William', 'David', 'Richard', 'Joseph', 'Thomas',
+  'Christopher', 'Daniel', 'Matthew', 'Andrew', 'Joshua', 'Anthony', 'Kevin',
+  'Brian', 'George', 'Edward', 'Ronald', 'Timothy', 'Jason', 'Jeffrey', 'Ryan',
+  'Jacob', 'Nicholas', 'Eric', 'Stephen', 'Larry', 'Justin', 'Scott',
+  'Brandon', 'Benjamin', 'Samuel', 'Raymond', 'Gregory', 'Frank', 'Patrick',
+  'Alexander', 'Jack', 'Dennis', 'Jerry', 'Tyler', 'Aaron', 'Nathan', 'Henry',
+  'Peter', 'Kyle', 'Noah', 'Ethan', 'Jeremy', 'Walter', 'Christian', 'Keith',
+  'Roger', 'Terry', 'Austin', 'Sean', 'Gerald', 'Carl', 'Harold', 'Dylan',
+  'Arthur', 'Lawrence', 'Jordan', 'Jesse', 'Bryan', 'Billy', 'Bruce', 'Gabriel',
+];
+const LAST_NAMES = [
+  'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis',
+  'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson',
+  'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee', 'Perez', 'Thompson',
+  'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson',
+  'Walker', 'Young', 'Allen', 'King', 'Wright', 'Scott', 'Torres', 'Nguyen',
+  'Hill', 'Flores', 'Green', 'Adams', 'Nelson', 'Baker', 'Hall', 'Rivera',
+  'Campbell', 'Mitchell', 'Carter', 'Roberts', 'Gomez', 'Phillips', 'Evans',
+  'Turner', 'Diaz', 'Parker', 'Cruz', 'Edwards', 'Collins', 'Reyes',
+];
+const ID_STATES = ['TX', 'OK', 'LA', 'NM', 'AR', 'CA', 'FL', 'NY'];
+
+let newCustomerSeq = 0;
+
+function generateNewCustomerData(rng: () => number, now: Date): {
+  id: string;
+  name: string;
+  dob: Date;
+  membershipNumber: string | null;
+  idNumber: string;
+  idType: string;
+  idState: string;
+  idExpirationDate: Date;
+} {
+  const seq = ++newCustomerSeq;
+  const firstName = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)]!;
+  const lastName = LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)]!;
+  const name = `${firstName} ${lastName}`;
+  const dob = new Date(
+    1970 + Math.floor(rng() * 35),
+    Math.floor(rng() * 12),
+    1 + Math.floor(rng() * 27)
+  );
+  const idNumber = `D${String(seq + 50000000).padStart(8, '0')}`;
+  const idState = ID_STATES[Math.floor(rng() * ID_STATES.length)]!;
+  const idExpirationDate = new Date(
+    now.getFullYear() + 2 + Math.floor(rng() * 4),
+    Math.floor(rng() * 12),
+    1 + Math.floor(rng() * 27)
+  );
+  return {
+    id: randomUUID(),
+    name,
+    dob,
+    membershipNumber: null, // new customers are always guests
+    idNumber,
+    idType: 'DRIVERS_LICENSE',
+    idState,
+    idExpirationDate,
+  };
 }
 
 export async function appendIncrementalDemoSimulation(params: {
@@ -282,7 +356,7 @@ export async function appendIncrementalDemoSimulation(params: {
       const offsetMs = Math.floor(rng() * Math.max(1, slotEnd.getTime() - slotStart.getTime()));
       let start = new Date(slotStart.getTime() + offsetMs);
       if (start > params.to) continue;
-      start = floorTo15Min(start);
+      start = ceilTo15Min(start);
 
       const stayMinutes = sampleStayMinutes(rng);
       const scheduledEnd = ceilTo15Min(new Date(start.getTime() + stayMinutes * 60 * 1000));
@@ -293,7 +367,24 @@ export async function appendIncrementalDemoSimulation(params: {
       if (end <= start) continue;
       if (end > params.to) continue;
 
-      const customer = params.customers[customerIndex++ % params.customers.length]!;
+      // 80% returning customers, 20% new customers
+      let customer: DemoCustomer;
+      if (rng() < 0.8 && params.customers.length > 0) {
+        // Returning customer — pick randomly from pool
+        customer = params.customers[Math.floor(rng() * params.customers.length)]!;
+      } else {
+        // New customer — create inline
+        const newCust = generateNewCustomerData(rng, params.to);
+        await params.client.query(
+          `INSERT INTO customers
+             (id, name, dob, membership_number, id_number, id_type, id_state, id_expiration_date, primary_language, past_due_balance, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'EN', 0, $9, $9)`,
+          [newCust.id, newCust.name, newCust.dob, newCust.membershipNumber,
+           newCust.idNumber, newCust.idType, newCust.idState, newCust.idExpirationDate, start]
+        );
+        customer = { id: newCust.id, name: newCust.name, membership_number: null, dob: newCust.dob };
+        params.customers.push(customer); // add to pool for future returning visits
+      }
       touchedCustomerIds.add(customer.id);
       const register = params.registerSessions[(customerIndex + j) % params.registerSessions.length]!;
       const staffMember = params.staff.find((s) => s.id === register.employee_id) ?? params.staff[0]!;
@@ -401,6 +492,46 @@ export async function appendIncrementalDemoSimulation(params: {
           `ACT:DEMO:CHECKIN_COMPLETED:${checkinBlockId}`,
         ]
       );
+
+      // Rental fee spend ledger entry — every visit has a rental charge
+      const rentalCents = checkinPriceCents(rentalType);
+      const rentalLabel = rentalType === 'LOCKER' ? 'Locker Rental'
+        : rentalType === 'DOUBLE' ? 'Double Room Rental'
+        : rentalType === 'SPECIAL' ? 'Special Room Rental'
+        : 'Standard Room Rental';
+      await params.client.query(
+        `INSERT INTO customer_spend_ledger_entries
+           (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+            source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+         VALUES ($1, $2::uuid, $3::uuid, 'RENTAL_FEE', $4::bigint, $5,
+                 'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, $8, $9::jsonb, $10)
+         ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+        [
+          signedAt, customer.id, visitId, rentalCents, currencyUSD(),
+          staffMember.id, staffMember.name, rentalLabel,
+          { rentalType, priceCents: rentalCents },
+          `LEDGER:DEMO:RENTAL_FEE:${checkinBlockId}`,
+        ]
+      );
+
+      // Membership fee for non-members ($10)
+      if (!customer.membership_number) {
+        const membershipCents = 1000;
+        await params.client.query(
+          `INSERT INTO customer_spend_ledger_entries
+             (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+              source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+           VALUES ($1, $2::uuid, $3::uuid, 'MEMBERSHIP_FEE', $4::bigint, $5,
+                   'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, 'Non-Member Fee', $8::jsonb, $9)
+           ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+          [
+            signedAt, customer.id, visitId, membershipCents, currencyUSD(),
+            staffMember.id, staffMember.name,
+            { membershipCents },
+            `LEDGER:DEMO:MEMBERSHIP_FEE:${checkinBlockId}`,
+          ]
+        );
+      }
 
       checkoutEvents.push({
         occurredAt: end,
@@ -570,7 +701,7 @@ export async function appendIncrementalDemoSimulation(params: {
       if (start > new Date(params.to.getTime() - 7 * 60 * 60 * 1000)) {
         start = new Date(params.to.getTime() - (7 + Math.floor(rng() * 48)) * 60 * 60 * 1000);
       }
-      start = floorTo15Min(start);
+      start = ceilTo15Min(start);
 
       const stayMinutes = sampleStayMinutes(rng);
       const scheduledEnd = ceilTo15Min(new Date(start.getTime() + stayMinutes * 60 * 1000));
@@ -671,22 +802,47 @@ export async function appendIncrementalDemoSimulation(params: {
         ]
       );
 
-      // CHECKIN_FEE spend ledger entry
-      const priceCents = checkinPriceCents(rentalType);
+      // Rental fee spend ledger entry
+      const rentalCents = checkinPriceCents(rentalType);
+      const rentalLabel = rentalType === 'LOCKER' ? 'Locker Rental'
+        : rentalType === 'DOUBLE' ? 'Double Room Rental'
+        : rentalType === 'SPECIAL' ? 'Special Room Rental'
+        : 'Standard Room Rental';
       await params.client.query(
         `INSERT INTO customer_spend_ledger_entries
            (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
             source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
-         VALUES ($1, $2::uuid, $3::uuid, 'CHECKIN_FEE', $4::bigint, $5,
-                 'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, 'Check-in fee', $8::jsonb, $9)
+         VALUES ($1, $2::uuid, $3::uuid, 'RENTAL_FEE', $4::bigint, $5,
+                 'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, $8, $9::jsonb, $10)
          ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
         [
-          signedAt, customer.id, visitId, priceCents, currencyUSD(),
-          staffMember.id, staffMember.name,
-          { rentalType, priceCents },
-          `LEDGER:DEMO:G:CHECKIN_FEE:${checkinBlockId}`,
+          signedAt, customer.id, visitId, rentalCents, currencyUSD(),
+          staffMember.id, staffMember.name, rentalLabel,
+          { rentalType, priceCents: rentalCents },
+          `LEDGER:DEMO:G:RENTAL_FEE:${checkinBlockId}`,
         ]
       );
+
+      // Membership fee for non-members
+      if (!customer.membership_number) {
+        const membershipCents = 1000;
+        await params.client.query(
+          `INSERT INTO customer_spend_ledger_entries
+             (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+              source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+           VALUES ($1, $2::uuid, $3::uuid, 'MEMBERSHIP_FEE', $4::bigint, $5,
+                   'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, 'Non-Member Fee', $8::jsonb, $9)
+           ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+          [
+            signedAt, customer.id, visitId, membershipCents, currencyUSD(),
+            staffMember.id, staffMember.name,
+            { membershipCents },
+            `LEDGER:DEMO:G:MEMBERSHIP_FEE:${checkinBlockId}`,
+          ]
+        );
+      }
+
+      const priceCents = rentalCents;
 
       // Payment intent + charge for the checkin fee
       const paymentIntentId = randomUUID();
@@ -1190,29 +1346,8 @@ export async function appendIncrementalDemoSimulation(params: {
       ]
     );
 
-    // CHECKIN_FEE spend ledger entry
-    await params.client.query(
-      `
-      INSERT INTO customer_spend_ledger_entries
-        (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
-         source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
-      VALUES
-        ($1, $2::uuid, $3::uuid, 'CHECKIN_FEE', $4::bigint, $5,
-         'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, 'Check-in fee', $8::jsonb, $9)
-      ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
-      `,
-      [
-        pe.paidAt,
-        pe.customerId,
-        pe.visitId,
-        priceCents,
-        currencyUSD(),
-        pe.staffId,
-        pe.staffName,
-        { paymentIntentId, rentalType: pe.rentalType, priceCents },
-        `LEDGER:DEMO:CHECKIN_FEE:${pe.checkinBlockId}`,
-      ]
-    );
+    // Note: RENTAL_FEE spend ledger entries are now created directly in the visit loop above,
+    // so no deferred ledger entry is needed here.
   }
 
   // 6) Checkout requests for completed room visits

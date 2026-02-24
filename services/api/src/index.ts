@@ -289,22 +289,34 @@ async function main() {
         }
 
         if (process.env.DEMO_MODE === 'true') {
-          if (SEED_ON_STARTUP) {
+          if (process.env.SKIP_DEMO_SEED === 'true') {
+            fastify.log.info(
+              'DEMO_MODE enabled; skipping startup seed (SKIP_DEMO_SEED=true, CLI seed already ran).'
+            );
+          } else if (SEED_ON_STARTUP) {
             fastify.log.info(
               'DEMO_MODE enabled, rebuilding demo data on startup (SEED_ON_STARTUP=true)...'
             );
+            try {
+              await seedDemoData({ forceReseed: true });
+            } catch (seedErr) {
+              fastify.log.error(
+                seedErr,
+                '❌ Demo seed failed (non-fatal) — server will continue without demo data.'
+              );
+            }
           } else {
             fastify.log.info(
               'DEMO_MODE enabled; restoring demo snapshot and shifting timestamps (fast startup).'
             );
-          }
-          try {
-            await seedDemoData({ forceReseed: SEED_ON_STARTUP });
-          } catch (seedErr) {
-            fastify.log.error(
-              seedErr,
-              '❌ Demo seed failed (non-fatal) — server will continue without demo data.'
-            );
+            try {
+              await seedDemoData({ forceReseed: false });
+            } catch (seedErr) {
+              fastify.log.error(
+                seedErr,
+                '❌ Demo seed failed (non-fatal) — server will continue without demo data.'
+              );
+            }
           }
         }
       } else {

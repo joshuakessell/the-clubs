@@ -396,12 +396,12 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           // Look up customer name for log attribution
           let customerName: string | null = null;
           if (paidOrder.customer_id) {
-            const custResult = await client.query<{ full_name: string }>(
-              `SELECT full_name FROM customers WHERE id = $1`,
+            const custResult = await client.query<{ name: string }>(
+              `SELECT name FROM customers WHERE id = $1`,
               [paidOrder.customer_id]
             );
             if (custResult.rows.length > 0) {
-              customerName = custResult.rows[0]!.full_name;
+              customerName = custResult.rows[0]!.name;
             }
           }
 

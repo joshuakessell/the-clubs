@@ -14,7 +14,7 @@
     "dev:runner": "pnpm kill-ports && concurrently --names api,ck,er,od -c blue,green,magenta,cyan \"FLOW_COMMANDS=true pnpm --filter @the-clubs/api dev\" \"pnpm --filter customer-kiosk dev\" \"pnpm --filter employee-register dev\" \"pnpm --filter office-dashboard dev\"",
     "dev:fast": "concurrently --names api,ck,er,od -c blue,green,magenta,cyan \"FLOW_COMMANDS=true pnpm --filter @the-clubs/api dev\" \"pnpm --filter customer-kiosk dev\" \"pnpm --filter employee-register dev\" \"pnpm --filter office-dashboard dev\"",
     "demo:seed": "pnpm --filter @the-clubs/shared build && DEMO_MODE=true pnpm db:reset && DEMO_MODE=true pnpm --filter @the-clubs/api db:migrate && DEMO_MODE=true pnpm --filter @the-clubs/api seed && DEMO_MODE=true pnpm --filter @the-clubs/api exec tsx src/db/seed-demo.ts",
-    "demo:dev": "pnpm demo:seed && pnpm dev:runner",
+    "demo:dev": "pnpm demo:seed && SKIP_DEMO_SEED=true pnpm dev:runner",
     "demo:reset": "DEMO_MODE=true DEMO_RESET_ON_STARTUP=true SEED_ON_STARTUP=false FLOW_COMMANDS=true pnpm dev:runner",
     "build": "pnpm -r run build",
     "test": "pnpm build && pnpm -r run test",

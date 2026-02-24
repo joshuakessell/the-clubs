@@ -14,6 +14,7 @@ interface InventoryItem {
   checkoutAt?: string;
   checkinAt?: string;
   occupancyId?: string;
+  visitId?: string;
 }
 
 interface RoomItem extends InventoryItem {
@@ -228,7 +229,7 @@ style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)'
       authToken: token,
       returnTab: 'inventory',
       activeCheckin: item.status === 'OCCUPIED' && item.occupancyId ? {
-        visitId: item.occupancyId,
+        visitId: item.visitId ?? item.occupancyId,
         resourceType: col.key === 'LOCKER' ? 'locker' : 'room',
         resourceNumber: item.number,
         checkinAt: item.checkinAt ?? null,
@@ -245,9 +246,10 @@ style = {{
       background: 'none',
         border: 'none',
           padding: 0,
-            fontSize: 'clamp(10px, 7cqw, 14px)',
+            fontSize: 'clamp(12px, 8cqw, 16px)',
               whiteSpace: 'nowrap',
                 overflow: 'hidden',
+                  textOverflow: 'ellipsis',
                               }}
 title = {`View ${item.assignedMemberName}'s profile`}
                             >

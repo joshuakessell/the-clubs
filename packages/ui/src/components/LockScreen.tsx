@@ -429,60 +429,63 @@ style = {{
   </div>
   </div>
 
-{/* Right: Branding Panel */ }
+{/* Right: Branding Panel — matches Kiosk idle screen */}
 <div
         className="relative hidden w-[45%] items-center justify-center overflow-hidden lg:flex"
-style = {{ backgroundColor: 'var(--color-surface-raised)' }}
+style={{ backgroundColor: 'var(--color-surface-raised)' }}
       >
-  {/* Grid pattern background */ }
-  < div
-className = "absolute inset-0 opacity-[0.03]"
-style = {{
-  backgroundImage: `
-              linear-gradient(var(--color-accent-primary) 1px, transparent 1px),
-              linear-gradient(90deg, var(--color-accent-primary) 1px, transparent 1px)
-            `,
-    backgroundSize: '40px 40px',
+  {/* Content */}
+  <div className="relative z-10 flex flex-col items-center gap-12 text-center p-12">
+    {/* Animated glow ring + logo */}
+    <div className="relative">
+      <div
+            className="absolute inset-6 rounded-full animate-pulse"
+style={{
+  boxShadow: '0 0 80px 30px var(--color-accent-glow)',
+    opacity: 0.5,
+            }}
+          />
+      <div className="relative flex items-center justify-center">
+        <img
+              src={logoSrc}
+alt="Club Dallas"
+width="200"
+height="200"
+style={{ width: 240, height: 240, objectFit: 'contain', filter: 'drop-shadow(0 0 20px var(--color-accent-glow))' }}
+            />
+      </div>
+    </div>
+
+    {/* Brand */}
+    <div>
+      <h2
+            className="text-3xl font-extrabold tracking-tight uppercase"
+style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
+          >
+        Club Dallas
+          </h2>
+          <p className="mt-4 text-xl" style={{ color: 'var(--color-text-secondary)' }}>
+            Employee Register
+          </p>
+    </div>
+
+    {/* Status indicator */}
+    <div
+          className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
+style={{
+  backgroundColor: 'var(--color-surface-overlay)',
+    color: 'var(--color-text-muted)',
+      border: '1px solid var(--color-border-subtle)',
           }}
-        />
-
-{/* Glow effect */ }
-<div
-          className="absolute left-1/2 top-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-[120px]"
-style = {{ backgroundColor: 'var(--color-accent-glow)' }}
-        />
-
-{/* Content */ }
-<div className="relative z-10 flex flex-col items-center gap-8 px-12 text-center" >
-  <img
-            src={ logoSrc }
-alt = "Club Dallas"
-className = "h-48"
-style = {{ objectFit: 'contain' }}
+        >
+      <div
+            className="h-2 w-2 rounded-full animate-pulse"
+style={{ backgroundColor: 'var(--color-status-success)' }}
           />
-
-  < div >
-  <h2
-              className="text-3xl font-extrabold tracking-tight"
-style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
-            >
-  Club Dallas
-    </h2>
-    < p className = "mt-2 text-base" style = {{ color: 'var(--color-text-muted)' }}>
-      { appTitle }
-      </p>
-      </div>
-
-      < div
-className = "h-px w-20"
-style = {{ background: 'linear-gradient(to right, transparent, var(--color-border-strong), transparent)' }}
-          />
-
-  < p className = "max-w-[280px] text-sm leading-relaxed" style = {{ color: 'var(--color-text-secondary)' }}>
-    User Administration and Reporting
-      </p>
-      </div>
-      </div>
+      Ready for Sign-in
+    </div>
+  </div>
+</div>
       </div>
   );
 }

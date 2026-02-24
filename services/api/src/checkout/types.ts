@@ -66,6 +66,7 @@ export type ManualCheckoutResourceType = 'ROOM' | 'LOCKER';
 
 export interface ManualCheckoutCandidateRow {
   occupancy_id: string;
+  visit_id: string;
   resource_type: ManualCheckoutResourceType;
   number: string;
   customer_id: string;

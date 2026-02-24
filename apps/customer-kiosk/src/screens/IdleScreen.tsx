@@ -46,8 +46,8 @@ style = {{ width: 240, height: 240, filter: 'drop-shadow(0 0 20px var(--color-ac
 {/* Brand */ }
 <div>
   <h1
-            className="text-5xl font-extrabold tracking-tight"
-style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+            className="text-5xl font-extrabold tracking-tight uppercase"
+style = {{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
           >
   { t('brand.clubName') }
   </h1>

@@ -459,9 +459,44 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
 
     const forceReseed = options.forceReseed ?? DEMO_FORCE_RESEED;
     const existingState = await loadDemoState();
+
+    // -----------------------------------------------------------------------
+    // Incremental-only path: append new data without restoring the snapshot.
+    // This preserves accumulated history across restarts.
+    // -----------------------------------------------------------------------
+    if (
+      !forceReseed &&
+      DEMO_INCREMENTAL &&
+      existingState?.snapshotVersion === DEMO_SNAPSHOT_VERSION
+    ) {
+      const lastSim = existingState.lastSimulatedIso
+        ? new Date(existingState.lastSimulatedIso)
+        : new Date(existingState.lastShiftedIso ?? existingState.seedAnchorIso);
+
+      if (lastSim.getTime() < now.getTime()) {
+        const appended = await appendIncrementalDemoVisits({ from: lastSim, to: now });
+        if (appended > 0) {
+          console.log(`✅ Added ${appended} incremental demo visit(s).`);
+        }
+      }
+
+      await saveDemoState({
+        seedAnchor: new Date(existingState.seedAnchorIso),
+        lastShifted: existingState.lastShiftedIso ? new Date(existingState.lastShiftedIso) : undefined,
+        lastSimulated: now,
+      });
+      console.log('✅ Incremental demo data appended (no snapshot restore).');
+      return;
+    }
+
+    // -----------------------------------------------------------------------
+    // Snapshot-restore path: restore from snapshot + shift timestamps forward.
+    // Used when DEMO_INCREMENTAL is off but DEMO_RESET_ON_STARTUP is on.
+    // -----------------------------------------------------------------------
     const canRestore =
       DEMO_RESET_ON_STARTUP &&
       !forceReseed &&
+      !DEMO_INCREMENTAL &&
       existingState?.snapshotVersion === DEMO_SNAPSHOT_VERSION;
 
     if (canRestore && existingState) {
@@ -475,8 +510,6 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
           if (DEMO_SHIFT_REGENERATE_PDFS) {
             await regenerateAgreementPdfs(client);
           }
-          // Close any open register sessions so the kiosk starts on the sign-in
-          // screen rather than auto-resuming a stale session from the snapshot.
           await client.query(
             `UPDATE register_sessions SET signed_out_at = NOW() WHERE signed_out_at IS NULL`
           );
@@ -486,31 +519,10 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
         }
       });
 
-      if (DEMO_INCREMENTAL) {
-        const from = existingState.lastSimulatedIso
-          ? new Date(existingState.lastSimulatedIso)
-          : new Date(existingState.lastShiftedIso ?? existingState.seedAnchorIso);
-        if (from.getTime() < now.getTime()) {
-          const appended = await appendIncrementalDemoVisits({ from, to: now });
-          if (appended > 0) {
-            console.log(`✅ Added ${appended} incremental demo visit(s).`);
-          }
-        }
-      }
-
-      if (DEMO_INCREMENTAL) {
-        await transaction(async (client) => {
-          await validateSeededCustomers(client);
-          await createDemoSnapshot(client);
-        });
-        await saveDemoState({ seedAnchor: now, lastShifted: now, lastSimulated: now });
-        console.log('✅ Demo snapshot refreshed with incremental data.');
-      } else {
-        await transaction(async (client) => {
-          await validateSeededCustomers(client);
-        });
-        await saveDemoState({ seedAnchor, lastShifted: now });
-      }
+      await transaction(async (client) => {
+        await validateSeededCustomers(client);
+      });
+      await saveDemoState({ seedAnchor, lastShifted: now });
       console.log(
         `✅ Demo snapshot restored and shifted by ${Math.round(deltaMs / 60000)} minute(s).`
       );
@@ -607,7 +619,52 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
       return result;
     }
 
-    // Seed shifts for 28-day window
+    // ─── Weekly schedule template ────────────────────────────────────────
+    // Shift A = 1st (12am–8am), B = 2nd (8am–4pm), C = 3rd (4pm–12am)
+    //
+    // Employees by name (resolved to id below):
+    //   FT 1st: John Erikson, Marcus Rivera       (5 shifts/week each)
+    //   FT 2nd: Tyler Brooks, Ryan Mitchell        (5 shifts/week each)
+    //   FT 3rd: Derek Nguyen, Chris Patterson      (5 shifts/week each)
+    //   PT fill: Jason Morales, Brandon Reyes, Kyle Foster, Sean Caldwell
+    //
+    // Keys: 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
+    // Double-staffing on busy periods:
+    //   Fri+Sat 3rd shift (C) and Sat+Sun 1st shift (A)
+    // ────────────────────────────────────────────────────────────────────
+
+    function findStaffId(name: string): string {
+      const s = staff.find((st) => st.name === name);
+      if (!s) throw new Error(`Staff member "${name}" not found in DB`);
+      return s.id;
+    }
+
+    // Resolve staff IDs (will throw early if seed.ts hasn't been run)
+    const sJohn     = findStaffId('John Erikson');
+    const sMarcus   = findStaffId('Marcus Rivera');
+    const sTyler    = findStaffId('Tyler Brooks');
+    const sRyan     = findStaffId('Ryan Mitchell');
+    const sDerek    = findStaffId('Derek Nguyen');
+    const sChris    = findStaffId('Chris Patterson');
+    const sJason    = findStaffId('Jason Morales');
+    const sBrandon  = findStaffId('Brandon Reyes');
+    const sKyle     = findStaffId('Kyle Foster');
+    const sSean     = findStaffId('Sean Caldwell');
+
+    // weeklySchedule[dayOfWeek][shiftCode] → array of employee IDs
+    type DaySchedule = Record<'A' | 'B' | 'C', string[]>;
+    const weeklySchedule: Record<number, DaySchedule> = {
+      //            1st (A)                  2nd (B)             3rd (C)
+      0: { A: [sJohn, sKyle],        B: [sTyler],           C: [sDerek]         },  // Sun (double 1st)
+      1: { A: [sJohn],               B: [sTyler],           C: [sDerek]         },  // Mon
+      2: { A: [sMarcus],             B: [sRyan],            C: [sChris]         },  // Tue
+      3: { A: [sJohn],               B: [sTyler],           C: [sDerek]         },  // Wed
+      4: { A: [sMarcus],             B: [sRyan],            C: [sChris]         },  // Thu
+      5: { A: [sJohn],               B: [sRyan, sJason],    C: [sDerek, sBrandon] }, // Fri (double 3rd + extra 2nd)
+      6: { A: [sMarcus, sSean],      B: [sTyler, sJason],   C: [sChris, sBrandon] }, // Sat (double all)
+    };
+
+    // Seed shifts for the 28-day window
     const shiftsCreated: string[] = [];
     const timeclockSessionsCreated: string[] = [];
 
@@ -617,175 +674,80 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
       baseDate.setDate(baseDate.getDate() + dayOffset);
       baseDate.setHours(0, 0, 0, 0);
 
-      // Determine which employees work which shifts (rotate for variety)
-      const shiftAEmployee = staff[Math.abs(dayOffset) % staff.length]!;
-      const shiftBEmployee = staff[(Math.abs(dayOffset) + 1) % staff.length]!;
-      const shiftCEmployee = staff[(Math.abs(dayOffset) + 2) % staff.length]!;
+      const dow = baseDate.getDay(); // 0=Sun..6=Sat
+      const dayPlan = weeklySchedule[dow]!;
 
-      // Shift A: 12:00 AM to 8:00 AM
-      const shiftAStart = createShiftDate(baseDate, 0, 0);
-      const shiftAEnd = createShiftDate(baseDate, 8, 0);
+      for (const [code, employeeIds] of Object.entries(dayPlan) as ['A' | 'B' | 'C', string[]][]) {
+        const startHour = code === 'A' ? 0 : code === 'B' ? 8 : 16;
+        const shiftStart = new Date(baseDate);
+        shiftStart.setHours(startHour, 0, 0, 0);
 
-      const shiftAResult = await query<{ id: string }>(
-        `INSERT INTO employee_shifts 
-         (employee_id, starts_at, ends_at, shift_code, status, created_by)
-         VALUES ($1, $2, $3, 'A', 'SCHEDULED', $4)
-         RETURNING id`,
-        [shiftAEmployee.id, shiftAStart, shiftAEnd, adminStaff.id]
-      );
-      const shiftAId = shiftAResult.rows[0]!.id;
-      shiftsCreated.push(shiftAId);
-
-      // Shift B: 7:45 AM to 4:00 PM
-      const shiftBStart = createShiftDate(baseDate, 7, 45);
-      const shiftBEnd = createShiftDate(baseDate, 16, 0);
-
-      const shiftBResult = await query<{ id: string }>(
-        `INSERT INTO employee_shifts 
-         (employee_id, starts_at, ends_at, shift_code, status, created_by)
-         VALUES ($1, $2, $3, 'B', 'SCHEDULED', $4)
-         RETURNING id`,
-        [shiftBEmployee.id, shiftBStart, shiftBEnd, adminStaff.id]
-      );
-      const shiftBId = shiftBResult.rows[0]!.id;
-      shiftsCreated.push(shiftBId);
-
-      // Shift C: 3:45 PM to 12:00 AM (next day)
-      const shiftCStart = createShiftDate(baseDate, 15, 45);
-      const nextDay = new Date(baseDate);
-      nextDay.setDate(nextDay.getDate() + 1);
-      const shiftCEnd = createShiftDate(nextDay, 0, 0);
-
-      const shiftCResult = await query<{ id: string }>(
-        `INSERT INTO employee_shifts 
-         (employee_id, starts_at, ends_at, shift_code, status, created_by)
-         VALUES ($1, $2, $3, 'C', 'SCHEDULED', $4)
-         RETURNING id`,
-        [shiftCEmployee.id, shiftCStart, shiftCEnd, adminStaff.id]
-      );
-      const shiftCId = shiftCResult.rows[0]!.id;
-      shiftsCreated.push(shiftCId);
-
-      // Seed timeclock sessions for past days only
-      if (dayOffset < 0) {
-        // Shift A timeclock
-        const scenarioA = Math.random();
-        if (scenarioA < 0.95) {
-          // 95% show up
-          let clockIn = new Date(shiftAStart);
-          let clockOut = new Date(shiftAEnd);
-
-          if (scenarioA < 0.15) {
-            // Late clock-in (5-15 minutes late)
-            clockIn = new Date(shiftAStart.getTime() + (5 + Math.random() * 10) * 60 * 1000);
-          }
-
-          if (scenarioA > 0.85 && scenarioA < 0.95) {
-            // Early clock-out (5-15 minutes early)
-            clockOut = new Date(shiftAEnd.getTime() - (5 + Math.random() * 10) * 60 * 1000);
-          }
-
-          const sessionAResult = await query<{ id: string }>(
-            `INSERT INTO timeclock_sessions 
-             (employee_id, shift_id, clock_in_at, clock_out_at, source)
-             VALUES ($1, $2, $3, $4, 'OFFICE_DASHBOARD')
-             RETURNING id`,
-            [shiftAEmployee.id, shiftAId, clockIn, clockOut]
-          );
-          timeclockSessionsCreated.push(sessionAResult.rows[0]!.id);
+        const shiftEnd = code === 'C'
+          ? new Date(new Date(baseDate).setDate(baseDate.getDate() + 1))  // midnight next day
+          : new Date(baseDate.getTime());
+        if (code !== 'C') {
+          shiftEnd.setHours(startHour + 8, 0, 0, 0);
         } else {
-          // Past days never create open timeclock sessions (open sessions would violate the unique index
-          // that enforces only one open session per employee). Use a closed session instead.
-          const sessionAResult = await query<{ id: string }>(
-            `INSERT INTO timeclock_sessions 
-             (employee_id, shift_id, clock_in_at, clock_out_at, source)
-             VALUES ($1, $2, $3, $4, 'OFFICE_DASHBOARD')
-             RETURNING id`,
-            [shiftAEmployee.id, shiftAId, shiftAStart, shiftAEnd]
-          );
-          timeclockSessionsCreated.push(sessionAResult.rows[0]!.id);
+          shiftEnd.setHours(0, 0, 0, 0);
         }
 
-        // Shift B timeclock
-        const scenarioB = Math.random();
-        if (scenarioB < 0.95) {
-          let clockIn = new Date(shiftBStart);
-          let clockOut = new Date(shiftBEnd);
-
-          if (scenarioB < 0.15) {
-            clockIn = new Date(shiftBStart.getTime() + (5 + Math.random() * 10) * 60 * 1000);
-          }
-
-          if (scenarioB > 0.85 && scenarioB < 0.95) {
-            clockOut = new Date(shiftBEnd.getTime() - (5 + Math.random() * 10) * 60 * 1000);
-          }
-
-          const sessionBResult = await query<{ id: string }>(
-            `INSERT INTO timeclock_sessions 
-             (employee_id, shift_id, clock_in_at, clock_out_at, source)
-             VALUES ($1, $2, $3, $4, 'OFFICE_DASHBOARD')
+        for (const empId of employeeIds) {
+          const shiftResult = await query<{ id: string }>(
+            `INSERT INTO employee_shifts
+             (employee_id, starts_at, ends_at, shift_code, status, created_by)
+             VALUES ($1, $2, $3, $4, 'SCHEDULED', $5)
              RETURNING id`,
-            [shiftBEmployee.id, shiftBId, clockIn, clockOut]
+            [empId, shiftStart, shiftEnd, code, adminStaff.id]
           );
-          timeclockSessionsCreated.push(sessionBResult.rows[0]!.id);
-        }
+          const shiftId = shiftResult.rows[0]!.id;
+          shiftsCreated.push(shiftId);
 
-        // Shift C timeclock
-        const scenarioC = Math.random();
-        if (scenarioC < 0.95) {
-          let clockIn = new Date(shiftCStart);
-          let clockOut = new Date(shiftCEnd);
+          // Seed timeclock sessions for past days
+          if (dayOffset < 0) {
+            const scenario = Math.random();
+            if (scenario < 0.95) {
+              let clockIn = new Date(shiftStart);
+              let clockOut = new Date(shiftEnd);
 
-          if (scenarioC < 0.15) {
-            clockIn = new Date(shiftCStart.getTime() + (5 + Math.random() * 10) * 60 * 1000);
-          }
+              if (scenario < 0.15) {
+                // Late clock-in (5–15 min)
+                clockIn = new Date(shiftStart.getTime() + (5 + Math.random() * 10) * 60 * 1000);
+              }
+              if (scenario > 0.85 && scenario < 0.95) {
+                // Early clock-out (5–15 min)
+                clockOut = new Date(shiftEnd.getTime() - (5 + Math.random() * 10) * 60 * 1000);
+              }
 
-          if (scenarioC > 0.85 && scenarioC < 0.95) {
-            clockOut = new Date(shiftCEnd.getTime() - (5 + Math.random() * 10) * 60 * 1000);
-          }
-
-          const sessionCResult = await query<{ id: string }>(
-            `INSERT INTO timeclock_sessions 
-             (employee_id, shift_id, clock_in_at, clock_out_at, source)
-             VALUES ($1, $2, $3, $4, 'OFFICE_DASHBOARD')
-             RETURNING id`,
-            [shiftCEmployee.id, shiftCId, clockIn, clockOut]
-          );
-          timeclockSessionsCreated.push(sessionCResult.rows[0]!.id);
-        }
-      } else if (dayOffset === 0) {
-        // TODAY: Ensure at least 2 employees are clocked in
-        const todayStaff = [shiftBEmployee, shiftCEmployee].slice(0, 2);
-
-        for (const employee of todayStaff) {
-          // Check if already clocked in
-          const existing = await query<{ count: string }>(
-            `SELECT COUNT(*) as count
-             FROM timeclock_sessions
-             WHERE employee_id = $1 AND clock_out_at IS NULL`,
-            [employee.id]
-          );
-
-          if (parseInt(existing.rows[0]?.count || '0', 10) === 0) {
-            // Find their shift for today
-            let shiftId: string | null = null;
-            if (employee.id === shiftBEmployee.id) {
-              shiftId = shiftBId;
-            } else if (employee.id === shiftCEmployee.id) {
-              shiftId = shiftCId;
+              const tcResult = await query<{ id: string }>(
+                `INSERT INTO timeclock_sessions
+                 (employee_id, shift_id, clock_in_at, clock_out_at, source)
+                 VALUES ($1, $2, $3, $4, 'OFFICE_DASHBOARD')
+                 RETURNING id`,
+                [empId, shiftId, clockIn, clockOut]
+              );
+              timeclockSessionsCreated.push(tcResult.rows[0]!.id);
             }
-
-            const clockInTime = new Date();
-            clockInTime.setMinutes(clockInTime.getMinutes() - Math.floor(Math.random() * 60)); // Clocked in 0-60 min ago
-
-            const sessionResult = await query<{ id: string }>(
-              `INSERT INTO timeclock_sessions 
-               (employee_id, shift_id, clock_in_at, clock_out_at, source)
-               VALUES ($1, $2, $3, NULL, 'OFFICE_DASHBOARD')
-               RETURNING id`,
-              [employee.id, shiftId, clockInTime]
-            );
-            timeclockSessionsCreated.push(sessionResult.rows[0]!.id);
+          } else if (dayOffset === 0) {
+            // TODAY: clock in employees whose shift has started
+            const shiftNow = now.getTime();
+            if (shiftStart.getTime() <= shiftNow && shiftEnd.getTime() > shiftNow) {
+              const existing = await query<{ count: string }>(
+                `SELECT COUNT(*) as count FROM timeclock_sessions
+                 WHERE employee_id = $1 AND clock_out_at IS NULL`,
+                [empId]
+              );
+              if (parseInt(existing.rows[0]?.count || '0', 10) === 0) {
+                const clockInTime = new Date(shiftStart.getTime() + Math.random() * 5 * 60 * 1000);
+                const tcResult = await query<{ id: string }>(
+                  `INSERT INTO timeclock_sessions
+                   (employee_id, shift_id, clock_in_at, clock_out_at, source)
+                   VALUES ($1, $2, $3, NULL, 'OFFICE_DASHBOARD')
+                   RETURNING id`,
+                  [empId, shiftId, clockInTime]
+                );
+                timeclockSessionsCreated.push(tcResult.rows[0]!.id);
+              }
+            }
           }
         }
       }

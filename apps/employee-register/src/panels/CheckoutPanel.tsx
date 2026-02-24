@@ -7,6 +7,7 @@ import { useRegisterStore } from '../stores/useRegisterStore';
 
 interface Candidate {
   occupancyId: string;
+  visitId?: string;
   resourceType: string;
   number: string;
   customerId: string;
@@ -481,7 +482,7 @@ onMouseLeave = {(e) => {
   if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
 }}
                   >
-  <td className="px-4 py-3 text-sm font-bold" style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+  <td className="px-4 py-3 text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: isSelected ? '#fff' : 'var(--color-text-primary)' }}>
     { c.number }
 {
   c.isOverdue && (
@@ -499,7 +500,7 @@ onClick = {(e) => {
   openCustomerAccount(c.customerId, c.customerName, {
     authToken: token,
     activeCheckin: {
-      visitId: c.occupancyId,
+      visitId: c.visitId ?? c.occupancyId,
       resourceType: c.resourceType === 'LOCKER' ? 'locker' : 'room',
       resourceNumber: c.number,
       checkinAt: c.checkinAt,
@@ -509,14 +510,14 @@ onClick = {(e) => {
   });
 }}
 className = "text-left font-medium transition hover:underline"
-style = {{ color: 'var(--color-accent-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+style = {{ color: isSelected ? 'rgba(255,255,255,0.9)' : 'var(--color-accent-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                       >
   { c.customerName }
   </button>
   </td>
-  < td className = "px-4 py-3 text-sm" style = {{ color: 'var(--color-text-muted)' }}> { c.resourceType } </td>
-    < td className = "px-4 py-3 text-sm" style = {{ color: 'var(--color-text-muted)' }}> { formatTime(c.checkinAt) } </td>
-      < td className = "px-4 py-3 text-sm" style = {{ color: c.isOverdue ? 'var(--color-status-error)' : 'var(--color-text-muted)' }}>
+  <td className = "px-4 py-3 text-sm" style = {{ color: isSelected ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)' }}> { c.resourceType } </td>
+    <td className = "px-4 py-3 text-sm" style = {{ color: isSelected ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)' }}> { formatTime(c.checkinAt) } </td>
+      <td className = "px-4 py-3 text-sm" style = {{ color: c.isOverdue ? (isSelected ? '#fca5a5' : 'var(--color-status-error)') : (isSelected ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)') }}>
         { formatTime(c.scheduledCheckoutAt) }
         </td>
         </tr>

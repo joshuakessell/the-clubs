@@ -36,6 +36,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
           WITH room_candidates AS (
             SELECT DISTINCT ON (cb.room_id)
               cb.id as occupancy_id,
+              cb.visit_id as visit_id,
               'ROOM'::text as resource_type,
               r.number as number,
               c.id as customer_id,
@@ -55,6 +56,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
           locker_candidates AS (
             SELECT DISTINCT ON (cb.locker_id)
               cb.id as occupancy_id,
+              cb.visit_id as visit_id,
               'LOCKER'::text as resource_type,
               l.number as number,
               c.id as customer_id,
@@ -81,6 +83,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
         return reply.send({
           candidates: result.rows.map((r) => ({
             occupancyId: r.occupancy_id,
+            visitId: r.visit_id,
             resourceType: r.resource_type,
             number: r.number,
             customerId: r.customer_id,

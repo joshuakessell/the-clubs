@@ -66,7 +66,7 @@ style = {{ borderColor: 'var(--color-border-default)' }}
   <img src={ isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg' } alt = "Club Dallas" width = "32" height = "32" />
     </div>
     < div >
-    <span className="text-sm font-bold block" style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+    <span className="text-sm font-bold block uppercase" style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}>
       Club Dallas
         </span>
         < span className = "text-[10px] uppercase tracking-wider" style = {{ color: 'var(--color-text-muted)' }}>

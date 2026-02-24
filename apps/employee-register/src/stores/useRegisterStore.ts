@@ -239,7 +239,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
             );
             if (match) {
               const checkinInfo = {
-                visitId: match.occupancyId as string,
+                visitId: (match.visitId ?? match.occupancyId) as string,
                 resourceType: match.resourceType as 'room' | 'locker',
                 resourceNumber: match.number as string,
                 checkinAt: match.checkinAt ?? null,
