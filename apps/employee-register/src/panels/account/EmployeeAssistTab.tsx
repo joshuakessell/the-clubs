@@ -33,7 +33,7 @@ const RENTAL_OPTIONS = [
  * AGREEMENT, and COMPLETE steps.
  */
 export function EmployeeAssistTab() {
-  const { sessionPayload, sendFlowCommand, currentSessionId } = useRegisterStore();
+  const { sessionPayload, sendFlowCommand, currentSessionId, laneId } = useRegisterStore();
   const token = useAuthStore((s) => s.session?.sessionToken);
 
   const sp = sessionPayload;
@@ -58,16 +58,16 @@ export function EmployeeAssistTab() {
 
       {/* Step-specific UI */}
       {(flowStep === 'LANGUAGE' || flowStep === 'RENTAL') && (
-        <RentalStep sp={sp} sendFlowCommand={sendFlowCommand} token={token} />
+        <RentalStep sp={sp} sendFlowCommand={sendFlowCommand} token={token} laneId={laneId} />
       )}
       {flowStep === 'WAITLIST_PREFERENCES' && (
-        <WaitlistPreferencesStep sp={sp} sendFlowCommand={sendFlowCommand} token={token} />
+        <WaitlistPreferencesStep sp={sp} sendFlowCommand={sendFlowCommand} token={token} laneId={laneId} />
       )}
       {flowStep === 'WAITLIST_BACKUP' && (
         <WaitlistStep sp={sp} sendFlowCommand={sendFlowCommand} />
       )}
       {flowStep === 'PAYMENT' && (
-        <PaymentStep sp={sp} sendFlowCommand={sendFlowCommand} />
+        <PaymentStep sp={sp} sendFlowCommand={sendFlowCommand} token={token} laneId={laneId} currentSessionId={currentSessionId} />
       )}
       {flowStep === 'AGREEMENT' && (
         <AgreementStep sp={sp} sendFlowCommand={sendFlowCommand} />
@@ -116,10 +116,12 @@ function RentalStep({
   sp,
   sendFlowCommand,
   token,
+  laneId,
 }: {
   sp: SessionUpdatedPayload;
   sendFlowCommand: FlowCommandFn;
   token?: string | null;
+  laneId: string;
 }) {
   const [inventory, setInventory] = useState<AvailableInventory | null>(null);
   const [roomsByTier, setRoomsByTier] = useState<Record<string, RoomsByTier>>({});
@@ -167,22 +169,25 @@ function RentalStep({
     setLoading(true);
     try {
       if (isUnavailable) {
-        // Unavailable room — "Join Waitlist" flow
+        // Unavailable room — single tap proposes + confirms to join waitlist
         if (proposed === rentalType) {
-          // Second tap on same unavailable type — confirm selection (advances to WAITLIST_PREFERENCES)
           await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
         } else {
-          // First tap — propose this type (highlights on both screens)
           await sendFlowCommand({ type: 'PROPOSE_SELECTION', payload: { rentalType } });
+          // Small delay so the server processes the proposal before confirming
+          await new Promise((r) => setTimeout(r, 150));
+          await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
         }
       } else {
-        // Available room — standard propose/confirm flow
+        // Available room — single tap proposes + confirms immediately
         if (proposed === rentalType) {
-          // Second tap on same type — confirm (advances to PAYMENT via WAITLIST_PREFERENCES)
+          // Already proposed, just confirm
           await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
         } else {
-          // First tap — propose this type
+          // Propose and immediately confirm in one action
           await sendFlowCommand({ type: 'PROPOSE_SELECTION', payload: { rentalType } });
+          await new Promise((r) => setTimeout(r, 150));
+          await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
         }
       }
     } finally {
@@ -212,41 +217,8 @@ function RentalStep({
         </div>
       )}
 
-      {/* 6-Month Membership option — employee-only, positioned ABOVE rental cards */}
-      {!hasMembership && sp.membershipChoice !== 'SIX_MONTH' && (
-        <button
-          disabled={loading}
-          onClick={async () => {
-            setLoading(true);
-            try {
-              await sendFlowCommand({
-                type: 'SET_STEP',
-                payload: { step: 'RENTAL', membershipChoice: 'SIX_MONTH' },
-              });
-            } finally {
-              setLoading(false);
-            }
-          }}
-          className="w-full rounded-lg border-2 border-dashed px-4 py-3 text-sm font-bold transition"
-          style={{
-            borderColor: 'var(--color-accent-secondary, #a78bfa)',
-            color: 'var(--color-accent-secondary, #a78bfa)',
-            backgroundColor: 'rgba(167, 139, 250, 0.05)',
-          }}
-        >
-          🏷️ Add 6-Month Membership — $43.00
-        </button>
-      )}
-      {sp.membershipChoice === 'SIX_MONTH' && !hasMembership && (
-        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(167,139,250,0.05)', borderColor: 'rgba(167,139,250,0.2)' }}>
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
-            🏷️ 6-Month Membership added — $43.00
-          </span>
-        </div>
-      )}
-
-      {/* Rental cards */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Rental cards — vertically stacked */}
+      <div className="flex flex-col gap-3">
         {RENTAL_OPTIONS.map(({ type, label }) => {
           const isProposed = proposed === type;
           const count =
@@ -262,37 +234,38 @@ function RentalStep({
               key={type}
               disabled={loading || !allowed || confirmed === true}
               onClick={() => void handleTap(type, isUnavailable)}
-              className="flex flex-col items-center gap-1.5 rounded-xl border p-4 transition"
+              className="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
               style={{
                 backgroundColor: isProposed
-                  ? 'rgba(0, 212, 255, 0.12)'
-                  : 'var(--color-surface-input)',
+                  ? 'rgba(99, 102, 241, 0.1)'
+                  : 'rgba(99, 102, 241, 0.06)',
                 borderColor: isProposed
                   ? 'var(--color-accent-primary)'
-                  : 'var(--color-border-default)',
+                  : 'rgba(99, 102, 241, 0.2)',
                 borderWidth: isProposed ? 2 : 1,
                 opacity: !allowed ? 0.4 : 1,
                 cursor: !allowed || confirmed === true ? 'not-allowed' : 'pointer',
               }}
             >
-
-              <span className="text-sm font-semibold" style={{ color: isProposed ? 'var(--color-accent-primary)' : 'var(--color-text-primary)' }}>
+              <span style={{ color: isProposed ? 'var(--color-accent-primary)' : 'var(--color-text-primary)' }}>
                 {label}
               </span>
-              <span className="text-xs tabular-nums" style={{
-                color: isUnavailable
-                  ? 'var(--color-accent-secondary, #a78bfa)'
-                  : available <= 3 && available > 0
-                    ? 'var(--color-status-warning)'
-                    : 'var(--color-text-muted)',
-              }}>
-                {isUnavailable ? '📋 Join Waitlist' : `${count} available`}
-              </span>
-              {isProposed && !confirmed && (
-                <span className="mt-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-primary)' }}>
-                  {isUnavailable ? 'Tap again to join waitlist' : 'Tap again to confirm'}
+              <div className="flex items-center gap-2">
+                <span className="text-xs tabular-nums" style={{
+                  color: isUnavailable
+                    ? 'var(--color-accent-secondary, #a78bfa)'
+                    : available <= 3 && available > 0
+                      ? 'var(--color-status-warning)'
+                      : 'var(--color-text-muted)',
+                }}>
+                  {isUnavailable ? 'Join Waitlist' : `${count} available`}
                 </span>
-              )}
+                {isProposed && !confirmed && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-primary)' }}>
+                    {isUnavailable ? 'Tap to join' : 'Tap to confirm'}
+                  </span>
+                )}
+              </div>
             </button>
           );
         })}
@@ -339,19 +312,37 @@ function isTypeUnavailable(type: string, inventory: AvailableInventory | null): 
 }
 
 /* ────── WAITLIST PREFERENCES step ────── */
+/** Upgrade fee schedule (matches server-side pricing/engine.ts) */
+const UPGRADE_FEES: Record<string, Record<string, number>> = {
+  LOCKER: { STANDARD: 8, DOUBLE: 17, SPECIAL: 27 },
+  STANDARD: { DOUBLE: 9, SPECIAL: 19 },
+  DOUBLE: { SPECIAL: 9 },
+};
+
+interface UpgradeNotice {
+  initialRental: string;
+  upgradeRental: string;
+  position: number;
+  estimatedWaitMinutes: number | null;
+  upgradeFee: number | null;
+}
+
 function WaitlistPreferencesStep({
   sp,
   sendFlowCommand,
   token,
+  laneId,
 }: {
   sp: SessionUpdatedPayload;
   sendFlowCommand: FlowCommandFn;
   token?: string | null;
+  laneId: string;
 }) {
   const [inventory, setInventory] = useState<AvailableInventory | null>(null);
   const [selectedTypes, setSelectedTypes] = useState<string[]>(sp.waitlistDesiredTypes ?? []);
   const [loading, setLoading] = useState(false);
   const [estimatedWaits, setEstimatedWaits] = useState<Record<string, number>>({});
+  const [upgradeNotice, setUpgradeNotice] = useState<UpgradeNotice | null>(null);
 
   // Sync selectedTypes from session payload (e.g. when customer toggles on kiosk)
   useEffect(() => {
@@ -430,7 +421,7 @@ function WaitlistPreferencesStep({
     if (selectedTypes.length === 0) return;
     setLoading(true);
     try {
-      // Send waitlist preferences, then advance to WAITLIST_BACKUP
+      // Send waitlist preferences
       await sendFlowCommand({
         type: 'WAITLIST_UPDATE',
         payload: {
@@ -438,6 +429,55 @@ function WaitlistPreferencesStep({
           waitlistDesiredType: selectedTypes[0],
         },
       });
+
+      // Determine the initial rental (backup) — typically LOCKER for waitlist
+      const initialRental = sp.backupRentalType ?? sp.proposedRentalType ?? 'LOCKER';
+      const upgradeRental = selectedTypes[0] ?? 'STANDARD';
+      const upgradeLabel = RENTAL_OPTIONS.find((o) => o.type === upgradeRental)?.label ?? upgradeRental;
+      const initialLabel = RENTAL_OPTIONS.find((o) => o.type === initialRental)?.label ?? initialRental;
+
+      // Fetch waitlist info from API
+      let position = 1;
+      let estimatedWaitMinutes: number | null = estimatedWaits[upgradeRental] ?? null;
+      let upgradeFee: number | null = UPGRADE_FEES[initialRental]?.[upgradeRental] ?? null;
+
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const qs = new URLSearchParams({ desiredTier: upgradeRental, currentTier: initialRental });
+        const res = await fetch(
+          getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/waitlist-info?${qs}`),
+          { headers }
+        );
+        if (res.ok) {
+          const info = await res.json();
+          position = info.position ?? 1;
+          if (info.estimatedReadyAt) {
+            estimatedWaitMinutes = Math.max(0, Math.round(
+              (new Date(info.estimatedReadyAt).getTime() - Date.now()) / 60000
+            ));
+          }
+          if (info.upgradeFee != null) upgradeFee = info.upgradeFee;
+        }
+      } catch { /* use local estimates */ }
+
+      // Show upgrade notice modal
+      setUpgradeNotice({
+        initialRental: initialLabel,
+        upgradeRental: upgradeLabel,
+        position,
+        estimatedWaitMinutes,
+        upgradeFee,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpgradeUnderstood = async () => {
+    setUpgradeNotice(null);
+    setLoading(true);
+    try {
       await sendFlowCommand({
         type: 'SET_STEP',
         payload: { step: 'WAITLIST_BACKUP' },
@@ -558,6 +598,105 @@ function WaitlistPreferencesStep({
       >
         ← Back to Rental
       </button>
+
+      {/* ── Upgrade Notice Modal ──────── */}
+      {upgradeNotice && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: 24,
+          }}
+        >
+          <div
+            className="flex flex-col rounded-xl"
+            style={{
+              backgroundColor: 'var(--color-surface-primary)',
+              border: '1px solid var(--color-border-subtle)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+              maxWidth: 420,
+              width: '100%',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal header */}
+            <div
+              className="px-5 py-3"
+              style={{
+                backgroundColor: 'var(--color-surface-overlay)',
+                borderBottom: '1px solid var(--color-border-subtle)',
+              }}
+            >
+              <h3
+                className="text-sm font-bold"
+                style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}
+              >
+                Upgrade Notice
+              </h3>
+            </div>
+
+            {/* Modal body */}
+            <div className="flex flex-col gap-4 p-5">
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                You will be put on a waitlist to upgrade from your{' '}
+                <strong style={{ color: 'var(--color-text-primary)' }}>{upgradeNotice.initialRental}</strong>
+                {' '}to a{' '}
+                <strong style={{ color: 'var(--color-text-primary)' }}>{upgradeNotice.upgradeRental}</strong>.
+              </p>
+
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                You are{' '}
+                <strong style={{ color: 'var(--color-accent-primary)' }}>
+                  #{upgradeNotice.position}
+                </strong>{' '}
+                in line
+                {upgradeNotice.estimatedWaitMinutes != null && (
+                  <>, with the room estimated to be ready in{' '}
+                    <strong style={{ color: 'var(--color-text-primary)' }}>
+                      {formatWait(upgradeNotice.estimatedWaitMinutes)}
+                    </strong>
+                  </>
+                )}
+                .
+              </p>
+
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+                You will be charged for the{' '}
+                <strong style={{ color: 'var(--color-text-primary)' }}>{upgradeNotice.initialRental}</strong>
+                {' '}now. If an upgrade becomes available, you may accept it for{' '}
+                <strong style={{ color: 'var(--color-accent-primary)' }}>
+                  {upgradeNotice.upgradeFee != null ? `$${upgradeNotice.upgradeFee.toFixed(2)}` : 'the upgrade fee'}
+                </strong>
+                . This does not extend your initial checkout time.
+              </p>
+            </div>
+
+            {/* Modal footer */}
+            <div
+              className="px-5 py-4"
+              style={{ borderTop: '1px solid var(--color-border-subtle)' }}
+            >
+              <button
+                onClick={() => void handleUpgradeUnderstood()}
+                disabled={loading}
+                className="w-full rounded-lg px-4 py-3 text-sm font-bold transition"
+                style={{
+                  backgroundColor: 'var(--color-accent-primary)',
+                  color: 'var(--color-text-inverse)',
+                  boxShadow: '0 0 20px var(--color-accent-glow)',
+                }}
+              >
+                {loading ? 'Processing…' : 'Understood'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -566,16 +705,48 @@ function WaitlistPreferencesStep({
 function PaymentStep({
   sp,
   sendFlowCommand,
+  token,
+  laneId,
+  currentSessionId,
 }: {
   sp: SessionUpdatedPayload;
   sendFlowCommand: FlowCommandFn;
+  token?: string | null;
+  laneId: string;
+  currentSessionId: string | null;
 }) {
   const isPaid = sp.paymentStatus === 'PAID';
   const [loading, setLoading] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
-  const totalCents = sp.paymentTotal ?? 0;
-  const [splitCashCents, setSplitCashCents] = useState(0);
-  const splitCreditCents = totalCents - splitCashCents;
+  const totalDollars = sp.paymentTotal ?? 0;
+  const [splitCashDollars, setSplitCashDollars] = useState(0);
+  const splitCreditDollars = totalDollars - splitCashDollars;
+
+  // Membership upgrade/downgrade
+  const membershipChoice = sp.membershipChoice;
+  const isMember = (() => {
+    const validUntil = sp.customerMembershipValidUntil;
+    if (!validUntil) return false;
+    return new Date(validUntil + 'T23:59:59') >= new Date();
+  })();
+  const isMembershipItem = (item: { description: string }) =>
+    item.description === 'Membership Fee' || item.description === '6-Month Membership';
+
+  const setMembershipChoice = useCallback(async (choice: 'ONE_TIME' | 'SIX_MONTH' | 'NONE') => {
+    if (!laneId || !token) return;
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await fetch(
+        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/membership-choice`),
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ choice, sessionId: currentSessionId ?? undefined }),
+        }
+      );
+    } catch { /* best-effort */ }
+  }, [laneId, token, currentSessionId]);
 
   const handleMarkPaid = async (method: 'CASH' | 'CREDIT') => {
     setLoading(true);
@@ -590,7 +761,7 @@ function PaymentStep({
   };
 
   const handleSplitPaid = async () => {
-    if (splitCreditCents < 0) return;
+    if (splitCreditDollars < 0) return;
     setLoading(true);
     try {
       await sendFlowCommand({
@@ -598,8 +769,8 @@ function PaymentStep({
         payload: {
           step: 'AGREEMENT',
           paymentMethod: 'SPLIT',
-          splitCashAmount: splitCashCents,
-          splitCreditAmount: splitCreditCents,
+          splitCashAmount: splitCashDollars,
+          splitCreditAmount: splitCreditDollars,
         },
       });
     } finally {
@@ -631,18 +802,51 @@ function PaymentStep({
           {sp.paymentLineItems.map((item: { description: string; amount: number }, i: number) => (
             <div key={i} className="flex items-center justify-between py-1.5 text-sm">
               <span style={{ color: 'var(--color-text-secondary)' }}>{item.description}</span>
-              <span className="font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                ${(item.amount / 100).toFixed(2)}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                  ${item.amount.toFixed(2)}
+                </span>
+                {/* Remove button for 6-month membership */}
+                {!isMember && isMembershipItem(item) && item.description === '6-Month Membership' && (
+                  <button
+                    onClick={() => void setMembershipChoice('ONE_TIME')}
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold transition-colors"
+                    style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                      color: 'var(--color-status-error)',
+                      border: '1px solid rgba(239, 68, 68, 0.2)',
+                    }}
+                    title="Remove 6-month membership, revert to daily fee"
+                  >
+                    −
+                  </button>
+                )}
+              </div>
             </div>
           ))}
           <div className="mt-2 flex items-center justify-between border-t pt-2" style={{ borderColor: 'var(--color-border-default)' }}>
             <span className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Total</span>
             <span className="text-base font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
-              ${(totalCents / 100).toFixed(2)}
+              ${totalDollars.toFixed(2)}
             </span>
           </div>
         </div>
+      )}
+
+      {/* 6-Month Membership Upgrade — only for non-members with daily fee */}
+      {!isMember && membershipChoice !== 'SIX_MONTH' && sp.paymentLineItems?.some(isMembershipItem) && (
+        <button
+          onClick={() => void setMembershipChoice('SIX_MONTH')}
+          className="flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
+          style={{
+            backgroundColor: 'rgba(99, 102, 241, 0.06)',
+            borderColor: 'rgba(99, 102, 241, 0.2)',
+            color: 'var(--color-accent-primary)',
+          }}
+        >
+          <span>⬆</span>
+          Upgrade to 6-Month Membership ($43.00)
+        </button>
       )}
 
       {!sp.paymentLineItems?.length && (
@@ -679,10 +883,10 @@ function PaymentStep({
               <input
                 type="number"
                 min={0}
-                max={(totalCents / 100)}
+                max={totalDollars}
                 step={0.01}
-                value={(splitCashCents / 100).toFixed(2)}
-                onChange={(e) => setSplitCashCents(Math.round(parseFloat(e.target.value || '0') * 100))}
+                value={splitCashDollars.toFixed(2)}
+                onChange={(e) => setSplitCashDollars(parseFloat(e.target.value || '0'))}
                 className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-semibold"
                 style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: '#1f2937' }}
               />
@@ -693,21 +897,21 @@ function PaymentStep({
                 className="mt-1 flex h-10 items-center rounded-lg border px-3 text-sm font-semibold"
                 style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               >
-                ${(splitCreditCents / 100).toFixed(2)}
+                ${splitCreditDollars.toFixed(2)}
               </div>
             </div>
           </div>
-          {splitCreditCents < 0 && (
+          {splitCreditDollars < 0 && (
             <p className="text-xs font-medium" style={{ color: 'var(--color-status-error)' }}>
               Cash amount exceeds total
             </p>
           )}
           <div className="flex gap-2">
             <button
-              disabled={loading || splitCreditCents < 0}
+              disabled={loading || splitCreditDollars < 0}
               onClick={() => void handleSplitPaid()}
               className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition"
-              style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'rgba(34,197,94,0.05)', opacity: loading || splitCreditCents < 0 ? 0.5 : 1 }}
+              style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'rgba(34,197,94,0.05)', opacity: loading || splitCreditDollars < 0 ? 0.5 : 1 }}
             >
               {loading ? '…' : '✓ Confirm Split'}
             </button>
@@ -730,7 +934,7 @@ function PaymentStep({
               className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition"
               style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'rgba(34,197,94,0.05)' }}
             >
-              {loading ? '…' : '💵 Cash'}
+              {loading ? '…' : 'Cash'}
             </button>
             <button
               disabled={loading}
@@ -738,7 +942,7 @@ function PaymentStep({
               className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition"
               style={{ borderColor: 'var(--color-accent-primary)', color: 'var(--color-accent-primary)', backgroundColor: 'rgba(0,212,255,0.05)' }}
             >
-              {loading ? '…' : '💳 Credit'}
+              {loading ? '…' : 'Credit'}
             </button>
           </div>
           <button
@@ -762,7 +966,7 @@ function PaymentStep({
 
       {/* Back button */}
       <button
-        onClick={() => void sendFlowCommand({ type: 'BACK_STEP' })}
+        onClick={() => void sendFlowCommand({ type: 'SET_STEP', payload: { step: 'RENTAL' } })}
         className="self-start text-xs font-semibold"
         style={{ color: 'var(--color-text-muted)' }}
       >
@@ -807,7 +1011,7 @@ function AgreementStep({
           borderColor: signed ? 'rgba(34,197,94,0.2)' : 'var(--color-border-subtle)',
         }}
       >
-        <span className="text-3xl">{signed ? '✅' : '📝'}</span>
+        <span className="text-sm font-bold" style={{ color: signed ? 'var(--color-status-success)' : 'var(--color-text-muted)' }}>{signed ? 'Signed' : 'Unsigned'}</span>
         <p className="text-sm font-semibold" style={{ color: signed ? 'var(--color-status-success)' : 'var(--color-text-secondary)' }}>
           {signed
             ? `Agreement signed (${sp.agreementSignedMethod === 'MANUAL' ? 'Manual' : 'Digital'})`
@@ -988,7 +1192,7 @@ function CompleteStep({
           className="text-xs font-semibold"
           style={{ color: 'var(--color-accent-primary)' }}
         >
-          🔄 Override Room Assignment
+          Override Room Assignment
         </button>
       )}
 
@@ -1061,7 +1265,7 @@ function CompleteStep({
           backgroundColor: 'rgba(167, 139, 250, 0.05)',
         }}>
           <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
-            🏷️ Enter Membership Card Number
+            Enter Membership Card Number
           </label>
           <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
             Scan or type the physical membership card number to complete the 6-month membership.

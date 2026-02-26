@@ -111,7 +111,7 @@ style = {{
   < input
 type = "text"
 className = "h-8 flex-1 bg-transparent text-xs outline-none"
-style = {{ color: 'var(--color-text-primary)' }}
+style = {{ color: 'var(--color-text-primary)', outline: 'none' }}
 placeholder = "Search customer…"
 aria-label="Search customer"
 autoComplete = "off"
@@ -226,7 +226,7 @@ style = {{
               className = "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all duration-150 whitespace-nowrap shrink-0"
               style = {{
     backgroundColor: isActive ? 'var(--color-accent-glow)' : 'transparent',
-    color: isActive ? 'var(--color-text-primary)' : 'var(--color-text-secondary)',
+    color: isActive ? '#1a1a2e' : 'var(--color-text-secondary)',
     border: isActive ? '1px solid var(--color-border-accent)' : '1px solid transparent',
   }}
 title = {`${item.label} (${item.fKey})`}

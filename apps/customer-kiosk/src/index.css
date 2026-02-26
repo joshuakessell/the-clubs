@@ -23,7 +23,7 @@
 
   --color-accent-primary: var(--primary);
   --color-accent-secondary: var(--primary-hover);
-  --color-accent-glow: var(--primary);
+  --color-accent-glow: var(--primary-100);
   --color-accent-hover: var(--primary-hover);
 
   --color-status-success: var(--color-green-500);

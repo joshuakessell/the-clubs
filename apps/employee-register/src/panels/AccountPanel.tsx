@@ -94,7 +94,7 @@ style = {{
   style = {{ color: 'var(--color-text-muted)' }
 }
             >
-              💰 Charges
+              Charges
   </h3>
   < div
 className = "flex-1 overflow-y-auto rounded-lg border p-2.5"

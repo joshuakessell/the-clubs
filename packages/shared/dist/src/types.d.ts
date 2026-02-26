@@ -91,7 +91,7 @@ export interface InventoryUpdatedPayload {
 export interface SessionUpdatedPayload {
     sessionId: string;
     customerId?: string;
-    customerName: string;
+    customerName?: string;
     membershipNumber?: string;
     /**
      * Customer membership expiration date (YYYY-MM-DD).

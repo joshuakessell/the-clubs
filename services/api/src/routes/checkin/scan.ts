@@ -1110,11 +1110,14 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
           let pastDueBlocked = false;
           let customerPrimaryLanguage: 'EN' | 'ES' | undefined;
           let customerDobMonthDay: string | undefined;
+          let customerMembershipValidUntil: string | undefined;
+          let ledgerLineItems: Array<{ description: string; amount: number }> | undefined;
+          let ledgerTotal: number | undefined;
           // last visit is derived from visits + checkin_blocks (broadcast uses DB-join helper)
 
           if (session.customer_id) {
             const customerInfo = await client.query<CustomerRow>(
-              `SELECT past_due_balance, primary_language, dob FROM customers WHERE id = $1`,
+              `SELECT past_due_balance, primary_language, dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`,
               [session.customer_id]
             );
             if (customerInfo.rows.length > 0) {
@@ -1125,6 +1128,25 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
 
               if (customer.dob) {
                 customerDobMonthDay = `${String(customer.dob.getMonth() + 1).padStart(2, '0')}/${String(customer.dob.getDate()).padStart(2, '0')}`;
+              }
+
+              // Check membership for ledger seed
+              const membershipCardType = customer.membership_card_type as string | undefined;
+              const membershipValidUntilDate = customer.membership_valid_until
+                ? new Date(customer.membership_valid_until as unknown as string)
+                : null;
+              const hasMembership =
+                membershipCardType === 'SIX_MONTH' &&
+                membershipValidUntilDate != null &&
+                new Date() <= membershipValidUntilDate;
+
+              if (membershipValidUntilDate) {
+                customerMembershipValidUntil = membershipValidUntilDate.toISOString().slice(0, 10);
+              }
+
+              if (!hasMembership && computedMode === 'CHECKIN') {
+                ledgerLineItems = [{ description: 'Membership Fee', amount: 13 }];
+                ledgerTotal = 13;
               }
             }
           }
@@ -1139,6 +1161,9 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
             pastDueBlocked,
             customerPrimaryLanguage,
             customerDobMonthDay,
+            customerMembershipValidUntil,
+            ledgerLineItems,
+            ledgerTotal,
           };
         });
 

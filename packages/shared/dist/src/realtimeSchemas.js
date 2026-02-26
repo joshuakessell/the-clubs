@@ -46,7 +46,7 @@ export const SessionUpdatedPayloadSchema = z
     .object({
     sessionId: z.string(),
     customerId: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),
-    customerName: z.string(),
+    customerName: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),
     // Some producers may send null for "missing" optional fields; normalize null -> undefined.
     membershipNumber: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),
     customerMembershipValidUntil: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),

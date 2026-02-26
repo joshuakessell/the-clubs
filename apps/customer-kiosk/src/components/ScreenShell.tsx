@@ -3,13 +3,15 @@ import type { ReactNode } from 'react';
 interface ScreenShellProps {
   children: ReactNode;
   showWatermark?: boolean;
+  /** When true, content aligns to top instead of center (for animated transitions). */
+  alignTop?: boolean;
 }
 
 /**
  * ScreenShell — Full-screen kiosk wrapper.
  * iPad portrait constraint: inner container is max-w-[768px].
  */
-export function ScreenShell({ children, showWatermark = false }: ScreenShellProps) {
+export function ScreenShell({ children, showWatermark = false, alignTop = false }: ScreenShellProps) {
   return (
     <div
       className="relative flex min-h-screen min-h-dvh w-full items-center justify-center"
@@ -17,7 +19,7 @@ export function ScreenShell({ children, showWatermark = false }: ScreenShellProp
     >
       {/* iPad portrait constraint — 768 px max width, full height */}
       <div
-        className="relative flex min-h-screen min-h-dvh w-full max-w-[768px] flex-col items-center justify-center overflow-hidden"
+        className={`relative flex min-h-screen min-h-dvh w-full max-w-[768px] flex-col items-center overflow-hidden ${alignTop ? 'justify-start' : 'justify-center'}`}
         style={{ backgroundColor: 'var(--color-surface-base)' }}
       >
         {/* Theme-aware radial gradient */}

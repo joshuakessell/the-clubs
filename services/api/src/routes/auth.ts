@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { query, transaction } from '../db';
-import { verifyPin, generateSessionToken, getSessionExpiry } from '../auth/utils';
+import { verifyPin, generateSessionToken, getSessionExpiry, hashSessionToken } from '../auth/utils';
 import { requireAuth } from '../auth/middleware';
 import { insertAuditLog, insertAuditLogQuery } from '../audit/auditLog';
 
@@ -73,7 +73,11 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
    * Accepts staff ID or name and PIN for authentication.
    * Creates a session and returns session token.
    */
-  fastify.post('/v1/auth/login-pin', async (request, reply) => {
+  fastify.post('/v1/auth/login-pin', {
+    config: {
+      rateLimit: { max: 10, timeWindow: '1 minute' },
+    },
+  }, async (request, reply) => {
     let body: LoginPinInput;
 
     try {
@@ -128,11 +132,13 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         const deviceType = body.deviceType || 'tablet';
 
         // Create session and get the session ID
+        // Store only the SHA-256 hash of the token; the raw token is returned to the client once.
+        const tokenHash = hashSessionToken(sessionToken);
         const sessionResult = await client.query<{ id: string }>(
           `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING id`,
-          [staff.id, body.deviceId, deviceType, sessionToken, expiresAt]
+          [staff.id, body.deviceId, deviceType, tokenHash, expiresAt]
         );
         const sessionId = sessionResult.rows[0]!.id;
 
@@ -372,12 +378,13 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const token = authHeader.substring(7);
+      const tokenHash = hashSessionToken(token);
 
       try {
         // Get staff ID and session ID before revoking
         const sessionResult = await query<{ staff_id: string; id: string }>(
           `SELECT staff_id, id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`,
-          [token]
+          [tokenHash]
         );
 
         if (sessionResult.rows.length > 0) {
@@ -389,7 +396,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
            SET revoked_at = NOW()
            WHERE session_token = $1
            AND revoked_at IS NULL`,
-            [token]
+            [tokenHash]
           );
 
           // Log audit action (use session UUID id, not the token string)
@@ -505,6 +512,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const token = authHeader.substring(7);
+      const tokenHash = hashSessionToken(token);
 
       try {
         // Get staff PIN hash
@@ -531,7 +539,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         // Get session ID first
         const sessionResult = await query<{ id: string }>(
           `SELECT id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`,
-          [token]
+          [tokenHash]
         );
 
         if (sessionResult.rows.length === 0) {
@@ -551,7 +559,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
          SET reauth_ok_until = $1
          WHERE session_token = $2
          AND revoked_at IS NULL`,
-          [reauthOkUntil, token]
+          [reauthOkUntil, tokenHash]
         );
 
         // Log audit action (use session UUID id, not the token string)
@@ -667,6 +675,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const token = authHeader.substring(7);
+      const tokenHash = hashSessionToken(token);
       const deviceId = request.body.deviceId || 'reauth-device';
       const origin = request.headers.origin || request.headers.host || '';
 
@@ -743,7 +752,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         // Get session ID first
         const sessionResult = await query<{ id: string }>(
           `SELECT id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`,
-          [token]
+          [tokenHash]
         );
 
         if (sessionResult.rows.length === 0) {
@@ -763,7 +772,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
          SET reauth_ok_until = $1
          WHERE session_token = $2
          AND revoked_at IS NULL`,
-          [reauthOkUntil, token]
+          [reauthOkUntil, tokenHash]
         );
 
         // Log audit action (use session UUID id, not the token string)

@@ -161,7 +161,7 @@ export function ClubLogPanel() {
                     {it.customerId && it.customerName ? (
                       <button type="button" className="text-sm font-bold"
                         style={{ color: 'var(--color-accent-primary)' }}
-                        onClick={() => openCustomerAccount(it.customerId!, it.customerName!, { autoStart: false })}
+                        onClick={() => openCustomerAccount(it.customerId!, it.customerName!, { autoStart: false, authToken: token })}
                       >
                         {it.customerName}
                       </button>

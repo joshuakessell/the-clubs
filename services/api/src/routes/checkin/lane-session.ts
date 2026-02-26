@@ -14,6 +14,7 @@ import { toDate } from '../../checkin/utils';
 import { transaction } from '../../db';
 import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
 import { insertClubEvent } from '../../activity/clubEventLog';
+import { idempotencyKey } from '../../middleware/idempotency';
 
 export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void {
   /**
@@ -35,7 +36,7 @@ export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void
   }>(
     '/v1/checkin/lane/:laneId/start',
     {
-      preHandler: [requireAuth],
+      preHandler: [requireAuth, idempotencyKey],
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -445,17 +446,40 @@ export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void
           // Determine allowed rentals
           const allowedRentals = getAllowedRentals(membershipNumber);
 
-          // Get customer past-due balance if customer exists
+          // Get customer past-due balance and membership info for ledger seed
           let pastDueBalance = 0;
           let pastDueBlocked = false;
+          let customerMembershipValidUntil: string | undefined;
+          let ledgerLineItems: Array<{ description: string; amount: number }> | undefined;
+          let ledgerTotal: number | undefined;
+
           if (session.customer_id) {
             const customerInfo = await client.query<CustomerRow>(
-              `SELECT past_due_balance FROM customers WHERE id = $1`,
+              `SELECT past_due_balance, membership_card_type, membership_valid_until FROM customers WHERE id = $1`,
               [session.customer_id]
             );
             if (customerInfo.rows.length > 0) {
-              pastDueBalance = parseFloat(String(customerInfo.rows[0]!.past_due_balance || 0));
+              const cust = customerInfo.rows[0]!;
+              pastDueBalance = parseFloat(String(cust.past_due_balance || 0));
               pastDueBlocked = pastDueBalance > 0 && !(session.past_due_bypassed || false);
+
+              // Check membership status for ledger seed
+              const mCardType = cust.membership_card_type as string | undefined;
+              const mValidUntil = toDate(cust.membership_valid_until);
+              const hasMembership =
+                mCardType === 'SIX_MONTH' &&
+                mValidUntil != null &&
+                new Date() <= mValidUntil;
+
+              if (mValidUntil) {
+                customerMembershipValidUntil = mValidUntil.toISOString().slice(0, 10);
+              }
+
+              // Non-members get the daily membership fee in the seed (whole dollars)
+              if (!hasMembership && computedMode === 'CHECKIN') {
+                ledgerLineItems = [{ description: 'Membership Fee', amount: 13 }];
+                ledgerTotal = 13;
+              }
             }
           }
 
@@ -477,6 +501,9 @@ export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void
             activeRentalType: activeRentalType || undefined,
             customerHasEncryptedLookupMarker,
             idScanIssue,
+            customerMembershipValidUntil,
+            ledgerLineItems,
+            ledgerTotal,
           };
         });
 

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware';
+import { idempotencyKey } from '../middleware/idempotency';
 import { query, transaction } from '../db';
 import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
 import { insertCustomerSpendLedgerEntry } from '../ledger/customerSpendLedger';
@@ -94,7 +95,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Create a new order.
    */
-  fastify.post('/v1/orders', { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post('/v1/orders', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
     let body: z.infer<typeof CreateOrderSchema>;
@@ -159,7 +160,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await transaction(async (client) => {
           const orderResult = await client.query<OrderRow>(
-            `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
+            `SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`,
             [request.params.orderId]
           );
           if (orderResult.rows.length === 0) {
@@ -270,7 +271,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await transaction(async (client) => {
           const orderResult = await client.query<OrderRow>(
-            `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
+            `SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`,
             [request.params.orderId]
           );
           if (orderResult.rows.length === 0) {
@@ -329,7 +330,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
               actorType: 'STAFF',
               actorStaffId: request.staff!.staffId,
               actorStaffName: request.staff!.name,
-              summary: 'Order paid',
+              summary: 'Retail purchase',
               metadata: {
                 orderId: paidOrder.id,
                 registerSessionId: paidOrder.register_session_id,
@@ -347,7 +348,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
               actorType: 'STAFF',
               actorStaffId: request.staff!.staffId,
               actorStaffName: request.staff!.name,
-              summary: `Order paid ($${(paidOrder.total_cents / 100).toFixed(2)})`,
+              summary: `Retail purchase ($${(paidOrder.total_cents / 100).toFixed(2)})`,
               metadata: {
                 orderId: paidOrder.id,
                 totalCents: paidOrder.total_cents,
@@ -469,7 +470,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await transaction(async (client) => {
           const orderResult = await client.query<OrderRow>(
-            `SELECT * FROM orders WHERE id = $1 FOR UPDATE`,
+            `SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`,
             [request.params.orderId]
           );
           if (orderResult.rows.length === 0) {

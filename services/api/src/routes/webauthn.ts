@@ -9,7 +9,7 @@ import {
 import type { AuthenticatorTransportFuture } from '@simplewebauthn/types';
 import { query } from '../db';
 import { requireAuth, requireAdmin, requireReauthForAdmin } from '../auth/middleware';
-import { generateSessionToken, getSessionExpiry } from '../auth/utils';
+import { generateSessionToken, getSessionExpiry, hashSessionToken } from '../auth/utils';
 import { insertAuditLogQuery } from '../audit/auditLog';
 import {
   getRpId,
@@ -424,14 +424,16 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
       const staff = staffResult.rows[0]!;
 
       // Create session and get the session ID
+      // Store only the SHA-256 hash of the token; the raw token is returned to the client once.
       const sessionToken = generateSessionToken();
       const expiresAt = getSessionExpiry();
+      const tokenHash = hashSessionToken(sessionToken);
 
       const sessionResult = await query<{ id: string }>(
         `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING id`,
-        [staff.id, body.deviceId, 'tablet', sessionToken, expiresAt]
+        [staff.id, body.deviceId, 'tablet', tokenHash, expiresAt]
       );
       const sessionId = sessionResult.rows[0]!.id;
 

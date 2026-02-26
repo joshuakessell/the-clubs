@@ -145,7 +145,7 @@ export function UpgradePaymentModal({
               className="rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
               style={{ backgroundColor: 'var(--color-accent-primary)', color: 'var(--color-text-inverse)' }}
             >
-              💳 Credit
+              Credit
             </button>
             <button
               onClick={onPayCash}

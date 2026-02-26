@@ -304,6 +304,8 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
                   status: 'ACTIVE',
                   pastDueBalance: data.pastDueBalance,
                   pastDueBlocked: data.pastDueBlocked,
+                  ledgerLineItems: data.ledgerLineItems,
+                  ledgerTotal: data.ledgerTotal,
                 },
               });
             }

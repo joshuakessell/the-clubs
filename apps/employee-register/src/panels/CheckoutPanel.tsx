@@ -482,7 +482,7 @@ onMouseLeave = {(e) => {
   if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent';
 }}
                   >
-  <td className="px-4 py-3 text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: isSelected ? '#fff' : 'var(--color-text-primary)' }}>
+  <td className="px-4 py-3 text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: isSelected ? '#1a1a2e' : 'var(--color-text-primary)' }}>
     { c.number }
 {
   c.isOverdue && (
@@ -510,14 +510,14 @@ onClick = {(e) => {
   });
 }}
 className = "text-left font-medium transition hover:underline"
-style = {{ color: isSelected ? 'rgba(255,255,255,0.9)' : 'var(--color-accent-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+style = {{ color: isSelected ? 'rgba(26,26,46,0.9)' : 'var(--color-accent-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
                       >
   { c.customerName }
   </button>
   </td>
-  <td className = "px-4 py-3 text-sm" style = {{ color: isSelected ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)' }}> { c.resourceType } </td>
-    <td className = "px-4 py-3 text-sm" style = {{ color: isSelected ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)' }}> { formatTime(c.checkinAt) } </td>
-      <td className = "px-4 py-3 text-sm" style = {{ color: c.isOverdue ? (isSelected ? '#fca5a5' : 'var(--color-status-error)') : (isSelected ? 'rgba(255,255,255,0.7)' : 'var(--color-text-muted)') }}>
+  <td className = "px-4 py-3 text-sm" style = {{ color: isSelected ? 'rgba(26,26,46,0.7)' : 'var(--color-text-muted)' }}> { c.resourceType } </td>
+    <td className = "px-4 py-3 text-sm" style = {{ color: isSelected ? 'rgba(26,26,46,0.7)' : 'var(--color-text-muted)' }}> { formatTime(c.checkinAt) } </td>
+      <td className = "px-4 py-3 text-sm" style = {{ color: c.isOverdue ? (isSelected ? '#dc2626' : 'var(--color-status-error)') : (isSelected ? 'rgba(26,26,46,0.7)' : 'var(--color-text-muted)') }}>
         { formatTime(c.scheduledCheckoutAt) }
         </td>
         </tr>

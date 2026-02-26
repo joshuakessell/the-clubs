@@ -28,8 +28,9 @@ export { shiftsRoutes } from './shifts';
 export { timeclockRoutes } from './timeclock';
 export { documentsRoutes } from './documents';
 export { sessionDocumentsRoutes } from './session-documents';
-export { scheduleRoutes } from './schedule';
+
 export { timeoffRoutes } from './timeoff';
+export { shiftTradeRoutes } from './shift-trades';
 export { cashDrawerRoutes } from './cash-drawers';
 export { breakRoutes } from './breaks';
 export { orderRoutes } from './orders';

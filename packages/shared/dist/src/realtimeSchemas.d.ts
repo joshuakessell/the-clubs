@@ -25,7 +25,7 @@ export declare const CheckinFlowCommandRequestSchema: z.ZodObject<{
 export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     sessionId: z.ZodString;
     customerId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    customerName: z.ZodString;
+    customerName: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     membershipNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerMembershipValidUntil: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     membershipChoice: z.ZodOptional<z.ZodNullable<z.ZodEnum<["ONE_TIME", "SIX_MONTH"]>>>;
@@ -98,7 +98,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
     sessionId: z.ZodString;
     customerId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    customerName: z.ZodString;
+    customerName: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     membershipNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerMembershipValidUntil: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     membershipChoice: z.ZodOptional<z.ZodNullable<z.ZodEnum<["ONE_TIME", "SIX_MONTH"]>>>;
@@ -171,7 +171,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
     sessionId: z.ZodString;
     customerId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    customerName: z.ZodString;
+    customerName: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     membershipNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerMembershipValidUntil: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     membershipChoice: z.ZodOptional<z.ZodNullable<z.ZodEnum<["ONE_TIME", "SIX_MONTH"]>>>;

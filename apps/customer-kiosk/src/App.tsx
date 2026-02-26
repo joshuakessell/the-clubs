@@ -3,7 +3,6 @@ import { ErrorBoundary } from '@the-clubs/ui';
 import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { getApiUrl } from '@the-clubs/shared';
 import { IdleScreen } from './screens/IdleScreen';
-import { CheckingInScreen } from './screens/CheckingInScreen';
 import { AgreementScreen } from './screens/AgreementScreen';
 // PaymentScreen no longer used — employee handles payment
 import { AddOnsScreen } from './screens/AddOnsScreen';
@@ -147,12 +146,8 @@ export default function App() {
   style = {{ backgroundColor: 'var(--color-surface-base)' }
 }
         >
-  { view === 'idle' && <IdleScreen />}
-{
-  view === 'checkin' && (
-    <CheckingInScreen
-      sessionPayload={ sessionPayload }
-    />
+  { (view === 'idle' || view === 'checkin') && (
+    <IdleScreen isCheckinActive={view === 'checkin'} sessionPayload={sessionPayload} />
   )}
 {
   view === 'addons' && (

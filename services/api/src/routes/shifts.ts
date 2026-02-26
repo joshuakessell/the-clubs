@@ -558,4 +558,77 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
       }
     }
   );
+
+  /**
+   * GET /v1/schedule/shifts
+   *
+   * Staff-facing read-only endpoint. Returns shift data for the given
+   * date range so any authenticated user can view the schedule.
+   * No compliance metrics are computed — this is a lightweight read.
+   */
+  fastify.get<{
+    Querystring: {
+      from?: string;
+      to?: string;
+    };
+  }>(
+    '/v1/schedule/shifts',
+    {
+      preHandler: [requireAuth],
+    },
+    async (request, reply) => {
+      try {
+        const { from, to } = request.query;
+
+        let queryStr = `
+        SELECT 
+          es.id,
+          es.employee_id,
+          es.starts_at,
+          es.ends_at,
+          es.shift_code,
+          es.status,
+          es.notes,
+          s.name as employee_name
+        FROM employee_shifts es
+        JOIN staff s ON s.id = es.employee_id
+        WHERE 1=1
+      `;
+        const params: unknown[] = [];
+        let paramCount = 0;
+
+        if (from) {
+          paramCount++;
+          queryStr += ` AND es.starts_at >= $${paramCount}`;
+          params.push(from);
+        }
+
+        if (to) {
+          paramCount++;
+          queryStr += ` AND es.ends_at <= $${paramCount}`;
+          params.push(to);
+        }
+
+        queryStr += ` ORDER BY es.starts_at ASC`;
+
+        const shifts = await query<ShiftRow>(queryStr, params);
+
+        return reply.send(
+          shifts.rows.map((shift) => ({
+            id: shift.id,
+            employeeId: shift.employee_id,
+            employeeName: shift.employee_name,
+            shiftCode: shift.shift_code as 'A' | 'B' | 'C',
+            scheduledStart: shift.starts_at.toISOString(),
+            scheduledEnd: shift.ends_at.toISOString(),
+            status: shift.status,
+            notes: shift.notes,
+          }))
+        );
+      } catch (error) {
+        request.log.error(error, 'Failed to fetch schedule shifts');
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
+    }
+  );
 }

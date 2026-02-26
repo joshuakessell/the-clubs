@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 
 import { loadEnvFromDotEnvIfPresent } from './env/loadEnv';
@@ -29,8 +30,8 @@ import {
   timeclockRoutes,
   documentsRoutes,
   sessionDocumentsRoutes,
-  scheduleRoutes,
   timeoffRoutes,
+  shiftTradeRoutes,
   cashDrawerRoutes,
   breakRoutes,
   orderRoutes,
@@ -93,13 +94,32 @@ async function main() {
 
   // Register CORS — lock origins to an explicit allow-list in production.
   // ALLOWED_ORIGINS can be a comma-separated list (e.g. "https://a.com,https://b.com").
-  // Falls back to `true` (any origin) only when unset, for local development.
+  // Fail-fast in production if ALLOWED_ORIGINS is unset to prevent open CORS.
+  const isProduction = process.env.NODE_ENV === 'production';
+  if (isProduction && !process.env.ALLOWED_ORIGINS) {
+    console.error('FATAL: ALLOWED_ORIGINS must be set in production. Refusing to start with open CORS.');
+    process.exit(1);
+  }
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
     : true;
+  if (allowedOrigins === true) {
+    fastify.log.warn('ALLOWED_ORIGINS is not set — CORS allows all origins. Set ALLOWED_ORIGINS in production.');
+  }
   await fastify.register(cors, {
     origin: allowedOrigins,
     credentials: true,
+  });
+
+  // Register global rate limiting (F-03)
+  // Exclude SSE/WebSocket endpoints — they're long-lived connections, not typical requests.
+  await fastify.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+    allowList: (req) => {
+      const url = req.url ?? '';
+      return url.startsWith('/v1/realtime/');
+    },
   });
 
   await fastify.register(websocket);
@@ -142,6 +162,23 @@ async function main() {
       }
     })();
   }, 60000);
+
+  // Periodic cleanup of expired idempotency keys (every 5 minutes)
+  const idempotencyCleanupInterval = setInterval(() => {
+    void (async () => {
+      try {
+        const { query: dbQuery } = await import('./db');
+        const result = await dbQuery(
+          `DELETE FROM idempotency_keys WHERE expires_at < NOW()`
+        );
+        if (result.rowCount && result.rowCount > 0) {
+          fastify.log.info(`Cleaned up ${result.rowCount} expired idempotency key(s)`);
+        }
+      } catch {
+        // idempotency_keys table may not exist yet — ignore
+      }
+    })();
+  }, 5 * 60 * 1000);
 
   // Helper: DB is configured only if SKIP_DB is not true and we have DATABASE_URL or all DB_* vars.
   const isDbConfigured = () => {
@@ -197,8 +234,8 @@ async function main() {
   await fastify.register(timeclockRoutes);
   await fastify.register(documentsRoutes);
   await fastify.register(sessionDocumentsRoutes);
-  await fastify.register(scheduleRoutes);
   await fastify.register(timeoffRoutes);
+  await fastify.register(shiftTradeRoutes);
   await fastify.register(cashDrawerRoutes);
   await fastify.register(breakRoutes);
   await fastify.register(orderRoutes);

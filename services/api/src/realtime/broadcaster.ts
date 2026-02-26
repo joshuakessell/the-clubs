@@ -21,13 +21,6 @@ import type {
   SessionUpdatedPayload,
   WaitlistCreatedPayload,
 } from '@the-clubs/shared';
-// DEPRECATED: AppSync imports preserved for future re-activation
-// import {
-//   buildChannelPath,
-//   getAppSyncChannelNamespace,
-//   isAppSyncEventsEnabled,
-//   publishAppSyncEvent,
-// } from './appsyncEvents';
 import type { LocalLaneSockets } from './localSockets';
 import type { LocalLaneSSEClients } from './localSSE';
 
@@ -75,7 +68,7 @@ export type RealtimePayload =
   | RegisterSessionUpdatedPayload;
 
 /**
- * Realtime broadcaster for sending updates via AppSync Events.
+ * Realtime broadcaster for sending updates via local WebSocket + SSE.
  * Follows CONTRIBUTING.md requirement: "Realtime is push-based"
  * Supports lane-scoped broadcasts for SESSION_UPDATED events.
  */
@@ -104,35 +97,16 @@ function isLanFallbackEnabled(): boolean {
 }
 
 export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets; localLaneSSE?: LocalLaneSSEClients }): Broadcaster {
-  // DEPRECATED: AppSync variables preserved for future re-activation
-  // const appSyncEnabled = isAppSyncEventsEnabled();
-  // const channelNamespace = getAppSyncChannelNamespace();
-  // const globalChannel = buildChannelPath(channelNamespace, 'global');
-  // const laneChannel = (lane: string) => buildChannelPath(channelNamespace, 'lane', lane);
+
   const localLaneSockets = params?.localLaneSockets;
   const localLaneSSE = params?.localLaneSSE;
   const lastLaneVersions = new Map<string, number>();
 
-  // ──────────────────────────────────────────────────────────────
-  // DEPRECATED: AppSync publishing disabled (AWS services torn down 2026-02-18).
-  // To re-enable: set APPSYNC_EVENTS_HTTP_ENDPOINT env var and restore
-  // AppSync Event APIs. See docs/AWS_ARCHITECTURE_REFERENCE.md.
-  // ──────────────────────────────────────────────────────────────
-  const publishGlobal = (_event: RealtimeEvent<unknown>) => {
-    // AppSync disabled — no-op. Re-enable by uncommenting below:
-    // if (!appSyncEnabled) return;
-    // void publishAppSyncEvent(globalChannel, event).catch((error) => {
-    //   console.error('AppSync Events publish failed (global):', error);
-    // });
-  };
+  // Global publish is a no-op (previously used for AppSync Events).
+  const publishGlobal = (_event: RealtimeEvent<unknown>) => {};
 
-  const publishToLane = (_event: RealtimeEvent<unknown>, _lane: string) => {
-    // AppSync disabled — no-op. Re-enable by uncommenting below:
-    // if (!appSyncEnabled) return;
-    // void publishAppSyncEvent(laneChannel(lane), event).catch((error) => {
-    //   console.error(`AppSync Events publish failed (lane ${lane}):`, error);
-    // });
-  };
+  // Lane publish is a no-op (previously used for AppSync Events).
+  const publishToLane = (_event: RealtimeEvent<unknown>, _lane: string) => {};
 
   const publishToLaneLocal = (event: RealtimeEvent<unknown>, lane: string) => {
     // SSE — always publish (not gated by LAN_FALLBACK)

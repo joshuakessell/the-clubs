@@ -30,6 +30,14 @@ export function generateSessionToken(): string {
 }
 
 /**
+ * Hash a session token using SHA-256 for storage.
+ * The raw token is returned to the client once; only the hash is persisted.
+ */
+export function hashSessionToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+/**
  * Session expiration time (24 hours).
  */
 export const SESSION_EXPIRY_HOURS = 24;

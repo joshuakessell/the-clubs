@@ -209,7 +209,7 @@ style = {{
           <Field label="ID Type" value = { idType === 'DRIVERS_LICENSE' ? 'DL' : idType === 'STATE_ID' ? 'State ID' : idType === 'PASSPORT' ? 'Passport' : idType === 'OTHER' ? 'Other' : (idType ?? undefined)} />
             < Field label = "ID #" value = { idNumber } />
               <Field label="ID Exp." value = { idExpirationDate } />
-                <Field label="Past Due" value = { pastDueBalance? `$${(pastDueBalance / 100).toFixed(2)}` : '$0.00'} color = { pastDueBalance? 'var(--color-status-error)': undefined } />
+                <Field label="Past Due" value = { pastDueBalance? `$${pastDueBalance.toFixed(2)}` : '$0.00'} color = { pastDueBalance? 'var(--color-status-error)': undefined } />
                   </div>
 
 {/* Active visit info (opened from Rentals) */ }

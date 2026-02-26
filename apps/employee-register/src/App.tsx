@@ -1,6 +1,7 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { ErrorBoundary, LockScreen, ChangePinScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
+import { getApiUrl } from '@the-clubs/shared';
 import { AppLayout } from './layout/AppLayout';
 import { useRegisterSSE } from './hooks/useRegisterSSE';
 import { useRegisterStore } from './stores/useRegisterStore';
@@ -28,15 +29,67 @@ export default function App() {
     // Update store with SSE session payload
     if (event?.payload) {
       setSessionPayload(event.payload);
+
+      // Also recover currentSessionId / customerId / customerName when SSE delivers a session
+      const p = event.payload;
+      if (p.sessionId && p.status === 'ACTIVE') {
+        useRegisterStore.setState({
+          currentSessionId: p.sessionId,
+          customerId: p.customerId ?? null,
+          customerName: p.customerName ?? null,
+        });
+      } else if (p.status === 'COMPLETED' || p.status === 'CANCELLED') {
+        useRegisterStore.setState({
+          currentSessionId: null,
+          sessionPayload: undefined,
+        });
+      }
     }
   }, [setSessionPayload]);
 
-  useRegisterSSE({
+  const { connected: sseConnected } = useRegisterSSE({
     laneId,
     staffToken: session?.sessionToken ?? null,
     kioskToken,
     onSessionUpdated,
   });
+
+  // ── Session snapshot catchup ──────────────────────────────────
+  // When SSE (re)connects, fetch the latest session to recover any
+  // active sessions that were missed (e.g. after a page refresh).
+  const prevConnected = useRef(false);
+  useEffect(() => {
+    if (!laneId || !session?.sessionToken) return;
+    if (sseConnected && !prevConnected.current) {
+      (async () => {
+        try {
+          const res = await fetch(
+            getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`),
+            {
+              headers: {
+                Authorization: `Bearer ${session.sessionToken}`,
+                ...(kioskToken ? { 'x-kiosk-token': kioskToken } : {}),
+              },
+            }
+          );
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.session && data.session.status === 'ACTIVE') {
+            if (import.meta.env.DEV) console.log('[register-catchup] recovered session', data.session);
+            useRegisterStore.setState({
+              currentSessionId: data.session.sessionId,
+              customerId: data.session.customerId ?? null,
+              customerName: data.session.customerName ?? null,
+              sessionPayload: data.session,
+            });
+          }
+        } catch {
+          // Non-critical — SSE will deliver future events
+        }
+      })();
+    }
+    prevConnected.current = sseConnected;
+  }, [sseConnected, laneId, session?.sessionToken]);
 
   return (
     <ErrorBoundary>

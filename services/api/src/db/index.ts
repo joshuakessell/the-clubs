@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import pg from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import * as schema from './schema';
 
 const { Pool } = pg;
 
@@ -198,7 +200,12 @@ export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   const duration = Date.now() - start;
 
   if (process.env.DB_LOG_QUERIES === 'true') {
-    console.log('Executed query', { text, duration, rows: result.rowCount });
+    if (process.env.NODE_ENV === 'production') {
+      // In production, only log duration and row count to avoid leaking schema details
+      console.log('Executed query', { duration, rows: result.rowCount });
+    } else {
+      console.log('Executed query', { text, duration, rows: result.rowCount });
+    }
   }
 
   return result;
@@ -248,3 +255,30 @@ export async function serializableTransaction<T>(
 }
 
 export { pg };
+
+/**
+ * Drizzle ORM client wrapping the shared pg.Pool.
+ * Provides type-safe queries via the auto-generated schema.
+ *
+ * Usage:
+ *   import { db } from '../db';
+ *   import { customers, staff } from '../db/schema';
+ *   import { eq } from 'drizzle-orm';
+ *
+ *   const rows = await db.select().from(customers).where(eq(customers.name, 'John'));
+ */
+let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+
+export function getDb() {
+  if (!_db) {
+    _db = drizzle(getPool(), { schema });
+  }
+  return _db;
+}
+
+/** Convenience alias — prefer `getDb()` if you need to ensure the pool is initialized. */
+export const db = new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getDb(), prop, receiver);
+  },
+});

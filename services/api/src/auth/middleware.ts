@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { query } from '../db';
+import { hashSessionToken } from './utils';
 
 /**
  * Extended Fastify request with staff information.
@@ -30,6 +31,7 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
   }
 
   const token = authHeader.substring(7);
+  const tokenHash = hashSessionToken(token);
 
   try {
     const sessionResult = await query<{
@@ -49,7 +51,7 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
         AND ss.revoked_at IS NULL
         AND ss.expires_at > NOW()
         AND s.active = true`,
-      [token]
+      [tokenHash]
     );
 
     if (sessionResult.rows.length === 0) {
@@ -71,7 +73,7 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
        SET expires_at = NOW() + INTERVAL '24 hours'
        WHERE session_token = $1
          AND expires_at - NOW() < INTERVAL '23 hours'`,
-      [token]
+      [tokenHash]
     ).catch(() => {}); // fire-and-forget, non-blocking
 
     return true;
@@ -149,6 +151,7 @@ export async function requireReauth(request: FastifyRequest, reply: FastifyReply
   }
 
   const token = authHeader.substring(7);
+  const tokenHash = hashSessionToken(token);
 
   try {
     const sessionResult = await query<{ reauth_ok_until: Date | null }>(
@@ -157,7 +160,7 @@ export async function requireReauth(request: FastifyRequest, reply: FastifyReply
        WHERE session_token = $1
          AND revoked_at IS NULL
          AND expires_at > NOW()`,
-      [token]
+      [tokenHash]
     );
 
     if (sessionResult.rows.length === 0) {

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Badge, Button } from '@the-clubs/ui';
+import { Badge, Button, useAuthStore } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -37,6 +37,18 @@ interface TimeOffRequest {
   employeeName: string;
   day: string;
   reason: string | null;
+  status: 'PENDING' | 'APPROVED' | 'DENIED';
+  createdAt: string;
+}
+
+interface ShiftTradeRequest {
+  id: string;
+  requesterId: string;
+  requesterName: string;
+  requesterShiftId: string;
+  targetId: string;
+  targetName: string;
+  targetShiftId: string;
   status: 'PENDING' | 'APPROVED' | 'DENIED';
   createdAt: string;
 }
@@ -86,11 +98,25 @@ function formatShortDate(iso: string): string {
 type Tab = 'grid' | 'summary' | 'timeoff';
 
 export function ScheduleView() {
+  const session = useAuthStore((s) => s.session);
+  const isAdmin = session?.role === 'ADMIN';
+  const myStaffId = session?.staffId ?? null;
+
   const [weekOffset, setWeekOffset] = useState(0);
   const [activeTab, setActiveTab] = useState<Tab>('grid');
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [editingShift, setEditingShift] = useState<ShiftEntry | null>(null);
   const [assignModal, setAssignModal] = useState<{ day: string; code: string } | null>(null);
+
+  // Staff: day-off request modal
+  const [dayOffModal, setDayOffModal] = useState<{ day: string; shiftId: string } | null>(null);
+  const [dayOffReason, setDayOffReason] = useState('');
+  const [dayOffSubmitting, setDayOffSubmitting] = useState(false);
+
+  // Staff: shift trade request modal
+  const [tradeModal, setTradeModal] = useState<{ targetShift: ShiftEntry; day: string } | null>(null);
+  const [tradeSelectedShiftId, setTradeSelectedShiftId] = useState<string>('');
+  const [tradeSubmitting, setTradeSubmitting] = useState(false);
 
   // ─── Computed dates ───
   const weekStart = useMemo(() => {
@@ -103,26 +129,42 @@ export function ScheduleView() {
   const weekEndStr = formatDate(weekEnd);
 
   // ─── Data fetching ───
+  // Use different endpoints based on role
+  const shiftsEndpoint = isAdmin
+    ? `/api/v1/admin/shifts?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`
+    : `/api/v1/schedule/shifts?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`;
+
   const { data: shiftsData, loading: shiftsLoading, refetch: refetchShifts } =
-    useDashboardFetch<ShiftEntry[]>(
-      `/api/v1/admin/shifts?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`,
-    );
+    useDashboardFetch<ShiftEntry[]>(shiftsEndpoint);
   const shifts: ShiftEntry[] = Array.isArray(shiftsData) ? shiftsData : [];
 
+  // Admin-only fetches
   const { data: summaryData, refetch: refetchSummary } =
     useDashboardFetch<{ summary: WeeklySummaryEntry[] }>(
-      `/api/v1/admin/shifts/weekly-summary?weekStart=${weekStartStr}`,
+      isAdmin ? `/api/v1/admin/shifts/weekly-summary?weekStart=${weekStartStr}` : null,
     );
   const summary: WeeklySummaryEntry[] = summaryData?.summary ?? [];
 
-  const { data: staffData } = useDashboardFetch<{ staff: StaffMember[] }>('/api/v1/admin/staff');
+  const { data: staffData } = useDashboardFetch<{ staff: StaffMember[] }>(
+    isAdmin ? '/api/v1/admin/staff' : null,
+  );
   const staffList: StaffMember[] = (staffData?.staff ?? []).filter((s) => s.active && s.role === 'STAFF');
 
+  // Time-off requests: admin sees all, staff sees own
+  const timeoffEndpoint = isAdmin
+    ? `/api/v1/admin/time-off-requests?from=${weekStartStr}&to=${weekEndStr}`
+    : `/api/v1/schedule/time-off-requests?from=${weekStartStr}&to=${weekEndStr}`;
   const { data: timeoffData, refetch: refetchTimeoff } =
-    useDashboardFetch<{ requests: TimeOffRequest[] }>(
-      `/api/v1/admin/time-off-requests?from=${weekStartStr}&to=${weekEndStr}`,
-    );
+    useDashboardFetch<{ requests: TimeOffRequest[] }>(timeoffEndpoint);
   const timeoffRequests: TimeOffRequest[] = timeoffData?.requests ?? [];
+
+  // Shift trade requests
+  const tradesEndpoint = isAdmin
+    ? `/api/v1/admin/shift-trade-requests`
+    : `/api/v1/schedule/shift-trade-requests?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`;
+  const { data: tradesData, refetch: refetchTrades } =
+    useDashboardFetch<{ trades: ShiftTradeRequest[] }>(tradesEndpoint);
+  const tradeRequests: ShiftTradeRequest[] = tradesData?.trades ?? [];
 
   // ─── Derived data ───
   const shiftsByDayAndCode = useMemo(() => {
@@ -137,17 +179,39 @@ export function ScheduleView() {
     return map;
   }, [shifts]);
 
+  // Index time-off requests by employee+day for quick lookup
+  const timeoffByEmployeeDay = useMemo(() => {
+    const map: Record<string, TimeOffRequest> = {};
+    for (const r of timeoffRequests) {
+      map[`${r.employeeId}:${r.day}`] = r;
+    }
+    return map;
+  }, [timeoffRequests]);
+
+  // Index trade requests by shift ID for quick badge lookup
+  const tradeByShiftId = useMemo(() => {
+    const map: Record<string, ShiftTradeRequest> = {};
+    for (const t of tradeRequests) {
+      map[t.requesterShiftId] = t;
+      map[t.targetShiftId] = t;
+    }
+    return map;
+  }, [tradeRequests]);
+
   // Days of the week as ISO strings
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => formatDate(addDays(weekStart, i)));
   }, [weekStart]);
 
-  // ─── Handlers ───
+  // ─── Admin Handlers ───
   const refetchAll = useCallback(() => {
     refetchShifts();
-    refetchSummary();
+    if (isAdmin) {
+      refetchSummary();
+    }
     refetchTimeoff();
-  }, [refetchShifts, refetchSummary, refetchTimeoff]);
+    refetchTrades();
+  }, [refetchShifts, refetchSummary, refetchTimeoff, refetchTrades, isAdmin]);
 
   const handleCancelShift = useCallback(async (shiftId: string) => {
     try {
@@ -197,7 +261,6 @@ export function ScheduleView() {
 
   const handleCopyWeek = useCallback(async () => {
     // Copy this week's schedule to next week
-    const nextWeekStart = addDays(weekStart, 7);
     const bulkShifts = shifts
       .filter(s => s.status !== 'CANCELED')
       .map(s => {
@@ -216,7 +279,63 @@ export function ScheduleView() {
       setWeekOffset(weekOffset + 1);
       setTimeout(refetchAll, 300);
     } catch { /* ignore */ }
-  }, [shifts, weekStart, weekOffset, refetchAll]);
+  }, [shifts, weekOffset, refetchAll]);
+
+  // ─── Staff: Request Day Off Handler ───
+  const handleRequestDayOff = useCallback(async () => {
+    if (!dayOffModal) return;
+    setDayOffSubmitting(true);
+    try {
+      await dashboardMutate('/api/v1/schedule/time-off-requests', 'POST', {
+        day: dayOffModal.day,
+        reason: dayOffReason.trim() || undefined,
+      });
+      refetchTimeoff();
+      setDayOffModal(null);
+      setDayOffReason('');
+    } catch (err: any) {
+      // 409 = already requested (idempotent), just close
+      if (err?.message?.includes('409')) {
+        setDayOffModal(null);
+        setDayOffReason('');
+      }
+    } finally {
+      setDayOffSubmitting(false);
+    }
+  }, [dayOffModal, dayOffReason, refetchTimeoff]);
+
+  // ─── Staff: Request Shift Trade Handler ───
+  const myShifts = useMemo(() => shifts.filter(s => s.employeeId === myStaffId && s.status !== 'CANCELED'), [shifts, myStaffId]);
+
+  const handleRequestTrade = useCallback(async () => {
+    if (!tradeModal || !tradeSelectedShiftId) return;
+    setTradeSubmitting(true);
+    try {
+      await dashboardMutate('/api/v1/schedule/shift-trade-requests', 'POST', {
+        requesterShiftId: tradeSelectedShiftId,
+        targetShiftId: tradeModal.targetShift.id,
+      });
+      refetchTrades();
+      setTradeModal(null);
+      setTradeSelectedShiftId('');
+    } catch (err: any) {
+      if (err?.message?.includes('409')) {
+        setTradeModal(null);
+        setTradeSelectedShiftId('');
+      }
+    } finally {
+      setTradeSubmitting(false);
+    }
+  }, [tradeModal, tradeSelectedShiftId, refetchTrades]);
+
+  // ─── Admin: Shift Trade Decision Handler ───
+  const handleTradeDecision = useCallback(async (tradeId: string, status: 'APPROVED' | 'DENIED') => {
+    try {
+      await dashboardMutate(`/api/v1/admin/shift-trade-requests/${tradeId}`, 'PATCH', { status });
+      refetchTrades();
+      refetchAll();
+    } catch { /* ignore */ }
+  }, [refetchTrades, refetchAll]);
 
   const todayStr = formatDate(new Date());
 
@@ -228,7 +347,7 @@ export function ScheduleView() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-              Schedule Management
+              {isAdmin ? 'Schedule Management' : 'My Schedule'}
             </h2>
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
               Week of {new Date(weekStartStr + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
@@ -247,29 +366,37 @@ export function ScheduleView() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="mt-4 flex gap-1 rounded-lg p-1" style={{ backgroundColor: 'var(--color-surface-base)' }}>
-          {([['grid', '📅 Weekly Grid'], ['summary', '📊 Summary'], ['timeoff', '🏖️ Time Off']] as [Tab, string][]).map(([key, label]) => (
-            <button key={key} type="button"
-              className="flex-1 rounded-md px-3 py-2 text-xs font-semibold transition"
-              style={{
-                backgroundColor: activeTab === key ? 'var(--color-surface-raised)' : 'transparent',
-                color: activeTab === key ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                boxShadow: activeTab === key ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
-              }}
-              onClick={() => setActiveTab(key)}>{label}</button>
-          ))}
-        </div>
+        {/* Tabs — admin gets all tabs, staff only gets the grid */}
+        {isAdmin ? (
+          <div className="mt-4 flex gap-1 rounded-lg p-1" style={{ backgroundColor: 'var(--color-surface-base)' }}>
+            {([['grid', '📅 Weekly Grid'], ['summary', '📊 Summary'], ['timeoff', '🏖️ Time Off']] as [Tab, string][]).map(([key, label]) => (
+              <button key={key} type="button"
+                className="flex-1 rounded-md px-3 py-2 text-xs font-semibold transition"
+                style={{
+                  backgroundColor: activeTab === key ? 'var(--color-surface-raised)' : 'transparent',
+                  color: activeTab === key ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                  boxShadow: activeTab === key ? '0 1px 3px rgba(0,0,0,0.15)' : 'none',
+                }}
+                onClick={() => setActiveTab(key)}>{label}</button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            Click your name on a scheduled day to request time off.
+          </p>
+        )}
       </div>
 
       {/* ── Weekly Grid Tab ── */}
       {activeTab === 'grid' && (
         <>
-          {/* Actions bar */}
-          <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={handleCopyWeek}>Copy to Next Week</Button>
-            <Button size="sm" variant="outline" onClick={refetchAll}>↻ Refresh</Button>
-          </div>
+          {/* Actions bar — admin only */}
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" onClick={handleCopyWeek}>Copy to Next Week</Button>
+              <Button size="sm" variant="outline" onClick={refetchAll}>↻ Refresh</Button>
+            </div>
+          )}
 
           {shiftsLoading && shifts.length === 0 ? (
             <div className="flex items-center justify-center py-12">
@@ -288,12 +415,12 @@ export function ScheduleView() {
                       const isToday = day === todayStr;
                       return (
                         <th key={day}
-                          className="cursor-pointer px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider transition hover:opacity-80"
+                          className={`px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider transition${isAdmin ? ' cursor-pointer hover:opacity-80' : ''}`}
                           style={{
                             color: isToday ? 'var(--color-accent-primary)' : 'var(--color-text-muted)',
                             backgroundColor: isToday ? 'rgba(99, 102, 241, 0.04)' : 'transparent',
                           }}
-                          onClick={() => setSelectedDay(selectedDay === day ? null : day)}>
+                          onClick={isAdmin ? () => setSelectedDay(selectedDay === day ? null : day) : undefined}>
                           <div>{DAYS[idx]}</div>
                           <div className="text-[10px] font-normal">{formatShortDate(day)}</div>
                         </th>
@@ -309,7 +436,6 @@ export function ScheduleView() {
                       </td>
                       {weekDays.map((day) => {
                         const dayShifts = shiftsByDayAndCode[day]?.[code] ?? [];
-                        const hasTimeOff = timeoffRequests.some(r => r.day === day && r.status === 'APPROVED');
                         return (
                           <td key={day} className="px-1 py-2" style={{ verticalAlign: 'top' }}>
                             <div
@@ -317,30 +443,89 @@ export function ScheduleView() {
                               style={{
                                 backgroundColor: dayShifts.length > 0 ? SHIFT_COLORS[code] : 'transparent',
                                 border: `1px dashed ${dayShifts.length > 0 ? SHIFT_ACCENTS[code]! + '40' : 'var(--color-border-subtle)'}`,
-                                cursor: 'pointer',
+                                cursor: isAdmin ? 'pointer' : dayShifts.some(s => s.employeeId === myStaffId) ? 'pointer' : 'default',
                               }}
                               onClick={() => {
-                                if (dayShifts.length === 0) {
-                                  setAssignModal({ day, code });
-                                } else if (dayShifts.length === 1) {
-                                  setEditingShift(dayShifts[0]!);
-                                } else {
-                                  setSelectedDay(day);
+                                if (isAdmin) {
+                                  // Admin: open assign/edit modals
+                                  if (dayShifts.length === 0) {
+                                    setAssignModal({ day, code });
+                                  } else if (dayShifts.length === 1) {
+                                    setEditingShift(dayShifts[0]!);
+                                  } else {
+                                    setSelectedDay(day);
+                                  }
                                 }
+                                // Staff clicks handled per-name below
                               }}
                             >
-                              {dayShifts.map((s) => (
-                                <div key={s.id} className="flex items-center gap-1">
-                                  <span className="text-xs font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-                                    {s.employeeName.split(' ')[0]}
-                                  </span>
-                                  {s.status === 'UPDATED' && (
-                                    <span className="text-[9px]" style={{ color: 'var(--color-status-warning)' }}>✎</span>
-                                  )}
-                                </div>
-                              ))}
-                              {dayShifts.length === 0 && (
+                              {dayShifts.map((s) => {
+                                const isMe = s.employeeId === myStaffId;
+                                const timeoffKey = `${s.employeeId}:${day}`;
+                                const existingRequest = timeoffByEmployeeDay[timeoffKey];
+
+                                return (
+                                  <div key={s.id}
+                                    className={`flex flex-col gap-0.5${!isAdmin ? ' cursor-pointer rounded px-1 -mx-1 hover:bg-white/10' : ''}`}
+                                    onClick={!isAdmin ? (e) => {
+                                      e.stopPropagation();
+                                      if (isMe) {
+                                        // Own name → day-off request
+                                        if (!existingRequest) {
+                                          setDayOffModal({ day, shiftId: s.id });
+                                          setDayOffReason('');
+                                        }
+                                      } else {
+                                        // Other employee → shift trade request
+                                        if (!tradeByShiftId[s.id]) {
+                                          setTradeModal({ targetShift: s, day });
+                                          setTradeSelectedShiftId('');
+                                        }
+                                      }
+                                    } : undefined}
+                                  >
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs font-semibold"
+                                        style={{
+                                          color: !isAdmin ? 'var(--color-accent-primary)' : 'var(--color-text-primary)',
+                                          textDecoration: !isAdmin ? 'underline' : 'none',
+                                          textUnderlineOffset: '2px',
+                                          cursor: !isAdmin ? 'pointer' : 'default',
+                                        }}>
+                                        {s.employeeName.split(' ')[0]}
+                                      </span>
+                                      {s.status === 'UPDATED' && (
+                                        <span className="text-[9px]" style={{ color: 'var(--color-status-warning)' }}>✎</span>
+                                      )}
+                                    </div>
+                                    {/* Show time-off request badge below name */}
+                                    {existingRequest && (
+                                      <Badge
+                                        color={existingRequest.status === 'APPROVED' ? 'success' : existingRequest.status === 'DENIED' ? 'error' : 'warning'}
+                                        variant="light"
+                                        size="sm"
+                                      >
+                                        {existingRequest.status === 'PENDING' ? 'Requested' : existingRequest.status}
+                                      </Badge>
+                                    )}
+                                    {/* Show trade request badge below name */}
+                                    {tradeByShiftId[s.id] && (
+                                      <Badge
+                                        color={tradeByShiftId[s.id]!.status === 'APPROVED' ? 'success' : tradeByShiftId[s.id]!.status === 'DENIED' ? 'error' : 'warning'}
+                                        variant="light"
+                                        size="sm"
+                                      >
+                                        {tradeByShiftId[s.id]!.status === 'PENDING' ? 'Trade Req.' : `Trade ${tradeByShiftId[s.id]!.status}`}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {dayShifts.length === 0 && isAdmin && (
                                 <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>+ Assign</span>
+                              )}
+                              {dayShifts.length === 0 && !isAdmin && (
+                                <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>—</span>
                               )}
                             </div>
                           </td>
@@ -353,8 +538,8 @@ export function ScheduleView() {
             </div>
           )}
 
-          {/* ── Day Detail Panel ── */}
-          {selectedDay && (
+          {/* ── Day Detail Panel (Admin only) ── */}
+          {isAdmin && selectedDay && (
             <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
@@ -407,8 +592,27 @@ export function ScheduleView() {
         </>
       )}
 
-      {/* ── Summary Tab ── */}
-      {activeTab === 'summary' && (
+      {/* ── My Weekly Hours (Staff only) ── */}
+      {!isAdmin && activeTab === 'grid' && (
+        <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>My Hours This Week</span>
+            <span className="text-lg font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+              {myShifts.reduce((sum, s) => {
+                const start = new Date(s.scheduledStart).getTime();
+                const end = new Date(s.scheduledEnd).getTime();
+                return sum + (end - start) / (1000 * 60 * 60);
+              }, 0).toFixed(1)}h
+            </span>
+          </div>
+          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {myShifts.length} shift{myShifts.length !== 1 ? 's' : ''} scheduled
+          </p>
+        </div>
+      )}
+
+      {/* ── Summary Tab (Admin only) ── */}
+      {isAdmin && activeTab === 'summary' && (
         <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
           <table className="w-full">
             <thead>
@@ -446,8 +650,9 @@ export function ScheduleView() {
         </div>
       )}
 
-      {/* ── Time Off Tab ── */}
-      {activeTab === 'timeoff' && (
+      {/* ── Time Off Tab (Admin only) ── */}
+      {isAdmin && activeTab === 'timeoff' && (
+        <>
         <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
           <table className="w-full">
             <thead>
@@ -490,10 +695,57 @@ export function ScheduleView() {
             </tbody>
           </table>
         </div>
+
+        {/* ── Shift Trades section within Time Off tab ── */}
+        <h3 className="mt-6 mb-3 text-sm font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+          🔄 Shift Trade Requests
+        </h3>
+        <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
+                {['Requester', 'Wants', 'Status', 'Actions'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tradeRequests.map((t) => (
+                <tr key={t.id} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
+                  onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                  onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
+                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t.requesterName}</td>
+                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t.targetName}'s shift</td>
+                  <td className="px-4 py-3">
+                    <Badge
+                      color={t.status === 'APPROVED' ? 'success' : t.status === 'DENIED' ? 'error' : 'warning'}
+                      variant="light" size="sm">{t.status}</Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    {t.status === 'PENDING' && (
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={() => handleTradeDecision(t.id, 'APPROVED')}>Approve</Button>
+                        <Button size="sm" variant="outline" onClick={() => handleTradeDecision(t.id, 'DENIED')}>Deny</Button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {tradeRequests.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                    No shift trade requests
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        </>
       )}
 
-      {/* ── Assign Modal ── */}
-      {assignModal && (
+      {/* ── Assign Modal (Admin only) ── */}
+      {isAdmin && assignModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
           onClick={() => setAssignModal(null)}>
           <div className="w-full max-w-md rounded-xl border p-6"
@@ -532,8 +784,100 @@ export function ScheduleView() {
         </div>
       )}
 
-      {/* ── Edit Shift Modal ── */}
-      {editingShift && <EditShiftModal shift={editingShift} onSave={handleUpdateShift} onCancel={() => setEditingShift(null)} onDelete={handleCancelShift} staffList={staffList} />}
+      {/* ── Edit Shift Modal (Admin only) ── */}
+      {isAdmin && editingShift && <EditShiftModal shift={editingShift} onSave={handleUpdateShift} onCancel={() => setEditingShift(null)} onDelete={handleCancelShift} staffList={staffList} />}
+
+      {/* ── Request Day Off Modal (Staff only) ── */}
+      {!isAdmin && dayOffModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          onClick={() => { setDayOffModal(null); setDayOffReason(''); }}>
+          <div className="w-full max-w-sm rounded-xl border p-6"
+            style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+              Request Day Off
+            </h3>
+            <p className="mb-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              {DAYS_FULL[new Date(dayOffModal.day + 'T00:00:00').getDay()]}, {formatShortDate(dayOffModal.day)}
+            </p>
+            <div className="mb-4">
+              <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Reason (optional)</label>
+              <textarea
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                rows={3}
+                value={dayOffReason}
+                onChange={(e) => setDayOffReason(e.target.value)}
+                placeholder="e.g. Personal appointment..."
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleRequestDayOff} disabled={dayOffSubmitting}>
+                {dayOffSubmitting ? 'Submitting…' : 'Submit Request'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setDayOffModal(null); setDayOffReason(''); }}>
+                Cancel
+              </Button>
+            </div>
+            <p className="mt-3 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              Your request will be reviewed by management. The schedule won't change until approved.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Shift Trade Request Modal (Staff only) ── */}
+      {!isAdmin && tradeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          onClick={() => { setTradeModal(null); setTradeSelectedShiftId(''); }}>
+          <div className="w-full max-w-sm rounded-xl border p-6"
+            style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
+            onClick={(e) => e.stopPropagation()}>
+            <h3 className="mb-1 text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+              🔄 Request Shift Trade
+            </h3>
+            <p className="mb-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              Trade with {tradeModal.targetShift.employeeName}
+            </p>
+            <div className="mb-4 rounded-lg p-4" style={{ backgroundColor: 'var(--color-surface-base)' }}>
+              <label className="mb-2 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Select your shift to trade:</label>
+              <select
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+                value={tradeSelectedShiftId}
+                onChange={(e) => setTradeSelectedShiftId(e.target.value)}
+              >
+                <option value="">— Choose a shift —</option>
+                {myShifts.map(s => {
+                  const shiftDay = s.scheduledStart.slice(0, 10);
+                  const dayName = DAYS_FULL[new Date(shiftDay + 'T00:00:00').getDay()];
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {dayName} {formatShortDate(shiftDay)} — {SHIFT_LABELS[s.shiftCode]}
+                    </option>
+                  );
+                })}
+              </select>
+              {tradeSelectedShiftId && (
+                <p className="mt-3 text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                  <strong>For:</strong> {tradeModal.targetShift.employeeName}'s {SHIFT_LABELS[tradeModal.targetShift.shiftCode]} on {DAYS_FULL[new Date(tradeModal.day + 'T00:00:00').getDay()]}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleRequestTrade} disabled={tradeSubmitting || !tradeSelectedShiftId}>
+                {tradeSubmitting ? 'Submitting…' : 'Request Trade'}
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => { setTradeModal(null); setTradeSelectedShiftId(''); }}>
+                Cancel
+              </Button>
+            </div>
+            <p className="mt-3 text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+              This request must be approved by management before the trade takes effect.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
