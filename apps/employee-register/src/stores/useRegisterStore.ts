@@ -469,8 +469,11 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
 
   /* Flow Commands */
   sendFlowCommand: async (cmd) => {
-    const { laneId, sessionPayload } = get();
-    if (!sessionPayload?.sessionId) return;
+    // Read latest state at call time (not stale closure)
+    const state = get();
+    const sp = state.sessionPayload;
+    if (!sp?.sessionId) return;
+    const { laneId } = state;
     try {
       const token = (window as any).__authToken;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -482,10 +485,10 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
           method: 'POST',
           headers,
           body: JSON.stringify({
-            sessionId: sessionPayload.sessionId,
+            sessionId: sp.sessionId,
             commandId: crypto.randomUUID(),
             actor: 'EMPLOYEE',
-            expectedFlowVersion: sessionPayload.flowVersion ?? 0,
+            expectedFlowVersion: sp.flowVersion ?? 0,
             ...cmd,
           }),
         }
@@ -493,7 +496,32 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
 
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
+
+        // On version mismatch, auto-resync from snapshot
+        if (d.code === 'VersionMismatch' || res.status === 409) {
+          try {
+            const snapRes = await fetch(
+              getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`),
+              { headers },
+            );
+            if (snapRes.ok) {
+              const snap = await snapRes.json();
+              if (snap.session) set({ sessionPayload: snap.session });
+            }
+          } catch { /* ignore snapshot failure */ }
+        }
+
         set({ successToastMessage: d.error ?? `Flow command failed (${res.status})` });
+        return;
+      }
+
+      // Update local flowVersion from response for chained commands
+      const data = await res.json().catch(() => null);
+      if (data?.flowVersion != null) {
+        const current = get().sessionPayload;
+        if (current) {
+          set({ sessionPayload: { ...current, flowVersion: data.flowVersion } });
+        }
       }
     } catch {
       set({ successToastMessage: 'Network error sending flow command' });

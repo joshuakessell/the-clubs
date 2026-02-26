@@ -87,7 +87,11 @@ async function authRoutes(fastify) {
      * Accepts staff ID or name and PIN for authentication.
      * Creates a session and returns session token.
      */
-    fastify.post('/v1/auth/login-pin', async (request, reply) => {
+    fastify.post('/v1/auth/login-pin', {
+        config: {
+            rateLimit: { max: 10, timeWindow: '1 minute' },
+        },
+    }, async (request, reply) => {
         let body;
         try {
             body = LoginPinSchema.parse(request.body);
@@ -99,13 +103,15 @@ async function authRoutes(fastify) {
             });
         }
         try {
+            const isDemoMode = process.env.DEMO_MODE === 'true';
             const result = await (0, db_1.transaction)(async (client) => {
                 // Find staff by ID or name (must be active)
                 // Use separate conditions to avoid type mismatch (UUID vs VARCHAR)
+                // In DEMO_MODE, allow staff without a pin_hash
                 const staffResult = await client.query(`SELECT id, name, role, pin_hash, active, force_pin_change
            FROM staff
            WHERE (id::text = $1 OR name ILIKE $1)
-           AND pin_hash IS NOT NULL
+           ${isDemoMode ? '' : 'AND pin_hash IS NOT NULL'}
            AND active = true
            LIMIT 1`, [body.staffLookup]);
                 if (staffResult.rows.length === 0) {
@@ -116,9 +122,11 @@ async function authRoutes(fastify) {
                 if (!staff.active) {
                     return null;
                 }
-                // Verify PIN
-                if (!staff.pin_hash || !(await (0, utils_1.verifyPin)(body.pin, staff.pin_hash))) {
-                    return null;
+                // Verify PIN (skip in DEMO_MODE — accept any PIN)
+                if (!isDemoMode) {
+                    if (!staff.pin_hash || !(await (0, utils_1.verifyPin)(body.pin, staff.pin_hash))) {
+                        return null;
+                    }
                 }
                 // Generate session token
                 const sessionToken = (0, utils_1.generateSessionToken)();
@@ -126,9 +134,11 @@ async function authRoutes(fastify) {
                 // Use provided device type or default to 'tablet'
                 const deviceType = body.deviceType || 'tablet';
                 // Create session and get the session ID
+                // Store only the SHA-256 hash of the token; the raw token is returned to the client once.
+                const tokenHash = (0, utils_1.hashSessionToken)(sessionToken);
                 const sessionResult = await client.query(`INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
            VALUES ($1, $2, $3, $4, $5)
-           RETURNING id`, [staff.id, body.deviceId, deviceType, sessionToken, expiresAt]);
+           RETURNING id`, [staff.id, body.deviceId, deviceType, tokenHash, expiresAt]);
                 const sessionId = sessionResult.rows[0].id;
                 // Log audit action (use session UUID id, not the token string)
                 await (0, auditLog_1.insertAuditLog)(client, {
@@ -233,12 +243,13 @@ async function authRoutes(fastify) {
         }
     });
     /**
-     * POST /v1/auth/change-pin - Change PIN (used after forced reset)
+     * POST /v1/auth/change-pin - Change PIN (used after forced reset or self-service)
      *
-     * Accepts current PIN and new PIN. Clears force_pin_change flag.
+     * If force_pin_change is set, currentPin is not required.
+     * Otherwise, currentPin must be verified.
      */
     const ChangePinSchema = zod_1.z.object({
-        currentPin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
+        currentPin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits').optional(),
         newPin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
         confirmPin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
     });
@@ -261,18 +272,25 @@ async function authRoutes(fastify) {
         if (body.newPin !== body.confirmPin) {
             return reply.status(400).send({ error: 'New PIN and confirmation do not match' });
         }
-        if (body.newPin === body.currentPin) {
-            return reply.status(400).send({ error: 'New PIN must be different from current PIN' });
-        }
         try {
             const { hashPin } = await Promise.resolve().then(() => __importStar(require('../auth/utils')));
-            // Verify current PIN
-            const staffResult = await (0, db_1.query)(`SELECT pin_hash FROM staff WHERE id = $1 AND active = true`, [request.staff.staffId]);
-            if (staffResult.rows.length === 0 || !staffResult.rows[0].pin_hash) {
+            // Look up staff to check force_pin_change flag
+            const staffResult = await (0, db_1.query)(`SELECT pin_hash, force_pin_change FROM staff WHERE id = $1 AND active = true`, [request.staff.staffId]);
+            if (staffResult.rows.length === 0) {
                 return reply.status(401).send({ error: 'Unauthorized' });
             }
-            if (!(await (0, utils_1.verifyPin)(body.currentPin, staffResult.rows[0].pin_hash))) {
-                return reply.status(401).send({ error: 'Current PIN is incorrect' });
+            const staff = staffResult.rows[0];
+            // If NOT a forced change, verify current PIN
+            if (!staff.force_pin_change) {
+                if (!body.currentPin) {
+                    return reply.status(400).send({ error: 'Current PIN is required' });
+                }
+                if (!staff.pin_hash || !(await (0, utils_1.verifyPin)(body.currentPin, staff.pin_hash))) {
+                    return reply.status(401).send({ error: 'Current PIN is incorrect' });
+                }
+                if (body.newPin === body.currentPin) {
+                    return reply.status(400).send({ error: 'New PIN must be different from current PIN' });
+                }
             }
             // Hash new PIN and update
             const newPinHash = await hashPin(body.newPin);
@@ -280,10 +298,10 @@ async function authRoutes(fastify) {
             // Audit log
             await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {
                 staffId: request.staff.staffId,
-                action: 'STAFF_PIN_RESET',
+                action: 'STAFF_PIN_CHANGED',
                 entityType: 'staff',
                 entityId: request.staff.staffId,
-                metadata: { selfChange: true },
+                metadata: { selfChange: true, forced: staff.force_pin_change },
             });
             return reply.send({ success: true });
         }
@@ -307,16 +325,17 @@ async function authRoutes(fastify) {
             });
         }
         const token = authHeader.substring(7);
+        const tokenHash = (0, utils_1.hashSessionToken)(token);
         try {
             // Get staff ID and session ID before revoking
-            const sessionResult = await (0, db_1.query)(`SELECT staff_id, id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`, [token]);
+            const sessionResult = await (0, db_1.query)(`SELECT staff_id, id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`, [tokenHash]);
             if (sessionResult.rows.length > 0) {
                 const staffId = sessionResult.rows[0].staff_id;
                 const sessionId = sessionResult.rows[0].id;
                 await (0, db_1.query)(`UPDATE staff_sessions
            SET revoked_at = NOW()
            WHERE session_token = $1
-           AND revoked_at IS NULL`, [token]);
+           AND revoked_at IS NULL`, [tokenHash]);
                 // Log audit action (use session UUID id, not the token string)
                 await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {
                     staffId,
@@ -400,6 +419,7 @@ async function authRoutes(fastify) {
             });
         }
         const token = authHeader.substring(7);
+        const tokenHash = (0, utils_1.hashSessionToken)(token);
         try {
             // Get staff PIN hash
             const staffResult = await (0, db_1.query)(`SELECT pin_hash FROM staff WHERE id = $1 AND active = true`, [request.staff.staffId]);
@@ -417,7 +437,7 @@ async function authRoutes(fastify) {
                 });
             }
             // Get session ID first
-            const sessionResult = await (0, db_1.query)(`SELECT id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`, [token]);
+            const sessionResult = await (0, db_1.query)(`SELECT id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`, [tokenHash]);
             if (sessionResult.rows.length === 0) {
                 return reply.status(401).send({
                     error: 'Unauthorized',
@@ -430,7 +450,7 @@ async function authRoutes(fastify) {
             await (0, db_1.query)(`UPDATE staff_sessions
          SET reauth_ok_until = $1
          WHERE session_token = $2
-         AND revoked_at IS NULL`, [reauthOkUntil, token]);
+         AND revoked_at IS NULL`, [reauthOkUntil, tokenHash]);
             // Log audit action (use session UUID id, not the token string)
             await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {
                 staffId: request.staff.staffId,
@@ -522,6 +542,7 @@ async function authRoutes(fastify) {
             });
         }
         const token = authHeader.substring(7);
+        const tokenHash = (0, utils_1.hashSessionToken)(token);
         const deviceId = request.body.deviceId || 'reauth-device';
         const origin = request.headers.origin || request.headers.host || '';
         try {
@@ -573,7 +594,7 @@ async function authRoutes(fastify) {
                 await updateCredentialSignCount(credentialId, verification.authenticationInfo.newCounter);
             }
             // Get session ID first
-            const sessionResult = await (0, db_1.query)(`SELECT id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`, [token]);
+            const sessionResult = await (0, db_1.query)(`SELECT id FROM staff_sessions WHERE session_token = $1 AND revoked_at IS NULL`, [tokenHash]);
             if (sessionResult.rows.length === 0) {
                 return reply.status(401).send({
                     error: 'Unauthorized',
@@ -586,7 +607,7 @@ async function authRoutes(fastify) {
             await (0, db_1.query)(`UPDATE staff_sessions
          SET reauth_ok_until = $1
          WHERE session_token = $2
-         AND revoked_at IS NULL`, [reauthOkUntil, token]);
+         AND revoked_at IS NULL`, [reauthOkUntil, tokenHash]);
             // Log audit action (use session UUID id, not the token string)
             await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {
                 staffId: request.staff.staffId,

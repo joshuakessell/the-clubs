@@ -244,6 +244,64 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
             ledgerTotal = total;
         }
     }
+    else if (session.checkin_mode === 'CHECKIN' && session.status === 'ACTIVE') {
+        // Build ledger line items for new check-ins:
+        //   1. Past Due Balance (if any)
+        //   2. Membership Fee (for non-members)
+        //   3. Rental Cost (when rental type is selected)
+        const items = [];
+        let total = 0;
+        // 1. Past Due Balance (already in dollars from DB)
+        if (pastDueBalance > 0) {
+            items.push({ description: 'Past Due Balance', amount: pastDueBalance });
+            total += pastDueBalance;
+        }
+        // 2. Membership Fee (non-members only)
+        const membershipCardType = customer?.membership_card_type;
+        const membershipValidUntilRaw = (0, utils_1.toDate)(customer?.membership_valid_until);
+        const hasMembership = membershipCardType === 'SIX_MONTH' &&
+            membershipValidUntilRaw != null &&
+            new Date() <= membershipValidUntilRaw;
+        if (!hasMembership) {
+            if (session.membership_choice === 'SIX_MONTH') {
+                items.push({ description: '6-Month Membership', amount: 43 });
+                total += 43;
+            }
+            else {
+                items.push({ description: 'Membership Fee', amount: 13 });
+                total += 13;
+            }
+        }
+        // 3. Rental Cost (simplified preview price — exact price at payment time)
+        const rentalType = session.proposed_rental_type;
+        if (rentalType && session.selection_confirmed) {
+            const rentalLabel = {
+                LOCKER: 'Locker',
+                STANDARD: 'Standard Room',
+                DOUBLE: 'Double Room',
+                SPECIAL: 'Special Room',
+                GYM_LOCKER: 'Gym Locker',
+            };
+            // Simplified base prices in dollars (weekday non-discount defaults)
+            const rentalPrice = {
+                LOCKER: 17,
+                STANDARD: 30,
+                DOUBLE: 40,
+                SPECIAL: 50,
+                GYM_LOCKER: 0,
+            };
+            const label = rentalLabel[rentalType] ?? rentalType;
+            const price = rentalPrice[rentalType] ?? 0;
+            if (price > 0) {
+                items.push({ description: label, amount: price });
+                total += price;
+            }
+        }
+        if (items.length > 0) {
+            ledgerLineItems = items;
+            ledgerTotal = total;
+        }
+    }
     const membershipValidUntilRaw = customer?.membership_valid_until;
     const customerMembershipValidUntil = membershipValidUntilRaw instanceof Date
         ? membershipValidUntilRaw.toISOString().slice(0, 10)

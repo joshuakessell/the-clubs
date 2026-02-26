@@ -1,27 +1,18 @@
-import { useEffect, useState } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { useI18n } from '../i18n';
-
-interface Props {
-  customerName?: string;
-  assignedResourceType?: string | null;
-  assignedResourceNumber?: string | null;
-  onDone: () => void;
-}
+import { useKioskSession } from '../KioskSessionContext';
 
 /**
- * CompleteScreen — Room/locker assignment confirmation.
- * Auto-resets to idle after a timeout (demo: 10s).
+ * CompleteScreen — Room/locker assignment display.
+ * Maps to the ASSIGNMENT step: shows room number + checkout time.
+ * Remains visible until cleared by the employee (no auto-countdown).
+ * Updates in real-time if the employee changes the room assignment.
  */
-export function CompleteScreen({ customerName, assignedResourceType, assignedResourceNumber, onDone }: Props) {
+export function CompleteScreen() {
+  const { sessionPayload, customerName } = useKioskSession();
+  const assignedResourceType = sessionPayload?.assignedResourceType;
+  const assignedResourceNumber = sessionPayload?.assignedResourceNumber;
   const { t } = useI18n();
-  const [countdown, setCountdown] = useState(10);
-
-  useEffect(() => {
-    if (countdown <= 0) { onDone(); return; }
-    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [countdown, onDone]);
 
   const isLocker = assignedResourceType === 'locker';
 
@@ -50,7 +41,7 @@ export function CompleteScreen({ customerName, assignedResourceType, assignedRes
             : t('complete.allSet')}
         </h1>
 
-        {/* Assignment card */}
+        {/* Assignment card — large room number + checkout time */}
         <div
           className="w-full rounded-2xl border p-6"
           style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
@@ -81,19 +72,10 @@ export function CompleteScreen({ customerName, assignedResourceType, assignedRes
           </div>
         </div>
 
-        {/* OK button with countdown */}
-        <button
-          type="button"
-          className="w-full rounded-xl px-8 py-5 text-lg font-bold transition"
-          style={{
-            backgroundColor: 'var(--color-accent-primary)',
-            color: 'var(--color-text-inverse)',
-            boxShadow: '0 0 20px var(--color-accent-glow)',
-          }}
-          onClick={onDone}
-        >
-          {t('common.ok')} ({countdown}s)
-        </button>
+        {/* Status message */}
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          Please enjoy your visit!
+        </p>
       </div>
     </ScreenShell>
   );

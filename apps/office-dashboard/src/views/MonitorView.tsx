@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Badge } from '@the-clubs/ui';
 import { useDashboardFetch } from '../hooks/useDashboardFetch';
+import { ViewSpinner } from '../components/ViewSpinner';
 
 const POLL_INTERVAL_MS = 10_000;
 
@@ -61,11 +62,7 @@ onClick = {() => refetch()}
 
 {
   loading && !lanes ? (
-    <div className= "flex items-center justify-center py-12" >
-    <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
-  style = {{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }
-} />
-  </div>
+    <ViewSpinner />
       ) : (
   <div className= "grid grid-cols-3 gap-4" >
   {(lanes ?? []).map((lane) => (

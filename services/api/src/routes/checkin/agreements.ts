@@ -1882,4 +1882,83 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
       });
     }
   }
+
+  /**
+   * POST /v1/checkin/lane/:laneId/kiosk-sign
+   *
+   * Lightweight kiosk endpoint: records that the customer signed the agreement
+   * digitally, without triggering full check-in completion (no payment/assignment
+   * prereqs). Broadcasts SESSION_UPDATED so the employee register sees the signed status.
+   */
+  fastify.post<{
+    Params: { laneId: string };
+    Body: { signaturePayload: string; sessionId?: string };
+  }>(
+    '/v1/checkin/lane/:laneId/kiosk-sign',
+    {
+      preHandler: [optionalAuth, requireKioskTokenOrStaff],
+    },
+    async (request, reply) => {
+      const { laneId } = request.params;
+      const { signaturePayload, sessionId } = request.body;
+
+      if (!signaturePayload || signaturePayload.length < 16) {
+        return reply.status(400).send({ error: 'Signature payload is required' });
+      }
+
+      try {
+        const updatedSessionId = await transaction(async (client) => {
+          let sessionResult;
+          if (sessionId) {
+            sessionResult = await client.query<LaneSessionRow>(
+              `SELECT id, lane_id FROM lane_sessions
+               WHERE id = $1 AND lane_id = $2 AND status NOT IN ('COMPLETED', 'CANCELLED')
+               LIMIT 1`,
+              [sessionId, laneId]
+            );
+          } else {
+            sessionResult = await client.query<LaneSessionRow>(
+              `SELECT id, lane_id FROM lane_sessions
+               WHERE lane_id = $1 AND status NOT IN ('COMPLETED', 'CANCELLED')
+               ORDER BY created_at DESC
+               LIMIT 1`,
+              [laneId]
+            );
+          }
+
+          if (sessionResult.rows.length === 0) {
+            throw { statusCode: 404, message: 'No active session found' };
+          }
+
+          const session = sessionResult.rows[0]!;
+
+          await client.query(
+            `UPDATE lane_sessions
+             SET agreement_signed_method = 'DIGITAL',
+                 agreement_bypass_pending = false,
+                 updated_at = NOW()
+             WHERE id = $1`,
+            [session.id]
+          );
+
+          return session.id;
+        });
+
+        // Broadcast so employee register sees the signed status
+        const { payload } = await transaction((client) =>
+          buildFullSessionUpdatedPayload(client, updatedSessionId)
+        );
+        fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
+
+        return reply.send({ success: true });
+      } catch (error: unknown) {
+        request.log.error(error, 'Failed to record kiosk signature');
+        const httpErr = getHttpError(error);
+        if (httpErr) {
+          return reply.status(httpErr.statusCode).send({ error: httpErr.message });
+        }
+        return reply.status(500).send({ error: 'Failed to record signature' });
+      }
+    }
+  );
 }

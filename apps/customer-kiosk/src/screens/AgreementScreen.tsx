@@ -1,19 +1,19 @@
 import { useRef, useState, useCallback } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { useI18n } from '../i18n';
-
-interface Props {
-  onAccept: () => void;
-  onCancel: () => void;
-}
+import { useKioskSession } from '../KioskSessionContext';
+import { getApiUrl } from '@the-clubs/shared';
 
 /**
  * AgreementScreen — Customer reads and signs the agreement.
  * Signature canvas modal + agreement text + submit flow.
  */
-export function AgreementScreen({ onAccept, onCancel }: Props) {
+export function AgreementScreen() {
+  const { navigate, reset, laneId, kioskToken, sessionPayload } = useKioskSession();
   const { t } = useI18n();
   const [signed, setSigned] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [showSignModal, setShowSignModal] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
@@ -50,6 +50,41 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
   const endDraw = useCallback(() => {
     drawingRef.current = false;
   }, []);
+
+  // Store canvas signature data when user confirms
+  const signatureDataRef = useRef<string>('');
+
+  const submitAgreement = useCallback(async () => {
+    if (!signatureDataRef.current || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (kioskToken) headers['x-kiosk-token'] = kioskToken;
+      const res = await fetch(
+        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/kiosk-sign`),
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            signaturePayload: signatureDataRef.current,
+            sessionId: sessionPayload?.sessionId,
+          }),
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Failed to sign' }));
+        setError(data.error || 'Failed to sign agreement');
+        setSubmitting(false);
+        return;
+      }
+      // Success — server will broadcast SESSION_UPDATED
+      navigate('complete');
+    } catch {
+      setError('Network error — please try again');
+      setSubmitting(false);
+    }
+  }, [laneId, kioskToken, sessionPayload?.sessionId, submitting, navigate]);
 
   const clearCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -106,21 +141,21 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
             type="button"
             className="flex-1 rounded-lg border px-6 py-4 text-base font-semibold transition"
             style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
-            onClick={onCancel}
+            onClick={reset}
           >
             {t('common.cancel')}
           </button>
           <button
             type="button"
-            className={`flex-1 rounded-lg px-6 py-4 text-base font-bold transition disabled:opacity-40 ${signed ? 'animate-pulse' : ''}`}
+            className={`flex-1 rounded-lg px-6 py-4 text-base font-bold transition disabled:opacity-40 ${signed && !submitting ? 'animate-pulse' : ''}`}
             style={{
               backgroundColor: signed ? 'var(--color-status-success)' : 'var(--color-surface-overlay)',
               color: signed ? 'white' : 'var(--color-text-muted)',
             }}
-            disabled={!signed}
-            onClick={onAccept}
+            disabled={!signed || submitting}
+            onClick={submitAgreement}
           >
-            {t('agreement.submitAgreement')}
+            {submitting ? 'Submitting…' : t('agreement.submitAgreement')}
           </button>
         </div>
       </div>
@@ -170,7 +205,12 @@ export function AgreementScreen({ onAccept, onCancel }: Props) {
                 type="button"
                 className="flex-1 rounded-lg px-4 py-3 font-bold transition"
                 style={{ backgroundColor: 'var(--color-accent-primary)', color: 'var(--color-text-inverse)' }}
-                onClick={() => { setSigned(true); setShowSignModal(false); }}
+                onClick={() => {
+                  const canvas = canvasRef.current;
+                  if (canvas) signatureDataRef.current = canvas.toDataURL('image/png');
+                  setSigned(true);
+                  setShowSignModal(false);
+                }}
               >
                 {t('agreement.confirmSignature')}
               </button>

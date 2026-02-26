@@ -222,39 +222,31 @@ function registerAdminStaffRoutes(fastify) {
         }
     });
     /**
-     * POST /v1/admin/staff/:id/pin-reset - Reset a staff member's PIN
+     * POST /v1/admin/staff/:id/pin-reset - Reset a staff member's PIN to 000000
      *
-     * Requires re-authentication for security.
+     * Sets pin_hash to hash of '000000' and force_pin_change = true.
+     * Requires re-authentication for security (skipped in DEMO_MODE).
      */
     fastify.post('/v1/admin/staff/:id/pin-reset', {
-        preHandler: [middleware_1.requireReauthForAdmin],
+        preHandler: process.env.DEMO_MODE === 'true'
+            ? [middleware_1.requireAuth, middleware_1.requireAdmin]
+            : [middleware_1.requireReauthForAdmin],
     }, async (request, reply) => {
         if (!request.staff) {
             return reply.status(401).send({ error: 'Unauthorized' });
         }
-        const PinResetSchema = zod_1.z.object({
-            newPin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
-        });
-        let body;
-        try {
-            body = PinResetSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
         try {
             const { hashPin } = await Promise.resolve().then(() => __importStar(require('../../auth/utils')));
-            const pinHash = await hashPin(body.newPin);
-            const result = await (0, db_1.query)(`UPDATE staff
-         SET pin_hash = $1, force_pin_change = true, updated_at = NOW()
-         WHERE id = $2
-         RETURNING id`, [pinHash, request.params.id]);
-            if (result.rows.length === 0) {
+            const pinHash = await hashPin('000000');
+            // Look up staff name for the response
+            const staffResult = await (0, db_1.query)(`UPDATE staff
+           SET pin_hash = $1, force_pin_change = true, updated_at = NOW()
+           WHERE id = $2
+           RETURNING id, name`, [pinHash, request.params.id]);
+            if (staffResult.rows.length === 0) {
                 return reply.status(404).send({ error: 'Staff not found' });
             }
+            const staff = staffResult.rows[0];
             // Log audit action
             await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {
                 staffId: request.staff.staffId,
@@ -262,7 +254,7 @@ function registerAdminStaffRoutes(fastify) {
                 entityType: 'staff',
                 entityId: request.params.id,
             });
-            return reply.send({ success: true });
+            return reply.send({ success: true, name: staff.name });
         }
         catch (error) {
             request.log.error(error, 'Failed to reset PIN');

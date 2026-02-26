@@ -1,9 +1,42 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.pg = void 0;
+exports.db = exports.pg = void 0;
 exports.loadDatabaseConfig = loadDatabaseConfig;
 exports.getPool = getPool;
 exports.initializeDatabase = initializeDatabase;
@@ -11,9 +44,12 @@ exports.closeDatabase = closeDatabase;
 exports.query = query;
 exports.transaction = transaction;
 exports.serializableTransaction = serializableTransaction;
+exports.getDb = getDb;
 const node_fs_1 = __importDefault(require("node:fs"));
 const pg_1 = __importDefault(require("pg"));
 exports.pg = pg_1.default;
+const node_postgres_1 = require("drizzle-orm/node-postgres");
+const schema = __importStar(require("./schema"));
 const { Pool } = pg_1.default;
 function resolveSslConfig() {
     if (process.env.DB_SSL !== 'true') {
@@ -168,7 +204,13 @@ async function query(text, params) {
     const result = await dbPool.query(text, params);
     const duration = Date.now() - start;
     if (process.env.DB_LOG_QUERIES === 'true') {
-        console.log('Executed query', { text, duration, rows: result.rowCount });
+        if (process.env.NODE_ENV === 'production') {
+            // In production, only log duration and row count to avoid leaking schema details
+            console.log('Executed query', { duration, rows: result.rowCount });
+        }
+        else {
+            console.log('Executed query', { text, duration, rows: result.rowCount });
+        }
     }
     return result;
 }
@@ -213,3 +255,27 @@ async function serializableTransaction(callback) {
         client.release();
     }
 }
+/**
+ * Drizzle ORM client wrapping the shared pg.Pool.
+ * Provides type-safe queries via the auto-generated schema.
+ *
+ * Usage:
+ *   import { db } from '../db';
+ *   import { customers, staff } from '../db/schema';
+ *   import { eq } from 'drizzle-orm';
+ *
+ *   const rows = await db.select().from(customers).where(eq(customers.name, 'John'));
+ */
+let _db = null;
+function getDb() {
+    if (!_db) {
+        _db = (0, node_postgres_1.drizzle)(getPool(), { schema });
+    }
+    return _db;
+}
+/** Convenience alias — prefer `getDb()` if you need to ensure the pool is initialized. */
+exports.db = new Proxy({}, {
+    get(_target, prop, receiver) {
+        return Reflect.get(getDb(), prop, receiver);
+    },
+});

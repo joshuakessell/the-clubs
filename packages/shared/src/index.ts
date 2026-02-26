@@ -169,3 +169,6 @@ export {
 
 // SSE realtime hook (browser-only, requires React)
 export { useRealtimeSSE, type UseRealtimeSSEOptions, type UseRealtimeSSEResult } from './useRealtimeSSE.js';
+
+// Polling fallback for SSE outages (browser-only, requires React)
+export { useSessionPollingFallback, type UseSessionPollingFallbackOptions } from './useSessionPollingFallback.js';

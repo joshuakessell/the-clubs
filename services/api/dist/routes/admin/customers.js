@@ -14,7 +14,7 @@ function registerAdminCustomerRoutes(fastify) {
     fastify.get('/v1/admin/customers', {
         preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin],
     }, async (request, reply) => {
-        const search = (request.query.search || '').trim();
+        const search = (request.query.q || request.query.search || '').trim();
         const limit = Math.min(Math.max(parseInt(request.query.limit || '25', 10) || 25, 1), 100);
         if (search.length < 2) {
             return reply.send({ customers: [] });

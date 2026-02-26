@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { ErrorBoundary, LockScreen, ChangePinScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
-import { getApiUrl } from '@the-clubs/shared';
+import { getApiUrl, useSessionPollingFallback } from '@the-clubs/shared';
 import { AppLayout } from './layout/AppLayout';
 import { useRegisterSSE } from './hooks/useRegisterSSE';
 import { useRegisterStore } from './stores/useRegisterStore';
@@ -74,7 +74,7 @@ export default function App() {
           );
           if (!res.ok) return;
           const data = await res.json();
-          if (data.session && data.session.status === 'ACTIVE') {
+          if (data.session && data.session.status !== 'COMPLETED' && data.session.status !== 'CANCELLED') {
             if (import.meta.env.DEV) console.log('[register-catchup] recovered session', data.session);
             useRegisterStore.setState({
               currentSessionId: data.session.sessionId,
@@ -89,7 +89,26 @@ export default function App() {
       })();
     }
     prevConnected.current = sseConnected;
+    // Reset on cleanup so StrictMode double-mount re-triggers the catchup
+    return () => { prevConnected.current = false; };
   }, [sseConnected, laneId, session?.sessionToken]);
+
+  // ── Polling fallback ──────────────────────────────────────────
+  // When SSE disconnects mid-checkin, poll /session-snapshot every 5s
+  // so the employee register stays in sync. Stops on SSE reconnect.
+  const currentSessionId = useRegisterStore((s) => s.currentSessionId);
+  useSessionPollingFallback({
+    sseConnected,
+    hasActiveSession: Boolean(currentSessionId),
+    laneId,
+    authHeaders: {
+      ...(session?.sessionToken ? { Authorization: `Bearer ${session.sessionToken}` } : {}),
+      ...(kioskToken ? { 'x-kiosk-token': kioskToken } : {}),
+    },
+    onSnapshot: (payload) => {
+      onSessionUpdated({ type: 'SESSION_UPDATED', payload });
+    },
+  });
 
   return (
     <ErrorBoundary>

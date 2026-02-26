@@ -1,12 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { ScreenShell } from '../components/ScreenShell';
 import { useI18n } from '../i18n';
-
-interface Props {
-  isCheckinActive?: boolean;
-  sessionPayload?: SessionUpdatedPayload | null;
-}
+import { useKioskSession } from '../KioskSessionContext';
 
 interface ChargeItem {
   description: string;
@@ -30,7 +25,9 @@ interface ChargeItem {
  *  - Items displayed on single lines: "Membership Fee    $13.00"
  *  - Dollar amounts right-aligned for visual alignment
  */
-export function IdleScreen({ isCheckinActive = false, sessionPayload }: Props) {
+export function IdleScreen() {
+  const { view, sessionPayload, customerName } = useKioskSession();
+  const isCheckinActive = view === 'checkin';
   const { t } = useI18n();
 
   // Theme detection for logo variant
@@ -165,6 +162,12 @@ export function IdleScreen({ isCheckinActive = false, sessionPayload }: Props) {
         }, index * 300); // 0.3s stagger between items
       });
     }, 3400);
+
+    // Reset on cleanup so StrictMode re-mount can re-schedule animations
+    return () => {
+      wasActiveRef.current = false;
+      prevKeyRef.current = '';
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckinActive, lineItemsKey]);
 
@@ -203,98 +206,22 @@ export function IdleScreen({ isCheckinActive = false, sessionPayload }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckinActive, lineItemsKey]);
 
-  // Handle item changes during active check-in
+  // Handle item changes during active check-in — instant update (no animation)
   useEffect(() => {
     if (!isCheckinActive || !wasActiveRef.current) return;
-    if (prevKeyRef.current === '' || lineItemsKey === '') return;
-    if (lineItemsKey === prevKeyRef.current) return;
+    if (lineItemsKey === '' || lineItemsKey === prevKeyRef.current) return;
 
     clearTimers();
+    prevKeyRef.current = lineItemsKey;
 
-    const prevItems = chargeItems;
-    const newItems = lineItems;
-
-    // Check if this is an addition (new items added to existing)
-    const prevDescs = prevItems.map((it) => it.description);
-    const newDescs = newItems.map((it) => it.description);
-    const isAddition = prevDescs.every((d) => newDescs.includes(d)) && newDescs.length > prevDescs.length;
-
-    if (isAddition) {
-      // Items were added (e.g. rental selected) — slide existing up, fade in new
-      const addedItems = newItems.filter((it) => !prevDescs.includes(it.description));
-      const keptItems = prevItems.map((it) => ({ ...it }));
-
-      // Slide the group up slightly (20px per new item)
-      setGroupSlideOffset((prev) => prev - 20 * addedItems.length);
-
-      // Add new items as hidden, then fade them in
-      const allItems = [
-        ...keptItems,
-        ...addedItems.map((it) => ({
-          description: it.description,
-          amount: it.amount,
-          phase: 'hidden' as const,
-        })),
-      ];
-      setChargeItems(allItems);
-      prevKeyRef.current = lineItemsKey;
-
-      // Fade in new items after a short delay for the slide
-      addTimer(() => {
-        addedItems.forEach((_, idx) => {
-          const globalIdx = keptItems.length + idx;
-          addTimer(() => {
-            setChargeItems((prev) =>
-              prev.map((item, i) =>
-                i === globalIdx ? { ...item, phase: 'fading-in' } : item
-              )
-            );
-            addTimer(() => {
-              setChargeItems((prev) =>
-                prev.map((item, i) =>
-                  i === globalIdx ? { ...item, phase: 'visible' } : item
-                )
-              );
-            }, 1000);
-          }, idx * 300);
-        });
-      }, 400); // Wait for slide animation
-    } else {
-      // Items changed (e.g. daily→6mo swap) — fade out all, then fade in new
-      setChargeItems((prev) => prev.map((it) => ({ ...it, phase: 'fading-out' as const })));
-
-      addTimer(() => {
-        // After fade-out: swap items and pause
-        const items: ChargeItem[] = newItems.map((item) => ({
-          description: item.description,
-          amount: item.amount,
-          phase: 'hidden' as const,
-        }));
-        setChargeItems(items);
-        setGroupSlideOffset(0); // Reset slide
-        prevKeyRef.current = lineItemsKey;
-
-        addTimer(() => {
-          // After pause: fade in sequentially
-          items.forEach((_, index) => {
-            addTimer(() => {
-              setChargeItems((prev) =>
-                prev.map((item, i) =>
-                  i === index ? { ...item, phase: 'fading-in' } : item
-                )
-              );
-              addTimer(() => {
-                setChargeItems((prev) =>
-                  prev.map((item, i) =>
-                    i === index ? { ...item, phase: 'visible' } : item
-                  )
-                );
-              }, 1000);
-            }, index * 300);
-          });
-        }, 500); // Pause
-      }, 1000); // Fade-out duration
-    }
+    // Instantly replace items as visible
+    setChargeItems(
+      lineItems.map((item) => ({
+        description: item.description,
+        amount: item.amount,
+        phase: 'visible' as const,
+      }))
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckinActive, lineItemsKey]);
 
@@ -322,7 +249,7 @@ export function IdleScreen({ isCheckinActive = false, sessionPayload }: Props) {
             transition,
             ...(isCheckinActive
               ? {
-                  paddingTop: 40,
+                  paddingTop: 34,
                   transform: 'scale(0.65)',
                   transformOrigin: 'top center',
                 }
@@ -354,6 +281,8 @@ export function IdleScreen({ isCheckinActive = false, sessionPayload }: Props) {
                   width: 240,
                   height: 240,
                   filter: 'drop-shadow(0 0 20px var(--color-accent-glow))',
+                  transform: isCheckinActive ? 'translateY(-12px)' : undefined,
+                  transition,
                 }}
               />
             </div>
@@ -423,7 +352,7 @@ export function IdleScreen({ isCheckinActive = false, sessionPayload }: Props) {
                   className="text-base font-semibold"
                   style={{ color: 'var(--color-text-primary)' }}
                 >
-                  Check-in
+                  {isMember ? `Welcome back, ${customerName}!` : `Welcome, ${customerName}`}
                 </p>
               </div>
 
@@ -434,11 +363,9 @@ export function IdleScreen({ isCheckinActive = false, sessionPayload }: Props) {
                   const opacity =
                     item.phase === 'fading-in' || item.phase === 'visible' ? 1 : 0;
                   const itemTransition =
-                    item.phase === 'fading-in'
-                      ? 'opacity 1s ease, transform 1s ease'
-                      : item.phase === 'fading-out'
-                        ? 'opacity 1s ease, transform 1s ease'
-                        : 'none';
+                    item.phase === 'hidden'
+                      ? 'none'
+                      : 'opacity 1s ease, transform 1s ease';
                   const translateY =
                     item.phase === 'hidden' ? 8 : 0;
 

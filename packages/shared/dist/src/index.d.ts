@@ -15,4 +15,5 @@ export { isRecord, getErrorMessage } from './typeGuards.js';
 export { readJson, safeJsonParse } from './http.js';
 export { ClubEventDomainSchema, ClubEventTypeSchema, ClubEventSourceAppSchema, type ClubEventDomain, type ClubEventType, type ClubEventSourceApp, type ClubEventRow, } from './clubEventSchemas.js';
 export { useRealtimeSSE, type UseRealtimeSSEOptions, type UseRealtimeSSEResult } from './useRealtimeSSE.js';
+export { useSessionPollingFallback, type UseSessionPollingFallbackOptions } from './useSessionPollingFallback.js';
 //# sourceMappingURL=index.d.ts.map

@@ -6,6 +6,7 @@ exports.requireReauth = requireReauth;
 exports.requireReauthForAdmin = requireReauthForAdmin;
 exports.optionalAuth = optionalAuth;
 const db_1 = require("../db");
+const utils_1 = require("./utils");
 /**
  * Extract and validate session token from Authorization header.
  * Attaches staff information to request.staff if valid.
@@ -19,6 +20,7 @@ async function extractStaffFromToken(request) {
         return false;
     }
     const token = authHeader.substring(7);
+    const tokenHash = (0, utils_1.hashSessionToken)(token);
     try {
         const sessionResult = await (0, db_1.query)(`SELECT 
         ss.staff_id,
@@ -30,7 +32,7 @@ async function extractStaffFromToken(request) {
       WHERE ss.session_token = $1 
         AND ss.revoked_at IS NULL
         AND ss.expires_at > NOW()
-        AND s.active = true`, [token]);
+        AND s.active = true`, [tokenHash]);
         if (sessionResult.rows.length === 0) {
             return false;
         }
@@ -41,6 +43,12 @@ async function extractStaffFromToken(request) {
             role: row.role,
             sessionId: row.id,
         };
+        // Sliding window: extend session expiry on each authenticated request.
+        // Only fires if less than 23h remain (throttles to ~1 write/hour max).
+        (0, db_1.query)(`UPDATE staff_sessions
+       SET expires_at = NOW() + INTERVAL '24 hours'
+       WHERE session_token = $1
+         AND expires_at - NOW() < INTERVAL '23 hours'`, [tokenHash]).catch(() => { }); // fire-and-forget, non-blocking
         return true;
     }
     catch (error) {
@@ -74,6 +82,9 @@ async function requireAdmin(request, reply) {
         });
         return;
     }
+    // In DEMO_MODE, allow any authenticated user to access admin endpoints
+    if (process.env.DEMO_MODE === 'true')
+        return;
     if (request.staff.role !== 'ADMIN') {
         reply.status(403).send({
             error: 'Forbidden',
@@ -107,12 +118,13 @@ async function requireReauth(request, reply) {
         return;
     }
     const token = authHeader.substring(7);
+    const tokenHash = (0, utils_1.hashSessionToken)(token);
     try {
         const sessionResult = await (0, db_1.query)(`SELECT reauth_ok_until
        FROM staff_sessions
        WHERE session_token = $1
          AND revoked_at IS NULL
-         AND expires_at > NOW()`, [token]);
+         AND expires_at > NOW()`, [tokenHash]);
         if (sessionResult.rows.length === 0) {
             reply.status(401).send({
                 error: 'Unauthorized',

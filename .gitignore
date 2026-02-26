@@ -1,4 +1,5 @@
 node_modules
-.agents
+.agents/
 .pnpm-lock.yaml
 .pnpm-workspace.yaml
+.env

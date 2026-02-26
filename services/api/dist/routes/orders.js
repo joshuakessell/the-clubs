@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.orderRoutes = orderRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../auth/middleware");
+const idempotency_1 = require("../middleware/idempotency");
 const db_1 = require("../db");
 const customerActivityLog_1 = require("../activity/customerActivityLog");
 const customerSpendLedger_1 = require("../ledger/customerSpendLedger");
@@ -53,7 +54,7 @@ async function orderRoutes(fastify) {
      *
      * Create a new order.
      */
-    fastify.post('/v1/orders', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/orders', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;
@@ -110,7 +111,7 @@ async function orderRoutes(fastify) {
         }
         try {
             const result = await (0, db_1.transaction)(async (client) => {
-                const orderResult = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
+                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
                 if (orderResult.rows.length === 0) {
                     throw { statusCode: 404, message: 'Order not found' };
                 }
@@ -195,7 +196,7 @@ async function orderRoutes(fastify) {
         }
         try {
             const result = await (0, db_1.transaction)(async (client) => {
-                const orderResult = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
+                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
                 if (orderResult.rows.length === 0) {
                     throw { statusCode: 404, message: 'Order not found' };
                 }
@@ -236,7 +237,7 @@ async function orderRoutes(fastify) {
                         actorType: 'STAFF',
                         actorStaffId: request.staff.staffId,
                         actorStaffName: request.staff.name,
-                        summary: 'Order paid',
+                        summary: 'Retail purchase',
                         metadata: {
                             orderId: paidOrder.id,
                             registerSessionId: paidOrder.register_session_id,
@@ -253,7 +254,7 @@ async function orderRoutes(fastify) {
                         actorType: 'STAFF',
                         actorStaffId: request.staff.staffId,
                         actorStaffName: request.staff.name,
-                        summary: `Order paid ($${(paidOrder.total_cents / 100).toFixed(2)})`,
+                        summary: `Retail purchase ($${(paidOrder.total_cents / 100).toFixed(2)})`,
                         metadata: {
                             orderId: paidOrder.id,
                             totalCents: paidOrder.total_cents,
@@ -291,9 +292,9 @@ async function orderRoutes(fastify) {
                 // Look up customer name for log attribution
                 let customerName = null;
                 if (paidOrder.customer_id) {
-                    const custResult = await client.query(`SELECT full_name FROM customers WHERE id = $1`, [paidOrder.customer_id]);
+                    const custResult = await client.query(`SELECT name FROM customers WHERE id = $1`, [paidOrder.customer_id]);
                     if (custResult.rows.length > 0) {
-                        customerName = custResult.rows[0].full_name;
+                        customerName = custResult.rows[0].name;
                     }
                 }
                 // Emit unified club event for analytics
@@ -353,7 +354,7 @@ async function orderRoutes(fastify) {
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
             const result = await (0, db_1.transaction)(async (client) => {
-                const orderResult = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
+                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
                 if (orderResult.rows.length === 0) {
                     throw { statusCode: 404, message: 'Order not found' };
                 }

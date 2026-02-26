@@ -322,11 +322,12 @@ export async function buildFullSessionUpdatedPayload(
       ledgerLineItems = ledgerItems;
       ledgerTotal = total;
     }
-  } else if (session.checkin_mode === 'CHECKIN' && session.status === 'ACTIVE') {
-    // Build ledger line items for new check-ins:
+  } else if (session.checkin_mode === 'CHECKIN') {
+    // Build ledger line items for new check-ins (all non-terminal statuses):
     //   1. Past Due Balance (if any)
     //   2. Membership Fee (for non-members)
     //   3. Rental Cost (when rental type is selected)
+    //   4. DB charges (upgrade fees, late fees, etc.)
     const items: Array<{ description: string; amount: number }> = [];
     let total = 0;
 
@@ -340,9 +341,10 @@ export async function buildFullSessionUpdatedPayload(
     const membershipCardType = (customer as any)?.membership_card_type as string | undefined;
     const membershipValidUntilRaw = toDate((customer as any)?.membership_valid_until);
     const hasMembership =
-      membershipCardType === 'SIX_MONTH' &&
-      membershipValidUntilRaw != null &&
-      new Date() <= membershipValidUntilRaw;
+      !!membershipNumber ||
+      (membershipCardType === 'SIX_MONTH' &&
+        membershipValidUntilRaw != null &&
+        new Date() <= membershipValidUntilRaw);
 
     if (!hasMembership) {
       if (session.membership_choice === 'SIX_MONTH') {
@@ -377,6 +379,25 @@ export async function buildFullSessionUpdatedPayload(
       if (price > 0) {
         items.push({ description: label, amount: price });
         total += price;
+      }
+    }
+
+    // 4. DB charges (upgrade fees, late fees, etc.) for this visit
+    const checkinVisitId = blockForSession?.visit_id || activeVisitId;
+    if (checkinVisitId) {
+      const charges = await client.query<{ type: string; amount: number | string }>(
+        `SELECT type, amount
+         FROM charges
+         WHERE visit_id = $1
+           AND created_at >= date_trunc('day', NOW())`,
+        [checkinVisitId]
+      );
+
+      for (const charge of charges.rows) {
+        const amount = toNumber(charge.amount);
+        if (amount === undefined) continue;
+        items.push({ description: formatChargeDescription(charge.type), amount });
+        total += amount;
       }
     }
 

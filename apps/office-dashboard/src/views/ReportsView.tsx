@@ -1,4 +1,5 @@
 import { useDashboardFetch } from '../hooks/useDashboardFetch';
+import { ViewSpinner } from '../components/ViewSpinner';
 
 interface CashRow {
   register: number;
@@ -43,10 +44,7 @@ export function ReportsView() {
   return (
     <div className="flex flex-col gap-6">
       {loading && (
-        <div className="flex items-center justify-center py-8">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
-            style={{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }} />
-        </div>
+        <ViewSpinner />
       )}
 
       {/* Inventory summary */}

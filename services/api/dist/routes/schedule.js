@@ -30,10 +30,8 @@ async function scheduleRoutes(fastify) {
         s.name as employee_name
       FROM employee_shifts es
       JOIN staff s ON s.id = es.employee_id
-      WHERE es.employee_id = $1
+      WHERE es.status <> 'CANCELED'
     `;
-        params.push(request.staff.staffId);
-        i = 1;
         if (from) {
             i++;
             sql += ` AND es.starts_at >= $${i}`;

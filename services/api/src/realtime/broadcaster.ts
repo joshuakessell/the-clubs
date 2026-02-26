@@ -96,11 +96,12 @@ function isLanFallbackEnabled(): boolean {
   return process.env.LAN_FALLBACK === 'true';
 }
 
-export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets; localLaneSSE?: LocalLaneSSEClients }): Broadcaster {
+export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets; localLaneSSE?: LocalLaneSSEClients; logger?: { info: (...args: unknown[]) => void; warn: (...args: unknown[]) => void } }): Broadcaster {
 
   const localLaneSockets = params?.localLaneSockets;
   const localLaneSSE = params?.localLaneSSE;
   const lastLaneVersions = new Map<string, number>();
+  const log = params?.logger ?? console;
 
   // Global publish is a no-op (previously used for AppSync Events).
   const publishGlobal = (_event: RealtimeEvent<unknown>) => {};
@@ -118,7 +119,7 @@ export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets
   const isMonotonicForLane = (lane: string, event: RealtimeEvent<unknown>): boolean => {
     if (event.type !== 'SESSION_UPDATED') return true;
 
-    const payload = event.payload as { flowVersion?: unknown; status?: unknown };
+    const payload = event.payload as { flowVersion?: unknown; status?: unknown; sessionId?: unknown };
 
     // Terminal statuses must always be delivered regardless of version ordering
     if (payload.status === 'COMPLETED' || payload.status === 'CANCELLED') {
@@ -131,6 +132,7 @@ export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets
 
     const last = lastLaneVersions.get(lane);
     if (typeof last === 'number' && flowVersion < last) {
+      log.warn({ lane, sessionId: payload.sessionId, flowVersion, lastVersion: last }, 'SSE: dropping stale SESSION_UPDATED (version < last)');
       return false;
     }
 
@@ -176,6 +178,10 @@ export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets
       broadcast(createEvent('ROOM_RELEASED', payload));
     },
     broadcastSessionUpdated(payload, lane) {
+      log.info(
+        { sessionId: payload.sessionId, status: payload.status, flowVersion: (payload as any).flowVersion, lane, sseClients: localLaneSSE?.clientCount ?? 0 },
+        'SESSION_UPDATED broadcast'
+      );
       broadcastToLane(createEvent('SESSION_UPDATED', payload), lane);
     },
     broadcastCustomerConfirmationRequired(payload, lane) {

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { Badge, Button } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
+import { ViewSpinner } from '../components/ViewSpinner';
 
 interface WaitlistEntry {
   id: string;
@@ -66,10 +67,7 @@ export function WaitlistView() {
       )}
 
       {loading && entries.length === 0 ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
-            style={{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }} />
-        </div>
+        <ViewSpinner />
       ) : (
         <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
           <table className="w-full">

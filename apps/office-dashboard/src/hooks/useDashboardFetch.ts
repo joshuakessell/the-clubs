@@ -23,6 +23,11 @@ export function useDashboardFetch<T>(
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
+  // Store transform in a ref so callers can pass inline functions without
+  // causing refetches (rule rerender-dependencies).
+  const transformRef = useRef(opts?.transform);
+  transformRef.current = opts?.transform;
+
   const fetchData = useCallback(async () => {
     if (!path || opts?.skip) return;
     setLoading(true);
@@ -34,7 +39,7 @@ export function useDashboardFetch<T>(
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const json = await res.json();
       if (mountedRef.current) {
-        setData(opts?.transform ? opts.transform(json) : (json as T));
+        setData(transformRef.current ? transformRef.current(json) : (json as T));
       }
     } catch (err) {
       if (mountedRef.current) {
@@ -43,7 +48,7 @@ export function useDashboardFetch<T>(
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [path, token, opts?.skip, opts?.transform]);
+  }, [path, token, opts?.skip]);
 
   useEffect(() => {
     mountedRef.current = true;

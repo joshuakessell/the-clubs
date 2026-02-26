@@ -8,6 +8,7 @@ exports.hashQrToken = hashQrToken;
 exports.hashPin = hashPin;
 exports.verifyPin = verifyPin;
 exports.generateSessionToken = generateSessionToken;
+exports.hashSessionToken = hashSessionToken;
 exports.getSessionExpiry = getSessionExpiry;
 const crypto_1 = __importDefault(require("crypto"));
 const bcrypt_1 = __importDefault(require("bcrypt"));
@@ -34,6 +35,13 @@ async function verifyPin(pin, hash) {
  */
 function generateSessionToken() {
     return crypto_1.default.randomBytes(32).toString('hex');
+}
+/**
+ * Hash a session token using SHA-256 for storage.
+ * The raw token is returned to the client once; only the hash is persisted.
+ */
+function hashSessionToken(token) {
+    return crypto_1.default.createHash('sha256').update(token).digest('hex');
 }
 /**
  * Session expiration time (24 hours).

@@ -1,10 +1,44 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const fastify_1 = __importDefault(require("fastify"));
 const cors_1 = __importDefault(require("@fastify/cors"));
+const rate_limit_1 = __importDefault(require("@fastify/rate-limit"));
 const websocket_1 = __importDefault(require("@fastify/websocket"));
 const loadEnv_1 = require("./env/loadEnv");
 const routes_1 = require("./routes");
@@ -49,13 +83,31 @@ async function main() {
     });
     // Register CORS — lock origins to an explicit allow-list in production.
     // ALLOWED_ORIGINS can be a comma-separated list (e.g. "https://a.com,https://b.com").
-    // Falls back to `true` (any origin) only when unset, for local development.
+    // Fail-fast in production if ALLOWED_ORIGINS is unset to prevent open CORS.
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction && !process.env.ALLOWED_ORIGINS) {
+        console.error('FATAL: ALLOWED_ORIGINS must be set in production. Refusing to start with open CORS.');
+        process.exit(1);
+    }
     const allowedOrigins = process.env.ALLOWED_ORIGINS
         ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
         : true;
+    if (allowedOrigins === true) {
+        fastify.log.warn('ALLOWED_ORIGINS is not set — CORS allows all origins. Set ALLOWED_ORIGINS in production.');
+    }
     await fastify.register(cors_1.default, {
         origin: allowedOrigins,
         credentials: true,
+    });
+    // Register global rate limiting (F-03)
+    // Exclude SSE/WebSocket endpoints — they're long-lived connections, not typical requests.
+    await fastify.register(rate_limit_1.default, {
+        max: 100,
+        timeWindow: '1 minute',
+        allowList: (req) => {
+            const url = req.url ?? '';
+            return url.startsWith('/v1/realtime/');
+        },
     });
     await fastify.register(websocket_1.default);
     // Create broadcaster for realtime events
@@ -95,6 +147,21 @@ async function main() {
             }
         })();
     }, 60000);
+    // Periodic cleanup of expired idempotency keys (every 5 minutes)
+    const idempotencyCleanupInterval = setInterval(() => {
+        void (async () => {
+            try {
+                const { query: dbQuery } = await Promise.resolve().then(() => __importStar(require('./db')));
+                const result = await dbQuery(`DELETE FROM idempotency_keys WHERE expires_at < NOW()`);
+                if (result.rowCount && result.rowCount > 0) {
+                    fastify.log.info(`Cleaned up ${result.rowCount} expired idempotency key(s)`);
+                }
+            }
+            catch {
+                // idempotency_keys table may not exist yet — ignore
+            }
+        })();
+    }, 5 * 60 * 1000);
     // Helper: DB is configured only if SKIP_DB is not true and we have DATABASE_URL or all DB_* vars.
     const isDbConfigured = () => {
         if (process.env.SKIP_DB === 'true')
@@ -149,8 +216,8 @@ async function main() {
     await fastify.register(routes_1.timeclockRoutes);
     await fastify.register(routes_1.documentsRoutes);
     await fastify.register(routes_1.sessionDocumentsRoutes);
-    await fastify.register(routes_1.scheduleRoutes);
     await fastify.register(routes_1.timeoffRoutes);
+    await fastify.register(routes_1.shiftTradeRoutes);
     await fastify.register(routes_1.cashDrawerRoutes);
     await fastify.register(routes_1.breakRoutes);
     await fastify.register(routes_1.orderRoutes);
@@ -229,17 +296,26 @@ async function main() {
                     fastify.log.info('Auto-replay outbox service started (EDGE_STACK=true)');
                 }
                 if (process.env.DEMO_MODE === 'true') {
-                    if (SEED_ON_STARTUP) {
+                    if (process.env.SKIP_DEMO_SEED === 'true') {
+                        fastify.log.info('DEMO_MODE enabled; skipping startup seed (SKIP_DEMO_SEED=true, CLI seed already ran).');
+                    }
+                    else if (SEED_ON_STARTUP) {
                         fastify.log.info('DEMO_MODE enabled, rebuilding demo data on startup (SEED_ON_STARTUP=true)...');
+                        try {
+                            await (0, seed_demo_1.seedDemoData)({ forceReseed: true });
+                        }
+                        catch (seedErr) {
+                            fastify.log.error(seedErr, '❌ Demo seed failed (non-fatal) — server will continue without demo data.');
+                        }
                     }
                     else {
                         fastify.log.info('DEMO_MODE enabled; restoring demo snapshot and shifting timestamps (fast startup).');
-                    }
-                    try {
-                        await (0, seed_demo_1.seedDemoData)({ forceReseed: SEED_ON_STARTUP });
-                    }
-                    catch (seedErr) {
-                        fastify.log.error(seedErr, '❌ Demo seed failed (non-fatal) — server will continue without demo data.');
+                        try {
+                            await (0, seed_demo_1.seedDemoData)({ forceReseed: false });
+                        }
+                        catch (seedErr) {
+                            fastify.log.error(seedErr, '❌ Demo seed failed (non-fatal) — server will continue without demo data.');
+                        }
                     }
                 }
             }

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.retailRoutes = exports.orderRoutes = exports.breakRoutes = exports.cashDrawerRoutes = exports.timeoffRoutes = exports.scheduleRoutes = exports.sessionDocumentsRoutes = exports.documentsRoutes = exports.timeclockRoutes = exports.shiftsRoutes = exports.realtimeSSERoutes = exports.realtimeLanRoutes = exports.realtimeRoutes = exports.registerRoutes = exports.checkinRoutes = exports.checkoutRoutes = exports.visitRoutes = exports.metricsRoutes = exports.waitlistRoutes = exports.upgradeRoutes = exports.registerAdminLateCheckoutBanAlertRoutes = exports.agreementsRoutes = exports.adminRoutes = exports.cleaningRoutes = exports.keysRoutes = exports.roomsRoutes = exports.inventoryRoutes = exports.customerSpendLedgerRoutes = exports.customerRoutes = exports.webauthnRoutes = exports.authRoutes = exports.healthRoutes = void 0;
+exports.retailRoutes = exports.orderRoutes = exports.breakRoutes = exports.cashDrawerRoutes = exports.shiftTradeRoutes = exports.timeoffRoutes = exports.sessionDocumentsRoutes = exports.documentsRoutes = exports.timeclockRoutes = exports.shiftsRoutes = exports.realtimeSSERoutes = exports.realtimeLanRoutes = exports.realtimeRoutes = exports.registerRoutes = exports.checkinRoutes = exports.checkoutRoutes = exports.visitRoutes = exports.metricsRoutes = exports.waitlistRoutes = exports.upgradeRoutes = exports.registerAdminLateCheckoutBanAlertRoutes = exports.agreementsRoutes = exports.adminRoutes = exports.cleaningRoutes = exports.keysRoutes = exports.roomsRoutes = exports.inventoryRoutes = exports.customerSpendLedgerRoutes = exports.customerRoutes = exports.webauthnRoutes = exports.authRoutes = exports.healthRoutes = void 0;
 /**
  * Routes barrel file.
  * All route modules are exported here for registration in the main server.
@@ -57,10 +57,10 @@ var documents_1 = require("./documents");
 Object.defineProperty(exports, "documentsRoutes", { enumerable: true, get: function () { return documents_1.documentsRoutes; } });
 var session_documents_1 = require("./session-documents");
 Object.defineProperty(exports, "sessionDocumentsRoutes", { enumerable: true, get: function () { return session_documents_1.sessionDocumentsRoutes; } });
-var schedule_1 = require("./schedule");
-Object.defineProperty(exports, "scheduleRoutes", { enumerable: true, get: function () { return schedule_1.scheduleRoutes; } });
 var timeoff_1 = require("./timeoff");
 Object.defineProperty(exports, "timeoffRoutes", { enumerable: true, get: function () { return timeoff_1.timeoffRoutes; } });
+var shift_trades_1 = require("./shift-trades");
+Object.defineProperty(exports, "shiftTradeRoutes", { enumerable: true, get: function () { return shift_trades_1.shiftTradeRoutes; } });
 var cash_drawers_1 = require("./cash-drawers");
 Object.defineProperty(exports, "cashDrawerRoutes", { enumerable: true, get: function () { return cash_drawers_1.cashDrawerRoutes; } });
 var breaks_1 = require("./breaks");

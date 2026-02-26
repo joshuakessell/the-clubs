@@ -6,6 +6,9 @@ const middleware_1 = require("../../auth/middleware");
 const kioskToken_1 = require("../../auth/kioskToken");
 const payload_1 = require("../../checkin/payload");
 const db_1 = require("../../db");
+const engine_1 = require("../../pricing/engine");
+const identity_1 = require("../../checkin/identity");
+const utils_1 = require("../../checkin/utils");
 const laneFeatureFlags_1 = require("../../checkin/laneFeatureFlags");
 const laneAuthority_1 = require("../../checkin/laneAuthority");
 const offlineOutbox_1 = require("../../checkin/offlineOutbox");
@@ -208,6 +211,8 @@ function computeFlowUpdate(input) {
     if (type === 'PROPOSE_SELECTION' || type === 'CONFIRM_SELECTION') {
         let nextTargetStep = currentStep;
         if (type === 'CONFIRM_SELECTION' && currentStep === 'RENTAL') {
+            // Default: advance to WAITLIST_PREFERENCES (will be overridden in the
+            // handler if the room is available, skipping directly to PAYMENT).
             nextTargetStep = 'WAITLIST_PREFERENCES';
         }
         // No clearing for these; they are purely additive.
@@ -426,7 +431,103 @@ function registerCheckinFlowCommandRoutes(fastify) {
                  updated_at = NOW()
              WHERE id = $21
              RETURNING *`, params);
-                return { applied: true, deduped: false, session: updatedSession.rows[0] };
+                const finalSession = updatedSession.rows[0];
+                const finalStep = finalSession.flow_step;
+                // ── Auto-skip waitlist steps for available rooms ──
+                // When CONFIRM_SELECTION advances to WAITLIST_PREFERENCES but the
+                // room IS available, skip directly to PAYMENT.
+                if (type === 'CONFIRM_SELECTION' &&
+                    currentStep === 'RENTAL' &&
+                    finalStep === 'WAITLIST_PREFERENCES' &&
+                    finalSession.selection_confirmed) {
+                    const rentalType = finalSession.desired_rental_type ?? finalSession.proposed_rental_type;
+                    if (rentalType && rentalType !== 'LOCKER') {
+                        // Check if this room type is available
+                        const availResult = await client.query(`SELECT COUNT(*) as count FROM rooms
+                 WHERE type = $1::public.rental_type AND status = 'CLEAN'
+                   AND id NOT IN (
+                     SELECT assigned_resource_id FROM lane_sessions
+                     WHERE assigned_resource_id IS NOT NULL
+                       AND status NOT IN ('COMPLETED', 'CANCELLED')
+                   )`, [rentalType]);
+                        const availableCount = parseInt(availResult.rows[0]?.count ?? '0', 10);
+                        if (availableCount > 0) {
+                            // Skip to PAYMENT directly
+                            const skipVersion = (finalSession.flow_version ?? 0) + 1;
+                            const skipped = await client.query(`UPDATE lane_sessions
+                   SET flow_step = 'PAYMENT',
+                       flow_version = $1,
+                       updated_at = NOW()
+                   WHERE id = $2
+                   RETURNING *`, [skipVersion, sessionId]);
+                            if (skipped.rows.length > 0) {
+                                Object.assign(finalSession, skipped.rows[0]);
+                            }
+                        }
+                    }
+                    else if (rentalType === 'LOCKER') {
+                        // Lockers are always available — skip directly to PAYMENT
+                        const skipVersion = (finalSession.flow_version ?? 0) + 1;
+                        const skipped = await client.query(`UPDATE lane_sessions
+                 SET flow_step = 'PAYMENT',
+                     flow_version = $1,
+                     updated_at = NOW()
+                 WHERE id = $2
+                 RETURNING *`, [skipVersion, sessionId]);
+                        if (skipped.rows.length > 0) {
+                            Object.assign(finalSession, skipped.rows[0]);
+                        }
+                    }
+                }
+                // ── Auto-create payment intent when entering PAYMENT step ──
+                if (finalSession.flow_step === 'PAYMENT' && !finalSession.payment_intent_id) {
+                    const rentalType = (finalSession.desired_rental_type ??
+                        finalSession.backup_rental_type ??
+                        finalSession.proposed_rental_type ??
+                        'LOCKER');
+                    let customerAge;
+                    let membershipCardType;
+                    let membershipValidUntil;
+                    if (finalSession.customer_id) {
+                        const custResult = await client.query(`SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`, [finalSession.customer_id]);
+                        if (custResult.rows.length > 0) {
+                            const cust = custResult.rows[0];
+                            customerAge = (0, identity_1.calculateAge)(cust.dob);
+                            membershipCardType = cust.membership_card_type || undefined;
+                            membershipValidUntil = (0, utils_1.toDate)(cust.membership_valid_until) || undefined;
+                        }
+                    }
+                    const includeSixMonth = finalSession.membership_choice === 'SIX_MONTH' ||
+                        !!finalSession.membership_purchase_intent;
+                    const isRenewal = finalSession.checkin_mode === 'RENEWAL';
+                    const renewalHours = finalSession.renewal_hours === 2 || finalSession.renewal_hours === 6
+                        ? finalSession.renewal_hours
+                        : null;
+                    const pricingInput = {
+                        rentalType,
+                        customerAge,
+                        checkInTime: new Date(),
+                        membershipCardType,
+                        membershipValidUntil,
+                        includeSixMonthMembershipPurchase: includeSixMonth,
+                    };
+                    const quote = isRenewal && renewalHours
+                        ? (0, engine_1.calculateRenewalQuote)({ ...pricingInput, renewalHours })
+                        : (0, engine_1.calculatePriceQuote)(pricingInput);
+                    // Create payment intent
+                    const intentResult = await client.query(`INSERT INTO payment_intents
+               (lane_session_id, amount, status, quote_json)
+               VALUES ($1, $2, 'DUE', $3)
+               RETURNING *`, [sessionId, quote.total, JSON.stringify(quote)]);
+                    const intent = intentResult.rows[0];
+                    await client.query(`UPDATE lane_sessions
+               SET payment_intent_id = $1,
+                   price_quote_json = $2,
+                   status = 'AWAITING_PAYMENT',
+                   updated_at = NOW()
+               WHERE id = $3`, [intent.id, JSON.stringify(quote), sessionId]);
+                }
+                return { applied: true, deduped: false, session: finalSession };
             });
             const { laneId: sessionLaneId, payload: sessionPayload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, sessionId));
             fastify.broadcaster.broadcastSessionUpdated(sessionPayload, sessionLaneId);

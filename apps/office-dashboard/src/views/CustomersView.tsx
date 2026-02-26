@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Badge, Button } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
+import { ViewSpinner } from '../components/ViewSpinner';
 
 interface Customer {
   id: string;
@@ -59,10 +60,7 @@ export function CustomersView() {
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Enter a name to search for customers</p>
         </div>
       ) : loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
-            style={{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }} />
-        </div>
+        <ViewSpinner />
       ) : (
         <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
           <table className="w-full">

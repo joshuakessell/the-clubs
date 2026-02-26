@@ -315,12 +315,13 @@ async function inventoryRoutes(fastify) {
           c.name as assigned_customer_name,
           r.override_flag,
           cb.occupancy_id as occupancy_id,
+          cb.visit_id as visit_id,
           cb.starts_at as checkin_at,
           cb.ends_at as checkout_at
          FROM rooms r
          LEFT JOIN customers c ON r.assigned_to_customer_id = c.id
          LEFT JOIN LATERAL (
-          SELECT cb.id as occupancy_id, cb.starts_at, cb.ends_at
+          SELECT cb.id as occupancy_id, cb.visit_id, cb.starts_at, cb.ends_at
            FROM checkin_blocks cb
            JOIN visits v ON v.id = cb.visit_id
            WHERE cb.room_id = r.id
@@ -341,12 +342,13 @@ async function inventoryRoutes(fastify) {
           l.assigned_to_customer_id,
           c.name as assigned_customer_name,
           cb.occupancy_id as occupancy_id,
+          cb.visit_id as visit_id,
           cb.starts_at as checkin_at,
           cb.ends_at as checkout_at
          FROM lockers l
          LEFT JOIN customers c ON l.assigned_to_customer_id = c.id
          LEFT JOIN LATERAL (
-          SELECT cb.id as occupancy_id, cb.starts_at, cb.ends_at
+          SELECT cb.id as occupancy_id, cb.visit_id, cb.starts_at, cb.ends_at
            FROM checkin_blocks cb
            JOIN visits v ON v.id = cb.visit_id
            WHERE cb.locker_id = l.id
@@ -369,6 +371,7 @@ async function inventoryRoutes(fastify) {
                 assignedMemberName: row.assigned_customer_name || undefined,
                 overrideFlag: row.override_flag,
                 occupancyId: row.occupancy_id || undefined,
+                visitId: row.visit_id || undefined,
                 checkinAt: row.checkin_at ? new Date(row.checkin_at).toISOString() : undefined,
                 checkoutAt: row.checkout_at ? new Date(row.checkout_at).toISOString() : undefined,
             }));
@@ -379,6 +382,7 @@ async function inventoryRoutes(fastify) {
                 assignedTo: row.assigned_to_customer_id || undefined,
                 assignedMemberName: row.assigned_customer_name || undefined,
                 occupancyId: row.occupancy_id || undefined,
+                visitId: row.visit_id || undefined,
                 checkinAt: row.checkin_at ? new Date(row.checkin_at).toISOString() : undefined,
                 checkoutAt: row.checkout_at ? new Date(row.checkout_at).toISOString() : undefined,
             }));

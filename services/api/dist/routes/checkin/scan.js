@@ -451,7 +451,8 @@ function registerCheckinScanRoutes(fastify) {
                                     .filter((x) => Boolean(x))
                                     .sort((a, b) => b.matchScore - a.matchScore ||
                                     a.row.created_at.getTime() - b.row.created_at.getTime());
-                                if (scored.length > 0) {
+                                if (scored.length === 1) {
+                                    // Single fuzzy match — auto-select
                                     const matched = scored[0].row;
                                     checkBanned(matched);
                                     await (0, helpers_1.maybeAttachScanIdentifiers)({
@@ -508,6 +509,23 @@ function registerCheckinScanRoutes(fastify) {
                                         enriched: Boolean(!matched.id_scan_hash || !matched.id_scan_value),
                                     };
                                 }
+                                else if (scored.length > 1) {
+                                    // Multiple fuzzy matches — return candidates for employee selection
+                                    return {
+                                        result: 'CANDIDATES',
+                                        scanType: 'STATE_ID',
+                                        normalizedRawScanText: idScanValue,
+                                        idScanHash,
+                                        extracted,
+                                        candidates: scored.slice(0, 10).map((s) => ({
+                                            id: s.row.id,
+                                            name: s.row.name,
+                                            dob: s.row.dob ? s.row.dob.toISOString().slice(0, 10) : null,
+                                            membershipNumber: s.row.membership_number,
+                                            matchScore: s.matchScore,
+                                        })),
+                                    };
+                                }
                             }
                         }
                     }
@@ -548,6 +566,38 @@ function registerCheckinScanRoutes(fastify) {
                             dob: matched.dob ? matched.dob.toISOString().slice(0, 10) : null,
                             membershipNumber: matched.membership_number,
                         },
+                    };
+                }
+                // Check if input looks like a passport number (short alphanumeric, 5-20 chars)
+                const trimmedInput = normalized.trim();
+                const isLikelyPassport = /^[A-Z0-9]{5,20}$/i.test(trimmedInput) && !/^\d{11,}$/.test(trimmedInput);
+                if (isLikelyPassport) {
+                    // Search by id_number for passport matches
+                    const byPassport = await client.query(`SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
+             FROM customers
+             WHERE UPPER(id_number) = UPPER($1)
+             LIMIT 1`, [trimmedInput]);
+                    if (byPassport.rows.length > 0) {
+                        const matched = byPassport.rows[0];
+                        checkBanned(matched);
+                        return {
+                            result: 'MATCHED',
+                            scanType: 'PASSPORT',
+                            normalizedRawScanText: normalized,
+                            customer: {
+                                id: matched.id,
+                                name: matched.name,
+                                dob: matched.dob ? matched.dob.toISOString().slice(0, 10) : null,
+                                membershipNumber: matched.membership_number,
+                            },
+                        };
+                    }
+                    // No passport match — return for manual entry prefill
+                    return {
+                        result: 'NO_MATCH',
+                        scanType: 'PASSPORT',
+                        normalizedRawScanText: normalized,
+                        passportNumber: trimmedInput,
                     };
                 }
                 return {
@@ -848,9 +898,12 @@ function registerCheckinScanRoutes(fastify) {
                 let pastDueBlocked = false;
                 let customerPrimaryLanguage;
                 let customerDobMonthDay;
+                let customerMembershipValidUntil;
+                let ledgerLineItems;
+                let ledgerTotal;
                 // last visit is derived from visits + checkin_blocks (broadcast uses DB-join helper)
                 if (session.customer_id) {
-                    const customerInfo = await client.query(`SELECT past_due_balance, primary_language, dob FROM customers WHERE id = $1`, [session.customer_id]);
+                    const customerInfo = await client.query(`SELECT past_due_balance, primary_language, dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`, [session.customer_id]);
                     if (customerInfo.rows.length > 0) {
                         const customer = customerInfo.rows[0];
                         pastDueBalance = parseFloat(String(customer.past_due_balance || 0));
@@ -858,6 +911,21 @@ function registerCheckinScanRoutes(fastify) {
                         customerPrimaryLanguage = customer.primary_language;
                         if (customer.dob) {
                             customerDobMonthDay = `${String(customer.dob.getMonth() + 1).padStart(2, '0')}/${String(customer.dob.getDate()).padStart(2, '0')}`;
+                        }
+                        // Check membership for ledger seed
+                        const membershipCardType = customer.membership_card_type;
+                        const membershipValidUntilDate = customer.membership_valid_until
+                            ? new Date(customer.membership_valid_until)
+                            : null;
+                        const hasMembership = membershipCardType === 'SIX_MONTH' &&
+                            membershipValidUntilDate != null &&
+                            new Date() <= membershipValidUntilDate;
+                        if (membershipValidUntilDate) {
+                            customerMembershipValidUntil = membershipValidUntilDate.toISOString().slice(0, 10);
+                        }
+                        if (!hasMembership && computedMode === 'CHECKIN') {
+                            ledgerLineItems = [{ description: 'Membership Fee', amount: 13 }];
+                            ledgerTotal = 13;
                         }
                     }
                 }
@@ -871,6 +939,9 @@ function registerCheckinScanRoutes(fastify) {
                     pastDueBlocked,
                     customerPrimaryLanguage,
                     customerDobMonthDay,
+                    customerMembershipValidUntil,
+                    ledgerLineItems,
+                    ledgerTotal,
                 };
             });
             // Broadcast full session update (stable payload)

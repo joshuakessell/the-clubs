@@ -1,4 +1,5 @@
 import { useDashboardFetch } from '../hooks/useDashboardFetch';
+import { ViewSpinner } from '../components/ViewSpinner';
 
 interface DailySummary {
   totalCheckins: number;
@@ -50,10 +51,7 @@ export function AnalyticsView() {
           Check-in Activity
         </h2>
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
-              style={{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }} />
-          </div>
+          <ViewSpinner />
         ) : hourly.length === 0 ? (
           <p className="mt-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No hourly data available</p>
         ) : (

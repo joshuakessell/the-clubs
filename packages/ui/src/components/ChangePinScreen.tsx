@@ -246,9 +246,9 @@ export function ChangePinScreen() {
                 borderColor: digit ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
                 color: 'var(--color-text-primary)',
                 fontFamily: 'var(--font-display)',
-                WebkitTextSecurity: 'disc' as any,
                 boxShadow: digit ? '0 0 0 1px var(--color-accent-glow)' : 'none',
                 caretColor: 'transparent',
+                ...({ WebkitTextSecurity: 'disc' } as React.CSSProperties),
               }}
             />
           ))}

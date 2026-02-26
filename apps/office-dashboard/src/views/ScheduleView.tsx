@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Badge, Button, useAuthStore } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
+import { ViewSpinner } from '../components/ViewSpinner';
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -198,6 +199,13 @@ export function ScheduleView() {
     return map;
   }, [tradeRequests]);
 
+  // Index summary by employee ID for O(1) lookups in the assign modal
+  const summaryByEmployeeId = useMemo(() => {
+    const map = new Map<string, WeeklySummaryEntry>();
+    for (const s of summary) map.set(s.employeeId, s);
+    return map;
+  }, [summary]);
+
   // Days of the week as ISO strings
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => formatDate(addDays(weekStart, i)));
@@ -276,10 +284,10 @@ export function ScheduleView() {
     if (bulkShifts.length === 0) return;
     try {
       await dashboardMutate('/api/v1/admin/shifts/bulk', 'POST', { shifts: bulkShifts });
-      setWeekOffset(weekOffset + 1);
+      setWeekOffset(w => w + 1);
       setTimeout(refetchAll, 300);
     } catch { /* ignore */ }
-  }, [shifts, weekOffset, refetchAll]);
+  }, [shifts, refetchAll]);
 
   // ─── Staff: Request Day Off Handler ───
   const handleRequestDayOff = useCallback(async () => {
@@ -399,10 +407,7 @@ export function ScheduleView() {
           )}
 
           {shiftsLoading && shifts.length === 0 ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
-                style={{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }} />
-            </div>
+            <ViewSpinner />
           ) : (
             <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
               <table className="w-full" style={{ minWidth: '800px' }}>
@@ -769,7 +774,7 @@ export function ScheduleView() {
                   onClick={() => handleAssignShift(s.id, assignModal.day, assignModal.code)}>
                   <span>{s.name}</span>
                   <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>
-                    {summary.find(su => su.employeeId === s.id)?.netHours.toFixed(0) ?? '0'}h this week
+                    {summaryByEmployeeId.get(s.id)?.netHours.toFixed(0) ?? '0'}h this week
                   </span>
                 </button>
               ))}

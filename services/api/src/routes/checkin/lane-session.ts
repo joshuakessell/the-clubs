@@ -467,9 +467,10 @@ export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void
               const mCardType = cust.membership_card_type as string | undefined;
               const mValidUntil = toDate(cust.membership_valid_until);
               const hasMembership =
-                mCardType === 'SIX_MONTH' &&
-                mValidUntil != null &&
-                new Date() <= mValidUntil;
+                !!membershipNumber ||
+                (mCardType === 'SIX_MONTH' &&
+                  mValidUntil != null &&
+                  new Date() <= mValidUntil);
 
               if (mValidUntil) {
                 customerMembershipValidUntil = mValidUntil.toISOString().slice(0, 10);

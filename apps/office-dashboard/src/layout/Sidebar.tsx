@@ -6,25 +6,26 @@ interface NavItem {
   to: string;
   label: string;
   icon: React.ReactNode;
-  adminOnly?: boolean;
-  staffOnly?: boolean;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  // Admin sections
-  { to: '/overview', label: 'Overview', icon: <MapPinIcon />,   adminOnly: true },
-  { to: '/monitor', label: 'Monitor', icon: <MonitorIcon />,  adminOnly: true },
-  { to: '/waitlist', label: 'Waitlist', icon: <ListIcon />,     adminOnly: true },
-  { to: '/reports', label: 'Reports', icon: <BarChartIcon />, adminOnly: true },
-  { to: '/analytics', label: 'Analytics', icon: <TrendIcon />,    adminOnly: true },
-  { to: '/products', label: 'Products', icon: <PackageIcon />,  adminOnly: true },
-  { to: '/customers', label: 'Customers', icon: <UsersIcon />,    adminOnly: true },
-  { to: '/logs', label: 'Logs', icon: <FilesIcon />,    adminOnly: true },
-  { to: '/late-alerts', label: 'Late Alerts', icon: <AlertIcon />,    adminOnly: true },
-  { to: '/staff', label: 'Staff', icon: <StaffIcon />,    adminOnly: true },
-  { to: '/timeclock', label: 'Timeclock', icon: <ClockIcon />,    adminOnly: true },
-  { to: '/devices', label: 'Devices', icon: <DeviceIcon />,   adminOnly: true },
-  // Shared sections
+/** Nav items visible only to ADMIN users */
+const ADMIN_NAV: NavItem[] = [
+  { to: '/overview', label: 'Overview', icon: <MapPinIcon /> },
+  { to: '/monitor', label: 'Monitor', icon: <MonitorIcon /> },
+  { to: '/waitlist', label: 'Waitlist', icon: <ListIcon /> },
+  { to: '/reports', label: 'Reports', icon: <BarChartIcon /> },
+  { to: '/analytics', label: 'Analytics', icon: <TrendIcon /> },
+  { to: '/products', label: 'Products', icon: <PackageIcon /> },
+  { to: '/customers', label: 'Customers', icon: <UsersIcon /> },
+  { to: '/logs', label: 'Logs', icon: <FilesIcon /> },
+  { to: '/late-alerts', label: 'Late Alerts', icon: <AlertIcon /> },
+  { to: '/staff', label: 'Staff', icon: <StaffIcon /> },
+  { to: '/timeclock', label: 'Timeclock', icon: <ClockIcon /> },
+  { to: '/devices', label: 'Devices', icon: <DeviceIcon /> },
+];
+
+/** Nav items visible to all roles */
+const SHARED_NAV: NavItem[] = [
   { to: '/schedule', label: 'Schedule', icon: <CalendarIcon /> },
   { to: '/messages', label: 'Messages', icon: <ChatIcon /> },
 ];
@@ -33,11 +34,9 @@ export function Sidebar() {
   const session = useAuthStore((s) => s.session);
   const role = session?.role ?? 'STAFF';
 
-  const visibleItems = NAV_ITEMS.filter((item) => {
-    if (item.adminOnly && role !== 'ADMIN') return false;
-    if (item.staffOnly && role === 'ADMIN') return false;
-    return true;
-  });
+  const visibleItems = role === 'ADMIN'
+    ? [...ADMIN_NAV, ...SHARED_NAV]
+    : SHARED_NAV;
 
   const [activeTheme, setActiveTheme] = useState(() => document.documentElement.getAttribute('data-theme') ?? '');
   useEffect(() => {

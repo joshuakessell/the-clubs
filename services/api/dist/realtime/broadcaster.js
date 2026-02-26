@@ -5,33 +5,13 @@ function isLanFallbackEnabled() {
     return process.env.LAN_FALLBACK === 'true';
 }
 function createBroadcaster(params) {
-    // DEPRECATED: AppSync variables preserved for future re-activation
-    // const appSyncEnabled = isAppSyncEventsEnabled();
-    // const channelNamespace = getAppSyncChannelNamespace();
-    // const globalChannel = buildChannelPath(channelNamespace, 'global');
-    // const laneChannel = (lane: string) => buildChannelPath(channelNamespace, 'lane', lane);
     const localLaneSockets = params?.localLaneSockets;
     const localLaneSSE = params?.localLaneSSE;
     const lastLaneVersions = new Map();
-    // ──────────────────────────────────────────────────────────────
-    // DEPRECATED: AppSync publishing disabled (AWS services torn down 2026-02-18).
-    // To re-enable: set APPSYNC_EVENTS_HTTP_ENDPOINT env var and restore
-    // AppSync Event APIs. See docs/AWS_ARCHITECTURE_REFERENCE.md.
-    // ──────────────────────────────────────────────────────────────
-    const publishGlobal = (_event) => {
-        // AppSync disabled — no-op. Re-enable by uncommenting below:
-        // if (!appSyncEnabled) return;
-        // void publishAppSyncEvent(globalChannel, event).catch((error) => {
-        //   console.error('AppSync Events publish failed (global):', error);
-        // });
-    };
-    const publishToLane = (_event, _lane) => {
-        // AppSync disabled — no-op. Re-enable by uncommenting below:
-        // if (!appSyncEnabled) return;
-        // void publishAppSyncEvent(laneChannel(lane), event).catch((error) => {
-        //   console.error(`AppSync Events publish failed (lane ${lane}):`, error);
-        // });
-    };
+    // Global publish is a no-op (previously used for AppSync Events).
+    const publishGlobal = (_event) => { };
+    // Lane publish is a no-op (previously used for AppSync Events).
+    const publishToLane = (_event, _lane) => { };
     const publishToLaneLocal = (event, lane) => {
         // SSE — always publish (not gated by LAN_FALLBACK)
         localLaneSSE?.publishToLane(lane, event);
@@ -43,6 +23,11 @@ function createBroadcaster(params) {
         if (event.type !== 'SESSION_UPDATED')
             return true;
         const payload = event.payload;
+        // Terminal statuses must always be delivered regardless of version ordering
+        if (payload.status === 'COMPLETED' || payload.status === 'CANCELLED') {
+            lastLaneVersions.delete(lane);
+            return true;
+        }
         const flowVersion = typeof payload.flowVersion === 'number' ? payload.flowVersion : null;
         if (flowVersion === null)
             return true;

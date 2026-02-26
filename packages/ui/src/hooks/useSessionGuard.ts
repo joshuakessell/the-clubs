@@ -55,10 +55,14 @@ export function useSessionGuard() {
             if (response.status === 401) {
                 const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
                 const isApiCall = url.includes('/api/') || url.includes('/v1/');
-                // Don't intercept login attempts — only authenticated API calls
-                const isLoginRoute = url.includes('/auth/login');
+                // Don't intercept login, SSE, or background snapshot requests — only authenticated API calls.
+                // SSE and snapshot requests can race with initial auth on first sign-in,
+                // producing false 401s that would incorrectly clear the session.
+                const isExcluded = url.includes('/auth/login')
+                    || url.includes('/session-snapshot')
+                    || url.includes('/realtime/sse');
 
-                if (isApiCall && !isLoginRoute) {
+                if (isApiCall && !isExcluded) {
                     // Check if there's a current session to clear
                     const currentSession = useAuthStore.getState().session;
                     if (currentSession) {

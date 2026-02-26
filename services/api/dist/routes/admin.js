@@ -16,6 +16,7 @@ const shift_templates_1 = require("./admin/shift-templates");
 const club_log_1 = require("./admin/club-log");
 const club_analytics_1 = require("./admin/club-analytics");
 const products_1 = require("./admin/products");
+const messages_1 = require("./admin/messages");
 /**
  * Admin-only routes for operations management and metrics.
  */
@@ -35,4 +36,5 @@ async function adminRoutes(fastify) {
     (0, club_log_1.registerAdminClubLogRoutes)(fastify);
     (0, club_analytics_1.registerAdminClubAnalyticsRoutes)(fastify);
     (0, products_1.registerAdminProductRoutes)(fastify);
+    (0, messages_1.registerAdminMessageRoutes)(fastify);
 }

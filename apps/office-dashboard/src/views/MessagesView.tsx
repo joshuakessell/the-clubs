@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Button } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
+import { ViewSpinner } from '../components/ViewSpinner';
 
 interface Message {
   id: string;
@@ -55,11 +56,7 @@ export function MessagesView() {
 
 {
   loading && messages.length === 0 ? (
-    <div className= "flex items-center justify-center py-12" >
-    <div className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
-  style = {{ borderColor: 'var(--color-accent-primary)', borderTopColor: 'transparent' }
-} />
-  </div>
+    <ViewSpinner />
       ) : messages.length === 0 ? (
   <div className= "rounded-xl border p-8 text-center" style = {{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
     <p className="text-sm" style = {{ color: 'var(--color-text-muted)' }}> No messages </p>

@@ -29,4 +29,6 @@ export { readJson, safeJsonParse } from './http.js';
 export { ClubEventDomainSchema, ClubEventTypeSchema, ClubEventSourceAppSchema, } from './clubEventSchemas.js';
 // SSE realtime hook (browser-only, requires React)
 export { useRealtimeSSE } from './useRealtimeSSE.js';
+// Polling fallback for SSE outages (browser-only, requires React)
+export { useSessionPollingFallback } from './useSessionPollingFallback.js';
 //# sourceMappingURL=index.js.map

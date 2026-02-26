@@ -324,11 +324,13 @@ async function webauthnRoutes(fastify) {
             }
             const staff = staffResult.rows[0];
             // Create session and get the session ID
+            // Store only the SHA-256 hash of the token; the raw token is returned to the client once.
             const sessionToken = (0, utils_1.generateSessionToken)();
             const expiresAt = (0, utils_1.getSessionExpiry)();
+            const tokenHash = (0, utils_1.hashSessionToken)(sessionToken);
             const sessionResult = await (0, db_1.query)(`INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
          VALUES ($1, $2, $3, $4, $5)
-         RETURNING id`, [staff.id, body.deviceId, 'tablet', sessionToken, expiresAt]);
+         RETURNING id`, [staff.id, body.deviceId, 'tablet', tokenHash, expiresAt]);
             const sessionId = sessionResult.rows[0].id;
             // Log audit action (use session UUID id, not the token string)
             await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {

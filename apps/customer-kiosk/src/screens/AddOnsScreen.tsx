@@ -1,16 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
-import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { ScreenShell } from '../components/ScreenShell';
 import { useI18n } from '../i18n';
-
-interface Props {
-  laneId: string;
-  kioskToken?: string | null;
-  sessionPayload?: SessionUpdatedPayload | null;
-  onNext: () => void;
-  onSkip: () => void;
-}
+import { useKioskSession } from '../KioskSessionContext';
 
 interface Product {
   id: string;
@@ -23,7 +15,10 @@ interface Product {
  * AddOnsScreen — Shows available add-on products during kiosk check-in.
  * Customer can pick towels, drinks, etc. before proceeding to agreement/payment.
  */
-export function AddOnsScreen({ laneId, kioskToken, sessionPayload, onNext, onSkip }: Props) {
+export function AddOnsScreen() {
+  const { laneId, kioskToken, sessionPayload, navigate } = useKioskSession();
+  const onNext = () => navigate('agreement');
+  const onSkip = () => navigate('agreement');
   const { t } = useI18n();
   const [products, setProducts] = useState<Product[]>([]);
   const [quantities, setQuantities] = useState<Record<string, number>>({});

@@ -124,7 +124,7 @@ export function ChargesTab() {
           className="text-sm font-bold"
           style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
         >
-          Check-In Charges
+          Check-In Ledger
         </h3>
 
         {/* Past due balance */}
