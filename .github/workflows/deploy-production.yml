@@ -1,0 +1,290 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10"
+  AWS_REGION: us-east-1
+  REGISTRY: ghcr.io
+  IMAGE_NAME: the-clubs-api
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+        continue-on-error: true
+
+      - name: Upload SPA artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spa-dist
+          retention-days: 1
+          path: |
+            apps/customer-kiosk/dist/
+            apps/employee-register/dist/
+            apps/office-dashboard/dist/
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-bundle
+          retention-days: 1
+          path: |
+            services/api/
+            packages/shared/
+            packages/ui/package.json
+            apps/customer-kiosk/package.json
+            apps/employee-register/package.json
+            apps/office-dashboard/package.json
+            docker-compose.prod.yml
+            .dockerignore
+            package.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            tsconfig.base.json
+
+  build-push-image:
+    name: Build & Push Docker Image
+    needs: build-test
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          dockerfile: services/api/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - id: image
+        run: echo "image=${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+  deploy-spas:
+    name: Deploy SPAs to S3 + CloudFront
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download SPA artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: spa-dist
+          path: apps/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Customer Kiosk
+        run: |
+          aws s3 sync apps/customer-kiosk/dist/ \
+            s3://${{ vars.S3_CUSTOMER_KIOSK }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/customer-kiosk/dist/index.html \
+            s3://${{ vars.S3_CUSTOMER_KIOSK }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_CUSTOMER_KIOSK }} \
+            --paths "/*"
+
+      - name: Deploy Employee Register
+        run: |
+          aws s3 sync apps/employee-register/dist/ \
+            s3://${{ vars.S3_EMPLOYEE_REGISTER }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/employee-register/dist/index.html \
+            s3://${{ vars.S3_EMPLOYEE_REGISTER }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_EMPLOYEE_REGISTER }} \
+            --paths "/*"
+
+      - name: Deploy Office Dashboard
+        run: |
+          aws s3 sync apps/office-dashboard/dist/ \
+            s3://${{ vars.S3_OFFICE_DASHBOARD }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/office-dashboard/dist/index.html \
+            s3://${{ vars.S3_OFFICE_DASHBOARD }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_OFFICE_DASHBOARD }} \
+            --paths "/*"
+
+  deploy-api:
+    name: Deploy API to Production
+    needs: [build-test, build-push-image]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-bundle
+          path: api-bundle/
+
+      - name: Package API for transfer
+        run: tar -czf api-bundle.tar.gz -C api-bundle .
+
+      - name: Copy API bundle to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: api-bundle.tar.gz
+          target: /home/ec2-user/
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          API_IMAGE: ${{ needs.build-push-image.outputs.image }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DB_PASSWORD,API_IMAGE
+          command_timeout: 30m
+          script: |
+            set -e
+            APP_DIR="/home/ec2-user/the-clubs"
+
+            # Unpack the bundle
+            mkdir -p "$APP_DIR"
+            tar -xzf /home/ec2-user/api-bundle.tar.gz -C "$APP_DIR"
+            rm /home/ec2-user/api-bundle.tar.gz
+
+            cd "$APP_DIR"
+
+            # Backup current state for rollback
+            if [ -d "$APP_DIR/.backup" ]; then
+              rm -rf "$APP_DIR/.backup.old"
+              mv "$APP_DIR/.backup" "$APP_DIR/.backup.old"
+            fi
+            mkdir -p "$APP_DIR/.backup"
+            docker compose -f docker-compose.prod.yml --env-file /home/ec2-user/.env ps > "$APP_DIR/.backup/container-state.txt" 2>&1 || true
+            docker images | grep club-ops-api > "$APP_DIR/.backup/image-state.txt" 2>&1 || true
+
+            # Create .env if it doesn't exist
+            if [ ! -f /home/ec2-user/.env ]; then
+              cat > /home/ec2-user/.env << EOF
+            DB_NAME=club_operations
+            DB_USER=clubops
+            DB_PASSWORD=${DB_PASSWORD}
+            CORS_ORIGINS=*
+            EOF
+            fi
+
+            # Pull latest buildx
+            mkdir -p ~/.docker/cli-plugins
+            BUILDX_VERSION="0.21.2"
+            if ! docker buildx version 2>/dev/null | grep -q "$BUILDX_VERSION"; then
+              curl -sSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx
+              chmod +x ~/.docker/cli-plugins/docker-buildx
+            fi
+
+            # Rebuild and restart
+            docker compose -f docker-compose.prod.yml \
+              --env-file /home/ec2-user/.env \
+              up -d --build
+
+            # Health check with retry
+            echo "Waiting for API health check..."
+            MAX_ATTEMPTS=30
+            for i in $(seq 1 $MAX_ATTEMPTS); do
+              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+                echo "✓ API is healthy!"
+                exit 0
+              fi
+              if [ $i -lt $MAX_ATTEMPTS ]; then
+                echo "  Attempt $i/$MAX_ATTEMPTS - API not ready yet, retrying..."
+                sleep 2
+              fi
+            done
+
+            echo "✗ Health check failed after $MAX_ATTEMPTS attempts"
+            echo "--- API Logs ---"
+            docker compose -f docker-compose.prod.yml logs --tail=50 api
+            echo "--- Database Logs ---"
+            docker compose -f docker-compose.prod.yml logs --tail=50 db
+            exit 1
+
+  notify-deployment:
+    name: Notify Deployment Status
+    if: always()
+    needs: [deploy-api, deploy-spas]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment Status
+        run: |
+          if [ "${{ needs.deploy-api.result }}" == "success" ] && [ "${{ needs.deploy-spas.result }}" == "success" ]; then
+            echo "✓ Deployment to production succeeded!"
+            exit 0
+          else
+            echo "✗ Deployment to production failed!"
+            exit 1
+          fi
