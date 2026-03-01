@@ -208,20 +208,11 @@ resource "aws_cloudfront_distribution" "spa" {
   # Custom domain + SSL (optional)
   aliases = each.value.domain != "" ? [each.value.domain] : []
 
-  dynamic "viewer_certificate" {
-    for_each = each.value.domain != "" && local.acm_arn != "" ? [1] : []
-    content {
-      acm_certificate_arn      = local.acm_arn
-      ssl_support_method       = "sni-only"
-      minimum_protocol_version = "TLSv1.2_2021"
-    }
-  }
-
-  dynamic "viewer_certificate" {
-    for_each = each.value.domain == "" || var.acm_certificate_arn == "" ? [1] : []
-    content {
-      cloudfront_default_certificate = true
-    }
+  viewer_certificate {
+    acm_certificate_arn            = each.value.domain != "" && local.acm_arn != "" ? local.acm_arn : null
+    ssl_support_method             = each.value.domain != "" && local.acm_arn != "" ? "sni-only" : null
+    minimum_protocol_version       = each.value.domain != "" && local.acm_arn != "" ? "TLSv1.2_2021" : null
+    cloudfront_default_certificate = each.value.domain == "" || local.acm_arn == "" ? true : null
   }
 
   restrictions {
