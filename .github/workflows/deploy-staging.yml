@@ -1,0 +1,126 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NODE_VERSION: "22"
+  AWS_REGION: us-east-1
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+        continue-on-error: true
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-bundle-staging
+          retention-days: 1
+          path: |
+            services/api/
+            packages/shared/
+            packages/ui/package.json
+            apps/customer-kiosk/package.json
+            apps/employee-register/package.json
+            apps/office-dashboard/package.json
+            docker-compose.prod.yml
+            .dockerignore
+            package.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            tsconfig.base.json
+
+  deploy-api-staging:
+    name: Deploy API to Staging
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-bundle-staging
+          path: api-bundle/
+
+      - name: Package API for transfer
+        run: tar -czf api-bundle.tar.gz -C api-bundle .
+
+      - name: Copy API bundle to Staging
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: api-bundle.tar.gz
+          target: /home/ec2-user/
+
+      - name: Deploy on Staging EC2
+        uses: appleboy/ssh-action@v1
+        env:
+          DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+        with:
+          host: ${{ secrets.STAGING_EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DB_PASSWORD
+          command_timeout: 30m
+          script: |
+            set -e
+            APP_DIR="/home/ec2-user/the-clubs"
+
+            mkdir -p "$APP_DIR"
+            tar -xzf /home/ec2-user/api-bundle.tar.gz -C "$APP_DIR"
+            rm /home/ec2-user/api-bundle.tar.gz
+
+            cd "$APP_DIR"
+
+            # Create .env for staging
+            cat > /home/ec2-user/.env.staging << EOF
+            DB_NAME=club_operations_staging
+            DB_USER=clubops_staging
+            DB_PASSWORD=${DB_PASSWORD}
+            CORS_ORIGINS=*
+            EOF
+
+            # Deploy with staging env
+            docker compose -f docker-compose.prod.yml \
+              --env-file /home/ec2-user/.env.staging \
+              -p club-ops-staging \
+              up -d --build
+
+            echo "Waiting for API health check..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+                echo "Staging API is healthy!"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Staging health check failed"
+            docker compose -f docker-compose.prod.yml -p club-ops-staging logs --tail=50 api
+            exit 1

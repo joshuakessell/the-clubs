@@ -1,0 +1,27 @@
+version: '3.9'
+
+# Production docker-compose with monitoring and health checks
+# Usage: docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d
+
+services:
+  api:
+    labels:
+      - "com.example.description=The Clubs API Server"
+      - "com.example.version=production"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "app=club-ops-api,env=production"
+
+  db:
+    labels:
+      - "com.example.description=PostgreSQL Database"
+      - "com.example.version=production"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "app=club-ops-db,env=production"
