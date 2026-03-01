@@ -3,34 +3,56 @@ FROM node:22-alpine AS base
 WORKDIR /repo
 RUN corepack enable
 
-# Dependencies stage - install production dependencies only
+# ── Dependencies ─────────────────────────────────────
 FROM base AS deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY services/api/package.json ./services/api/package.json
+
+# Install ALL deps (need devDependencies for build step)
+RUN pnpm install --frozen-lockfile
+
+# ── Build ────────────────────────────────────────────
+FROM deps AS build
+# Copy source code
+COPY packages/shared/ ./packages/shared/
+COPY services/api/ ./services/api/
+
+# Build shared package, then API
+RUN pnpm --filter @the-clubs/shared build && \
+    pnpm --filter @the-clubs/api build
+
+# ── Production dependencies ─────────────────────────
+FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY services/api/package.json ./services/api/package.json
 
 RUN pnpm install --prod --frozen-lockfile
 
-# Production stage - minimal runtime
+# ── Runner ───────────────────────────────────────────
 FROM node:22-alpine AS runner
 WORKDIR /repo
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copy dependency manifests
+# Copy dependency manifests (needed for workspace resolution)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY services/api/package.json ./services/api/package.json
 
-# Copy production dependencies
-COPY --from=deps /repo/node_modules ./node_modules
-COPY --from=deps /repo/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /repo/services/api/node_modules ./services/api/node_modules
+# Copy production node_modules
+COPY --from=prod-deps /repo/node_modules ./node_modules
+COPY --from=prod-deps /repo/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=prod-deps /repo/services/api/node_modules ./services/api/node_modules
 
-# Copy prebuilt artifacts (must be built locally: pnpm run build)
-COPY packages/shared/dist ./packages/shared/dist
-COPY services/api/dist ./services/api/dist
+# Copy shared source (exports point to src/index.ts) + compiled dist
+COPY packages/shared/src ./packages/shared/src
+COPY --from=build /repo/packages/shared/dist ./packages/shared/dist
+
+# Copy compiled API
+COPY --from=build /repo/services/api/dist ./services/api/dist
 
 EXPOSE 3000
 
