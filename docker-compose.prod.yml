@@ -1,4 +1,3 @@
-version: "3.9"
 
 # Production compose — API + PostgreSQL only.
 # SPAs are deployed to S3 static hosting (not containerized).

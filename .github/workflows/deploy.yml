@@ -172,6 +172,14 @@ jobs:
 
             cd "$APP_DIR"
 
+            # Ensure Docker Buildx is up to date
+            BUILDX_VERSION="0.21.2"
+            if ! docker buildx version 2>/dev/null | grep -q "$BUILDX_VERSION"; then
+              mkdir -p ~/.docker/cli-plugins
+              curl -sSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx
+              chmod +x ~/.docker/cli-plugins/docker-buildx
+            fi
+
             # Rebuild and restart
             docker compose -f docker-compose.prod.yml \
               --env-file /home/ec2-user/.env \
