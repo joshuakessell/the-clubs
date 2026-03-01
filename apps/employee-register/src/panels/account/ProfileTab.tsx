@@ -103,11 +103,15 @@ export function ProfileTab() {
     membershipValidUntil &&
     new Date(membershipValidUntil) >= new Date();
 
+  const isMembershipExpired = !hasMembership && !!membershipNumber;
+
   const membershipLabel = hasMembership
     ? 'Member'
     : sp?.membershipChoice === 'SIX_MONTH'
       ? 'Membership Pending'
-      : 'Non-Member';
+      : isMembershipExpired
+        ? 'Non-Member (Expired)'
+        : 'Non-Member';
 
   const membershipColor = hasMembership
     ? 'var(--color-status-success)'
@@ -127,7 +131,7 @@ export function ProfileTab() {
   };
 
   const handleCheckout = async () => {
-    if (!activeCheckinInfo?.visitId) return;
+    if (!activeCheckinInfo?.occupancyId) return;
     setCheckingOut(true);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -136,7 +140,7 @@ export function ProfileTab() {
       const res = await fetch(getApiUrl('/api/v1/checkout/manual-complete'), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ occupancyId: activeCheckinInfo.visitId }),
+        body: JSON.stringify({ occupancyId: activeCheckinInfo.occupancyId }),
       });
 
       if (!res.ok) {
@@ -203,6 +207,7 @@ style = {{
         }}
       >
   <Field label="Membership #" value = { membershipNumber } />
+    <Field label="Membership Exp." value = { membershipValidUntil ? new Date(membershipValidUntil).toLocaleDateString() : undefined } color = { isMembershipExpired ? 'var(--color-status-error)' : undefined } />
     <Field label="DOB" value = { dob } />
       <Field label="Language" value = { primaryLanguage === 'ES' ? 'Español' : primaryLanguage ? 'English' : undefined} />
         < Field label = "Last Visit" value = { lastVisitAt? new Date(lastVisitAt).toLocaleDateString() : undefined } />

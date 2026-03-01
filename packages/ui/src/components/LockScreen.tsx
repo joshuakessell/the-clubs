@@ -178,6 +178,9 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       return;
     }
 
+    // Module-level guard: React StrictMode double-mounts in dev, causing two
+    // concurrent login calls before isLoading state can update synchronously.
+    if (isLoading) return;
     setIsLoading(true);
     setError(null);
 

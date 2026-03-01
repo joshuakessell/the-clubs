@@ -230,6 +230,7 @@ style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)'
       returnTab: 'inventory',
       activeCheckin: item.status === 'OCCUPIED' && item.occupancyId ? {
         visitId: item.visitId ?? item.occupancyId,
+        occupancyId: item.occupancyId,
         resourceType: col.key === 'LOCKER' ? 'locker' : 'room',
         resourceNumber: item.number,
         checkinAt: item.checkinAt ?? null,

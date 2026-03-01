@@ -143,8 +143,19 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         const sessionId = sessionResult.rows[0]!.id;
 
         // Log for correlation with auth_reject diagnostics
+        // Also verify the hash is consistent (debugging persistent 401 mismatch)
+        const verifyHash = hashSessionToken(sessionToken);
         request.log.info(
-          { staffId: staff.id, tokenHashPrefix: tokenHash.slice(0, 8), sessionId, deviceId: body.deviceId },
+          {
+            staffId: staff.id,
+            tokenRawPrefix: sessionToken.slice(0, 8),
+            tokenHashPrefix: tokenHash.slice(0, 8),
+            verifyHashPrefix: verifyHash.slice(0, 8),
+            hashMatch: tokenHash === verifyHash,
+            sessionId,
+            deviceId: body.deviceId,
+            tokenLength: sessionToken.length,
+          },
           'auth_login: session created successfully'
         );
 

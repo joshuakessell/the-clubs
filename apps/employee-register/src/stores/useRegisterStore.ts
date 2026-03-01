@@ -32,6 +32,7 @@ export interface ClubLogItem {
 
 export interface ActiveCheckinInfo {
   visitId: string;
+  occupancyId: string;
   resourceType: string;
   resourceNumber: string;
   checkinAt: string | null;
@@ -241,6 +242,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
             if (match) {
               const checkinInfo = {
                 visitId: (match.visitId ?? match.occupancyId) as string,
+                occupancyId: (match.occupancyId ?? match.visitId) as string,
                 resourceType: match.resourceType as 'room' | 'locker',
                 resourceNumber: match.number as string,
                 checkinAt: match.checkinAt ?? null,

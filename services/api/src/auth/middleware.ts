@@ -58,7 +58,7 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
     if (sessionResult.rows.length === 0) {
       // Log the first 8 chars of the token hash for correlation (safe — hash is not reversible)
       request.log.warn(
-        { tokenHashPrefix: tokenHash.slice(0, 8), url: request.url },
+        { tokenHashPrefix: tokenHash.slice(0, 8), tokenRawPrefix: token.slice(0, 8), url: request.url },
         'auth_reject: no active session found for token hash'
       );
       return false;

@@ -501,6 +501,7 @@ onClick = {(e) => {
     authToken: token,
     activeCheckin: {
       visitId: c.visitId ?? c.occupancyId,
+      occupancyId: c.occupancyId,
       resourceType: c.resourceType === 'LOCKER' ? 'locker' : 'room',
       resourceNumber: c.number,
       checkinAt: c.checkinAt,
