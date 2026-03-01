@@ -7,7 +7,7 @@ interface Product {
   id: string;
   name: string;
   sku: string | null;
-  priceCents: number;
+  price: number;
   category: string;
   isActive: boolean;
   sortOrder: number;
@@ -35,7 +35,7 @@ export function ProductsView() {
     try {
       await dashboardMutate('/api/v1/admin/products', 'POST', {
         name: newName,
-        priceCents: Math.round(parseFloat(newPrice) * 100),
+        price: parseFloat(newPrice),
         sku: autoSku(newName),
         category: 'RETAIL',
       });
@@ -121,7 +121,7 @@ export function ProductsView() {
                   <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{p.name}</td>
                   <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--color-text-muted)' }}>{p.sku ?? '—'}</td>
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{p.category}</td>
-                  <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>${(p.priceCents / 100).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>${p.price.toFixed(2)}</td>
                   <td className="px-4 py-3"><Badge color={p.isActive ? 'success' : 'gray'} variant="light" size="sm">{p.isActive ? 'Active' : 'Inactive'}</Badge></td>
                   <td className="px-4 py-3">
                     <Button size="sm" variant="ghost" onClick={() => handleToggle(p.id, p.isActive)}>

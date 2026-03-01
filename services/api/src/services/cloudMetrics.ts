@@ -42,7 +42,7 @@ export async function publishMetrics(
 export const BusinessMetrics = {
   checkIn: (_registerId?: string) => publishMetric('CheckInCount', 1),
   checkOut: () => publishMetric('CheckOutCount', 1),
-  payment: (_amountCents: number, _method: string) => publishMetrics([]),
+  payment: (_amount: number, _method: string) => publishMetrics([]),
   override: (_action: string) => publishMetric('OverrideCount', 1),
   occupancy: (_occupied: number, _total: number) => publishMetric('OccupancyRate', 0),
   clockIn: () => publishMetric('StaffClockInCount', 1),

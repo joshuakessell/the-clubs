@@ -4,7 +4,7 @@ import { ViewSpinner } from '../components/ViewSpinner';
 interface DailySummary {
   totalCheckins: number;
   totalCheckouts: number;
-  totalRevenueCents: number;
+  totalRevenue: number;
   avgSessionMinutes: number;
   hourlyCheckins: { hour: string; count: number }[];
 }
@@ -17,7 +17,7 @@ export function AnalyticsView() {
   const metrics = [
     { label: 'Check-ins Today', value: data?.totalCheckins ?? 0 },
     { label: 'Checkouts Today', value: data?.totalCheckouts ?? 0 },
-    { label: 'Revenue Today', value: data ? `$${(data.totalRevenueCents / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '$0' },
+    { label: 'Revenue Today', value: data ? `$${data.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '$0' },
     { label: 'Avg Session (min)', value: data?.avgSessionMinutes ?? 0 },
   ];
 

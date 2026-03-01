@@ -16,20 +16,20 @@ function nextOrderId(store: MockStore): string {
 }
 
 function computeLineTotals(item: OrderLineItemDTO): {
-  subtotalCents: number;
-  discountCents: number;
-  taxCents: number;
-  totalCents: number;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  total: number;
 } {
-  const discount = item.discountCents ?? 0;
-  const tax = item.taxCents ?? 0;
-  const subtotal = item.quantity * item.unitPriceCents;
-  const total = item.totalCents ?? subtotal - discount + tax;
+  const discount = item.discount ?? 0;
+  const tax = item.tax ?? 0;
+  const subtotal = item.quantity * item.unitPrice;
+  const total = item.total ?? subtotal - discount + tax;
   return {
-    subtotalCents: subtotal,
-    discountCents: discount,
-    taxCents: tax,
-    totalCents: total,
+    subtotal: subtotal,
+    discount: discount,
+    tax: tax,
+    total: total,
   };
 }
 
@@ -41,27 +41,27 @@ function recomputeTotals(order: MockOrder): void {
 
   for (const item of order.lineItems) {
     const computed = computeLineTotals(item);
-    subtotal += computed.subtotalCents;
-    discount += computed.discountCents;
-    tax += computed.taxCents;
-    total += computed.totalCents;
+    subtotal += computed.subtotal;
+    discount += computed.discount;
+    tax += computed.tax;
+    total += computed.total;
   }
 
-  order.subtotalCents = subtotal;
-  order.discountCents = discount;
-  order.taxCents = tax;
-  order.totalCents = total + order.tipCents;
+  order.subtotal = subtotal;
+  order.discount = discount;
+  order.tax = tax;
+  order.total = total + order.tip;
 }
 
 function toOrderRecord(order: MockOrder): OrderRecord {
   return {
     externalId: order.externalId,
     status: order.status,
-    subtotalCents: order.subtotalCents,
-    discountCents: order.discountCents,
-    taxCents: order.taxCents,
-    tipCents: order.tipCents,
-    totalCents: order.totalCents,
+    subtotal: order.subtotal,
+    discount: order.discount,
+    tax: order.tax,
+    tip: order.tip,
+    total: order.total,
     currency: order.currency,
     createdAt: order.createdAt,
     metadata: order.metadata ?? null,
@@ -75,11 +75,11 @@ export class MockOrdersProvider implements OrdersProvider {
     const created: MockOrder = {
       externalId: nextOrderId(this.store),
       status: 'OPEN',
-      subtotalCents: 0,
-      discountCents: 0,
-      taxCents: 0,
-      tipCents: 0,
-      totalCents: 0,
+      subtotal: 0,
+      discount: 0,
+      tax: 0,
+      tip: 0,
+      total: 0,
       currency: params.currency,
       createdAt: new Date().toISOString(),
       metadata: mergeMetadata(params.metadata ?? null, {
@@ -101,14 +101,14 @@ export class MockOrdersProvider implements OrdersProvider {
 
     const nextItem: OrderLineItemDTO = {
       ...params.item,
-      discountCents: params.item.discountCents ?? 0,
-      taxCents: params.item.taxCents ?? 0,
-      totalCents: params.item.totalCents ?? undefined,
+      discount: params.item.discount ?? 0,
+      tax: params.item.tax ?? 0,
+      total: params.item.total ?? undefined,
     };
 
     const computed = computeLineTotals(nextItem);
-    if (nextItem.totalCents === undefined) {
-      nextItem.totalCents = computed.totalCents;
+    if (nextItem.total === undefined) {
+      nextItem.total = computed.total;
     }
 
     order.lineItems.push(nextItem);

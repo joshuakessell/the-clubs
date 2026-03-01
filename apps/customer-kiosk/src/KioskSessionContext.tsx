@@ -9,6 +9,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect } f
 import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { getApiUrl, useSessionPollingFallback } from '@the-clubs/shared';
 import { useKioskSSE } from './hooks/useKioskSSE';
+import { useKioskHeartbeat } from './hooks/useKioskHeartbeat';
 
 export type KioskView = 'idle' | 'checkin' | 'addons' | 'agreement' | 'payment' | 'complete';
 
@@ -91,9 +92,16 @@ export function KioskSessionProvider({
     setSessionPayload(payload);
     const targetView = flowStepToView(payload.flowStep);
 
-    if (payload.status === 'CANCELLED' || payload.status === 'COMPLETED') {
+    if (payload.status === 'CANCELLED') {
       setView('idle');
       setSessionPayload(null);
+      return;
+    }
+
+    // When the session is COMPLETED, show the complete screen.
+    // The CompleteScreen component handles its own timeout back to idle.
+    if (payload.status === 'COMPLETED') {
+      setView('complete');
       return;
     }
 
@@ -105,6 +113,9 @@ export function KioskSessionProvider({
     kioskToken,
     onSessionUpdated,
   });
+
+  // Heartbeat — tell the server this kiosk is alive
+  useKioskHeartbeat(laneId, kioskToken);
 
   // Session snapshot catchup
   const prevConnected = useRef(false);

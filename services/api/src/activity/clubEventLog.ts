@@ -37,7 +37,7 @@ export interface InsertClubEventInput {
   customerName?: string | null;
   visitId?: string | null;
   orderId?: string | null;
-  amountCents?: number | null;
+  amount?: number | null;
   currency?: string;
   summary: string;
   metadata?: Record<string, unknown>;
@@ -106,7 +106,7 @@ export async function insertClubEvent(
       (occurred_at, event_type, event_domain, source_app,
        register_id, staff_id, staff_name,
        customer_id, customer_name, visit_id, order_id,
-       amount_cents, currency, summary, metadata, search_blob, dedupe_key)
+       amount, currency, summary, metadata, search_blob, dedupe_key)
     VALUES
       ($1, $2, $3, $4,
        $5, $6::uuid, $7,
@@ -127,7 +127,7 @@ export async function insertClubEvent(
       input.customerName ?? null,
       input.visitId ?? null,
       input.orderId ?? null,
-      input.amountCents ?? null,
+      input.amount ?? null,
       input.currency ?? 'USD',
       input.summary,
       metadata,

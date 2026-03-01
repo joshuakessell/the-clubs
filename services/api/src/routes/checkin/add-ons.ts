@@ -3,7 +3,7 @@ import { requireAuth } from '../../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { AddOnsSchema } from '../../checkin/schemas';
 import type { LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
-import { getHttpError, parsePriceQuote, roundToCents } from '../../checkin/utils';
+import { getHttpError, parsePriceQuote, roundToWhole } from '../../checkin/utils';
 import { transaction } from '../../db';
 
 export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
@@ -76,13 +76,13 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
 
         const addLineItems = items.map((item) => ({
           description: item.quantity > 1 ? `${item.label} x${item.quantity}` : item.label,
-          amount: roundToCents(item.quantity * item.unitPrice),
+          amount: roundToWhole(item.quantity * item.unitPrice),
           kind: 'ADDON',
         }));
         const addTotal = addLineItems.reduce((sum, item) => sum + item.amount, 0);
 
         const nextLineItems = [...baseQuote.lineItems, ...addLineItems];
-        const nextTotal = roundToCents(baseQuote.total + addTotal);
+        const nextTotal = roundToWhole(baseQuote.total + addTotal);
 
         const nextQuote = {
           ...baseQuote.quote,

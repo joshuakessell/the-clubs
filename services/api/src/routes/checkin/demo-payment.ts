@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { requireAuth } from '../../auth/middleware';
+import { optionalAuth } from '../../auth/middleware';
+import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import type { LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
-import { getHttpError, parsePriceQuote, roundToCents, toNumber } from '../../checkin/utils';
+import { getHttpError, parsePriceQuote, roundToWhole, toNumber } from '../../checkin/utils';
 import { transaction } from '../../db';
+import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
 
 const SPLIT_CARD_LINE_ITEM = 'Card Payment';
 
@@ -25,13 +27,10 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
   }>(
     '/v1/checkin/lane/:laneId/demo-take-payment',
     {
-      preHandler: [requireAuth],
+      preHandler: [optionalAuth, requireKioskTokenOrStaff],
     },
     async (request, reply) => {
-      if (!request.staff) {
-        return reply.status(401).send({ error: 'Unauthorized' });
-      }
-      const staffId = request.staff.staffId;
+      const staffId = request.staff?.staffId ?? null;
 
       const { laneId } = request.params;
       const { outcome, declineReason, registerNumber, splitCardAmount, sessionId } = request.body;
@@ -98,14 +97,14 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
               (item) => item.description === SPLIT_CARD_LINE_ITEM
             );
             const cardLineTotal = cardLineItems.reduce((sum, item) => sum + item.amount, 0);
-            const baseTotal = roundToCents(baseQuote.total - cardLineTotal);
+            const baseTotal = roundToWhole(baseQuote.total - cardLineTotal);
 
-            const roundedSplit = roundToCents(normalizedSplitAmount);
+            const roundedSplit = roundToWhole(normalizedSplitAmount);
             if (roundedSplit <= 0 || roundedSplit >= baseTotal) {
               throw { statusCode: 400, message: 'Split card amount must be less than the total' };
             }
 
-            const remainingTotal = roundToCents(baseTotal - roundedSplit);
+            const remainingTotal = roundToWhole(baseTotal - roundedSplit);
             const nextLineItems = [
               ...baseQuote.lineItems.filter((item) => item.description !== SPLIT_CARD_LINE_ITEM),
               { description: SPLIT_CARD_LINE_ITEM, amount: -roundedSplit },
@@ -146,7 +145,11 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
             };
           }
 
-          if (outcome === 'CASH_SUCCESS' || outcome === 'CREDIT_SUCCESS') {
+          const paymentMethod = outcome === 'CASH_SUCCESS' ? 'CASH' : 'CREDIT';
+          const isSuccess = outcome === 'CASH_SUCCESS' || outcome === 'CREDIT_SUCCESS';
+          const amount = typeof intent.amount === 'number' ? intent.amount : Number(intent.amount);
+
+          if (isSuccess) {
             // Mark as paid
             await client.query(
               `UPDATE payment_intents
@@ -160,7 +163,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
                  updated_at = NOW()
              WHERE id = $4`,
               [
-                outcome === 'CASH_SUCCESS' ? 'CASH' : 'CREDIT',
+                paymentMethod,
                 registerNumber || null,
                 staffId,
                 intent.id,
@@ -172,6 +175,50 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
               `UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`,
               [session.id]
             );
+
+            // Activity event: PAYMENT_COMPLETED
+            if (session.customer_id) {
+              await insertCustomerActivityEvent(client, {
+                customerId: session.customer_id,
+                actionType: 'PAYMENT_COMPLETED',
+                actionCategory: 'PAYMENT',
+                sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
+                actorType: request.staff ? 'STAFF' : 'CUSTOMER',
+                actorStaffId: staffId,
+                actorStaffName: request.staff?.name ?? null,
+                summary: `Payment of $${amount.toFixed(2)} ${paymentMethod}`,
+                metadata: {
+                  laneId,
+                  laneSessionId: session.id,
+                  paymentIntentId: intent.id,
+                  paymentMethod,
+                  amount: amount,
+                },
+                dedupeKey: `ACT:PAYMENT_COMPLETED:${intent.id}`,
+              });
+
+              // Spend ledger: RENTAL_FEE (check-in fee paid)
+              await client.query(
+                `INSERT INTO customer_spend_ledger_entries
+                   (occurred_at, customer_id, visit_id, entry_type, amount, currency,
+                    source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+                 VALUES
+                   (NOW(), $1::uuid, NULL, 'RENTAL_FEE', $2::bigint, 'USD',
+                    $3, $4, $5::uuid, $6, $7, $8::jsonb, $9)
+                 ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+                [
+                  session.customer_id,
+                  amount,
+                  request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
+                  request.staff ? 'STAFF' : 'CUSTOMER',
+                  staffId,
+                  request.staff?.name ?? null,
+                  `Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`,
+                  { paymentIntentId: intent.id, paymentMethod, laneSessionId: session.id },
+                  `LEDGER:RENTAL_FEE:${intent.id}`,
+                ]
+              );
+            }
           } else {
             // CREDIT_DECLINE
             await client.query(
@@ -191,13 +238,48 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
              WHERE id = $2`,
               [declineReason || 'Payment declined', session.id]
             );
+
+            // Activity event: PAYMENT_DECLINED
+            if (session.customer_id) {
+              await insertCustomerActivityEvent(client, {
+                customerId: session.customer_id,
+                actionType: 'PAYMENT_DECLINED',
+                actionCategory: 'PAYMENT',
+                sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
+                actorType: request.staff ? 'STAFF' : 'CUSTOMER',
+                actorStaffId: staffId,
+                actorStaffName: request.staff?.name ?? null,
+                summary: `Payment declined: ${declineReason || 'Payment declined'}`,
+                metadata: {
+                  laneId,
+                  laneSessionId: session.id,
+                  paymentIntentId: intent.id,
+                  declineReason: declineReason || 'Payment declined',
+                },
+                dedupeKey: `ACT:PAYMENT_DECLINED:${intent.id}:${Date.now()}`,
+              });
+            }
           }
+
+          // Strategic log: payment outcome
+          request.log.info(
+            {
+              outcome,
+              paymentMethod,
+              amount: intent.amount,
+              sessionId: session.id,
+              paymentIntentId: intent.id,
+              customerId: session.customer_id,
+              laneId,
+            },
+            isSuccess ? 'Payment completed' : 'Payment declined'
+          );
 
           return {
             sessionId: session.id,
-            success: outcome !== 'CREDIT_DECLINE',
+            success: isSuccess,
             paymentIntentId: intent.id,
-            status: outcome !== 'CREDIT_DECLINE' ? 'PAID' : intent.status,
+            status: isSuccess ? 'PAID' : intent.status,
           };
         });
 

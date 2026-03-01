@@ -39,6 +39,7 @@ export function useRealtimeSSE({
   heartbeatTimeoutMs = 65_000,
 }: UseRealtimeSSEOptions): UseRealtimeSSEResult {
   const [connected, setConnected] = useState(false);
+  const [reconnectCount, setReconnectCount] = useState(0);
   const onEventRef = useRef(onEvent);
   onEventRef.current = onEvent;
 
@@ -74,9 +75,11 @@ export function useRealtimeSSE({
     const resetHeartbeat = () => {
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
       heartbeatTimer = setTimeout(() => {
-        // No heartbeat received — close to trigger auto-reconnect
+        // No heartbeat received — close and trigger reconnection
+        // by incrementing reconnectCount (a useEffect dependency).
         eventSource.close();
         setConnected(false);
+        setReconnectCount((c) => c + 1);
       }, heartbeatTimeoutMs);
     };
 
@@ -89,6 +92,8 @@ export function useRealtimeSSE({
       resetHeartbeat();
       try {
         const data: unknown = JSON.parse(event.data);
+        // Skip HEARTBEAT events — they are keepalive pings, not app events
+        if (typeof data === 'object' && data !== null && (data as any).type === 'HEARTBEAT') return;
         const parsed = safeParseRealtimeEvent(data);
         if (parsed) {
           onEventRef.current(parsed);
@@ -108,7 +113,7 @@ export function useRealtimeSSE({
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
       setConnected(false);
     };
-  }, [buildUrl, enabled, heartbeatTimeoutMs]);
+  }, [buildUrl, enabled, heartbeatTimeoutMs, reconnectCount]);
 
   return { connected };
 }

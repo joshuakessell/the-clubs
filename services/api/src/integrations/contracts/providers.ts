@@ -4,7 +4,7 @@ export type DateRange = {
 };
 
 export type MoneyAmount = {
-  amountCents: number;
+  amount: number;
   currency: string;
 };
 
@@ -106,21 +106,21 @@ export type OrderLineItemDTO = {
   sku?: string | null;
   name: string;
   quantity: number;
-  unitPriceCents: number;
-  discountCents?: number | null;
-  taxCents?: number | null;
-  totalCents?: number | null;
+  unitPrice: number;
+  discount?: number | null;
+  tax?: number | null;
+  total?: number | null;
   metadata?: Record<string, unknown> | null;
 };
 
 export type OrderRecord = {
   externalId: string;
   status: OrderStatus;
-  subtotalCents: number;
-  discountCents: number;
-  taxCents: number;
-  tipCents: number;
-  totalCents: number;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  tip: number;
+  total: number;
   currency: string;
   createdAt: Date | string;
   metadata?: Record<string, unknown> | null;

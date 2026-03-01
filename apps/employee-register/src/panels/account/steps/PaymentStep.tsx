@@ -89,60 +89,9 @@ export function PaymentStep() {
         Collect Payment
       </h3>
 
-      {/* Line items */}
-      {sp.paymentLineItems && sp.paymentLineItems.length > 0 && (
-        <div className="rounded-lg border p-3" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-          {sp.paymentLineItems.map((item: { description: string; amount: number }, i: number) => (
-            <div key={i} className="flex items-center justify-between py-1.5 text-sm">
-              <span style={{ color: 'var(--color-text-secondary)' }}>{item.description}</span>
-              <div className="flex items-center gap-2">
-                <span className="font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                  ${item.amount.toFixed(2)}
-                </span>
-                {/* Remove button for 6-month membership */}
-                {!isMember && isMembershipItem(item) && item.description === '6-Month Membership' && (
-                  <button
-                    onClick={() => void setMembershipChoice('ONE_TIME')}
-                    className="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold transition-colors"
-                    style={{
-                      backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                      color: 'var(--color-status-error)',
-                      border: '1px solid rgba(239, 68, 68, 0.2)',
-                    }}
-                    title="Remove 6-month membership, revert to daily fee"
-                  >
-                    −
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-          <div className="mt-2 flex items-center justify-between border-t pt-2" style={{ borderColor: 'var(--color-border-default)' }}>
-            <span className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Total</span>
-            <span className="text-base font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
-              ${totalDollars.toFixed(2)}
-            </span>
-          </div>
-        </div>
-      )}
 
-      {/* 6-Month Membership Upgrade */}
-      {!isMember && membershipChoice !== 'SIX_MONTH' && sp.paymentLineItems?.some(isMembershipItem) && (
-        <button
-          onClick={() => void setMembershipChoice('SIX_MONTH')}
-          className="flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
-          style={{
-            backgroundColor: 'rgba(99, 102, 241, 0.06)',
-            borderColor: 'rgba(99, 102, 241, 0.2)',
-            color: 'var(--color-accent-primary)',
-          }}
-        >
-          <span>⬆</span>
-          Upgrade to 6-Month Membership ($43.00)
-        </button>
-      )}
 
-      {!sp.paymentLineItems?.length && (
+      {sp.paymentTotal === undefined && (
         <div className="rounded-lg border p-4 text-center" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
           <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
             Waiting for payment quote from server…

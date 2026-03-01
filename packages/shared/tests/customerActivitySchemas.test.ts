@@ -99,7 +99,7 @@ describe('CustomerActivityMetadataSchemas', () => {
       visitId: uuid(),
       checkinBlockId: uuid(),
       assignedResource: { type: 'room', number: '101' },
-      amountCents: 5000,
+      amount: 5000,
       currency: 'USD',
     });
     expect(result.success).toBe(true);
@@ -117,9 +117,9 @@ describe('CustomerActivityMetadataSchemas', () => {
   it('ORDER_PAID accepts valid metadata with line items', () => {
     const result = CustomerActivityMetadataSchemas.ORDER_PAID.safeParse({
       orderId: uuid(),
-      totalCents: 1500,
+      total: 1500,
       currency: 'USD',
-      lineItems: [{ name: 'Water', quantity: 2, totalCents: 400 }],
+      lineItems: [{ name: 'Water', quantity: 2, total: 400 }],
     });
     expect(result.success).toBe(true);
   });
@@ -163,7 +163,7 @@ describe('CustomerActivityMetadataSchemas', () => {
     const result = CustomerActivityMetadataSchemas.ADDON_PURCHASED.safeParse({
       visitId: uuid(),
       addOns: [],
-      totalCents: 0,
+      total: 0,
       currency: 'USD',
     });
     expect(result.success).toBe(false);

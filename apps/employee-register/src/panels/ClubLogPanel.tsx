@@ -22,8 +22,8 @@ function domainColor(d: string): 'primary' | 'success' | 'warning' | 'error' | '
   }
 }
 
-function formatCurrency(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+function formatCurrency(dollars: number): string {
+  return `$${dollars.toFixed(2)}`;
 }
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -168,7 +168,7 @@ export function ClubLogPanel() {
                     ) : <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>—</span>}
                   </td>
                   <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                    {it.amountCents != null ? formatCurrency(it.amountCents) : ''}
+                    {it.amount != null ? formatCurrency(it.amount) : ''}
                   </td>
                   <td className="max-w-[420px] px-4 py-3 text-sm" style={tdStyle}>{it.summary}</td>
                 </tr>

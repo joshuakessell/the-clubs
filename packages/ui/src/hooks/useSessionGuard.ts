@@ -19,12 +19,31 @@ export function useSessionGuard() {
     const validateSession = useAuthStore((s) => s.validateSession);
     const session = useAuthStore((s) => s.session);
     const patchedRef = useRef(false);
+    // Track whether the session just changed (e.g. fresh login).
+    // Skip the immediate validateSession call for freshly-created sessions
+    // because the token was JUST issued — validating it causes a jarring
+    // flash of the ValidatingScreen on every login.
+    const prevTokenRef = useRef<string | undefined>(session?.sessionToken);
 
     // Validate on mount (and when session changes from null → valid, e.g. after login)
     useEffect(() => {
-        if (session) {
-            void validateSession();
+        if (!session) {
+            prevTokenRef.current = undefined;
+            return;
         }
+
+        const tokenChanged = prevTokenRef.current !== session.sessionToken;
+        prevTokenRef.current = session.sessionToken;
+
+        if (tokenChanged) {
+            // Session token just changed — this is a fresh login.
+            // Skip validation; the token is brand-new.
+            return;
+        }
+
+        // Token didn't change (e.g. component re-mounted or page refresh with
+        // restored localStorage token) — validate to ensure it's still valid.
+        void validateSession();
     }, [session?.sessionToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Heartbeat: ping /auth/me every 10 minutes to keep session alive
@@ -44,6 +63,7 @@ export function useSessionGuard() {
         patchedRef.current = true;
 
         const originalFetch = window.fetch;
+        let confirmationInFlight = false;
 
         window.fetch = async function patchedFetch(
             input: RequestInfo | URL,
@@ -55,18 +75,35 @@ export function useSessionGuard() {
             if (response.status === 401) {
                 const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
                 const isApiCall = url.includes('/api/') || url.includes('/v1/');
-                // Don't intercept login, SSE, or background snapshot requests — only authenticated API calls.
-                // SSE and snapshot requests can race with initial auth on first sign-in,
-                // producing false 401s that would incorrectly clear the session.
                 const isExcluded = url.includes('/auth/login')
+                    || url.includes('/auth/me')
                     || url.includes('/session-snapshot')
                     || url.includes('/realtime/sse');
 
                 if (isApiCall && !isExcluded) {
-                    // Check if there's a current session to clear
                     const currentSession = useAuthStore.getState().session;
-                    if (currentSession) {
-                        useAuthStore.getState().clearSession();
+                    if (currentSession && !confirmationInFlight) {
+                        confirmationInFlight = true;
+                        // Confirm the session is genuinely invalid before clearing.
+                        // This prevents race conditions and transient 401s from
+                        // kicking the user back to the lock screen.
+                        try {
+                            const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '/api';
+                            const meRes = await originalFetch.call(window, `${API_BASE}/v1/auth/me`, {
+                                headers: { Authorization: `Bearer ${currentSession.sessionToken}` },
+                            });
+                            if (meRes.status === 401) {
+                                console.error('[useSessionGuard] Session confirmed invalid (401 from /auth/me). Clearing session.');
+                                useAuthStore.getState().clearSession();
+                            } else {
+                                console.warn('[useSessionGuard] Got 401 from', url, 'but /auth/me succeeded — session is still valid, not clearing.');
+                            }
+                        } catch {
+                            // Network error on confirmation — don't clear, server might be temporarily down
+                            console.warn('[useSessionGuard] Could not confirm 401 (network error) — keeping session.');
+                        } finally {
+                            confirmationInFlight = false;
+                        }
                     }
                 }
             }

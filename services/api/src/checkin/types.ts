@@ -90,7 +90,7 @@ export interface PaymentIntentRow {
   id: string;
   lane_session_id: string;
   amount: number | string;
-  tip_cents?: number | null;
+  tip?: number | null;
   status: string;
   quote_json: unknown;
   payment_method?: string;

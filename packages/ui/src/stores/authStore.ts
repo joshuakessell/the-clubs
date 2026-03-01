@@ -44,7 +44,10 @@ const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: loadSession(),
-  isValidating: false,
+  // Start in validating state if we have a stored session.
+  // This prevents AppLayout from rendering with a stale token
+  // before useSessionGuard's useEffect fires validateSession().
+  isValidating: !!loadSession(),
   deviceId: loadOrCreateDeviceId(),
 
   setSession: (session) => {

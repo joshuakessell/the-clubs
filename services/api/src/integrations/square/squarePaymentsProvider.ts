@@ -100,7 +100,7 @@ export class SquarePaymentsProvider implements PaymentsProvider {
 
     logSquareEvent('info', 'payments.create.requested', {
       idempotencyKey,
-      amountCents: params.amount.amountCents,
+      amount: params.amount.amount,
       currency: params.amount.currency,
       orderExternalId: params.orderExternalId ?? null,
       customerExternalId: params.customerExternalId ?? null,
@@ -114,7 +114,7 @@ export class SquarePaymentsProvider implements PaymentsProvider {
         idempotencyKey,
         sourceId: params.sourceToken,
         amountMoney: {
-          amount: BigInt(Math.trunc(params.amount.amountCents)),
+          amount: BigInt(Math.trunc(params.amount.amount)),
           currency: params.amount.currency,
         },
         locationId,

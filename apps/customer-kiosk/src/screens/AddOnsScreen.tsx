@@ -7,7 +7,7 @@ import { useKioskSession } from '../KioskSessionContext';
 interface Product {
   id: string;
   name: string;
-  priceCents: number;
+  price: number;
   category: string;
 }
 
@@ -66,7 +66,7 @@ export function AddOnsScreen() {
     .map((p) => ({
       product: p,
       qty: quantities[p.id]!,
-      total: quantities[p.id]! * p.priceCents,
+      total: quantities[p.id]! * p.price,
     }));
 
   const addOnTotal = selectedItems.reduce((sum, it) => sum + it.total, 0);
@@ -91,7 +91,7 @@ export function AddOnsScreen() {
             items: selectedItems.map((it) => ({
               label: it.product.name,
               quantity: it.qty,
-              unitPrice: it.product.priceCents / 100,
+              unitPrice: it.product.price,
             })),
           }),
         }
@@ -182,7 +182,7 @@ style = {{ color: 'var(--color-text-primary)' }}
 className = "mt-0.5 text-xs tabular-nums"
 style = {{ color: 'var(--color-text-muted)' }}
                   >
-  ${ (p.priceCents / 100).toFixed(2) }
+  ${ p.price.toFixed(2) }
 </span>
 
 {/* Quantity controls */ }
@@ -242,7 +242,7 @@ onClick = {() => increment(p.id)}
 className = "text-lg font-extrabold tabular-nums"
 style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-accent-primary)' }}
             >
-  ${ (addOnTotal / 100).toFixed(2) }
+  ${ addOnTotal.toFixed(2) }
 </span>
   </div>
         )}

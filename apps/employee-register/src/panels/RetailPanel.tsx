@@ -23,8 +23,8 @@ interface ActiveGuest {
 
 /* ─── Helpers ───────────────────────────────────────── */
 
-function formatPrice(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`;
+function formatPrice(dollars: number) {
+  return `$${dollars.toFixed(2)}`;
 }
 
 /* ─── Component ─────────────────────────────────────── */
@@ -61,10 +61,10 @@ export function RetailPanel() {
         const data = await res.json();
         const items: CatalogItem[] = (data.products ?? [])
           .filter((p: { isActive?: boolean }) => p.isActive !== false)
-          .map((p: { id: string; name: string; priceCents: number; category?: string }) => ({
+          .map((p: { id: string; name: string; price: number; category?: string }) => ({
             id: p.id,
             name: p.name,
-            price: p.priceCents,
+            price: p.price,
             category: (p.category ?? 'RETAIL').toLowerCase(),
           }));
         setCatalog(items);
@@ -182,7 +182,7 @@ export function RetailPanel() {
             sku: i.id,
             name: i.name,
             quantity: i.qty,
-            unitPriceCents: i.price,
+            unitPrice: i.price,
           })),
         }),
       });

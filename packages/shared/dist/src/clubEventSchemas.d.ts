@@ -18,7 +18,7 @@ export interface ClubEventRow {
     customerName: string | null;
     visitId: string | null;
     orderId: string | null;
-    amountCents: number | null;
+    amount: number | null;
     currency: string;
     summary: string;
     metadata: Record<string, unknown>;

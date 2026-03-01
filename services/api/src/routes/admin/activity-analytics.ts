@@ -41,10 +41,10 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
           [from, to, tz]
         );
 
-        const revenueByHour = await query<{ bucket: string; total_cents: string }>(
+        const revenueByHour = await query<{ bucket: string; total: string }>(
           `
           SELECT to_char(date_trunc('hour', paid_at AT TIME ZONE $3), 'YYYY-MM-DD HH24:00') as bucket,
-                 COALESCE(SUM(amount), 0)::bigint::text as total_cents
+                 COALESCE(SUM(amount), 0)::bigint::text as total
           FROM payment_intents
           WHERE status = 'PAID' AND paid_at >= $1 AND paid_at <= $2
           GROUP BY 1
@@ -66,11 +66,11 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
           [from, to, tz]
         );
 
-        const revenueHeatmap = await query<{ dow: number; hour: number; total_cents: string }>(
+        const revenueHeatmap = await query<{ dow: number; hour: number; total: string }>(
           `
           SELECT EXTRACT(DOW FROM paid_at AT TIME ZONE $3)::int as dow,
                  EXTRACT(HOUR FROM paid_at AT TIME ZONE $3)::int as hour,
-                 COALESCE(SUM(amount), 0)::bigint::text as total_cents
+                 COALESCE(SUM(amount), 0)::bigint::text as total
           FROM payment_intents
           WHERE status = 'PAID' AND paid_at >= $1 AND paid_at <= $2
           GROUP BY 1, 2
@@ -79,10 +79,10 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
           [from, to, tz]
         );
 
-        const paymentSplit = await query<{ payment_method: string | null; total_cents: string }>(
+        const paymentSplit = await query<{ payment_method: string | null; total: string }>(
           `
           SELECT payment_method,
-                 COALESCE(SUM(amount), 0)::bigint::text as total_cents
+                 COALESCE(SUM(amount), 0)::bigint::text as total
           FROM payment_intents
           WHERE status = 'PAID' AND paid_at >= $1 AND paid_at <= $2
           GROUP BY payment_method
@@ -91,23 +91,23 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
           [from, to]
         );
 
-        const itemTotals = await query<{ category: string | null; total_cents: string }>(
+        const itemTotals = await query<{ category: string | null; total: string }>(
           `
           SELECT oli.kind as category,
-                 COALESCE(SUM(oli.total_cents), 0)::bigint::text as total_cents
+                 COALESCE(SUM(oli.total), 0)::bigint::text as total
           FROM order_line_items oli
           JOIN orders o ON o.id = oli.order_id
           WHERE o.paid_at >= $1 AND o.paid_at <= $2
           GROUP BY oli.kind
-          ORDER BY total_cents DESC
+          ORDER BY total DESC
           `,
           [from, to]
         );
 
-        const aovByDay = await query<{ bucket: string; avg_cents: string }>(
+        const aovByDay = await query<{ bucket: string; avg_dollars: string }>(
           `
           SELECT to_char(date_trunc('day', paid_at AT TIME ZONE $3), 'YYYY-MM-DD') as bucket,
-                 COALESCE(AVG(amount), 0)::numeric(12,2)::text as avg_cents
+                 COALESCE(AVG(amount), 0)::numeric(12,2)::text as avg_dollars
           FROM payment_intents
           WHERE status = 'PAID' AND paid_at >= $1 AND paid_at <= $2
           GROUP BY 1
@@ -126,7 +126,7 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
           })),
           revenueByHour: revenueByHour.rows.map((r) => ({
             bucket: r.bucket,
-            totalCents: Number(r.total_cents),
+            total: Number(r.total),
           })),
           heatmapCheckins: heatmapCheckins.rows.map((r) => ({
             dow: r.dow,
@@ -136,19 +136,19 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
           heatmapRevenue: revenueHeatmap.rows.map((r) => ({
             dow: r.dow,
             hour: r.hour,
-            totalCents: Number(r.total_cents),
+            total: Number(r.total),
           })),
           paymentMethodSplit: paymentSplit.rows.map((r) => ({
             method: r.payment_method || 'UNKNOWN',
-            totalCents: Number(r.total_cents),
+            total: Number(r.total),
           })),
           topCategories: itemTotals.rows.map((r) => ({
             category: r.category || 'UNCATEGORIZED',
-            totalCents: Number(r.total_cents),
+            total: Number(r.total),
           })),
           aovByDay: aovByDay.rows.map((r) => ({
             bucket: r.bucket,
-            avgCents: Math.round(Number(r.avg_cents)),
+            avgDollars: Math.round(Number(r.avg_dollars)),
           })),
         });
       } catch (error) {

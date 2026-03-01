@@ -5,47 +5,47 @@ import { transaction } from '../db';
 
 const CashDrawerOpenSchema = z.object({
   registerSessionId: z.string().uuid(),
-  openingFloatCents: z.number().int().nonnegative(),
+  openingFloat: z.number().int().nonnegative(),
   notes: z.string().optional().nullable(),
 });
 
 const CashDrawerEventSchema = z
   .object({
     type: z.enum(['PAID_IN', 'PAID_OUT', 'DROP', 'NO_SALE_OPEN', 'ADJUSTMENT']),
-    amountCents: z.number().int().optional().nullable(),
+    amount: z.number().int().optional().nullable(),
     reason: z.string().optional().nullable(),
     metadataJson: z.record(z.unknown()).optional().nullable(),
   })
   .superRefine((value, ctx) => {
     if (value.type === 'NO_SALE_OPEN') {
-      if (value.amountCents !== null && value.amountCents !== undefined) {
+      if (value.amount !== null && value.amount !== undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: 'amountCents must be null for NO_SALE_OPEN',
-          path: ['amountCents'],
+          message: 'amount must be null for NO_SALE_OPEN',
+          path: ['amount'],
         });
       }
       return;
     }
-    if (value.amountCents === null || value.amountCents === undefined) {
+    if (value.amount === null || value.amount === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'amountCents is required for money-moving events',
-        path: ['amountCents'],
+        message: 'amount is required for money-moving events',
+        path: ['amount'],
       });
       return;
     }
-    if (value.type !== 'ADJUSTMENT' && value.amountCents < 0) {
+    if (value.type !== 'ADJUSTMENT' && value.amount < 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'amountCents must be >= 0 for this event type',
-        path: ['amountCents'],
+        message: 'amount must be >= 0 for this event type',
+        path: ['amount'],
       });
     }
   });
 
 const CashDrawerCloseSchema = z.object({
-  countedCashCents: z.number().int().nonnegative(),
+  countedCash: z.number().int().nonnegative(),
   notes: z.string().optional().nullable(),
 });
 
@@ -54,17 +54,17 @@ type CashDrawerSessionRow = {
   register_session_id: string;
   opened_by_staff_id: string;
   opened_at: Date;
-  opening_float_cents: number;
+  opening_float: number;
   closed_by_staff_id: string | null;
   closed_at: Date | null;
-  counted_cash_cents: number | null;
-  expected_cash_cents: number | null;
-  over_short_cents: number | null;
+  counted_cash: number | null;
+  expected_cash: number | null;
+  over_short: number | null;
   notes: string | null;
   status: 'OPEN' | 'CLOSED';
 };
 
-type CashDrawerEventSumRow = { type: string; amount_cents: number | null };
+type CashDrawerEventSumRow = { type: string; amount: number | null };
 
 export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> {
   /**
@@ -109,13 +109,13 @@ export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> 
 
         const insertResult = await client.query<CashDrawerSessionRow>(
           `INSERT INTO cash_drawer_sessions
-             (register_session_id, opened_by_staff_id, opening_float_cents, notes, status)
+             (register_session_id, opened_by_staff_id, opening_float, notes, status)
              VALUES ($1, $2, $3, $4, 'OPEN')
              RETURNING *`,
           [
             body.registerSessionId,
             request.staff!.staffId,
-            body.openingFloatCents,
+            body.openingFloat,
             body.notes || null,
           ]
         );
@@ -128,7 +128,7 @@ export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> 
         registerSessionId: session.register_session_id,
         openedByStaffId: session.opened_by_staff_id,
         openedAt: session.opened_at.toISOString(),
-        openingFloatCents: session.opening_float_cents,
+        openingFloat: session.opening_float,
         status: session.status,
         notes: session.notes,
       });
@@ -180,16 +180,16 @@ export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> 
             id: string;
             occurred_at: Date;
             type: string;
-            amount_cents: number | null;
+            amount: number | null;
           }>(
             `INSERT INTO cash_drawer_events
-             (cash_drawer_session_id, type, amount_cents, reason, created_by_staff_id, metadata_json)
+             (cash_drawer_session_id, type, amount, reason, created_by_staff_id, metadata_json)
              VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING id, occurred_at, type, amount_cents`,
+             RETURNING id, occurred_at, type, amount`,
             [
               request.params.sessionId,
               body.type,
-              body.amountCents ?? null,
+              body.amount ?? null,
               body.reason || null,
               request.staff!.staffId,
               body.metadataJson ?? null,
@@ -203,7 +203,7 @@ export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> 
           eventId: result.id,
           occurredAt: result.occurred_at.toISOString(),
           type: result.type,
-          amountCents: result.amount_cents,
+          amount: result.amount,
         });
       } catch (error) {
         if (error && typeof error === 'object' && 'statusCode' in error) {
@@ -252,7 +252,7 @@ export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> 
           }
 
           const sums = await client.query<CashDrawerEventSumRow>(
-            `SELECT type, SUM(amount_cents) as amount_cents
+            `SELECT type, SUM(amount) as amount
              FROM cash_drawer_events
              WHERE cash_drawer_session_id = $1
              GROUP BY type`,
@@ -262,9 +262,9 @@ export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> 
           const sumByType = new Map<string, number>();
           for (const row of sums.rows) {
             const amount =
-              typeof row.amount_cents === 'number'
-                ? row.amount_cents
-                : Number(row.amount_cents ?? 0);
+              typeof row.amount === 'number'
+                ? row.amount
+                : Number(row.amount ?? 0);
             sumByType.set(row.type, amount);
           }
 
@@ -277,28 +277,28 @@ export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> 
           const cashPaymentsAppliedToOrders = 0;
 
           const expectedCash =
-            session.opening_float_cents +
+            session.opening_float +
             paidIn -
             paidOut -
             drops +
             adjustments +
             cashPaymentsAppliedToOrders;
-          const overShort = body.countedCashCents - expectedCash;
+          const overShort = body.countedCash - expectedCash;
 
           const updated = await client.query<CashDrawerSessionRow>(
             `UPDATE cash_drawer_sessions
              SET status = 'CLOSED',
                  closed_by_staff_id = $1,
                  closed_at = NOW(),
-                 counted_cash_cents = $2,
-                 expected_cash_cents = $3,
-                 over_short_cents = $4,
+                 counted_cash = $2,
+                 expected_cash = $3,
+                 over_short = $4,
                  notes = COALESCE($5, notes)
              WHERE id = $6
              RETURNING *`,
             [
               request.staff!.staffId,
-              body.countedCashCents,
+              body.countedCash,
               expectedCash,
               overShort,
               body.notes ?? null,
@@ -313,9 +313,9 @@ export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> 
           sessionId: result.id,
           status: result.status,
           closedAt: result.closed_at?.toISOString() || null,
-          countedCashCents: result.counted_cash_cents,
-          expectedCashCents: result.expected_cash_cents,
-          overShortCents: result.over_short_cents,
+          countedCash: result.counted_cash,
+          expectedCash: result.expected_cash,
+          overShort: result.over_short,
           notes: result.notes,
         });
       } catch (error) {

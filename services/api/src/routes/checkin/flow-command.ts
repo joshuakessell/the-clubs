@@ -68,7 +68,14 @@ const FlowCommandRequestSchema = z.object({
 
 const SetStepCommandSchema = FlowCommandRequestSchema.extend({
   type: z.literal('SET_STEP'),
-  payload: z.object({ step: z.string().min(1) }),
+  payload: z.object({
+    step: z.string().min(1),
+    paymentMethod: z.string().optional(),
+    paymentFailed: z.boolean().optional(),
+    failureReason: z.string().optional(),
+    splitCashAmount: z.number().optional(),
+    splitCreditAmount: z.number().optional(),
+  }),
 });
 
 const BackStepCommandSchema = FlowCommandRequestSchema.extend({
@@ -448,8 +455,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
             }
 
 
-
-            if (session.selection_confirmed) {
+            if (session.selection_confirmed && session.flow_step !== 'WAITLIST_BACKUP') {
               throw new FlowCommandError(400, 'SelectionLocked', 'Selection is already locked');
             }
 
@@ -581,12 +587,10 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
 
           // ── Auto-create payment intent when entering PAYMENT step ──
           if (finalSession.flow_step === 'PAYMENT' && !finalSession.payment_intent_id) {
-            const rentalType = (
-              finalSession.desired_rental_type ??
-              finalSession.backup_rental_type ??
-              finalSession.proposed_rental_type ??
-              'LOCKER'
-            ) as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
+            let rentalType = (finalSession.desired_rental_type ?? finalSession.proposed_rental_type ?? 'LOCKER') as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
+            if (finalSession.waitlist_desired_type && finalSession.backup_rental_type) {
+              rentalType = finalSession.backup_rental_type as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
+            }
 
             let customerAge: number | undefined;
             let membershipCardType: 'NONE' | 'SIX_MONTH' | undefined;
@@ -644,6 +648,53 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
                    updated_at = NOW()
                WHERE id = $3`,
               [intent.id, JSON.stringify(quote), sessionId]
+            );
+          }
+
+          // ── Mark payment intent as PAID when moving to AGREEMENT step ──
+          if (
+            finalSession.flow_step === 'AGREEMENT' &&
+            finalSession.payment_intent_id &&
+            type === 'SET_STEP'
+          ) {
+            const requestedMethod = payload?.['paymentMethod'] as string | undefined;
+            if (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT') {
+              const intentStatusRes = await client.query<{ status: string }>(
+                `SELECT status FROM payment_intents WHERE id = $1`,
+                [finalSession.payment_intent_id]
+              );
+              if (intentStatusRes.rows[0]?.status !== 'PAID') {
+                await client.query(
+                  `UPDATE payment_intents
+                   SET status = 'PAID',
+                       payment_method = $1,
+                       paid_at = NOW(),
+                       updated_at = NOW()
+                   WHERE id = $2`,
+                  [requestedMethod, finalSession.payment_intent_id]
+                );
+                await client.query(
+                  `UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`,
+                  [sessionId]
+                );
+              }
+            }
+          }
+
+          // ── Handle Simulated Payment Failure ──
+          if (
+            finalSession.flow_step === 'PAYMENT' &&
+            finalSession.payment_intent_id &&
+            type === 'SET_STEP' &&
+            payload?.['paymentFailed']
+          ) {
+            const failureReason = (payload['failureReason'] as string) || 'Payment failed';
+            await client.query(
+              `UPDATE payment_intents
+               SET failure_reason = $1,
+                   updated_at = NOW()
+               WHERE id = $2`,
+              [failureReason, finalSession.payment_intent_id]
             );
           }
 

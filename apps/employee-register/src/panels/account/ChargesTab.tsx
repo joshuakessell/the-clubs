@@ -54,10 +54,10 @@ export function ChargesTab() {
 
         const entries: LedgerEntry[] = (data.entries ?? []).map((e: any) => ({
           description: e.summary ?? e.entryType ?? 'Charge',
-          amount: typeof e.amountCents === 'number' ? e.amountCents : (typeof e.amountCents === 'string' ? parseInt(e.amountCents, 10) : 0),
+          amount: typeof e.amount === 'number' ? e.amount : (typeof e.amount === 'string' ? parseInt(e.amount, 10) : 0),
         }));
 
-        const total = data.totals?.netCents ?? entries.reduce((sum, e) => sum + e.amount, 0);
+        const total = data.totals?.net ?? entries.reduce((sum, e) => sum + e.amount, 0);
         setVisitEntries(entries);
         setVisitTotal(total);
       } catch {
@@ -251,7 +251,7 @@ export function ChargesTab() {
         )}
 
         {/* 6-Month Membership Upgrade — only for non-members with daily fee */}
-        {!isMember && membershipChoice !== 'SIX_MONTH' && lineItems.some(isMembershipItem) && (
+        {!isMember && membershipChoice !== 'SIX_MONTH' && !isPaid && lineItems.some(isMembershipItem) && (
           <button
             onClick={() => setMembershipChoice('SIX_MONTH')}
             className="flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"

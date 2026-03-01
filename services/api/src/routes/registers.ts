@@ -56,7 +56,7 @@ const CloseoutStartSchema = z.object({
 
 const CloseoutFinalizeSchema = z.object({
   registerSessionId: z.string().uuid(),
-  countedCashCents: z.number().int().nonnegative(),
+  countedCash: z.number().int().nonnegative(),
   notes: z.string().optional().nullable(),
 });
 
@@ -82,7 +82,7 @@ interface RegisterSessionRow {
 interface CloseoutPaymentRow {
   id: string;
   amount: number | string | null;
-  tip_cents?: number | null;
+  tip?: number | null;
   payment_method?: string | null;
   quote_json?: unknown;
 }
@@ -103,7 +103,7 @@ async function buildRegisterCloseoutSummary(
   closeoutAt: Date
 ) {
   const payments = await client.query<CloseoutPaymentRow>(
-    `SELECT id, amount, tip_cents, payment_method, quote_json
+    `SELECT id, amount, tip, payment_method, quote_json
      FROM payment_intents
      WHERE status = 'PAID'
        AND register_number = $1
@@ -305,7 +305,7 @@ export async function registerRoutes(
           }
 
           const drawerResult = await client.query<CashDrawerSessionFullRow>(
-            `SELECT id, register_session_id, opened_at, opening_float_cents, status, closed_at, closeout_snapshot_json
+            `SELECT id, register_session_id, opened_at, opening_float, status, closed_at, closeout_snapshot_json
              FROM cash_drawer_sessions
              WHERE register_session_id = $1 AND status = 'OPEN'
              ORDER BY opened_at DESC
@@ -378,7 +378,7 @@ export async function registerRoutes(
           }
 
           const drawerResult = await client.query<CashDrawerSessionFullRow>(
-            `SELECT id, register_session_id, opened_at, opening_float_cents, status, closed_at, closeout_snapshot_json
+            `SELECT id, register_session_id, opened_at, opening_float, status, closed_at, closeout_snapshot_json
              FROM cash_drawer_sessions
              WHERE register_session_id = $1
              ORDER BY opened_at DESC
@@ -406,11 +406,11 @@ export async function registerRoutes(
 
           const closeoutAt = new Date();
           const snapshot = await buildCloseoutSnapshot(client, drawerSession, closeoutAt);
-          const overShortCents = body.countedCashCents - snapshot.expectedCashCents;
+          const overShort = body.countedCash - snapshot.expectedCash;
           const closeoutSnapshot = {
             ...snapshot,
-            countedCashCents: body.countedCashCents,
-            overShortCents,
+            countedCash: body.countedCash,
+            overShort,
             closedByStaffId: request.staff!.staffId,
             notes: body.notes ?? null,
           };
@@ -420,18 +420,18 @@ export async function registerRoutes(
              SET status = 'CLOSED',
                  closed_by_staff_id = $1,
                  closed_at = $2,
-                 counted_cash_cents = $3,
-                 expected_cash_cents = $4,
-                 over_short_cents = $5,
+                 counted_cash = $3,
+                 expected_cash = $4,
+                 over_short = $5,
                  notes = COALESCE($6, notes),
                  closeout_snapshot_json = $7
              WHERE id = $8`,
             [
               request.staff!.staffId,
               closeoutAt,
-              body.countedCashCents,
-              snapshot.expectedCashCents,
-              overShortCents,
+              body.countedCash,
+              snapshot.expectedCash,
+              overShort,
               body.notes ?? null,
               closeoutSnapshot,
               drawerSession.id,

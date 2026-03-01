@@ -26,7 +26,7 @@ export interface ClubLogItem {
   staffName?: string;
   customerId?: string;
   customerName?: string;
-  amountCents?: number;
+  amount?: number;
   summary?: string;
 }
 
@@ -179,7 +179,8 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       searchTimer = setTimeout(async () => {
         try {
           const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+          const token = authToken || (window as any).__authToken;
+          if (token) headers['Authorization'] = `Bearer ${token}`;
 
           const res = await fetch(
             getApiUrl(`/api/v1/customers/search?q=${encodeURIComponent(v)}&limit=10`),
@@ -497,8 +498,8 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
 
-        // On version mismatch, auto-resync from snapshot
-        if (d.code === 'VersionMismatch' || res.status === 409) {
+        // On version mismatch, auto-resync and silently retry once
+        if (d.code === 'VersionMismatch' || d.error === 'VersionMismatch' || res.status === 409) {
           try {
             const snapRes = await fetch(
               getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`),
@@ -506,9 +507,34 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
             );
             if (snapRes.ok) {
               const snap = await snapRes.json();
-              if (snap.session) set({ sessionPayload: snap.session });
+              if (snap.session) {
+                set({ sessionPayload: snap.session });
+                // Retry once with the refreshed version
+                const retryRes = await fetch(
+                  getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/flow-command`),
+                  {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({
+                      sessionId: sp.sessionId,
+                      commandId: crypto.randomUUID(),
+                      actor: 'EMPLOYEE',
+                      expectedFlowVersion: snap.session.flowVersion ?? 0,
+                      ...cmd,
+                    }),
+                  }
+                );
+                if (retryRes.ok) {
+                  const retryData = await retryRes.json().catch(() => null);
+                  if (retryData?.flowVersion != null) {
+                    const current = get().sessionPayload;
+                    if (current) set({ sessionPayload: { ...current, flowVersion: retryData.flowVersion } });
+                  }
+                  return; // Silent success — no error toast
+                }
+              }
             }
-          } catch { /* ignore snapshot failure */ }
+          } catch { /* ignore retry failure — fall through to error toast */ }
         }
 
         set({ successToastMessage: d.error ?? `Flow command failed (${res.status})` });
@@ -523,12 +549,39 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
           set({ sessionPayload: { ...current, flowVersion: data.flowVersion } });
         }
       }
+
+      // Immediately fetch snapshot so step transitions happen without waiting for SSE
+      try {
+        const token = (window as any).__authToken;
+        const snapHeaders: Record<string, string> = {};
+        if (token) snapHeaders['Authorization'] = `Bearer ${token}`;
+        const snapRes = await fetch(
+          getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(get().laneId)}/session-snapshot`),
+          { headers: snapHeaders },
+        );
+        if (snapRes.ok) {
+          const snap = await snapRes.json();
+          if (snap.session) set({ sessionPayload: snap.session });
+        }
+      } catch { /* snapshot fetch failed — SSE will still deliver the update */ }
     } catch {
       set({ successToastMessage: 'Network error sending flow command' });
     }
   },
   cancelSession: async () => {
     const { laneId } = get();
+    // Clear local state IMMEDIATELY to prevent the SSE broadcast race.
+    // The reset endpoint broadcasts a SESSION_UPDATED event with nulled fields;
+    // if we clear state *after* the fetch, the SSE event arrives first and
+    // re-renders the flow in a partially-nulled state (showing "Room null").
+    set({
+      currentSessionId: null,
+      customerId: null,
+      customerName: null,
+      activeCheckinInfo: null,
+      sessionPayload: null,
+      successToastMessage: 'Check-in cancelled',
+    });
     try {
       const token = (window as any).__authToken;
       const headers: Record<string, string> = {};
@@ -539,16 +592,8 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
         { method: 'POST', headers }
       );
     } catch {
-      // Best-effort — clear local state regardless
+      // Best-effort — local state already cleared
     }
-    set({
-      currentSessionId: null,
-      customerId: null,
-      customerName: null,
-      activeCheckinInfo: null,
-      sessionPayload: null,
-      successToastMessage: 'Check-in cancelled',
-    });
   },
 
   /* Navigation — will be wired to AppLayout's setActiveTab */

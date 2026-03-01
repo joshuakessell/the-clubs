@@ -126,10 +126,13 @@ export interface SessionUpdatedPayload {
      * This represents the customer's pending upgrade intent for this visit.
      */
     waitlistDesiredType?: string;
+    desiredRentalType?: string;
     waitlistDesiredTypes?: string[];
     backupRentalType?: string;
     waitlistRequestedResourceNumber?: string;
     waitlistRequestedResourceType?: 'room' | 'locker';
+    waitlistPosition?: number;
+    waitlistEstimatedReadyAt?: string;
     status?: string;
     proposedRentalType?: string;
     proposedBy?: 'CUSTOMER' | 'EMPLOYEE';
@@ -437,12 +440,12 @@ export interface CashDrawerSession {
     registerSessionId: string;
     openedByStaffId: string;
     openedAt: Date | string;
-    openingFloatCents: number;
+    openingFloat: number;
     closedByStaffId?: string | null;
     closedAt?: Date | string | null;
-    countedCashCents?: number | null;
-    expectedCashCents?: number | null;
-    overShortCents?: number | null;
+    countedCash?: number | null;
+    expectedCash?: number | null;
+    overShort?: number | null;
     notes?: string | null;
     status: CashDrawerSessionStatus;
 }
@@ -451,7 +454,7 @@ export interface CashDrawerEvent {
     cashDrawerSessionId: string;
     occurredAt: Date | string;
     type: CashDrawerEventType;
-    amountCents?: number | null;
+    amount?: number | null;
     reason?: string | null;
     createdByStaffId: string;
     metadataJson?: Record<string, unknown> | null;
@@ -473,11 +476,11 @@ export interface Order {
     createdByStaffId?: string | null;
     createdAt: Date | string;
     status: OrderStatus;
-    subtotalCents: number;
-    discountCents: number;
-    taxCents: number;
-    tipCents: number;
-    totalCents: number;
+    subtotal: number;
+    discount: number;
+    tax: number;
+    tip: number;
+    total: number;
     currency: string;
     metadataJson?: Record<string, unknown> | null;
 }
@@ -488,10 +491,10 @@ export interface OrderLineItem {
     sku?: string | null;
     name: string;
     quantity: number;
-    unitPriceCents: number;
-    discountCents: number;
-    taxCents: number;
-    totalCents: number;
+    unitPrice: number;
+    discount: number;
+    tax: number;
+    total: number;
     metadataJson?: Record<string, unknown> | null;
 }
 export interface Receipt {

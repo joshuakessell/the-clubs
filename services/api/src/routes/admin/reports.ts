@@ -136,12 +136,12 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
 
         // Tips
         const tips = await query<{ total: string }>(
-          `SELECT COALESCE(SUM(tip_cents), 0)::numeric(10,2) AS total
+          `SELECT COALESCE(SUM(tip), 0)::numeric(10,2) AS total
           FROM payment_intents
           WHERE status = 'PAID'
             AND paid_at >= $1::date
             AND paid_at < $1::date + INTERVAL '1 day'
-            AND tip_cents > 0`,
+            AND tip > 0`,
           [targetDate]
         );
 
@@ -156,7 +156,7 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
           revenueByMethod: methodBreakdown,
           totalCheckIns: checkIns.rows[0]?.count ?? 0,
           uniqueCustomers: uniqueCustomers.rows[0]?.count ?? 0,
-          totalTips: parseFloat(tips.rows[0]?.total ?? '0') / 100, // cents to dollars
+          totalTips: parseFloat(tips.rows[0]?.total ?? '0'),
         });
       } catch (error) {
         request.log.error(error, 'Failed to build daily summary');
@@ -390,12 +390,12 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
 
         // Tips
         const tips = await query<{ total: string }>(
-          `SELECT COALESCE(SUM(tip_cents), 0) AS total
+          `SELECT COALESCE(SUM(tip), 0) AS total
           FROM payment_intents
           WHERE status = 'PAID'
             AND paid_at >= $1::date
             AND paid_at < $2::date + INTERVAL '1 day'
-            AND tip_cents > 0`,
+            AND tip > 0`,
           [from, to]
         );
 
@@ -476,8 +476,8 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
             avgTransaction: parseFloat(revenue.rows[0]?.avg_tx ?? '0'),
           },
           tips: {
-            totalCents: parseInt(tips.rows[0]?.total ?? '0', 10),
-            totalDollars: parseInt(tips.rows[0]?.total ?? '0', 10) / 100,
+            total: parseInt(tips.rows[0]?.total ?? '0', 10),
+            totalDollars: parseInt(tips.rows[0]?.total ?? '0', 10),
           },
           activity: {
             checkIns: checkIns.rows[0]?.count ?? 0,
@@ -646,15 +646,15 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
 
         // Tips breakdown
         const tipStats = await query<{
-          total_cents: string;
-          avg_tip_cents: string;
+          total: string;
+          avg_tip: string;
           tip_count: number;
           total_revenue: string;
         }>(
           `SELECT
-            COALESCE(SUM(tip_cents), 0) AS total_cents,
-            COALESCE(AVG(tip_cents) FILTER (WHERE tip_cents > 0), 0)::numeric(10,0) AS avg_tip_cents,
-            COUNT(*) FILTER (WHERE tip_cents > 0)::int AS tip_count,
+            COALESCE(SUM(tip), 0) AS total,
+            COALESCE(AVG(tip) FILTER (WHERE tip > 0), 0)::numeric(10,0) AS avg_tip,
+            COUNT(*) FILTER (WHERE tip > 0)::int AS tip_count,
             COALESCE(SUM(amount), 0)::numeric(10,2) AS total_revenue
           FROM payment_intents
           WHERE status = 'PAID'
@@ -663,7 +663,7 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
           [from, to]
         );
 
-        const totalTipCents = parseInt(tipStats.rows[0]?.total_cents ?? '0', 10);
+        const totalTips = parseInt(tipStats.rows[0]?.total ?? '0', 10);
         const totalRevenueDollars = parseFloat(tipStats.rows[0]?.total_revenue ?? '0');
 
         return reply.send({
@@ -686,12 +686,12 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
             count: r.count,
           })),
           tips: {
-            totalDollars: totalTipCents / 100,
-            avgTipDollars: parseInt(tipStats.rows[0]?.avg_tip_cents ?? '0', 10) / 100,
+            totalDollars: totalTips,
+            avgTipDollars: parseInt(tipStats.rows[0]?.avg_tip ?? '0', 10),
             tipCount: tipStats.rows[0]?.tip_count ?? 0,
             tipPercentOfRevenue:
               totalRevenueDollars > 0
-                ? Math.round(((totalTipCents / 100) / totalRevenueDollars) * 1000) / 10
+                ? Math.round((totalTips / totalRevenueDollars) * 1000) / 10
                 : 0,
           },
         });

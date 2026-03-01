@@ -96,9 +96,9 @@ export class MockPaymentsProvider implements PaymentsProvider {
     const original = this.store.payments.find(
       (payment) => payment.externalId === params.paymentExternalId
     );
-    const refundAmount = params.amount ?? original?.amount ?? { amountCents: 0, currency: 'USD' };
+    const refundAmount = params.amount ?? original?.amount ?? { amount: 0, currency: 'USD' };
     const status =
-      original && refundAmount.amountCents < original.amount.amountCents
+      original && refundAmount.amount < original.amount.amount
         ? 'PARTIALLY_REFUNDED'
         : 'REFUNDED';
 

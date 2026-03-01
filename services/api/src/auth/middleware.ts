@@ -27,6 +27,7 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
     ((request.headers as Record<string, unknown>)['Authorization'] as string | undefined) ??
     ((request.headers as Record<string, unknown>)['AUTHORIZATION'] as string | undefined);
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    request.log.debug({ hasAuth: !!authHeader, url: request.url }, 'auth_reject: no Bearer header');
     return false;
   }
 
@@ -55,6 +56,11 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
     );
 
     if (sessionResult.rows.length === 0) {
+      // Log the first 8 chars of the token hash for correlation (safe — hash is not reversible)
+      request.log.warn(
+        { tokenHashPrefix: tokenHash.slice(0, 8), url: request.url },
+        'auth_reject: no active session found for token hash'
+      );
       return false;
     }
 
@@ -78,7 +84,7 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
 
     return true;
   } catch (error) {
-    request.log.error(error, 'Error validating session token');
+    request.log.error({ err: error, url: request.url }, 'auth_reject: DB error validating session token');
     return false;
   }
 }

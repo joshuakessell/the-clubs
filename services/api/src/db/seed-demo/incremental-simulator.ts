@@ -136,14 +136,14 @@ function currencyUSD() {
   return 'USD';
 }
 
-/** Tier-based checkin pricing in cents */
-function checkinPriceCents(rentalType: string): number {
+/** Tier-based checkin pricing in whole dollars */
+function checkinPrice(rentalType: string): number {
   switch (rentalType) {
-    case 'LOCKER': return 2000;
-    case 'STANDARD': return 4000;
-    case 'DOUBLE': return 5500;
-    case 'SPECIAL': return 6500;
-    default: return 2000;
+    case 'LOCKER': return 20;
+    case 'STANDARD': return 40;
+    case 'DOUBLE': return 55;
+    case 'SPECIAL': return 65;
+    default: return 20;
   }
 }
 
@@ -494,40 +494,40 @@ export async function appendIncrementalDemoSimulation(params: {
       );
 
       // Rental fee spend ledger entry — every visit has a rental charge
-      const rentalCents = checkinPriceCents(rentalType);
+      const rentalPrice = checkinPrice(rentalType);
       const rentalLabel = rentalType === 'LOCKER' ? 'Locker Rental'
         : rentalType === 'DOUBLE' ? 'Double Room Rental'
         : rentalType === 'SPECIAL' ? 'Special Room Rental'
         : 'Standard Room Rental';
       await params.client.query(
         `INSERT INTO customer_spend_ledger_entries
-           (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+           (occurred_at, customer_id, visit_id, entry_type, amount, currency,
             source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
          VALUES ($1, $2::uuid, $3::uuid, 'RENTAL_FEE', $4::bigint, $5,
                  'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, $8, $9::jsonb, $10)
          ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
         [
-          signedAt, customer.id, visitId, rentalCents, currencyUSD(),
+          signedAt, customer.id, visitId, rentalPrice, currencyUSD(),
           staffMember.id, staffMember.name, rentalLabel,
-          { rentalType, priceCents: rentalCents },
+          { rentalType, price: rentalPrice },
           `LEDGER:DEMO:RENTAL_FEE:${checkinBlockId}`,
         ]
       );
 
       // Membership fee for non-members ($10)
       if (!customer.membership_number) {
-        const membershipCents = 1000;
+        const membershipPrice = 10;
         await params.client.query(
           `INSERT INTO customer_spend_ledger_entries
-             (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+             (occurred_at, customer_id, visit_id, entry_type, amount, currency,
               source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
            VALUES ($1, $2::uuid, $3::uuid, 'MEMBERSHIP_FEE', $4::bigint, $5,
                    'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, 'Non-Member Fee', $8::jsonb, $9)
            ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
           [
-            signedAt, customer.id, visitId, membershipCents, currencyUSD(),
+            signedAt, customer.id, visitId, membershipPrice, currencyUSD(),
             staffMember.id, staffMember.name,
-            { membershipCents },
+            { membershipPrice },
             `LEDGER:DEMO:MEMBERSHIP_FEE:${checkinBlockId}`,
           ]
         );
@@ -632,9 +632,9 @@ export async function appendIncrementalDemoSimulation(params: {
       if (roomId) {
         const isLate = checkoutDeltaMinutes < -15; // actually checked out after scheduled time
         const lateMinutes = isLate ? Math.abs(checkoutDeltaMinutes) - 15 : 0;
-        const lateFeePerBlock = 1500; // $15 per 15-min block
+        const lateFeePerBlock = 15; // $15 per 15-min block
         const lateBlocks = Math.ceil(lateMinutes / 15);
-        const lateFeeAmount = lateBlocks * lateFeePerBlock / 100; // in dollars for numeric(10,2)
+        const lateFeeAmount = lateBlocks * lateFeePerBlock;
 
         checkoutRequestEvents.push({
           checkinBlockId,
@@ -803,61 +803,61 @@ export async function appendIncrementalDemoSimulation(params: {
       );
 
       // Rental fee spend ledger entry
-      const rentalCents = checkinPriceCents(rentalType);
+      const rentalPrice = checkinPrice(rentalType);
       const rentalLabel = rentalType === 'LOCKER' ? 'Locker Rental'
         : rentalType === 'DOUBLE' ? 'Double Room Rental'
         : rentalType === 'SPECIAL' ? 'Special Room Rental'
         : 'Standard Room Rental';
       await params.client.query(
         `INSERT INTO customer_spend_ledger_entries
-           (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+           (occurred_at, customer_id, visit_id, entry_type, amount, currency,
             source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
          VALUES ($1, $2::uuid, $3::uuid, 'RENTAL_FEE', $4::bigint, $5,
                  'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, $8, $9::jsonb, $10)
          ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
         [
-          signedAt, customer.id, visitId, rentalCents, currencyUSD(),
+          signedAt, customer.id, visitId, rentalPrice, currencyUSD(),
           staffMember.id, staffMember.name, rentalLabel,
-          { rentalType, priceCents: rentalCents },
+          { rentalType, price: rentalPrice },
           `LEDGER:DEMO:G:RENTAL_FEE:${checkinBlockId}`,
         ]
       );
 
       // Membership fee for non-members
       if (!customer.membership_number) {
-        const membershipCents = 1000;
+        const membershipPrice = 10;
         await params.client.query(
           `INSERT INTO customer_spend_ledger_entries
-             (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+             (occurred_at, customer_id, visit_id, entry_type, amount, currency,
               source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
            VALUES ($1, $2::uuid, $3::uuid, 'MEMBERSHIP_FEE', $4::bigint, $5,
                    'EMPLOYEE_REGISTER', 'STAFF', $6::uuid, $7, 'Non-Member Fee', $8::jsonb, $9)
            ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
           [
-            signedAt, customer.id, visitId, membershipCents, currencyUSD(),
+            signedAt, customer.id, visitId, membershipPrice, currencyUSD(),
             staffMember.id, staffMember.name,
-            { membershipCents },
+            { membershipPrice },
             `LEDGER:DEMO:G:MEMBERSHIP_FEE:${checkinBlockId}`,
           ]
         );
       }
 
-      const priceCents = rentalCents;
+      const price = rentalPrice;
 
       // Payment intent + charge for the checkin fee
       const paymentIntentId = randomUUID();
       const chargeId = randomUUID();
       await params.client.query(
         `INSERT INTO payment_intents
-           (id, amount, tip_cents, status, quote_json, paid_at, created_at, updated_at)
+           (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
          VALUES ($1, $2, 0, 'PAID', $3, $4, $4, $4)`,
-        [paymentIntentId, priceCents / 100, { type: 'CHECKIN', rentalType, priceCents }, signedAt]
+        [paymentIntentId, price, { type: 'CHECKIN', rentalType, price }, signedAt]
       );
       await params.client.query(
         `INSERT INTO charges
            (id, visit_id, checkin_block_id, type, amount, payment_intent_id, created_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [chargeId, visitId, checkinBlockId, rentalType, priceCents / 100, paymentIntentId, signedAt]
+        [chargeId, visitId, checkinBlockId, rentalType, price, paymentIntentId, signedAt]
       );
 
       // Cleaning event for room visits
@@ -1171,15 +1171,15 @@ export async function appendIncrementalDemoSimulation(params: {
     );
 
     // Payment intent for upgrade fee
-    const upgradePriceCents = 2500; // $25
+    const upgradePrice = 25;
     await params.client.query(
       `INSERT INTO payment_intents
-         (id, amount, tip_cents, status, quote_json, paid_at, created_at, updated_at)
+         (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
        VALUES ($1, $2, 0, 'PAID', $3, $4, $4, $4)`,
       [
         paymentIntentId,
-        upgradePriceCents / 100, // numeric(10,2)
-        { type: 'UPGRADE', from: 'LOCKER', to: upgradeRentalType, priceCents: upgradePriceCents },
+        upgradePrice,
+        { type: 'UPGRADE', from: 'LOCKER', to: upgradeRentalType, price: upgradePrice },
         ug.upgradeAt,
       ]
     );
@@ -1193,7 +1193,7 @@ export async function appendIncrementalDemoSimulation(params: {
         chargeId,
         ug.visitId,
         renewalBlockId,
-        upgradePriceCents / 100,
+        upgradePrice,
         paymentIntentId,
         ug.upgradeAt,
       ]
@@ -1254,7 +1254,7 @@ export async function appendIncrementalDemoSimulation(params: {
           toType: upgradeRentalType,
           roomId: ug.roomId,
           paymentIntentId,
-          priceCents: upgradePriceCents,
+          price: upgradePrice,
         },
         `Upgrade completed Locker ${upgradeRentalType} ${ug.visitId} ${upgradeStaff.name}`,
         `ACT:DEMO:UPGRADE_COMPLETED:${ug.visitId}`,
@@ -1291,7 +1291,7 @@ export async function appendIncrementalDemoSimulation(params: {
     await params.client.query(
       `
       INSERT INTO customer_spend_ledger_entries
-        (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+        (occurred_at, customer_id, visit_id, entry_type, amount, currency,
          source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
       VALUES
         ($1, $2::uuid, $3::uuid, 'UPGRADE_FEE', $4::bigint, $5,
@@ -1302,11 +1302,11 @@ export async function appendIncrementalDemoSimulation(params: {
         ug.upgradeAt,
         ug.customerId,
         ug.visitId,
-        upgradePriceCents,
+        upgradePrice,
         currencyUSD(),
         ug.staffId,
         upgradeStaff.name,
-        { paymentIntentId, fromType: 'LOCKER', toType: upgradeRentalType, priceCents: upgradePriceCents },
+        { paymentIntentId, fromType: 'LOCKER', toType: upgradeRentalType, price: upgradePrice },
         `LEDGER:DEMO:UPGRADE_FEE:${ug.visitId}`,
       ]
     );
@@ -1317,16 +1317,16 @@ export async function appendIncrementalDemoSimulation(params: {
     if (pe.paidAt > params.to) continue;
     const paymentIntentId = randomUUID();
     const chargeId = randomUUID();
-    const priceCents = checkinPriceCents(pe.rentalType);
+    const price = checkinPrice(pe.rentalType);
 
     await params.client.query(
       `INSERT INTO payment_intents
-         (id, amount, tip_cents, status, quote_json, paid_at, created_at, updated_at)
+         (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
        VALUES ($1, $2, 0, 'PAID', $3, $4, $4, $4)`,
       [
         paymentIntentId,
-        priceCents / 100,
-        { type: 'CHECKIN', rentalType: pe.rentalType, priceCents },
+        price,
+        { type: 'CHECKIN', rentalType: pe.rentalType, price },
         pe.paidAt,
       ]
     );
@@ -1340,7 +1340,7 @@ export async function appendIncrementalDemoSimulation(params: {
         pe.visitId,
         pe.checkinBlockId,
         pe.rentalType,
-        priceCents / 100,
+        price,
         paymentIntentId,
         pe.paidAt,
       ]
@@ -1409,11 +1409,11 @@ export async function appendIncrementalDemoSimulation(params: {
     if (le.feeAmount > 0) {
       const paymentIntentId = randomUUID();
       const chargeId = randomUUID();
-      const feeAmountCents = Math.round(le.feeAmount * 100);
+      const feeAmount = Math.round(le.feeAmount * 100);
 
       await params.client.query(
         `INSERT INTO payment_intents
-           (id, amount, tip_cents, status, quote_json, paid_at, created_at, updated_at)
+           (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
          VALUES ($1, $2, 0, 'PAID', $3, $4, $4, $4)`,
         [
           paymentIntentId,
@@ -1474,7 +1474,7 @@ export async function appendIncrementalDemoSimulation(params: {
       await params.client.query(
         `
         INSERT INTO customer_spend_ledger_entries
-          (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+          (occurred_at, customer_id, visit_id, entry_type, amount, currency,
            source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
         VALUES
           ($1, $2::uuid,
@@ -1487,7 +1487,7 @@ export async function appendIncrementalDemoSimulation(params: {
           le.createdAt,
           le.customerId,
           le.checkinBlockId,
-          feeAmountCents,
+          feeAmount,
           currencyUSD(),
           lateStaff.id,
           lateStaff.name,
@@ -1539,6 +1539,14 @@ export async function appendIncrementalDemoSimulation(params: {
   }
 
   // 8) Orders (anonymous + customer-linked)
+  const RETAIL_CATALOG = [
+    { name: 'Bottled Water', sku: 'WATER', price: 300 },
+    { name: 'Energy Drink', sku: 'ENERGY_DRINK', price: 500 },
+    { name: 'Towel Rental', sku: 'TOWEL_RENTAL', price: 500 },
+    { name: 'Swiss Navy', sku: 'SWISS_NAVY', price: 1200 },
+    { name: 'Snack Bar', sku: 'SNACK_BAR', price: 400 },
+  ];
+
   async function insertOrder(order: {
     createdAt: Date;
     registerSessionId: string;
@@ -1547,16 +1555,38 @@ export async function appendIncrementalDemoSimulation(params: {
     seed: number;
   }) {
     const rng2 = rng;
-    const subtotalCents = 500 + Math.floor(rng2() * 3500);
-    const taxCents = Math.floor(subtotalCents * 0.0825);
-    const tipCents = rng2() < 0.12 ? 200 + Math.floor(rng2() * 700) : 0;
-    const totalCents = subtotalCents + taxCents + tipCents;
+
+    // Build 1-2 realistic line items from the catalog
+    const itemCount = 1 + (rng2() < 0.4 ? 1 : 0);
+    const lineItems: Array<{ id: string; name: string; sku: string; qty: number; unitPrice: number; lineTotal: number }> = [];
+    let subtotal = 0;
+
+    for (let i = 0; i < itemCount; i++) {
+      const catalogIdx = Math.floor(rng2() * RETAIL_CATALOG.length);
+      const product = RETAIL_CATALOG[catalogIdx]!;
+      const qty = 1 + (rng2() < 0.15 ? 1 : 0);
+      const lineTotal = product.price * qty;
+      lineItems.push({
+        id: randomUUID(),
+        name: product.name,
+        sku: product.sku,
+        qty,
+        unitPrice: product.price,
+        lineTotal,
+      });
+      subtotal += lineTotal;
+    }
+
+    const tax = 0; // prices are tax-inclusive
+    const tip = rng2() < 0.12 ? 2 + Math.floor(rng2() * 7) : 0;
+    const total = subtotal + tip;
     const orderId = randomUUID();
+    const paymentMethod = rng2() < 0.33 ? 'CASH' : 'CREDIT';
 
     await params.client.query(
       `INSERT INTO orders
          (id, customer_id, register_session_id, created_by_staff_id, created_at, status,
-          subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency, metadata_json)
+          subtotal, discount, tax, tip, total, currency, metadata_json)
        VALUES ($1, $2, $3, $4, $5, 'PAID', $6, 0, $7, $8, $9, $10, $11)`,
       [
         orderId,
@@ -1564,28 +1594,23 @@ export async function appendIncrementalDemoSimulation(params: {
         order.registerSessionId,
         order.staffId,
         order.createdAt,
-        subtotalCents,
-        taxCents,
-        tipCents,
-        totalCents,
+        subtotal,
+        tax,
+        tip,
+        total,
         currencyUSD(),
-        { tender: { paymentMethod: rng2() < 0.33 ? 'CASH' : 'CREDIT', source: 'DEMO_SIM' } },
+        { tender: { paymentMethod, source: 'DEMO_SIM' } },
       ]
     );
 
-    const itemId = randomUUID();
-    const name = rng2() < 0.4 ? 'Water' : rng2() < 0.7 ? 'Energy Drink' : 'Towel';
-    const sku = name.toUpperCase().replace(/\s+/g, '_');
-    const unitPrice = Math.max(200, Math.floor(subtotalCents / 2));
-    const qty = 1 + (rng2() < 0.15 ? 1 : 0);
-    const lineTotal = unitPrice * qty;
-
-    await params.client.query(
-      `INSERT INTO order_line_items
-         (id, order_id, kind, sku, name, quantity, unit_price_cents, discount_cents, tax_cents, total_cents, metadata_json)
-       VALUES ($1, $2, 'RETAIL', $3, $4, $5, $6, 0, 0, $7, NULL)`,
-      [itemId, orderId, sku, name, qty, unitPrice, lineTotal]
-    );
+    for (const item of lineItems) {
+      await params.client.query(
+        `INSERT INTO order_line_items
+           (id, order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json)
+         VALUES ($1, $2, 'RETAIL', $3, $4, $5, $6, 0, 0, $7, NULL)`,
+        [item.id, orderId, item.sku, item.name, item.qty, item.unitPrice, item.lineTotal]
+      );
+    }
 
     const receiptId = randomUUID();
     const receiptNumber = `D${order.createdAt.getUTCFullYear()}-${String(order.seed).padStart(6, '0')}`;
@@ -1603,18 +1628,16 @@ export async function appendIncrementalDemoSimulation(params: {
           orderId,
           issuedAt: issuedAt.toISOString(),
           currency: currencyUSD(),
-          totals: { subtotalCents, taxCents, tipCents, totalCents },
-          lineItems: [
-            {
-              id: itemId,
-              kind: 'RETAIL',
-              sku,
-              name,
-              quantity: qty,
-              unitPriceCents: unitPrice,
-              totalCents: lineTotal,
-            },
-          ],
+          totals: { subtotal, tax, tip, total },
+          lineItems: lineItems.map((item) => ({
+            id: item.id,
+            kind: 'RETAIL',
+            sku: item.sku,
+            name: item.name,
+            quantity: item.qty,
+            unitPrice: item.unitPrice,
+            total: item.lineTotal,
+          })),
         },
       ]
     );
@@ -1624,7 +1647,7 @@ export async function appendIncrementalDemoSimulation(params: {
       await params.client.query(
         `
         INSERT INTO customer_spend_ledger_entries
-          (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+          (occurred_at, customer_id, visit_id, entry_type, amount, currency,
            source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
         VALUES
           ($1, $2::uuid, NULL, 'ORDER_PAID', $3::bigint, $4,
@@ -1634,10 +1657,10 @@ export async function appendIncrementalDemoSimulation(params: {
         [
           order.createdAt,
           order.customerId,
-          totalCents,
+          total,
           currencyUSD(),
           order.staffId,
-          { orderId, totalCents, currency: currencyUSD() },
+          { orderId, total, currency: currencyUSD() },
           `LEDGER:DEMO:ORDER_PAID:${orderId}`,
         ]
       );
@@ -1659,8 +1682,8 @@ export async function appendIncrementalDemoSimulation(params: {
           // demo doesn't have names on register sessions in this function; keep staff name null
           null,
           `Order paid`,
-          { orderId, totalCents, currency: currencyUSD() },
-          `Order paid ${orderId} ${totalCents}`,
+          { orderId, total, currency: currencyUSD() },
+          `Order paid ${orderId} ${total}`,
           `ACT:DEMO:ORDER_PAID:${orderId}`,
         ]
       );

@@ -53,7 +53,7 @@ export const CustomerActivityResourceRefSchema = z.object({
     number: z.string().min(1).max(20),
     resourceId: uuidSchema.nullable().optional(),
 });
-const MoneyCentsSchema = z.number().int().min(0).max(2_000_000_000);
+const MoneySchema = z.number().int().min(0).max(2_000_000_000);
 export const CustomerActivityMetadataSchemas = {
     CHECKIN_STARTED: z.object({
         laneId: z.string().min(1).max(50),
@@ -71,7 +71,7 @@ export const CustomerActivityMetadataSchemas = {
         membershipPurchaseIntent: z.enum(['PURCHASE', 'RENEW']).nullable().optional(),
         membershipChoice: z.enum(['ONE_TIME', 'SIX_MONTH']).nullable().optional(),
         renewalHours: z.union([z.literal(2), z.literal(6)]).nullable().optional(),
-        amountCents: MoneyCentsSchema,
+        amount: MoneySchema,
         currency: z.enum(['USD']),
         paymentIntentId: uuidSchema.nullable().optional(),
         waitlistId: uuidSchema.nullable().optional(),
@@ -86,9 +86,9 @@ export const CustomerActivityMetadataSchemas = {
         visitId: uuidSchema,
         checkoutRequestId: uuidSchema.nullable().optional(),
         resource: CustomerActivityResourceRefSchema,
-        chargesCents: MoneyCentsSchema,
-        paidCents: MoneyCentsSchema,
-        tipCents: z.number().int().min(0).max(2_000_000_000).nullable().optional(),
+        charges: MoneySchema,
+        paid: MoneySchema,
+        tip: z.number().int().min(0).max(2_000_000_000).nullable().optional(),
         paymentIntentId: uuidSchema.nullable().optional(),
         paymentMethod: z.enum(['CASH', 'CARD', 'SPLIT', 'OTHER']).nullable().optional(),
     }),
@@ -105,7 +105,7 @@ export const CustomerActivityMetadataSchemas = {
         }),
         upgradeHoldId: uuidSchema.nullable().optional(),
         waitlistId: uuidSchema.nullable().optional(),
-        estimatedFeeCents: z.number().int().min(0).max(2_000_000_000).nullable().optional(),
+        estimatedFee: z.number().int().min(0).max(2_000_000_000).nullable().optional(),
     }),
     UPGRADE_COMPLETED: z.object({
         visitId: uuidSchema,
@@ -118,18 +118,18 @@ export const CustomerActivityMetadataSchemas = {
             .refine((val) => !!val.toResource || !!val.toTier, {
             message: 'target.toResource or target.toTier required',
         }),
-        amountCents: MoneyCentsSchema,
+        amount: MoneySchema,
         currency: z.enum(['USD']),
         paymentIntentId: uuidSchema.nullable().optional(),
     }),
     ORDER_PAID: z.object({
         orderId: uuidSchema,
         visitId: uuidSchema.nullable().optional(),
-        totalCents: MoneyCentsSchema,
+        total: MoneySchema,
         currency: z.enum(['USD']),
-        taxCents: MoneyCentsSchema.nullable().optional(),
-        tipCents: MoneyCentsSchema.nullable().optional(),
-        discountCents: MoneyCentsSchema.nullable().optional(),
+        tax: MoneySchema.nullable().optional(),
+        tip: MoneySchema.nullable().optional(),
+        discount: MoneySchema.nullable().optional(),
         paymentIntentId: uuidSchema.nullable().optional(),
         paymentMethod: z.enum(['CASH', 'CARD', 'SPLIT', 'OTHER']).nullable().optional(),
         registerNumber: z.number().int().min(1).max(20).nullable().optional(),
@@ -140,8 +140,8 @@ export const CustomerActivityMetadataSchemas = {
             name: z.string().min(1).max(120),
             category: z.string().max(80).nullable().optional(),
             quantity: z.number().int().min(1).max(999),
-            unitPriceCents: MoneyCentsSchema.nullable().optional(),
-            totalCents: MoneyCentsSchema,
+            unitPrice: MoneySchema.nullable().optional(),
+            total: MoneySchema,
         }))
             .max(50)
             .nullable()
@@ -154,11 +154,11 @@ export const CustomerActivityMetadataSchemas = {
             code: z.string().max(80).nullable().optional(),
             name: z.string().min(1).max(120),
             quantity: z.number().int().min(1).max(999),
-            totalCents: MoneyCentsSchema,
+            total: MoneySchema,
         }))
             .min(1)
             .max(50),
-        totalCents: MoneyCentsSchema,
+        total: MoneySchema,
         currency: z.enum(['USD']),
         paymentIntentId: uuidSchema.nullable().optional(),
     }),
@@ -187,8 +187,8 @@ export const CustomerActivityMetadataSchemas = {
         notePreview: z.string().max(140).nullable().optional(),
     }),
     PAST_DUE_WAIVED: z.object({
-        previousPastDueCents: MoneyCentsSchema,
-        newPastDueCents: MoneyCentsSchema,
+        previousPastDue: MoneySchema,
+        newPastDue: MoneySchema,
         reason: z.string().max(200).nullable().optional(),
     }),
 };

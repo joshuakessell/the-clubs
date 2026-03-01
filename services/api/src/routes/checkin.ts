@@ -17,6 +17,7 @@ import { registerCheckinScanRoutes } from './checkin/scan';
 import { registerCheckinSelectionRoutes } from './checkin/selection';
 import { registerCheckinSwitchResourceRoutes } from './checkin/switch-resource';
 import { registerCheckinWaitlistRoutes } from './checkin/waitlist';
+import { registerKioskHeartbeatRoutes } from './checkin/kiosk-heartbeat';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -61,4 +62,6 @@ export async function checkinRoutes(fastify: FastifyInstance): Promise<void> {
   registerCheckinFlowCommandRoutes(fastify);
 
   registerCheckinResetRoutes(fastify);
+
+  registerKioskHeartbeatRoutes(fastify);
 }

@@ -62,7 +62,7 @@ export function AgreementScreen() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (kioskToken) headers['x-kiosk-token'] = kioskToken;
       const res = await fetch(
-        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/kiosk-sign`),
+        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/sign-agreement`),
         {
           method: 'POST',
           headers,

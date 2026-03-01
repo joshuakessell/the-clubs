@@ -1,18 +1,46 @@
+import { useEffect, useState, useRef } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { useI18n } from '../i18n';
 import { useKioskSession } from '../KioskSessionContext';
 
+const COUNTDOWN_SECONDS = 5;
+
 /**
  * CompleteScreen — Room/locker assignment display.
- * Maps to the ASSIGNMENT step: shows room number + checkout time.
- * Remains visible until cleared by the employee (no auto-countdown).
- * Updates in real-time if the employee changes the room assignment.
+ *
+ * Phase 1 (ASSIGNMENT): Shows room number + checkout time.
+ *   Updates in real-time if the employee changes the room assignment.
+ *
+ * Phase 2 (COMPLETED): Employee clicked "Complete Checkin".
+ *   A visible 5-second countdown appears, then the kiosk resets to idle.
  */
 export function CompleteScreen() {
-  const { sessionPayload, customerName } = useKioskSession();
+  const { sessionPayload, customerName, reset } = useKioskSession();
   const assignedResourceType = sessionPayload?.assignedResourceType;
   const assignedResourceNumber = sessionPayload?.assignedResourceNumber;
   const { t } = useI18n();
+
+  const isCompleted = sessionPayload?.status === 'COMPLETED';
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const countdownStarted = useRef(false);
+
+  // When session becomes COMPLETED, start the 5-second countdown
+  useEffect(() => {
+    if (!isCompleted || countdownStarted.current) return;
+    countdownStarted.current = true;
+    setCountdown(COUNTDOWN_SECONDS);
+  }, [isCompleted]);
+
+  // Tick the countdown each second
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) {
+      reset();
+      return;
+    }
+    const timer = setTimeout(() => setCountdown((c) => (c ?? 1) - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown, reset]);
 
   const isLocker = assignedResourceType === 'locker';
 
@@ -72,10 +100,29 @@ export function CompleteScreen() {
           </div>
         </div>
 
-        {/* Status message */}
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-          Please enjoy your visit!
-        </p>
+        {/* Countdown or status message */}
+        {countdown !== null ? (
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-sm font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
+              Returning to home in
+            </p>
+            <div
+              className="flex h-14 w-14 items-center justify-center rounded-full text-2xl font-extrabold tabular-nums"
+              style={{
+                backgroundColor: 'rgba(0, 212, 255, 0.08)',
+                border: '2px solid var(--color-border-accent)',
+                color: 'var(--color-accent-primary)',
+                fontFamily: 'var(--font-display)',
+              }}
+            >
+              {countdown}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            Please enjoy your visit!
+          </p>
+        )}
       </div>
     </ScreenShell>
   );

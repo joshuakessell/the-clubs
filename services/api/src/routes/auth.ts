@@ -142,6 +142,12 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         );
         const sessionId = sessionResult.rows[0]!.id;
 
+        // Log for correlation with auth_reject diagnostics
+        request.log.info(
+          { staffId: staff.id, tokenHashPrefix: tokenHash.slice(0, 8), sessionId, deviceId: body.deviceId },
+          'auth_login: session created successfully'
+        );
+
         // Log audit action (use session UUID id, not the token string)
         await insertAuditLog(client, {
           staffId: staff.id,

@@ -141,27 +141,25 @@ export function IdleScreen() {
     setChargeItems(items);
     prevKeyRef.current = lineItemsKey;
 
-    // After logo animation (2.4s) + card fade-in (1s), fade in items sequentially
+    // Fade in items sequentially without delay
     clearTimers();
-    addTimer(() => {
-      items.forEach((_, index) => {
+    items.forEach((_, index) => {
+      addTimer(() => {
+        setChargeItems((prev) =>
+          prev.map((item, i) =>
+            i === index ? { ...item, phase: 'fading-in' } : item
+          )
+        );
+        // Mark as visible after 1s fade
         addTimer(() => {
           setChargeItems((prev) =>
             prev.map((item, i) =>
-              i === index ? { ...item, phase: 'fading-in' } : item
+              i === index ? { ...item, phase: 'visible' } : item
             )
           );
-          // Mark as visible after 1s fade
-          addTimer(() => {
-            setChargeItems((prev) =>
-              prev.map((item, i) =>
-                i === index ? { ...item, phase: 'visible' } : item
-              )
-            );
-          }, 1000);
-        }, index * 300); // 0.3s stagger between items
-      });
-    }, 3400);
+        }, 1000);
+      }, index * 300); // 0.3s stagger between items
+    });
 
     // Reset on cleanup so StrictMode re-mount can re-schedule animations
     return () => {
@@ -171,38 +169,19 @@ export function IdleScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckinActive, lineItemsKey]);
 
-  // Handle items arriving for the first time after check-in already started
+  // Handle items arriving for the first time after check-in already started — instant
   useEffect(() => {
     if (!isCheckinActive || !wasActiveRef.current) return;
     if (prevKeyRef.current !== '' || lineItemsKey === '') return;
 
-    const items: ChargeItem[] = lineItems.map((item) => ({
-      description: item.description,
-      amount: item.amount,
-      phase: 'hidden' as const,
-    }));
-    setChargeItems(items);
     prevKeyRef.current = lineItemsKey;
-
-    clearTimers();
-    addTimer(() => {
-      items.forEach((_, index) => {
-        addTimer(() => {
-          setChargeItems((prev) =>
-            prev.map((item, i) =>
-              i === index ? { ...item, phase: 'fading-in' } : item
-            )
-          );
-          addTimer(() => {
-            setChargeItems((prev) =>
-              prev.map((item, i) =>
-                i === index ? { ...item, phase: 'visible' } : item
-              )
-            );
-          }, 1000);
-        }, index * 300);
-      });
-    }, 3400);
+    setChargeItems(
+      lineItems.map((item) => ({
+        description: item.description,
+        amount: item.amount,
+        phase: 'visible' as const,
+      }))
+    );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckinActive, lineItemsKey]);
 
@@ -214,14 +193,56 @@ export function IdleScreen() {
     clearTimers();
     prevKeyRef.current = lineItemsKey;
 
-    // Instantly replace items as visible
-    setChargeItems(
-      lineItems.map((item) => ({
-        description: item.description,
-        amount: item.amount,
-        phase: 'visible' as const,
-      }))
-    );
+    // Calculate new items that were added
+    setChargeItems((prev) => {
+      // Create a map of existing items for easy lookup
+      const existingMap = new Map();
+      prev.forEach((item, index) => {
+        // Use index as part of key to handle duplicate descriptions
+        existingMap.set(`${item.description}-${index}`, item);
+      });
+
+      // Build the new state, keeping existing items and adding new ones as hidden
+      const nextItems: ChargeItem[] = lineItems.map((newItem, index) => {
+        const key = `${newItem.description}-${index}`;
+        if (existingMap.has(key)) {
+          // Keep existing item (preserves its visible phase)
+          return existingMap.get(key);
+        } else {
+          // New item starts hidden, we'll fade it in
+          return {
+            description: newItem.description,
+            amount: newItem.amount,
+            phase: 'hidden' as const,
+          };
+        }
+      });
+
+      // Find indices of newly added items to schedule their fade-in
+      const addedIndices = nextItems
+        .map((item, index) => (item.phase === 'hidden' ? index : -1))
+        .filter((index) => index !== -1);
+
+      if (addedIndices.length > 0) {
+        addTimer(() => {
+          setChargeItems((current) =>
+            current.map((item, index) =>
+              addedIndices.includes(index) ? { ...item, phase: 'fading-in' } : item
+            )
+          );
+          // Mark as fully visible after animation
+          addTimer(() => {
+            setChargeItems((current) =>
+              current.map((item, index) =>
+                addedIndices.includes(index) ? { ...item, phase: 'visible' } : item
+              )
+            );
+          }, 1000);
+        }, 50); // Small delay to ensure render happens with 'hidden' class first
+      }
+
+      return nextItems;
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCheckinActive, lineItemsKey]);
 
@@ -249,12 +270,12 @@ export function IdleScreen() {
             transition,
             ...(isCheckinActive
               ? {
-                  paddingTop: 34,
+                  paddingTop: 28,
                   transform: 'scale(0.65)',
                   transformOrigin: 'top center',
                 }
               : {
-                  paddingTop: 'calc(50dvh - 180px)',
+                  paddingTop: 'calc(50dvh - 186px)',
                   transform: 'scale(1)',
                   transformOrigin: 'top center',
                 }),
@@ -363,9 +384,9 @@ export function IdleScreen() {
                   const opacity =
                     item.phase === 'fading-in' || item.phase === 'visible' ? 1 : 0;
                   const itemTransition =
-                    item.phase === 'hidden'
-                      ? 'none'
-                      : 'opacity 1s ease, transform 1s ease';
+                    item.phase === 'fading-in'
+                      ? 'opacity 1s ease, transform 1s ease'
+                      : 'none';
                   const translateY =
                     item.phase === 'hidden' ? 8 : 0;
 

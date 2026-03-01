@@ -43,7 +43,7 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
           occupancy_id: string;
           visit_id: string | null;
           late_minutes: number;
-          fee_amount_cents: number;
+          fee_amount: number;
           recommended_ban_days: number;
           status: string;
           created_at: Date;
@@ -59,7 +59,7 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
             a.occupancy_id,
             a.visit_id,
             a.late_minutes,
-            a.fee_amount_cents,
+            a.fee_amount,
             a.recommended_ban_days,
             a.status,
             a.created_at,
@@ -102,7 +102,7 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
         occupancyId: r.occupancy_id,
         visitId: r.visit_id,
         lateMinutes: r.late_minutes,
-        feeAmountCents: r.fee_amount_cents,
+        feeAmount: r.fee_amount,
         recommendedBanDays: r.recommended_ban_days,
         status: r.status,
         createdAt: r.created_at.toISOString(),

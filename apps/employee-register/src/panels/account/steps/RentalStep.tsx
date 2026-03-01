@@ -39,17 +39,22 @@ export function RentalStep() {
 
   const handleToggle = (rentalType: string) => {
     startTransition(async () => {
-      if (effectiveSelection === rentalType && confirmed) {
-        // Already selected → deselect
+      // If there's already a confirmed selection, cancel it first to unlock the step
+      if (confirmed) {
         await sendFlowCommand({ type: 'CANCEL_STEP' });
-      } else if (effectiveSelection === rentalType && !confirmed) {
-        // Proposed but not confirmed → confirm it
-        await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
-      } else {
-        // Select a new type → propose + confirm
-        await sendFlowCommand({ type: 'PROPOSE_SELECTION', payload: { rentalType } });
-        // Small delay to let the version update propagate
+        // Small delay to let the clear propagate
         await new Promise((r) => setTimeout(r, 100));
+      }
+      
+      const unavailable = isTypeUnavailable(rentalType, inventory);
+
+      // Select the new type → propose
+      await sendFlowCommand({ type: 'PROPOSE_SELECTION', payload: { rentalType } });
+      await new Promise((r) => setTimeout(r, 100));
+
+      // ONLY confirm it if it is actually available!
+      // If unavailable, we leave it unconfirmed so it doesn't hit the ledger preview.
+      if (!unavailable) {
         await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
       }
     });
@@ -64,8 +69,8 @@ export function RentalStep() {
     });
   };
 
-  // Show Next if there's a confirmed selection
-  const showNext = !!effectiveSelection && confirmed;
+  // Show Next if there's an effective selection (even if unconfirmed, to support waitlist flow)
+  const showNext = !!effectiveSelection;
 
   return (
     <div className="flex flex-col gap-4">
@@ -99,7 +104,7 @@ export function RentalStep() {
           const available = typeof count === 'number' ? count : 0;
           const isUnavailable = typeof count === 'number' && count === 0;
           const allowed = sp.allowedRentals?.includes(type) ?? true;
-          const isSelected = effectiveSelection === type && confirmed;
+          const isSelected = effectiveSelection === type;
 
           return (
             <button

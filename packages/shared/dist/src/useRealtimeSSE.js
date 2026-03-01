@@ -13,6 +13,7 @@ import { safeParseRealtimeEvent } from './realtimeSchemas.js';
  */
 export function useRealtimeSSE({ url, onEvent, authParams, enabled = true, heartbeatTimeoutMs = 65_000, }) {
     const [connected, setConnected] = useState(false);
+    const [reconnectCount, setReconnectCount] = useState(0);
     const onEventRef = useRef(onEvent);
     onEventRef.current = onEvent;
     // Build URL with auth query params (EventSource doesn't support custom headers)
@@ -46,9 +47,11 @@ export function useRealtimeSSE({ url, onEvent, authParams, enabled = true, heart
             if (heartbeatTimer)
                 clearTimeout(heartbeatTimer);
             heartbeatTimer = setTimeout(() => {
-                // No heartbeat received — close to trigger auto-reconnect
+                // No heartbeat received — close and trigger reconnection
+                // by incrementing reconnectCount (a useEffect dependency).
                 eventSource.close();
                 setConnected(false);
+                setReconnectCount((c) => c + 1);
             }, heartbeatTimeoutMs);
         };
         eventSource.onopen = () => {
@@ -59,6 +62,9 @@ export function useRealtimeSSE({ url, onEvent, authParams, enabled = true, heart
             resetHeartbeat();
             try {
                 const data = JSON.parse(event.data);
+                // Skip HEARTBEAT events — they are keepalive pings, not app events
+                if (typeof data === 'object' && data !== null && data.type === 'HEARTBEAT')
+                    return;
                 const parsed = safeParseRealtimeEvent(data);
                 if (parsed) {
                     onEventRef.current(parsed);
@@ -78,7 +84,7 @@ export function useRealtimeSSE({ url, onEvent, authParams, enabled = true, heart
                 clearTimeout(heartbeatTimer);
             setConnected(false);
         };
-    }, [buildUrl, enabled, heartbeatTimeoutMs]);
+    }, [buildUrl, enabled, heartbeatTimeoutMs, reconnectCount]);
     return { connected };
 }
 //# sourceMappingURL=useRealtimeSSE.js.map

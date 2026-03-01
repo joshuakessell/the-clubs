@@ -580,11 +580,11 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
               `INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
                VALUES ($1, $2, $3, $4, $5)
                ON CONFLICT (session_id, command_id) DO NOTHING`,
-              [session.id, commandId, 'CUSTOMER', 'SET_STEP', { step: 'AGREEMENT' }]
+              [session.id, commandId, 'CUSTOMER', 'SET_STEP', { step: 'ASSIGNMENT' }]
             );
             await client.query(
               `UPDATE lane_sessions
-               SET flow_step = 'AGREEMENT',
+               SET flow_step = 'ASSIGNMENT',
                    flow_version = COALESCE(flow_version, 0) + 1,
                    flow_last_command_id = $1,
                    flow_last_actor = 'CUSTOMER',
@@ -709,10 +709,34 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
           };
           fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, laneId);
 
-          return { success: true, sessionId: session.id, customerId: session.customer_id, visitId, checkinBlockId };
+          return { success: true, sessionId: session.id, customerId: session.customer_id, visitId, checkinBlockId, assignedResourceType, assignedResourceNumber, rentalType };
         });
 
         await transaction(async (client) => {
+          // Activity event: AGREEMENT_SIGNED (resource assignment details)
+          await insertCustomerActivityEvent(client, {
+            customerId: result.customerId,
+            actionType: 'AGREEMENT_SIGNED',
+            actionCategory: 'CHECKIN',
+            sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
+            actorType: request.staff ? 'STAFF' : 'CUSTOMER',
+            actorStaffId: request.staff?.staffId ?? null,
+            actorStaffName: request.staff?.name ?? null,
+            summary: `Agreement signed — ${result.assignedResourceType} ${result.assignedResourceNumber} (${result.rentalType})`,
+            metadata: {
+              visitId: result.visitId,
+              checkinBlockId: result.checkinBlockId,
+              laneId,
+              laneSessionId: result.sessionId,
+              ...(result.assignedResourceType === 'room'
+                ? { roomNumber: result.assignedResourceNumber }
+                : { lockerNumber: result.assignedResourceNumber }),
+            },
+            dedupeKey: result.checkinBlockId ? `ACT:AGREEMENT_SIGNED:${result.checkinBlockId}` : null,
+            searchParts: [result.assignedResourceNumber ?? ''],
+          });
+
+          // Activity event: CHECKIN_COMPLETED
           const event = await insertCustomerActivityEvent(client, {
             customerId: result.customerId,
             actionType: 'CHECKIN_COMPLETED',
@@ -736,13 +760,13 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
             {
               customerActivityEventId: event.id,
               customerId: result.customerId,
-              actionType: 'CHECKIN_COMPLETED',
-              actionCategory: 'CHECKIN',
-              sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
-              actorType: request.staff ? 'STAFF' : 'CUSTOMER',
-              actorStaffId: request.staff?.staffId ?? null,
+              sessionId: result.sessionId,
+              assignedResourceType: result.assignedResourceType,
+              assignedResourceNumber: result.assignedResourceNumber,
+              rentalType: result.rentalType,
+              laneId,
             },
-            'customer_activity_event'
+            'Agreement signed and check-in completed'
           );
         });
 

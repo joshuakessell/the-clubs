@@ -22,7 +22,7 @@ type SquarePayment = {
   referenceId?: string | null;
 };
 
-function toCents(value: number | string | bigint | null | undefined): number | null {
+function toDollars(value: number | string | bigint | null | undefined): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
   if (typeof value === 'bigint') return Number(value);
@@ -32,10 +32,10 @@ function toCents(value: number | string | bigint | null | undefined): number | n
 
 function toMoneyAmount(money?: SquareMoney | null, fallbackCurrency?: string): MoneyAmount | null {
   if (!money) return null;
-  const amountCents = toCents(money.amount ?? null);
-  if (amountCents === null) return null;
+  const amount = toDollars(money.amount ?? null);
+  if (amount === null) return null;
   const currency = money.currency || fallbackCurrency || 'USD';
-  return { amountCents, currency };
+  return { amount, currency };
 }
 
 function mapSourceType(sourceType?: string | null): 'CARD' | 'CASH' | 'OTHER' | null {
@@ -48,10 +48,10 @@ function mapSourceType(sourceType?: string | null): 'CARD' | 'CASH' | 'OTHER' | 
 
 export function mapSquareStatus(payment: SquarePayment): PaymentStatus {
   const status = payment.status?.toUpperCase();
-  const refunded = toCents(payment.refundedMoney?.amount ?? null) ?? 0;
+  const refunded = toDollars(payment.refundedMoney?.amount ?? null) ?? 0;
   const total =
-    toCents(payment.totalMoney?.amount ?? null) ??
-    toCents(payment.amountMoney?.amount ?? null) ??
+    toDollars(payment.totalMoney?.amount ?? null) ??
+    toDollars(payment.amountMoney?.amount ?? null) ??
     0;
 
   if (status === 'COMPLETED') {
@@ -74,7 +74,7 @@ export function mapSquareStatus(payment: SquarePayment): PaymentStatus {
 
 export function mapSquarePayment(payment: SquarePayment): PaymentRecord {
   const totalMoney = payment.totalMoney ?? payment.amountMoney ?? null;
-  const amount = toMoneyAmount(totalMoney) ?? { amountCents: 0, currency: 'USD' };
+  const amount = toMoneyAmount(totalMoney) ?? { amount: 0, currency: 'USD' };
   const tipAmount = toMoneyAmount(payment.tipMoney ?? null, amount.currency);
   const taxAmount = toMoneyAmount(payment.taxMoney ?? null, amount.currency);
   const createdAt = payment.createdAt ?? payment.updatedAt ?? new Date().toISOString();

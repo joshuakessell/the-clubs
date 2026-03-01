@@ -9,8 +9,8 @@ export function toNumber(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-export function roundToCents(value: number): number {
-  return Math.round(value * 100) / 100;
+export function roundToWhole(value: number): number {
+  return Math.round(value);
 }
 
 export function parsePriceQuote(raw: unknown): {

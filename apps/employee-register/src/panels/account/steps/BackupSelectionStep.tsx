@@ -43,6 +43,15 @@ export function BackupSelectionStep() {
           backupRentalType: type,
         },
       });
+
+      // Small delay to let the waitlist update propagate
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Propose and confirm the backup selection so it replaces the preview
+      // price on the ledger and customer kiosk immediately.
+      await sendFlowCommand({ type: 'PROPOSE_SELECTION', payload: { rentalType: type } });
+      await new Promise((r) => setTimeout(r, 100));
+      await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
     });
   };
 
