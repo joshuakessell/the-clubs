@@ -3,3 +3,13 @@ node_modules
 .pnpm-lock.yaml
 .pnpm-workspace.yaml
 .env
+
+# Terraform
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+
+# SSH keys
+*.pem

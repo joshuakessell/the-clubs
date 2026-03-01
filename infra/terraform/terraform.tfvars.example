@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────
+# Terraform variables — copy to terraform.tfvars and set db_password
+# ─────────────────────────────────────────────────────────────
+
+project_name = "the-clubs"
+aws_region   = "us-east-1"
+environment  = "production"
+github_repo  = "joshuakessell/the-clubs"
+
+# EC2
+instance_type = "t3.micro"
+db_password   = "CHANGE_ME_TO_A_STRONG_PASSWORD"
+
+# Optional: provide an existing key pair name (leave empty to auto-generate)
+# key_pair_name = "my-existing-key"
+
+# Custom domains
+domain_customer_kiosk    = "customer-kiosk.joshuakessell.com"
+domain_employee_register = "employee-register.joshuakessell.com"
+domain_office_dashboard  = "office-dashboard.joshuakessell.com"
+
+# ACM certificate — leave empty to auto-create a wildcard cert for *.joshuakessell.com
+# If you already have a cert, paste the ARN here:
+# acm_certificate_arn = "arn:aws:acm:us-east-1:123456789:certificate/abc-123"
