@@ -168,6 +168,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: DB_PASSWORD
+          command_timeout: 30m
           script: |
             set -e
             APP_DIR="/home/ec2-user/the-clubs"
