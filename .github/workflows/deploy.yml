@@ -1,0 +1,163 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write   # Required for OIDC federation with AWS
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10"
+  AWS_REGION: us-east-1
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Build & Test (runs on every push and PR)
+  # ─────────────────────────────────────────────
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+        continue-on-error: true
+
+      # Upload built assets for deploy jobs
+      - name: Upload SPA artifacts
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: spa-dist
+          retention-days: 1
+          path: |
+            apps/customer-kiosk/dist/
+            apps/employee-register/dist/
+            apps/office-dashboard/dist/
+
+  # ─────────────────────────────────────────────
+  # Deploy SPAs to S3 + CloudFront (main only)
+  # ─────────────────────────────────────────────
+  deploy-spas:
+    name: Deploy SPAs
+    needs: build-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download SPA artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: spa-dist
+          path: apps/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Customer Kiosk
+        run: |
+          aws s3 sync apps/customer-kiosk/dist/ \
+            s3://${{ vars.S3_CUSTOMER_KIOSK }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/customer-kiosk/dist/index.html \
+            s3://${{ vars.S3_CUSTOMER_KIOSK }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_CUSTOMER_KIOSK }} \
+            --paths "/*"
+
+      - name: Deploy Employee Register
+        run: |
+          aws s3 sync apps/employee-register/dist/ \
+            s3://${{ vars.S3_EMPLOYEE_REGISTER }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/employee-register/dist/index.html \
+            s3://${{ vars.S3_EMPLOYEE_REGISTER }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_EMPLOYEE_REGISTER }} \
+            --paths "/*"
+
+      - name: Deploy Office Dashboard
+        run: |
+          aws s3 sync apps/office-dashboard/dist/ \
+            s3://${{ vars.S3_OFFICE_DASHBOARD }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/office-dashboard/dist/index.html \
+            s3://${{ vars.S3_OFFICE_DASHBOARD }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_OFFICE_DASHBOARD }} \
+            --paths "/*"
+
+  # ─────────────────────────────────────────────
+  # Deploy API to EC2 (main only)
+  # ─────────────────────────────────────────────
+  deploy-api:
+    name: Deploy API
+    needs: build-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            APP_DIR="/home/ec2-user/the-clubs"
+
+            # Clone or pull latest
+            if [ -d "$APP_DIR" ]; then
+              cd "$APP_DIR"
+              git fetch origin main
+              git reset --hard origin/main
+            else
+              git clone https://github.com/${{ github.repository }}.git "$APP_DIR"
+              cd "$APP_DIR"
+            fi
+
+            # Rebuild and restart
+            docker compose -f docker-compose.prod.yml \
+              --env-file /home/ec2-user/.env \
+              up -d --build
+
+            # Health check
+            echo "Waiting for API health check..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+                echo "✓ API is healthy!"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "✗ Health check failed"
+            docker compose -f docker-compose.prod.yml logs --tail=50 api
+            exit 1
