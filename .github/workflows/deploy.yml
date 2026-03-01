@@ -54,6 +54,20 @@ jobs:
             apps/employee-register/dist/
             apps/office-dashboard/dist/
 
+      - name: Upload API artifact
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-bundle
+          retention-days: 1
+          path: |
+            services/api/
+            packages/shared/
+            docker-compose.prod.yml
+            package.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+
   # ─────────────────────────────────────────────
   # Deploy SPAs to S3 + CloudFront (main only)
   # ─────────────────────────────────────────────
@@ -123,26 +137,40 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to EC2 via SSH
+      - name: Download API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-bundle
+          path: api-bundle/
+
+      - name: Package API for transfer
+        run: tar -czf api-bundle.tar.gz -C api-bundle .
+
+      - name: Copy API bundle to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: api-bundle.tar.gz
+          target: /home/ec2-user/
+
+      - name: Deploy on EC2
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          script_stop: true
           script: |
             set -e
             APP_DIR="/home/ec2-user/the-clubs"
 
-            # Clone or pull latest
-            if [ -d "$APP_DIR" ]; then
-              cd "$APP_DIR"
-              git fetch origin main
-              git reset --hard origin/main
-            else
-              git clone https://github.com/${{ github.repository }}.git "$APP_DIR"
-              cd "$APP_DIR"
-            fi
+            # Unpack the bundle
+            mkdir -p "$APP_DIR"
+            tar -xzf /home/ec2-user/api-bundle.tar.gz -C "$APP_DIR"
+            rm /home/ec2-user/api-bundle.tar.gz
+
+            cd "$APP_DIR"
 
             # Rebuild and restart
             docker compose -f docker-compose.prod.yml \
@@ -153,11 +181,11 @@ jobs:
             echo "Waiting for API health check..."
             for i in $(seq 1 30); do
               if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-                echo "✓ API is healthy!"
+                echo "API is healthy!"
                 exit 0
               fi
               sleep 2
             done
-            echo "✗ Health check failed"
+            echo "Health check failed"
             docker compose -f docker-compose.prod.yml logs --tail=50 api
             exit 1
