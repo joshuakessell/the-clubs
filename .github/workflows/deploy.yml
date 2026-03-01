@@ -157,10 +157,13 @@ jobs:
 
       - name: Deploy on EC2
         uses: appleboy/ssh-action@v1
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DB_PASSWORD
           script: |
             set -e
             APP_DIR="/home/ec2-user/the-clubs"
@@ -178,6 +181,16 @@ jobs:
               mkdir -p ~/.docker/cli-plugins
               curl -sSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx
               chmod +x ~/.docker/cli-plugins/docker-buildx
+            fi
+
+            # Create .env if it doesn't exist
+            if [ ! -f /home/ec2-user/.env ]; then
+              cat > /home/ec2-user/.env << EOF
+            DB_NAME=club_operations
+            DB_USER=clubops
+            DB_PASSWORD=${DB_PASSWORD}
+            CORS_ORIGINS=*
+            EOF
             fi
 
             # Rebuild and restart
