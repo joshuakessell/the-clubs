@@ -5,18 +5,27 @@ RUN corepack enable
 
 # ── Dependencies ─────────────────────────────────────
 FROM base AS deps
+# Copy all workspace package.json files (lockfile needs all workspace members)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/ui/package.json ./packages/ui/package.json
 COPY services/api/package.json ./services/api/package.json
+COPY apps/customer-kiosk/package.json ./apps/customer-kiosk/package.json
+COPY apps/employee-register/package.json ./apps/employee-register/package.json
+COPY apps/office-dashboard/package.json ./apps/office-dashboard/package.json
 
 # Install ALL deps (need devDependencies for build step)
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter @the-clubs/shared --filter @the-clubs/api
 
 # ── Build ────────────────────────────────────────────
 FROM deps AS build
-# Copy source code
-COPY packages/shared/ ./packages/shared/
-COPY services/api/ ./services/api/
+# Copy source code and build configs
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json ./packages/shared/tsconfig.json
+COPY services/api/src ./services/api/src
+COPY services/api/tsconfig.json ./services/api/tsconfig.json
+COPY services/api/tsconfig.build.json ./services/api/tsconfig.build.json
+COPY tsconfig.base.json ./tsconfig.base.json
 
 # Build shared package, then API
 RUN pnpm --filter @the-clubs/shared build && \
@@ -26,9 +35,13 @@ RUN pnpm --filter @the-clubs/shared build && \
 FROM base AS prod-deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/ui/package.json ./packages/ui/package.json
 COPY services/api/package.json ./services/api/package.json
+COPY apps/customer-kiosk/package.json ./apps/customer-kiosk/package.json
+COPY apps/employee-register/package.json ./apps/employee-register/package.json
+COPY apps/office-dashboard/package.json ./apps/office-dashboard/package.json
 
-RUN pnpm install --prod --frozen-lockfile
+RUN pnpm install --prod --frozen-lockfile --filter @the-clubs/shared --filter @the-clubs/api
 
 # ── Runner ───────────────────────────────────────────
 FROM node:22-alpine AS runner
