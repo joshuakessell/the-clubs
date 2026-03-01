@@ -3,8 +3,6 @@ name: Deploy
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read
@@ -63,10 +61,16 @@ jobs:
           path: |
             services/api/
             packages/shared/
+            packages/ui/package.json
+            apps/customer-kiosk/package.json
+            apps/employee-register/package.json
+            apps/office-dashboard/package.json
             docker-compose.prod.yml
+            .dockerignore
             package.json
             pnpm-lock.yaml
             pnpm-workspace.yaml
+            tsconfig.base.json
 
   # ─────────────────────────────────────────────
   # Deploy SPAs to S3 + CloudFront (main only)
