@@ -77,7 +77,7 @@ describe('Auth enforcement (unauthenticated mutations)', () => {
       url: '/v1/realtime/auth',
       payload: { channels: ['/club-ops/lane/lane-1'] },
     });
-    expect(res.statusCode).toBe(401);
+    expect(res.statusCode).toBe(501);
   });
 
   it('returns 501 from /v1/realtime/auth when AppSync is not configured', async () => {

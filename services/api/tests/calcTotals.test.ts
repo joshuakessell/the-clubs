@@ -26,7 +26,7 @@ describe('calcTotals', () => {
       payment: {
         tip: 100,
         metadata: {
-          tip_revision_cents: 350,
+          tip_revision: 350,
         },
       },
     });

@@ -52,8 +52,14 @@ jobs:
           name: api-bundle
           retention-days: 1
           path: |
-            services/api/
-            packages/shared/
+            services/api/src/
+            services/api/package.json
+            services/api/tsconfig.json
+            services/api/tsconfig.build.json
+            services/api/Dockerfile
+            packages/shared/src/
+            packages/shared/package.json
+            packages/shared/tsconfig.json
             packages/ui/package.json
             apps/customer-kiosk/package.json
             apps/employee-register/package.json
