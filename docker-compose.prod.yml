@@ -22,9 +22,7 @@ services:
       - internal
 
   api:
-    build:
-      context: .
-      dockerfile: services/api/Dockerfile
+    image: the-clubs-api:latest
     container_name: club-ops-api
     restart: unless-stopped
     depends_on:

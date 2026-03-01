@@ -137,18 +137,21 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: api-bundle
-          path: api-bundle/
+          path: .
 
-      - name: Package API for transfer
-        run: tar -czf api-bundle.tar.gz -C api-bundle .
+      - name: Build Docker image in CI
+        run: |
+          docker build -t the-clubs-api:latest -f services/api/Dockerfile .
+          docker save the-clubs-api:latest | gzip > api-image.tar.gz
+          ls -lh api-image.tar.gz
 
-      - name: Copy API bundle to EC2
+      - name: Copy image + compose to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: api-bundle.tar.gz
+          source: "api-image.tar.gz,docker-compose.prod.yml"
           target: /home/ec2-user/
 
       - name: Deploy on EC2
@@ -160,26 +163,19 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: DB_PASSWORD
-          command_timeout: 30m
+          command_timeout: 10m
           script: |
             set -e
-            APP_DIR="/home/ec2-user/the-clubs"
 
-            # Unpack the bundle
-            mkdir -p "$APP_DIR"
-            tar -xzf /home/ec2-user/api-bundle.tar.gz -C "$APP_DIR"
-            rm /home/ec2-user/api-bundle.tar.gz
+            # Load pre-built image
+            echo "Loading Docker image..."
+            docker load < /home/ec2-user/api-image.tar.gz
+            rm /home/ec2-user/api-image.tar.gz
 
-            cd "$APP_DIR"
-
-            # Backup current state for rollback
-            if [ -d "$APP_DIR/.backup" ]; then
-              rm -rf "$APP_DIR/.backup.old"
-              mv "$APP_DIR/.backup" "$APP_DIR/.backup.old"
-            fi
-            mkdir -p "$APP_DIR/.backup"
-            docker compose -f docker-compose.prod.yml --env-file /home/ec2-user/.env ps > "$APP_DIR/.backup/container-state.txt" 2>&1 || true
-            docker images | grep club-ops-api > "$APP_DIR/.backup/image-state.txt" 2>&1 || true
+            # Move compose file into place
+            mkdir -p /home/ec2-user/the-clubs
+            mv /home/ec2-user/docker-compose.prod.yml /home/ec2-user/the-clubs/
+            cd /home/ec2-user/the-clubs
 
             # Create .env if it doesn't exist
             if [ ! -f /home/ec2-user/.env ]; then
@@ -191,37 +187,24 @@ jobs:
             EOF
             fi
 
-            # Pull latest buildx
-            mkdir -p ~/.docker/cli-plugins
-            BUILDX_VERSION="0.21.2"
-            if ! docker buildx version 2>/dev/null | grep -q "$BUILDX_VERSION"; then
-              curl -sSL "https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-amd64" -o ~/.docker/cli-plugins/docker-buildx
-              chmod +x ~/.docker/cli-plugins/docker-buildx
-            fi
-
-            # Rebuild and restart
+            # Start/restart containers (no --build, image already loaded)
             docker compose -f docker-compose.prod.yml \
               --env-file /home/ec2-user/.env \
-              up -d --build
+              up -d
 
-            # Health check with retry
+            # Health check
             echo "Waiting for API health check..."
-            MAX_ATTEMPTS=30
-            for i in $(seq 1 $MAX_ATTEMPTS); do
+            for i in $(seq 1 30); do
               if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
                 echo "✓ API is healthy!"
                 exit 0
               fi
-              if [ $i -lt $MAX_ATTEMPTS ]; then
-                echo "  Attempt $i/$MAX_ATTEMPTS - API not ready yet, retrying..."
-                sleep 2
-              fi
+              echo "  Attempt $i/30 - waiting..."
+              sleep 2
             done
 
-            echo "✗ Health check failed after $MAX_ATTEMPTS attempts"
-            echo "--- API Logs ---"
+            echo "✗ Health check failed"
             docker compose -f docker-compose.prod.yml logs --tail=50 api
-            echo "--- Database Logs ---"
             docker compose -f docker-compose.prod.yml logs --tail=50 db
             exit 1
 
