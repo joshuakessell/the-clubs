@@ -73,8 +73,7 @@ COPY --from=prod-deps --chown=nodejs:nodejs /repo/node_modules ./node_modules
 COPY --from=prod-deps --chown=nodejs:nodejs /repo/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=prod-deps --chown=nodejs:nodejs /repo/services/api/node_modules ./services/api/node_modules
 
-# Copy shared source (exports point to src/index.ts) + compiled dist
-COPY --chown=nodejs:nodejs packages/shared/src ./packages/shared/src
+# Copy compiled shared package (exports point to dist/)
 COPY --from=build --chown=nodejs:nodejs /repo/packages/shared/dist ./packages/shared/dist
 
 # Copy compiled API
