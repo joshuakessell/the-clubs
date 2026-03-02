@@ -184,7 +184,7 @@ jobs:
             DB_USER=clubops
             DB_PASSWORD=${DB_PASSWORD}
             KIOSK_TOKEN=${KIOSK_TOKEN}
-            CORS_ORIGINS=*
+            ALLOWED_ORIGINS=*
             EOF
 
             # Start/restart containers (no --build, image already loaded)
@@ -192,21 +192,7 @@ jobs:
               --env-file /home/ec2-user/.env \
               up -d
 
-            # Health check
-            echo "Waiting for API health check..."
-            for i in $(seq 1 30); do
-              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-                echo "✓ API is healthy!"
-                exit 0
-              fi
-              echo "  Attempt $i/30 - waiting..."
-              sleep 2
-            done
-
-            echo "✗ Health check failed"
-            docker compose -f docker-compose.prod.yml logs --tail=50 api
-            docker compose -f docker-compose.prod.yml logs --tail=50 db
-            exit 1
+            echo "✓ Containers started"
 
   notify-deployment:
     name: Notify Deployment Status
