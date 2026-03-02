@@ -1,4 +1,7 @@
 import type pg from 'pg';
+import { auditLog } from '../db/schema';
+import { sql } from 'drizzle-orm';
+import type { PgTransaction } from 'drizzle-orm/pg-core';
 
 export type AuditLogAction = string;
 
@@ -62,4 +65,37 @@ export async function insertAuditLog(
   input: InsertAuditLogInput
 ): Promise<void> {
   return insertAuditLogQuery(client.query.bind(client), input);
+}
+
+// Drizzle transaction type
+type DrizzleTx = PgTransaction<any, any, any>;
+
+function toJsonbRecord(value: unknown): Record<string, unknown> | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  return { value };
+}
+
+/**
+ * Drizzle-native audit log writer — uses tx.insert() for type-safe, injection-proof inserts.
+ * Use this instead of insertAuditLog when operating within a Drizzle transaction.
+ */
+export async function insertAuditLogDrizzle(
+  tx: DrizzleTx,
+  input: InsertAuditLogInput
+): Promise<void> {
+  await tx.insert(auditLog).values({
+    staffId: input.staffId ?? null,
+    userId: input.userId ?? null,
+    userRole: input.userRole ?? null,
+    action: sql`${input.action}::public.audit_action`,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    oldValue: toJsonbRecord(input.oldValue),
+    newValue: toJsonbRecord(input.newValue),
+    overrideReason: input.overrideReason ?? null,
+    ipAddress: input.ipAddress ?? null,
+    userAgent: input.userAgent ?? null,
+    metadata: toJsonbRecord(input.metadata),
+  });
 }
