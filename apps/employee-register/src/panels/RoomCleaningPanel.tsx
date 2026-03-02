@@ -12,9 +12,9 @@ interface Room {
 }
 
 /**
- * RoomCleaningPanel — Mark rooms as cleaned.
- * Fetches DIRTY/CLEANING rooms from GET /v1/inventory/rooms
- * and transitions them via POST /v1/cleaning/batch.
+ * RoomCleaningPanel — Mark dirty rooms as clean with a single tap.
+ * Fetches DIRTY rooms from GET /v1/inventory/rooms
+ * and transitions them directly to CLEAN via POST /v1/cleaning/batch.
  */
 export function RoomCleaningPanel() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -33,8 +33,8 @@ export function RoomCleaningPanel() {
       const res = await fetch(getApiUrl('/api/v1/inventory/rooms'), { headers });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      // Only show rooms that need cleaning attention
-      setRooms((data.rooms ?? []).filter((r: Room) => r.status === 'DIRTY' || r.status === 'CLEANING'));
+      // Only show rooms that need cleaning (DIRTY)
+      setRooms((data.rooms ?? []).filter((r: Room) => r.status === 'DIRTY'));
     } catch (err: any) {
       setError(err.message ?? 'Failed to load rooms');
     } finally {
@@ -46,7 +46,7 @@ export function RoomCleaningPanel() {
     void fetchRooms();
   }, [fetchRooms]);
 
-  const handleTransition = async (roomId: string, targetStatus: 'CLEANING' | 'CLEAN') => {
+  const handleMarkClean = async (roomId: string) => {
     setTransitioning(roomId);
     setError(null);
     try {
@@ -58,7 +58,7 @@ export function RoomCleaningPanel() {
         headers,
         body: JSON.stringify({
           roomIds: [roomId],
-          targetStatus,
+          targetStatus: 'CLEAN',
           override: false,
         }),
       });
@@ -80,7 +80,7 @@ export function RoomCleaningPanel() {
   return (
     <PanelShell align="top">
       <div className="flex items-center justify-between">
-        <PanelHeader title="Room Cleaning" subtitle="Mark rooms as cleaned after checkout" />
+        <PanelHeader title="Room Cleaning" subtitle="Tap to mark dirty rooms as clean" />
         <button
           onClick={() => void fetchRooms()}
           disabled={loading}
@@ -115,23 +115,17 @@ export function RoomCleaningPanel() {
               >
                 {r.number}
               </span>
-              <Badge color={r.status === 'CLEANING' ? 'warning' : 'error'} variant="light" size="sm">
-                {r.status.toLowerCase()}
+              <Badge color="error" variant="light" size="sm">
+                dirty
               </Badge>
             </div>
             <Button
               size="sm"
-              variant={r.status === 'CLEANING' ? 'primary' : 'outline'}
+              variant="primary"
               disabled={transitioning === r.id}
-              onClick={() =>
-                void handleTransition(r.id, r.status === 'CLEANING' ? 'CLEAN' : 'CLEANING')
-              }
+              onClick={() => void handleMarkClean(r.id)}
             >
-              {transitioning === r.id
-                ? 'Updating…'
-                : r.status === 'CLEANING'
-                  ? 'Mark Clean'
-                  : 'Start Cleaning'}
+              {transitioning === r.id ? 'Updating…' : 'Mark Clean'}
             </Button>
           </div>
         ))}

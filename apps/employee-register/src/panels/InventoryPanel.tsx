@@ -26,7 +26,6 @@ const STATUS_DOT: Record<string, string> = {
   CLEAN: 'var(--color-status-success)',
   OCCUPIED: 'var(--color-accent-primary)',
   DIRTY: 'var(--color-status-error)',
-  CLEANING: 'var(--color-status-warning)',
   OUT_OF_SERVICE: 'var(--color-text-muted)',
 };
 
@@ -34,7 +33,6 @@ const STATUS_LABEL: Record<string, string> = {
   CLEAN: 'Available',
   OCCUPIED: 'Occupied',
   DIRTY: 'Dirty',
-  CLEANING: 'Cleaning',
   OUT_OF_SERVICE: 'OOS',
 };
 
@@ -101,9 +99,8 @@ export function InventoryPanel() {
   const STATUS_SORT: Record<string, number> = {
     OCCUPIED: 0,
     DIRTY: 1,
-    CLEANING: 2,
-    OUT_OF_SERVICE: 3,
-    CLEAN: 4,
+    OUT_OF_SERVICE: 2,
+    CLEAN: 3,
   };
   const sortItems = (items: InventoryItem[]) =>
     [...items].sort(

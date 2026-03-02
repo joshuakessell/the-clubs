@@ -2,14 +2,15 @@ import { RoomStatus } from './enums.js';
 
 /**
  * Defines valid adjacent transitions for room status.
- * Normal flow: DIRTY → CLEANING → CLEAN → OCCUPIED → DIRTY (at checkout)
+ * Normal flow: DIRTY → CLEAN (single step) → OCCUPIED → DIRTY (at checkout)
  * Reverse is also allowed for corrections.
  */
 const ADJACENT_TRANSITIONS: Record<RoomStatus, RoomStatus[]> = {
-  [RoomStatus.DIRTY]: [RoomStatus.CLEANING, RoomStatus.OCCUPIED],
-  [RoomStatus.CLEANING]: [RoomStatus.DIRTY, RoomStatus.CLEAN],
-  [RoomStatus.CLEAN]: [RoomStatus.CLEANING, RoomStatus.DIRTY, RoomStatus.OCCUPIED],
+  [RoomStatus.DIRTY]: [RoomStatus.CLEAN, RoomStatus.OCCUPIED],
+  [RoomStatus.CLEANING]: [RoomStatus.DIRTY, RoomStatus.CLEAN], // legacy compat
+  [RoomStatus.CLEAN]: [RoomStatus.DIRTY, RoomStatus.OCCUPIED, RoomStatus.OUT_OF_SERVICE],
   [RoomStatus.OCCUPIED]: [RoomStatus.CLEAN, RoomStatus.DIRTY],
+  [RoomStatus.OUT_OF_SERVICE]: [RoomStatus.CLEAN, RoomStatus.DIRTY],
 };
 
 /**

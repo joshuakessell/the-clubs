@@ -15,6 +15,7 @@ import { registerAdminClubLogRoutes } from './admin/club-log';
 import { registerAdminClubAnalyticsRoutes } from './admin/club-analytics';
 import { registerAdminProductRoutes } from './admin/products';
 import { registerAdminMessageRoutes } from './admin/messages';
+import { registerRoomManagementRoutes } from './admin/room-management';
 
 /**
  * Admin-only routes for operations management and metrics.
@@ -47,4 +48,5 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
   registerAdminClubAnalyticsRoutes(fastify);
   registerAdminProductRoutes(fastify);
   registerAdminMessageRoutes(fastify);
+  registerRoomManagementRoutes(fastify);
 }

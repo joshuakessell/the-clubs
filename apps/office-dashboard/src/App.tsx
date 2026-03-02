@@ -15,6 +15,7 @@ import { MessagesView } from './views/MessagesView';
 import { StaffView } from './views/StaffView';
 import { TimeclockView } from './views/TimeclockView';
 import { DevicesView } from './views/DevicesView';
+import { RoomManagementView } from './views/RoomManagementView';
 
 /**
  * Route guard: renders children only if user has ADMIN role,
@@ -73,6 +74,7 @@ export default function App() {
     <Route path="/staff" element={<AdminOnly><StaffView /></AdminOnly>} />
     <Route path="/timeclock" element={<AdminOnly><TimeclockView /></AdminOnly>} />
     <Route path="/devices" element={<AdminOnly><DevicesView /></AdminOnly>} />
+    <Route path="/rooms" element={<AdminOnly><RoomManagementView /></AdminOnly>} />
 
     {/* Shared routes (ADMIN + STAFF) */}
     <Route path="/schedule" element={<ScheduleView />} />
