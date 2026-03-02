@@ -180,16 +180,16 @@ jobs:
             mv /home/ec2-user/docker-compose.prod.yml /home/ec2-user/the-clubs/
             cd /home/ec2-user/the-clubs
 
-            # Create .env if it doesn't exist
-            cat > /home/ec2-user/.env << EOF
-            DB_NAME=club_operations
-            DB_USER=clubops
-            DB_PASSWORD=${DB_PASSWORD}
-            KIOSK_TOKEN=${KIOSK_TOKEN}
-            ALLOWED_ORIGINS=*
-            DEMO_MODE=true
-            SEED_ON_STARTUP=true
-            EOF
+            # Create .env for docker-compose (printf avoids heredoc indentation issues)
+            printf '%s\n' \
+              'DB_NAME=club_operations' \
+              'DB_USER=clubops' \
+              'ALLOWED_ORIGINS=*' \
+              'DEMO_MODE=true' \
+              'SEED_ON_STARTUP=true' \
+              "DB_PASSWORD=${DB_PASSWORD}" \
+              "KIOSK_TOKEN=${KIOSK_TOKEN}" \
+              > /home/ec2-user/.env
 
             # Start/restart containers (no --build, image already loaded)
             docker compose -f docker-compose.prod.yml \
