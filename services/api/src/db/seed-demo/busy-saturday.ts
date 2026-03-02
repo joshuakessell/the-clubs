@@ -1126,7 +1126,13 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
           { name: 'Cruz Martinez', role: 'ADMIN', qrToken: 'ADMIN-001', pin: '123456' },
           { name: 'John Erikson', role: 'STAFF', qrToken: 'STAFF-001', pin: '111111' },
           { name: 'Maria Pineda', role: 'STAFF', qrToken: 'STAFF-002', pin: '222222' },
+          { name: 'David Chen', role: 'STAFF', qrToken: 'STAFF-003', pin: '333333' },
+          { name: 'Sarah Williams', role: 'STAFF', qrToken: 'STAFF-004', pin: '444444' },
           { name: 'Employee Two', role: 'STAFF', qrToken: 'STAFF-005', pin: '555555' },
+          { name: 'Rachel Torres', role: 'STAFF', qrToken: 'STAFF-006', pin: '666666' },
+          { name: 'James Cooper', role: 'STAFF', qrToken: 'STAFF-007', pin: '777777' },
+          { name: 'Angela Davis', role: 'ADMIN', qrToken: 'ADMIN-002', pin: '888888' },
+          { name: 'Marcus Johnson', role: 'STAFF', qrToken: 'STAFF-008', pin: '999999' },
         ];
 
         for (const staff of demoStaff) {
