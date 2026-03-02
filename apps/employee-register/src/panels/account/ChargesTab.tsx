@@ -160,7 +160,7 @@ export function ChargesTab() {
             >
               {lineItems.map((item, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-2">
-                  <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                  <span className="text-sm" style={{ color: 'var(--color-text-secondary)', fontStyle: item.description.includes('(waitlist)') ? 'italic' : undefined }}>
                     {item.description}
                   </span>
                   <div className="flex items-center gap-2">

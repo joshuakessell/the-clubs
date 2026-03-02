@@ -1,5 +1,8 @@
 {
-  "typescript.tsdk": "node_modules/typescript/lib",
   "editor.formatOnSave": false,
-  "editor.defaultFormatter": null
+  "editor.defaultFormatter": null,
+  "sonarlint.connectedMode.project": {
+    "connectionId": "joshuakessell",
+    "projectKey": "joshuakessell_the-clubs"
+  }
 }

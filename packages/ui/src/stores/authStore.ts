@@ -71,22 +71,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { session } = get();
     if (!session?.sessionToken) return;
 
+    // Capture the token we're validating so we can detect if the user logged in
+    // with a different token while this request was in-flight (e.g. stale
+    // localStorage token from a previous demo:dev run).
+    const tokenAtStart = session.sessionToken;
+
     set({ isValidating: true });
     try {
       const res = await fetch(getApiUrl('/api/v1/auth/me'), {
-        headers: { Authorization: `Bearer ${session.sessionToken}` },
+        headers: { Authorization: `Bearer ${tokenAtStart}` },
       });
       if (res.status === 401) {
-        // Session is no longer valid — clear it to redirect to login
-        localStorage.removeItem(STORAGE_KEY);
-        set({ session: null, isValidating: false });
+        // Only clear if the session hasn't changed (a new login may have occurred)
+        if (get().session?.sessionToken === tokenAtStart) {
+          localStorage.removeItem(STORAGE_KEY);
+          set({ session: null, isValidating: false });
+        }
         return;
       }
-      // Session is valid
-      set({ isValidating: false });
+      // Session is valid — only update if token hasn't changed
+      if (get().session?.sessionToken === tokenAtStart) {
+        set({ isValidating: false });
+      }
     } catch {
       // Network error — don't clear session (server might be temporarily down)
-      set({ isValidating: false });
+      if (get().session?.sessionToken === tokenAtStart) {
+        set({ isValidating: false });
+      }
     }
   },
 }));

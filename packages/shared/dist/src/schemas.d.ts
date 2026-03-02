@@ -43,18 +43,18 @@ export declare const RoomSchema: z.ZodObject<{
     overrideFlag: z.ZodBoolean;
 }, "strip", z.ZodTypeAny, {
     number: string;
+    id: string;
     type: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER";
     status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
-    id: string;
     floor: number;
     lastStatusChange: Date;
     overrideFlag: boolean;
     assignedToCustomerId?: string | undefined;
 }, {
     number: string;
+    id: string;
     type: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER";
     status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
-    id: string;
     floor: number;
     lastStatusChange: Date;
     overrideFlag: boolean;
@@ -82,8 +82,8 @@ export declare const RoomStatusUpdateSchema: z.ZodObject<{
 }, {
     roomId: string;
     newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
-    reason?: string | undefined;
     override?: boolean | undefined;
+    reason?: string | undefined;
 }>;
 /**
  * Zod schema for inventory summary.
@@ -126,8 +126,8 @@ export declare const BatchStatusUpdateSchema: z.ZodObject<{
 }, {
     newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     roomIds: string[];
-    reason?: string | undefined;
     override?: boolean | undefined;
+    reason?: string | undefined;
 }>;
 export declare const CustomerIdTypeSchema: z.ZodEnum<["STATE_ID", "DRIVERS_LICENSE", "PASSPORT", "OTHER"]>;
 /**

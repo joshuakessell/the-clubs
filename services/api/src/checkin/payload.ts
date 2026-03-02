@@ -387,6 +387,12 @@ export async function buildFullSessionUpdatedPayload(
           items.push({ description: label, amount: price });
           total += price;
         }
+
+        // Add the waitlisted desired type as a separate line (informational, $0)
+        if (isWaitlisted && session.waitlist_desired_type) {
+          const desiredLabel = rentalLabel[session.waitlist_desired_type as string] ?? (session.waitlist_desired_type as string);
+          items.push({ description: `${desiredLabel} (waitlist)`, amount: 0 });
+        }
       }
     }
 
@@ -434,7 +440,7 @@ export async function buildFullSessionUpdatedPayload(
       `SELECT COUNT(*) as count 
        FROM waitlist
        WHERE status IN ('ACTIVE', 'OFFERED')
-       AND desired_tier = ANY($1::text[])`,
+       AND desired_tier = ANY($1::rental_type[])`,
       [allDesiredTypes]
     );
 

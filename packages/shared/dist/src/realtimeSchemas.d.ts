@@ -67,22 +67,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        description: string;
         amount: number;
+        description: string;
     }, {
-        description: string;
         amount: number;
+        description: string;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        description: string;
         amount: number;
+        description: string;
     }, {
-        description: string;
         amount: number;
+        description: string;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;
@@ -140,22 +140,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        description: string;
         amount: number;
+        description: string;
     }, {
-        description: string;
         amount: number;
+        description: string;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        description: string;
         amount: number;
+        description: string;
     }, {
-        description: string;
         amount: number;
+        description: string;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;
@@ -213,22 +213,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        description: string;
         amount: number;
+        description: string;
     }, {
-        description: string;
         amount: number;
+        description: string;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        description: string;
         amount: number;
+        description: string;
     }, {
-        description: string;
         amount: number;
+        description: string;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;

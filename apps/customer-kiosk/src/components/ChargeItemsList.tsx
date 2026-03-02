@@ -219,6 +219,7 @@ export function ChargeItemsList({
                   fontWeight: 500,
                   color: 'var(--color-text-secondary)',
                   whiteSpace: 'nowrap',
+                  fontStyle: item.description.includes('(waitlist)') ? 'italic' : undefined,
                 }}
               >
                 {item.description}
