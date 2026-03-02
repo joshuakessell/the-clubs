@@ -34,6 +34,8 @@ jobs:
       environment: ${{ steps.env.outputs.environment }}
       demo_mode: ${{ steps.env.outputs.demo_mode }}
       seed_on_startup: ${{ steps.env.outputs.seed_on_startup }}
+      host_port: ${{ steps.env.outputs.host_port }}
+      project_name: ${{ steps.env.outputs.project_name }}
     steps:
       - id: env
         run: |
@@ -50,9 +52,13 @@ jobs:
           if [ "$ENV" = "production" ]; then
             echo "demo_mode=false"        >> "$GITHUB_OUTPUT"
             echo "seed_on_startup=false"   >> "$GITHUB_OUTPUT"
+            echo "host_port=3000"          >> "$GITHUB_OUTPUT"
+            echo "project_name=prod"       >> "$GITHUB_OUTPUT"
           else
             echo "demo_mode=true"          >> "$GITHUB_OUTPUT"
             echo "seed_on_startup=true"    >> "$GITHUB_OUTPUT"
+            echo "host_port=3001"          >> "$GITHUB_OUTPUT"
+            echo "project_name=demo"       >> "$GITHUB_OUTPUT"
           fi
 
           echo "→ Deploying to $ENV"
@@ -215,11 +221,13 @@ jobs:
           KIOSK_TOKEN: ${{ secrets.KIOSK_TOKEN }}
           DEMO_MODE: ${{ needs.resolve-env.outputs.demo_mode }}
           SEED_ON_STARTUP: ${{ needs.resolve-env.outputs.seed_on_startup }}
+          HOST_PORT: ${{ needs.resolve-env.outputs.host_port }}
+          PROJECT_NAME: ${{ needs.resolve-env.outputs.project_name }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP
+          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP,HOST_PORT,PROJECT_NAME
           command_timeout: 10m
           script: |
             set -e
@@ -234,7 +242,8 @@ jobs:
             mv /home/ec2-user/docker-compose.prod.yml /home/ec2-user/the-clubs/
             cd /home/ec2-user/the-clubs
 
-            # Write .env
+            # Write environment-scoped .env
+            ENV_FILE="/home/ec2-user/.env.${PROJECT_NAME}"
             printf '%s\n' \
               'DB_NAME=club_operations' \
               'DB_USER=clubops' \
@@ -243,25 +252,29 @@ jobs:
               "SEED_ON_STARTUP=${SEED_ON_STARTUP}" \
               "DB_PASSWORD=${DB_PASSWORD}" \
               "KIOSK_TOKEN=${KIOSK_TOKEN}" \
-              > /home/ec2-user/.env
+              "HOST_PORT=${HOST_PORT}" \
+              > "$ENV_FILE"
 
-            # Start/restart containers
+            # Start/restart this environment's stack (isolated by project name)
             docker compose -f docker-compose.prod.yml \
-              --env-file /home/ec2-user/.env \
+              --project-name "${PROJECT_NAME}" \
+              --env-file "$ENV_FILE" \
               up -d
 
-            echo "✓ Containers started, waiting for health..."
+            echo "✓ ${PROJECT_NAME} containers started on port ${HOST_PORT}, waiting for health..."
 
-            # Health check
+            # Health check on the correct port
             for i in $(seq 1 30); do
-              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-                echo "✓ API is healthy!"
+              if curl -sf http://localhost:${HOST_PORT}/health > /dev/null 2>&1; then
+                echo "✓ API is healthy on port ${HOST_PORT}!"
                 exit 0
               fi
               sleep 2
             done
-            echo "⚠ Health check timeout"
-            docker compose -f docker-compose.prod.yml logs --tail=30 api
+            echo "⚠ Health check timeout on port ${HOST_PORT}"
+            docker compose -f docker-compose.prod.yml \
+              --project-name "${PROJECT_NAME}" \
+              logs --tail=30 api
             exit 1
 
   # ── Status report ─────────────────────────────────────────────
