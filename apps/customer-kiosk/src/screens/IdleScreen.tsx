@@ -51,9 +51,7 @@ export function IdleScreen() {
   useEffect(() => {
     if (isCheckinActive) {
       const id = setTimeout(() => setShowCard(true), 2400);
-      return () => clearTimeout(id);
-    } else {
-      setShowCard(false);
+      return () => { clearTimeout(id); setShowCard(false); };
     }
   }, [isCheckinActive]);
 

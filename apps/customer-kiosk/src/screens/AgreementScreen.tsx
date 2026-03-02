@@ -13,7 +13,7 @@ export function AgreementScreen() {
   const { t } = useI18n();
   const [signed, setSigned] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [showSignModal, setShowSignModal] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
@@ -54,10 +54,10 @@ export function AgreementScreen() {
   // Store canvas signature data when user confirms
   const signatureDataRef = useRef<string>('');
 
-  const submitAgreement = useCallback(async () => {
+  async function submitAgreement() {
     if (!signatureDataRef.current || submitting) return;
     setSubmitting(true);
-    setError(null);
+    setSubmitError(null);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (kioskToken) headers['x-kiosk-token'] = kioskToken;
@@ -74,17 +74,16 @@ export function AgreementScreen() {
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'Failed to sign' }));
-        setError(data.error || 'Failed to sign agreement');
+        setSubmitError(data.error || 'Failed to sign agreement');
         setSubmitting(false);
         return;
       }
-      // Success — server will broadcast SESSION_UPDATED
       navigate('complete');
     } catch {
-      setError('Network error — please try again');
+      setSubmitError('Network error — please try again');
       setSubmitting(false);
     }
-  }, [laneId, kioskToken, sessionPayload?.sessionId, submitting, navigate]);
+  }
 
   const clearCanvas = useCallback(() => {
     const canvas = canvasRef.current;
@@ -158,6 +157,12 @@ export function AgreementScreen() {
             {submitting ? 'Submitting…' : t('agreement.submitAgreement')}
           </button>
         </div>
+
+        {submitError && (
+          <p className="text-sm text-center mt-2" style={{ color: 'var(--color-status-error)' }}>
+            {submitError}
+          </p>
+        )}
       </div>
 
       {/* Signature modal */}
