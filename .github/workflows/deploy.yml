@@ -255,6 +255,9 @@ jobs:
               "HOST_PORT=${HOST_PORT}" \
               > "$ENV_FILE"
 
+            # Clean up legacy containers (one-time migration from non-project-scoped names)
+            docker rm -f club-ops-db club-ops-api 2>/dev/null || true
+
             # Start/restart this environment's stack (isolated by project name)
             docker compose -f docker-compose.prod.yml \
               --project-name "${PROJECT_NAME}" \
