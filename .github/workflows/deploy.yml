@@ -193,6 +193,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ needs.resolve-env.outputs.environment }}
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            infra/nginx
+            docker-compose.prod.yml
+
       - name: Download API artifact
         uses: actions/download-artifact@v4
         with:
@@ -211,7 +218,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "api-image.tar.gz,docker-compose.prod.yml"
+          source: "api-image.tar.gz,docker-compose.prod.yml,infra/nginx/api-proxy.conf"
           target: /home/ec2-user/
 
       - name: Deploy on EC2
@@ -257,6 +264,19 @@ jobs:
 
             # Clean up legacy containers (one-time migration from non-project-scoped names)
             docker rm -f club-ops-db club-ops-api 2>/dev/null || true
+
+            # Set up nginx reverse proxy (routes by hostname to correct API port)
+            mkdir -p /home/ec2-user/nginx
+            mv /home/ec2-user/infra/nginx/api-proxy.conf /home/ec2-user/nginx/api-proxy.conf
+            rm -rf /home/ec2-user/infra
+            docker rm -f api-proxy 2>/dev/null || true
+            docker run -d --name api-proxy \
+              --restart unless-stopped \
+              --add-host host.docker.internal:host-gateway \
+              -p 80:80 \
+              -v /home/ec2-user/nginx/api-proxy.conf:/etc/nginx/conf.d/default.conf:ro \
+              nginx:alpine
+            echo "✓ nginx reverse proxy running on port 80"
 
             # Start/restart this environment's stack (isolated by project name)
             docker compose -f docker-compose.prod.yml \
