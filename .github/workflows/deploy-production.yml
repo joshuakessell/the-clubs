@@ -53,6 +53,8 @@ jobs:
           retention-days: 1
           path: |
             services/api/src/
+            services/api/migrations/
+            services/api/package.json
             services/api/package.json
             services/api/tsconfig.json
             services/api/tsconfig.build.json
@@ -185,6 +187,8 @@ jobs:
             DB_PASSWORD=${DB_PASSWORD}
             KIOSK_TOKEN=${KIOSK_TOKEN}
             ALLOWED_ORIGINS=*
+            DEMO_MODE=true
+            SEED_ON_STARTUP=true
             EOF
 
             # Start/restart containers (no --build, image already loaded)

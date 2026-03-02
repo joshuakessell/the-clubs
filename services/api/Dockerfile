@@ -52,6 +52,9 @@ COPY apps/office-dashboard/package.json ./apps/office-dashboard/package.json
 COPY --from=build /repo/packages/shared/dist ./packages/shared/dist
 COPY --from=build /repo/services/api/dist ./services/api/dist
 
+# Copy migration SQL files (needed by auto-migrate on startup)
+COPY services/api/migrations ./services/api/migrations
+
 # Now install prod deps — pnpm workspace symlinks will resolve correctly
 RUN --mount=type=cache,target=/root/.pnpm-store \
     pnpm install --prod --frozen-lockfile --filter @the-clubs/shared --filter @the-clubs/api
