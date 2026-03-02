@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { useI18n } from '../i18n';
 import { useKioskSession } from '../KioskSessionContext';
@@ -22,13 +22,13 @@ export function CompleteScreen() {
 
   const isCompleted = sessionPayload?.status === 'COMPLETED';
   const [countdown, setCountdown] = useState<number | null>(null);
-  const countdownStarted = useRef(false);
 
-  // When session becomes COMPLETED, start the 5-second countdown
+  // When session transitions to COMPLETED, start the countdown via a timer
   useEffect(() => {
-    if (!isCompleted || countdownStarted.current) return;
-    countdownStarted.current = true;
-    setCountdown(COUNTDOWN_SECONDS);
+    if (!isCompleted) return;
+    // Use a micro-delay so setState happens in the timer callback, not synchronously in the effect body
+    const id = setTimeout(() => setCountdown(COUNTDOWN_SECONDS), 0);
+    return () => clearTimeout(id);
   }, [isCompleted]);
 
   // Tick the countdown each second

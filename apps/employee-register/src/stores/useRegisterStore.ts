@@ -98,6 +98,7 @@ interface RegisterState {
     payload?: Record<string, unknown>;
   }) => Promise<void>;
   cancelSession: () => Promise<void>;
+  completeTransaction: () => Promise<void>;
 
   /* ── Navigation ───────────────────────────── */
   selectNavTab: (tab: string) => void;
@@ -586,6 +587,30 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     });
     try {
       const token = (window as any).__authToken;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      await fetch(
+        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/reset`),
+        { method: 'POST', headers, body: JSON.stringify({ cancelled: true }) }
+      );
+    } catch {
+      // Best-effort — local state already cleared
+    }
+  },
+
+  completeTransaction: async () => {
+    const { laneId, customerId, customerName } = get();
+    // Clear session state but keep customerId/customerName so the profile
+    // tab re-renders and shows the now-checked-in customer.
+    set({
+      currentSessionId: null,
+      activeCheckinInfo: null,
+      sessionPayload: null,
+      successToastMessage: `${customerName ?? 'Customer'} checked in successfully`,
+    });
+    try {
+      const token = (window as any).__authToken;
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -593,6 +618,12 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
         getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/reset`),
         { method: 'POST', headers }
       );
+
+      // Re-open the customer's profile to refresh and show the active visit
+      if (customerId) {
+        const { openCustomerAccount } = get();
+        openCustomerAccount(customerId, customerName ?? '', { authToken: token });
+      }
     } catch {
       // Best-effort — local state already cleared
     }

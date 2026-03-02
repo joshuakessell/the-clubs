@@ -7,6 +7,7 @@ export declare const RoomStatusSchema: z.ZodNativeEnum<{
     readonly CLEANING: "CLEANING";
     readonly CLEAN: "CLEAN";
     readonly OCCUPIED: "OCCUPIED";
+    readonly OUT_OF_SERVICE: "OUT_OF_SERVICE";
 }>;
 /**
  * Zod schema for RoomType enum validation.
@@ -34,6 +35,7 @@ export declare const RoomSchema: z.ZodObject<{
         readonly CLEANING: "CLEANING";
         readonly CLEAN: "CLEAN";
         readonly OCCUPIED: "OCCUPIED";
+        readonly OUT_OF_SERVICE: "OUT_OF_SERVICE";
     }>;
     floor: z.ZodNumber;
     lastStatusChange: z.ZodDate;
@@ -43,7 +45,7 @@ export declare const RoomSchema: z.ZodObject<{
     number: string;
     id: string;
     type: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER";
-    status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
+    status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     floor: number;
     lastStatusChange: Date;
     overrideFlag: boolean;
@@ -52,7 +54,7 @@ export declare const RoomSchema: z.ZodObject<{
     number: string;
     id: string;
     type: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER";
-    status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
+    status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     floor: number;
     lastStatusChange: Date;
     overrideFlag: boolean;
@@ -68,17 +70,18 @@ export declare const RoomStatusUpdateSchema: z.ZodObject<{
         readonly CLEANING: "CLEANING";
         readonly CLEAN: "CLEAN";
         readonly OCCUPIED: "OCCUPIED";
+        readonly OUT_OF_SERVICE: "OUT_OF_SERVICE";
     }>;
     override: z.ZodDefault<z.ZodBoolean>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     roomId: string;
-    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
+    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     override: boolean;
     reason?: string | undefined;
 }, {
     roomId: string;
-    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
+    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     override?: boolean | undefined;
     reason?: string | undefined;
 }>;
@@ -111,16 +114,17 @@ export declare const BatchStatusUpdateSchema: z.ZodObject<{
         readonly CLEANING: "CLEANING";
         readonly CLEAN: "CLEAN";
         readonly OCCUPIED: "OCCUPIED";
+        readonly OUT_OF_SERVICE: "OUT_OF_SERVICE";
     }>;
     override: z.ZodDefault<z.ZodBoolean>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
+    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     override: boolean;
     roomIds: string[];
     reason?: string | undefined;
 }, {
-    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED";
+    newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     roomIds: string[];
     override?: boolean | undefined;
     reason?: string | undefined;

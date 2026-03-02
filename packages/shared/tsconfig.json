@@ -5,7 +5,7 @@
     "moduleResolution": "NodeNext",
     "verbatimModuleSyntax": true,
     "lib": [
-      "ES2022",
+      "ESNext",
       "DOM",
       "DOM.Iterable"
     ],

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * KioskSessionContext — Shared context for the customer kiosk.
  *
@@ -82,9 +83,9 @@ export function KioskSessionProvider({
   const kioskToken = (import.meta.env.VITE_KIOSK_TOKEN as string) || null;
 
   const viewRef = useRef(view);
-  viewRef.current = view;
+  useEffect(() => { viewRef.current = view; });
 
-  const onSessionUpdated = useCallback((event: any) => {
+  const onSessionUpdated = useCallback((event: { type?: string; payload?: SessionUpdatedPayload }) => {
     if (import.meta.env.DEV) console.log('[kiosk-sse] SESSION_UPDATED', event);
     const payload = event?.payload as SessionUpdatedPayload | undefined;
     if (!payload) return;
