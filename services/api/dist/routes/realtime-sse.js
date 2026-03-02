@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.realtimeSSERoutes = realtimeSSERoutes;
 const kioskToken_1 = require("../auth/kioskToken");
 const middleware_1 = require("../auth/middleware");
+const payload_1 = require("../checkin/payload");
+const db_1 = require("../db");
 /**
  * SSE endpoint for lane-scoped realtime events.
  *
@@ -14,6 +16,10 @@ const middleware_1 = require("../auth/middleware");
  * Response: `text/event-stream` with:
  *   - `: heartbeat\n\n` every 30s
  *   - `data: {"type":"...","payload":{...},"timestamp":"..."}\n\n` for events
+ *
+ * On connect, immediately sends the current session snapshot (if an active session exists).
+ * This implements snapshot-first reconnect: clients always receive the latest state
+ * without waiting for the next mutation broadcast.
  */
 async function realtimeSSERoutes(fastify) {
     fastify.get('/v1/realtime/sse/lane/:laneId', {
@@ -51,6 +57,39 @@ async function realtimeSSERoutes(fastify) {
             payload: { laneId },
             timestamp: new Date().toISOString(),
         })}\n\n`);
+        // Snapshot-first: send current session state immediately after connect.
+        // This ensures clients receive the latest state without waiting for the
+        // next mutation to trigger a broadcast.
+        try {
+            const snapshot = await (0, db_1.transaction)(async (client) => {
+                const row = (await client.query(`SELECT id
+               FROM lane_sessions
+               WHERE lane_id = $1
+                 AND status IN (
+                   'ACTIVE',
+                   'AWAITING_CUSTOMER',
+                   'AWAITING_ASSIGNMENT',
+                   'AWAITING_PAYMENT',
+                   'AWAITING_SIGNATURE'
+                 )
+               ORDER BY created_at DESC
+               LIMIT 1`, [laneId])).rows[0];
+                if (!row)
+                    return null;
+                const { payload } = await (0, payload_1.buildFullSessionUpdatedPayload)(client, row.id);
+                return payload;
+            });
+            if (snapshot) {
+                raw.write(`data: ${JSON.stringify({
+                    type: 'SESSION_UPDATED',
+                    payload: snapshot,
+                    timestamp: new Date().toISOString(),
+                })}\n\n`);
+            }
+        }
+        catch (err) {
+            request.log.warn({ laneId, err }, 'SSE snapshot-first failed (non-fatal)');
+        }
         // Register this client
         sseClients.add(laneId, raw);
         request.log.info({ laneId }, 'SSE client connected');

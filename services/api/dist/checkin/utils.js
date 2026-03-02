@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.toNumber = toNumber;
-exports.roundToCents = roundToCents;
+exports.roundToWhole = roundToWhole;
 exports.parsePriceQuote = parsePriceQuote;
 exports.toDate = toDate;
 exports.getHttpError = getHttpError;
@@ -16,8 +16,8 @@ function toNumber(value) {
     const n = parseFloat(String(value));
     return Number.isFinite(n) ? n : undefined;
 }
-function roundToCents(value) {
-    return Math.round(value * 100) / 100;
+function roundToWhole(value) {
+    return Math.round(value);
 }
 function parsePriceQuote(raw) {
     if (raw === null || raw === undefined)

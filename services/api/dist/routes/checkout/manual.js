@@ -346,7 +346,7 @@ function registerCheckoutManualRoutes(fastify) {
                     await client.query(`
               INSERT INTO late_checkout_ban_alerts
                 (customer_id, checkout_request_id, occupancy_id, visit_id,
-                 late_minutes, fee_amount_cents, recommended_ban_days,
+                 late_minutes, fee_amount, recommended_ban_days,
                  status, created_by_staff_id, created_by_staff_name)
               VALUES
                 ($1, NULL, $2, $3, $4, $5, 30, 'PENDING', $6, $7)

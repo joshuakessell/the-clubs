@@ -45,11 +45,11 @@ const CloseoutStartSchema = zod_1.z.object({
 });
 const CloseoutFinalizeSchema = zod_1.z.object({
     registerSessionId: zod_1.z.string().uuid(),
-    countedCashCents: zod_1.z.number().int().nonnegative(),
+    countedCash: zod_1.z.number().int().nonnegative(),
     notes: zod_1.z.string().optional().nullable(),
 });
 async function buildRegisterCloseoutSummary(client, session, closeoutAt) {
-    const payments = await client.query(`SELECT id, amount, tip_cents, payment_method, quote_json
+    const payments = await client.query(`SELECT id, amount, tip, payment_method, quote_json
      FROM payment_intents
      WHERE status = 'PAID'
        AND register_number = $1
@@ -203,7 +203,7 @@ async function registerRoutes(fastify) {
                 if (registerSession.employee_id !== request.staff.staffId) {
                     throw { statusCode: 403, message: 'Not authorized to close out this register' };
                 }
-                const drawerResult = await client.query(`SELECT id, register_session_id, opened_at, opening_float_cents, status, closed_at, closeout_snapshot_json
+                const drawerResult = await client.query(`SELECT id, register_session_id, opened_at, opening_float, status, closed_at, closeout_snapshot_json
              FROM cash_drawer_sessions
              WHERE register_session_id = $1 AND status = 'OPEN'
              ORDER BY opened_at DESC
@@ -260,7 +260,7 @@ async function registerRoutes(fastify) {
                 if (registerSession.employee_id !== request.staff.staffId) {
                     throw { statusCode: 403, message: 'Not authorized to close out this register' };
                 }
-                const drawerResult = await client.query(`SELECT id, register_session_id, opened_at, opening_float_cents, status, closed_at, closeout_snapshot_json
+                const drawerResult = await client.query(`SELECT id, register_session_id, opened_at, opening_float, status, closed_at, closeout_snapshot_json
              FROM cash_drawer_sessions
              WHERE register_session_id = $1
              ORDER BY opened_at DESC
@@ -283,11 +283,11 @@ async function registerRoutes(fastify) {
                 }
                 const closeoutAt = new Date();
                 const snapshot = await (0, closeout_1.buildCloseoutSnapshot)(client, drawerSession, closeoutAt);
-                const overShortCents = body.countedCashCents - snapshot.expectedCashCents;
+                const overShort = body.countedCash - snapshot.expectedCash;
                 const closeoutSnapshot = {
                     ...snapshot,
-                    countedCashCents: body.countedCashCents,
-                    overShortCents,
+                    countedCash: body.countedCash,
+                    overShort,
                     closedByStaffId: request.staff.staffId,
                     notes: body.notes ?? null,
                 };
@@ -295,17 +295,17 @@ async function registerRoutes(fastify) {
              SET status = 'CLOSED',
                  closed_by_staff_id = $1,
                  closed_at = $2,
-                 counted_cash_cents = $3,
-                 expected_cash_cents = $4,
-                 over_short_cents = $5,
+                 counted_cash = $3,
+                 expected_cash = $4,
+                 over_short = $5,
                  notes = COALESCE($6, notes),
                  closeout_snapshot_json = $7
              WHERE id = $8`, [
                     request.staff.staffId,
                     closeoutAt,
-                    body.countedCashCents,
-                    snapshot.expectedCashCents,
-                    overShortCents,
+                    body.countedCash,
+                    snapshot.expectedCash,
+                    overShort,
                     body.notes ?? null,
                     closeoutSnapshot,
                     drawerSession.id,

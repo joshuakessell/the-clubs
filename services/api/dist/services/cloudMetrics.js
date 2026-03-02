@@ -29,7 +29,7 @@ async function publishMetrics(_metrics) {
 exports.BusinessMetrics = {
     checkIn: (_registerId) => publishMetric('CheckInCount', 1),
     checkOut: () => publishMetric('CheckOutCount', 1),
-    payment: (_amountCents, _method) => publishMetrics([]),
+    payment: (_amount, _method) => publishMetrics([]),
     override: (_action) => publishMetric('OverrideCount', 1),
     occupancy: (_occupied, _total) => publishMetric('OccupancyRate', 0),
     clockIn: () => publishMetric('StaffClockInCount', 1),

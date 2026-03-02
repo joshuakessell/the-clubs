@@ -74,8 +74,8 @@ class MockPaymentsProvider {
     }
     async refundPayment(params) {
         const original = this.store.payments.find((payment) => payment.externalId === params.paymentExternalId);
-        const refundAmount = params.amount ?? original?.amount ?? { amountCents: 0, currency: 'USD' };
-        const status = original && refundAmount.amountCents < original.amount.amountCents
+        const refundAmount = params.amount ?? original?.amount ?? { amount: 0, currency: 'USD' };
+        const status = original && refundAmount.amount < original.amount.amount
             ? 'PARTIALLY_REFUNDED'
             : 'REFUNDED';
         if (original) {

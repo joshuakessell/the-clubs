@@ -96,12 +96,12 @@ function registerAdminReportRoutes(fastify) {
           WHERE created_at >= $1::date
             AND created_at < $1::date + INTERVAL '1 day'`, [targetDate]);
             // Tips
-            const tips = await (0, db_1.query)(`SELECT COALESCE(SUM(tip_cents), 0)::numeric(10,2) AS total
+            const tips = await (0, db_1.query)(`SELECT COALESCE(SUM(tip), 0)::numeric(10,2) AS total
           FROM payment_intents
           WHERE status = 'PAID'
             AND paid_at >= $1::date
             AND paid_at < $1::date + INTERVAL '1 day'
-            AND tip_cents > 0`, [targetDate]);
+            AND tip > 0`, [targetDate]);
             const methodBreakdown = {};
             for (const row of revenueByMethod.rows) {
                 methodBreakdown[row.payment_method || 'UNKNOWN'] = parseFloat(row.total);
@@ -112,7 +112,7 @@ function registerAdminReportRoutes(fastify) {
                 revenueByMethod: methodBreakdown,
                 totalCheckIns: checkIns.rows[0]?.count ?? 0,
                 uniqueCustomers: uniqueCustomers.rows[0]?.count ?? 0,
-                totalTips: parseFloat(tips.rows[0]?.total ?? '0') / 100, // cents to dollars
+                totalTips: parseFloat(tips.rows[0]?.total ?? '0'),
             });
         }
         catch (error) {
@@ -286,12 +286,12 @@ function registerAdminReportRoutes(fastify) {
             AND paid_at >= $1::date
             AND paid_at < $2::date + INTERVAL '1 day'`, [from, to]);
             // Tips
-            const tips = await (0, db_1.query)(`SELECT COALESCE(SUM(tip_cents), 0) AS total
+            const tips = await (0, db_1.query)(`SELECT COALESCE(SUM(tip), 0) AS total
           FROM payment_intents
           WHERE status = 'PAID'
             AND paid_at >= $1::date
             AND paid_at < $2::date + INTERVAL '1 day'
-            AND tip_cents > 0`, [from, to]);
+            AND tip > 0`, [from, to]);
             // Check-ins & check-outs
             const checkIns = await (0, db_1.query)(`SELECT COUNT(*)::int AS count
           FROM customer_activity_events
@@ -340,8 +340,8 @@ function registerAdminReportRoutes(fastify) {
                     avgTransaction: parseFloat(revenue.rows[0]?.avg_tx ?? '0'),
                 },
                 tips: {
-                    totalCents: parseInt(tips.rows[0]?.total ?? '0', 10),
-                    totalDollars: parseInt(tips.rows[0]?.total ?? '0', 10) / 100,
+                    total: parseInt(tips.rows[0]?.total ?? '0', 10),
+                    totalDollars: parseInt(tips.rows[0]?.total ?? '0', 10),
                 },
                 activity: {
                     checkIns: checkIns.rows[0]?.count ?? 0,
@@ -471,15 +471,15 @@ function registerAdminReportRoutes(fastify) {
           GROUP BY cb.rental_type`, [from, to]);
             // Tips breakdown
             const tipStats = await (0, db_1.query)(`SELECT
-            COALESCE(SUM(tip_cents), 0) AS total_cents,
-            COALESCE(AVG(tip_cents) FILTER (WHERE tip_cents > 0), 0)::numeric(10,0) AS avg_tip_cents,
-            COUNT(*) FILTER (WHERE tip_cents > 0)::int AS tip_count,
+            COALESCE(SUM(tip), 0) AS total,
+            COALESCE(AVG(tip) FILTER (WHERE tip > 0), 0)::numeric(10,0) AS avg_tip,
+            COUNT(*) FILTER (WHERE tip > 0)::int AS tip_count,
             COALESCE(SUM(amount), 0)::numeric(10,2) AS total_revenue
           FROM payment_intents
           WHERE status = 'PAID'
             AND paid_at >= $1::date
             AND paid_at < $2::date + INTERVAL '1 day'`, [from, to]);
-            const totalTipCents = parseInt(tipStats.rows[0]?.total_cents ?? '0', 10);
+            const totalTips = parseInt(tipStats.rows[0]?.total ?? '0', 10);
             const totalRevenueDollars = parseFloat(tipStats.rows[0]?.total_revenue ?? '0');
             return reply.send({
                 from,
@@ -501,11 +501,11 @@ function registerAdminReportRoutes(fastify) {
                     count: r.count,
                 })),
                 tips: {
-                    totalDollars: totalTipCents / 100,
-                    avgTipDollars: parseInt(tipStats.rows[0]?.avg_tip_cents ?? '0', 10) / 100,
+                    totalDollars: totalTips,
+                    avgTipDollars: parseInt(tipStats.rows[0]?.avg_tip ?? '0', 10),
                     tipCount: tipStats.rows[0]?.tip_count ?? 0,
                     tipPercentOfRevenue: totalRevenueDollars > 0
-                        ? Math.round(((totalTipCents / 100) / totalRevenueDollars) * 1000) / 10
+                        ? Math.round((totalTips / totalRevenueDollars) * 1000) / 10
                         : 0,
                 },
             });

@@ -117,7 +117,7 @@ function registerAdminClubLogRoutes(fastify) {
           SELECT ce.id, ce.occurred_at, ce.event_type, ce.event_domain, ce.source_app,
                  ce.register_id, ce.staff_id, ce.staff_name,
                  ce.customer_id, ce.customer_name, ce.visit_id, ce.order_id,
-                 ce.amount_cents, ce.currency, ce.summary, ce.metadata
+                 ce.amount, ce.currency, ce.summary, ce.metadata
           FROM club_events ce
           ${whereClause}
           ORDER BY ce.occurred_at DESC, ce.id DESC
@@ -140,7 +140,7 @@ function registerAdminClubLogRoutes(fastify) {
                 customerName: r.customer_name,
                 visitId: r.visit_id,
                 orderId: r.order_id,
-                amountCents: r.amount_cents,
+                amount: r.amount,
                 currency: r.currency,
                 summary: r.summary,
                 metadata: r.metadata,

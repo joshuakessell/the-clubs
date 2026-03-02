@@ -45,14 +45,14 @@ function registerAdminClubAnalyticsRoutes(fastify) {
            ORDER BY count DESC`, [from, to]);
             // Total sales per employee
             const sales = await (0, db_1.query)(`SELECT staff_id, staff_name,
-                  COALESCE(SUM(amount_cents), 0)::bigint::text as total_cents,
+                  COALESCE(SUM(amount), 0)::bigint::text as total,
                   COUNT(*)::text as sale_count
            FROM club_events
            WHERE event_domain = 'SALES'
              AND occurred_at >= $1 AND occurred_at <= $2
              AND staff_id IS NOT NULL
            GROUP BY staff_id, staff_name
-           ORDER BY total_cents DESC`, [from, to]);
+           ORDER BY total DESC`, [from, to]);
             // Shift hours per employee (clock-in to clock-out pairs)
             const clockEvents = await (0, db_1.query)(`SELECT staff_id, staff_name, event_type, occurred_at
            FROM club_events
@@ -89,7 +89,7 @@ function registerAdminClubAnalyticsRoutes(fastify) {
                     staffName: row.staff_name,
                     checkins: 0,
                     salesCount: 0,
-                    salesTotalCents: 0,
+                    salesTotal: 0,
                     shiftHours: 0,
                 };
                 e.checkins = Number(row.count);
@@ -101,11 +101,11 @@ function registerAdminClubAnalyticsRoutes(fastify) {
                     staffName: row.staff_name,
                     checkins: 0,
                     salesCount: 0,
-                    salesTotalCents: 0,
+                    salesTotal: 0,
                     shiftHours: 0,
                 };
                 e.salesCount = Number(row.sale_count);
-                e.salesTotalCents = Number(row.total_cents);
+                e.salesTotal = Number(row.total);
                 employeeMap.set(row.staff_id, e);
             }
             for (const [sid, data] of shiftHoursMap) {
@@ -114,7 +114,7 @@ function registerAdminClubAnalyticsRoutes(fastify) {
                     staffName: data.staffName,
                     checkins: 0,
                     salesCount: 0,
-                    salesTotalCents: 0,
+                    salesTotal: 0,
                     shiftHours: 0,
                 };
                 e.shiftHours = Math.round((data.totalMs / 3600000) * 100) / 100;
@@ -123,7 +123,7 @@ function registerAdminClubAnalyticsRoutes(fastify) {
             return reply.send({
                 from: from.toISOString(),
                 to: to.toISOString(),
-                employees: Array.from(employeeMap.values()).sort((a, b) => b.salesTotalCents - a.salesTotalCents),
+                employees: Array.from(employeeMap.values()).sort((a, b) => b.salesTotal - a.salesTotal),
             });
         }
         catch (error) {
@@ -146,21 +146,21 @@ function registerAdminClubAnalyticsRoutes(fastify) {
         try {
             const result = await (0, db_1.query)(`SELECT COALESCE(register_id, 'UNATTRIBUTED') as register_id,
                   COUNT(*)::text as sale_count,
-                  COALESCE(SUM(amount_cents), 0)::bigint::text as total_cents,
-                  COALESCE(AVG(amount_cents), 0)::numeric(12,2)::text as avg_cents
+                  COALESCE(SUM(amount), 0)::bigint::text as total,
+                  COALESCE(AVG(amount), 0)::numeric(12,2)::text as avg_dollars
            FROM club_events
            WHERE event_domain = 'SALES'
              AND occurred_at >= $1 AND occurred_at <= $2
            GROUP BY register_id
-           ORDER BY total_cents DESC`, [from, to]);
+           ORDER BY total DESC`, [from, to]);
             return reply.send({
                 from: from.toISOString(),
                 to: to.toISOString(),
                 registers: result.rows.map((r) => ({
                     registerId: r.register_id,
                     saleCount: Number(r.sale_count),
-                    totalCents: Number(r.total_cents),
-                    avgCents: Math.round(Number(r.avg_cents)),
+                    total: Number(r.total),
+                    avgDollars: Math.round(Number(r.avg_dollars)),
                 })),
             });
         }
@@ -184,7 +184,7 @@ function registerAdminClubAnalyticsRoutes(fastify) {
         try {
             const result = await (0, db_1.query)(`SELECT to_char(date_trunc('hour', occurred_at AT TIME ZONE $3), 'YYYY-MM-DD HH24:00') as bucket,
                   COUNT(*)::text as sale_count,
-                  COALESCE(SUM(amount_cents), 0)::bigint::text as total_cents
+                  COALESCE(SUM(amount), 0)::bigint::text as total
            FROM club_events
            WHERE event_domain = 'SALES'
              AND occurred_at >= $1 AND occurred_at <= $2
@@ -197,7 +197,7 @@ function registerAdminClubAnalyticsRoutes(fastify) {
                 hourly: result.rows.map((r) => ({
                     bucket: r.bucket,
                     saleCount: Number(r.sale_count),
-                    totalCents: Number(r.total_cents),
+                    total: Number(r.total),
                 })),
             });
         }
@@ -221,19 +221,19 @@ function registerAdminClubAnalyticsRoutes(fastify) {
         try {
             const result = await (0, db_1.query)(`SELECT event_type,
                   COUNT(*)::text as sale_count,
-                  COALESCE(SUM(amount_cents), 0)::bigint::text as total_cents
+                  COALESCE(SUM(amount), 0)::bigint::text as total
            FROM club_events
            WHERE event_domain = 'SALES'
              AND occurred_at >= $1 AND occurred_at <= $2
            GROUP BY event_type
-           ORDER BY total_cents DESC`, [from, to]);
+           ORDER BY total DESC`, [from, to]);
             return reply.send({
                 from: from.toISOString(),
                 to: to.toISOString(),
                 items: result.rows.map((r) => ({
                     eventType: r.event_type,
                     saleCount: Number(r.sale_count),
-                    totalCents: Number(r.total_cents),
+                    total: Number(r.total),
                 })),
             });
         }
@@ -272,13 +272,13 @@ function registerAdminClubAnalyticsRoutes(fastify) {
             const result = await (0, db_1.query)(`SELECT customer_id,
                   MAX(customer_name) as customer_name,
                   COUNT(*)::text as sale_count,
-                  COALESCE(SUM(amount_cents), 0)::bigint::text as total_cents,
-                  COALESCE(AVG(amount_cents), 0)::numeric(12,2)::text as avg_cents,
+                  COALESCE(SUM(amount), 0)::bigint::text as total,
+                  COALESCE(AVG(amount), 0)::numeric(12,2)::text as avg_dollars,
                   COUNT(DISTINCT visit_id)::text as visit_count
            FROM club_events
            WHERE ${conditions.join(' AND ')}
            GROUP BY customer_id
-           ORDER BY total_cents DESC
+           ORDER BY total DESC
            LIMIT 100`, params);
             return reply.send({
                 from: from.toISOString(),
@@ -287,8 +287,8 @@ function registerAdminClubAnalyticsRoutes(fastify) {
                     customerId: r.customer_id,
                     customerName: r.customer_name,
                     saleCount: Number(r.sale_count),
-                    totalCents: Number(r.total_cents),
-                    avgCents: Math.round(Number(r.avg_cents)),
+                    total: Number(r.total),
+                    avgDollars: Math.round(Number(r.avg_dollars)),
                     visitCount: Number(r.visit_count),
                 })),
             });
@@ -315,7 +315,7 @@ function registerAdminClubAnalyticsRoutes(fastify) {
                   COUNT(*) FILTER (WHERE event_type = 'CHECKIN_STARTED')::text as checkins,
                   COUNT(*) FILTER (WHERE event_type = 'CHECKOUT_COMPLETED')::text as checkouts,
                   COUNT(*) FILTER (WHERE event_domain = 'SALES')::text as sales_count,
-                  COALESCE(SUM(amount_cents) FILTER (WHERE event_domain = 'SALES'), 0)::bigint::text as sales_total_cents,
+                  COALESCE(SUM(amount) FILTER (WHERE event_domain = 'SALES'), 0)::bigint::text as sales_total,
                   COUNT(*) FILTER (WHERE event_type = 'EMPLOYEE_CLOCK_IN')::text as clock_ins,
                   COUNT(*) FILTER (WHERE event_type = 'BREAK_START')::text as breaks,
                   COUNT(*) FILTER (WHERE event_type = 'NOTE_ADDED')::text as notes,
@@ -333,7 +333,7 @@ function registerAdminClubAnalyticsRoutes(fastify) {
                     checkins: Number(r.checkins),
                     checkouts: Number(r.checkouts),
                     salesCount: Number(r.sales_count),
-                    salesTotalCents: Number(r.sales_total_cents),
+                    salesTotal: Number(r.sales_total),
                     clockIns: Number(r.clock_ins),
                     breaks: Number(r.breaks),
                     notes: Number(r.notes),

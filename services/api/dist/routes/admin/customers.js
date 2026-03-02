@@ -20,18 +20,24 @@ function registerAdminCustomerRoutes(fastify) {
             return reply.send({ customers: [] });
         }
         try {
-            const result = await (0, db_1.query)(`SELECT id, name, membership_number, primary_language, past_due_balance
-         FROM customers
-         WHERE name ILIKE $1 OR membership_number ILIKE $1
-         ORDER BY name ASC
-         LIMIT $2`, [`%${search}%`, limit]);
+            const result = await (0, db_1.query)(`SELECT c.id, c.name, c.dob, c.membership_number, c.membership_card_type,
+                  c.membership_valid_until, c.primary_language, c.past_due_balance,
+                  (SELECT MAX(v.started_at) FROM visits v WHERE v.customer_id = c.id) as last_visit
+           FROM customers c
+           WHERE c.name ILIKE $1 OR c.membership_number ILIKE $1
+           ORDER BY c.name ASC
+           LIMIT $2`, [`%${search}%`, limit]);
             return reply.send({
                 customers: result.rows.map((r) => ({
                     id: r.id,
                     name: r.name,
+                    dob: r.dob,
                     membershipNumber: r.membership_number,
+                    membershipCardType: r.membership_card_type,
+                    membershipValidUntil: r.membership_valid_until ? r.membership_valid_until.toISOString() : null,
                     primaryLanguage: r.primary_language || null,
                     pastDueBalance: parseFloat(String(r.past_due_balance || 0)),
+                    lastVisit: r.last_visit ? r.last_visit.toISOString() : null,
                 })),
             });
         }
@@ -166,6 +172,8 @@ function registerAdminCustomerRoutes(fastify) {
             cb.agreement_signed,
             cb.agreement_signed_at,
             (cb.agreement_pdf IS NOT NULL) as has_pdf,
+            pi.amount as payment_total,
+            pi.payment_method,
             sig.signature_png_base64,
             sig.signature_strokes_json,
             sig.created_at as signature_created_at,
@@ -174,6 +182,8 @@ function registerAdminCustomerRoutes(fastify) {
           FROM checkin_blocks cb
           LEFT JOIN rooms r ON r.id = cb.room_id
           LEFT JOIN lockers l ON l.id = cb.locker_id
+          LEFT JOIN lane_sessions ls ON ls.id = cb.session_id
+          LEFT JOIN payment_intents pi ON pi.id = ls.payment_intent_id
           LEFT JOIN LATERAL (
             SELECT signature_png_base64, signature_strokes_json, created_at, agreement_version, agreement_text_snapshot
             FROM agreement_signatures
@@ -209,6 +219,8 @@ function registerAdminCustomerRoutes(fastify) {
                             agreementSigned: b.agreement_signed,
                             agreementSignedAt: b.agreement_signed_at ? b.agreement_signed_at.toISOString() : null,
                             hasPdf: b.has_pdf,
+                            paymentTotal: b.payment_total ? parseFloat(b.payment_total) : null,
+                            paymentMethod: b.payment_method,
                             hasSignature,
                             signatureCreatedAt: b.signature_created_at ? b.signature_created_at.toISOString() : null,
                             agreementVersion: b.agreement_version,

@@ -356,9 +356,10 @@ function registerCheckinLaneSessionRoutes(fastify) {
                         // Check membership status for ledger seed
                         const mCardType = cust.membership_card_type;
                         const mValidUntil = (0, utils_1.toDate)(cust.membership_valid_until);
-                        const hasMembership = mCardType === 'SIX_MONTH' &&
-                            mValidUntil != null &&
-                            new Date() <= mValidUntil;
+                        const hasMembership = !!membershipNumber ||
+                            (mCardType === 'SIX_MONTH' &&
+                                mValidUntil != null &&
+                                new Date() <= mValidUntil);
                         if (mValidUntil) {
                             customerMembershipValidUntil = mValidUntil.toISOString().slice(0, 10);
                         }

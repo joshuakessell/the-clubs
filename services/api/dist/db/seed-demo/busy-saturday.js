@@ -953,41 +953,41 @@ async function seedBusySaturdayDemo(now, progress) {
         const closedRegisterSessionId = insertClosedRegister.rows[0].id;
         const openDrawerId = (0, crypto_1.randomUUID)();
         const openDrawerOpenedAt = new Date(openRegisterOpenedAt.getTime() + 10 * 60 * 1000);
-        const openDrawerFloatCents = 20000;
+        const openDrawerFloat = 200;
         await client.query(`INSERT INTO cash_drawer_sessions
-         (id, register_session_id, opened_by_staff_id, opened_at, opening_float_cents, status)
+         (id, register_session_id, opened_by_staff_id, opened_at, opening_float, status)
          VALUES ($1, $2, $3, $4, $5, 'OPEN')`, [
             openDrawerId,
             openRegisterSessionId,
             primaryStaff.id,
             openDrawerOpenedAt,
-            openDrawerFloatCents,
+            openDrawerFloat,
         ]);
         const closedDrawerId = (0, crypto_1.randomUUID)();
         const closedDrawerOpenedAt = new Date(closedRegisterOpenedAt.getTime() + 20 * 60 * 1000);
         const closedDrawerClosedAt = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-        const closedDrawerFloatCents = 15000;
+        const closedDrawerFloat = 150;
         await client.query(`INSERT INTO cash_drawer_sessions
-         (id, register_session_id, opened_by_staff_id, opened_at, opening_float_cents, closed_by_staff_id, closed_at, status)
+         (id, register_session_id, opened_by_staff_id, opened_at, opening_float, closed_by_staff_id, closed_at, status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'CLOSED')`, [
             closedDrawerId,
             closedRegisterSessionId,
             secondaryStaff.id,
             closedDrawerOpenedAt,
-            closedDrawerFloatCents,
+            closedDrawerFloat,
             secondaryStaff.id,
             closedDrawerClosedAt,
         ]);
         async function insertDrawerEvent(params) {
             const eventId = (0, crypto_1.randomUUID)();
             await client.query(`INSERT INTO cash_drawer_events
-           (id, cash_drawer_session_id, occurred_at, type, amount_cents, reason, created_by_staff_id, metadata_json)
+           (id, cash_drawer_session_id, occurred_at, type, amount, reason, created_by_staff_id, metadata_json)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
                 eventId,
                 params.sessionId,
                 params.occurredAt,
                 params.type,
-                params.amountCents ?? null,
+                params.amount ?? null,
                 params.reason ?? null,
                 params.staffId,
                 params.metadata ?? null,
@@ -1000,7 +1000,7 @@ async function seedBusySaturdayDemo(now, progress) {
             sessionId: openDrawerId,
             occurredAt: new Date(openDrawerOpenedAt.getTime() + 30 * 60 * 1000),
             type: 'PAID_IN',
-            amountCents: 5000,
+            amount: 5000,
             reason: 'Tip jar start',
             staffId: primaryStaff.id,
         });
@@ -1009,7 +1009,7 @@ async function seedBusySaturdayDemo(now, progress) {
             sessionId: openDrawerId,
             occurredAt: new Date(openDrawerOpenedAt.getTime() + 90 * 60 * 1000),
             type: 'PAID_OUT',
-            amountCents: 2500,
+            amount: 2500,
             reason: 'Supplies',
             staffId: primaryStaff.id,
         });
@@ -1018,7 +1018,7 @@ async function seedBusySaturdayDemo(now, progress) {
             sessionId: openDrawerId,
             occurredAt: new Date(openDrawerOpenedAt.getTime() + 120 * 60 * 1000),
             type: 'NO_SALE_OPEN',
-            amountCents: null,
+            amount: null,
             reason: 'Customer check',
             staffId: primaryStaff.id,
         });
@@ -1027,7 +1027,7 @@ async function seedBusySaturdayDemo(now, progress) {
             sessionId: openDrawerId,
             occurredAt: new Date(openDrawerOpenedAt.getTime() + 150 * 60 * 1000),
             type: 'ADJUSTMENT',
-            amountCents: 300,
+            amount: 300,
             reason: 'Drawer audit',
             staffId: primaryStaff.id,
         });
@@ -1036,7 +1036,7 @@ async function seedBusySaturdayDemo(now, progress) {
             sessionId: closedDrawerId,
             occurredAt: new Date(closedDrawerOpenedAt.getTime() + 45 * 60 * 1000),
             type: 'PAID_IN',
-            amountCents: 8000,
+            amount: 8000,
             reason: 'Extra change',
             staffId: secondaryStaff.id,
         });
@@ -1045,7 +1045,7 @@ async function seedBusySaturdayDemo(now, progress) {
             sessionId: closedDrawerId,
             occurredAt: new Date(closedDrawerOpenedAt.getTime() + 120 * 60 * 1000),
             type: 'PAID_OUT',
-            amountCents: 3200,
+            amount: 3200,
             reason: 'Vendor payout',
             staffId: secondaryStaff.id,
         });
@@ -1054,7 +1054,7 @@ async function seedBusySaturdayDemo(now, progress) {
             sessionId: closedDrawerId,
             occurredAt: new Date(closedDrawerOpenedAt.getTime() + 180 * 60 * 1000),
             type: 'DROP',
-            amountCents: 15000,
+            amount: 15000,
             reason: 'Safe drop',
             staffId: secondaryStaff.id,
         });
@@ -1063,7 +1063,7 @@ async function seedBusySaturdayDemo(now, progress) {
             sessionId: closedDrawerId,
             occurredAt: new Date(closedDrawerOpenedAt.getTime() + 210 * 60 * 1000),
             type: 'NO_SALE_OPEN',
-            amountCents: null,
+            amount: null,
             reason: 'Receipt reprint',
             staffId: secondaryStaff.id,
         });
@@ -1074,52 +1074,51 @@ async function seedBusySaturdayDemo(now, progress) {
            VALUES ('mock', 'cash_event', $1, $2, $3)`, [firstClosedEventId, 'mock-cash-event-01', 'v1']);
         }
         const lineItemCatalog = [
-            { kind: 'RETAIL', sku: 'RET-001', name: 'Bottled Water', unitPriceCents: 300 },
-            { kind: 'ADDON', sku: 'ADD-002', name: 'Towel Rental', unitPriceCents: 500 },
-            { kind: 'UPGRADE', sku: 'UPG-003', name: 'Room Upgrade', unitPriceCents: 2500 },
-            { kind: 'LATE_FEE', sku: 'LFE-004', name: 'Late Checkout Fee', unitPriceCents: 1500 },
-            { kind: 'MANUAL', sku: 'MAN-005', name: 'Manual Charge', unitPriceCents: 1200 },
+            { kind: 'RETAIL', sku: 'RET-001', name: 'Bottled Water', unitPrice: 300 },
+            { kind: 'RETAIL', sku: 'RET-002', name: 'Energy Drink', unitPrice: 500 },
+            { kind: 'RETAIL', sku: 'RET-003', name: 'Towel Rental', unitPrice: 500 },
+            { kind: 'RETAIL', sku: 'RET-004', name: 'Swiss Navy', unitPrice: 1200 },
+            { kind: 'RETAIL', sku: 'RET-005', name: 'Snack Bar', unitPrice: 400 },
         ];
         function randomDateBetween(start, end) {
             const span = Math.max(end.getTime() - start.getTime(), 0);
             return new Date(start.getTime() + rng() * span);
         }
         function buildLineItems(seed) {
-            const itemCount = 1 + (seed % 3);
+            const itemCount = 1 + (seed % 2); // max 2 items per order
             const items = [];
             for (let i = 0; i < itemCount; i++) {
                 const catalog = lineItemCatalog[(seed + i) % lineItemCatalog.length];
-                const quantity = 1 + ((seed + i) % 2);
-                const base = catalog.unitPriceCents * quantity;
-                const discountCents = (seed + i) % 5 === 0 ? Math.round(base * 0.1) : 0;
-                const taxable = base - discountCents;
-                const taxCents = Math.round(taxable * 0.0825);
-                const totalCents = taxable + taxCents;
+                const quantity = 1 + ((seed + i) % 2); // 1 or 2
+                const base = catalog.unitPrice * quantity;
+                const discount = (seed + i) % 5 === 0 ? Math.round(base * 0.1) : 0;
+                const tax = 0; // prices are tax-inclusive
+                const total = base - discount;
                 items.push({
                     id: (0, crypto_1.randomUUID)(),
                     kind: catalog.kind,
                     sku: catalog.sku,
                     name: catalog.name,
                     quantity,
-                    unitPriceCents: catalog.unitPriceCents,
-                    discountCents,
-                    taxCents,
-                    totalCents,
+                    unitPrice: catalog.unitPrice,
+                    discount,
+                    tax,
+                    total,
                 });
             }
             return items;
         }
-        function buildOrderTotals(items, tipCents) {
-            const subtotalCents = items.reduce((sum, item) => sum + item.unitPriceCents * item.quantity, 0);
-            const discountCents = items.reduce((sum, item) => sum + item.discountCents, 0);
-            const taxCents = items.reduce((sum, item) => sum + item.taxCents, 0);
-            const totalCents = subtotalCents - discountCents + taxCents + tipCents;
+        function buildOrderTotals(items, tip) {
+            const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+            const discount = items.reduce((sum, item) => sum + item.discount, 0);
+            const tax = items.reduce((sum, item) => sum + item.tax, 0);
+            const total = subtotal - discount + tax + tip;
             return {
-                subtotalCents,
-                discountCents,
-                taxCents,
-                tipCents,
-                totalCents,
+                subtotal,
+                discount,
+                tax,
+                tip,
+                total,
                 currency: 'USD',
             };
         }
@@ -1136,11 +1135,11 @@ async function seedBusySaturdayDemo(now, progress) {
                             ? 'OPEN'
                             : 'PAID';
             const lineItems = buildLineItems(params.seed);
-            const tipCents = paymentMethod === 'CREDIT' && params.seed % 5 === 0 ? randInt(100, 900) : 0;
-            const totals = buildOrderTotals(lineItems, tipCents);
+            const tip = paymentMethod === 'CREDIT' && params.seed % 5 === 0 ? randInt(100, 900) : 0;
+            const totals = buildOrderTotals(lineItems, tip);
             const orderId = (0, crypto_1.randomUUID)();
             await client.query(`INSERT INTO orders
-           (id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency, metadata_json)
+           (id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`, [
                 orderId,
                 params.customerId,
@@ -1148,11 +1147,11 @@ async function seedBusySaturdayDemo(now, progress) {
                 params.staffId,
                 params.createdAt,
                 status,
-                totals.subtotalCents,
-                totals.discountCents,
-                totals.taxCents,
-                totals.tipCents,
-                totals.totalCents,
+                totals.subtotal,
+                totals.discount,
+                totals.tax,
+                totals.tip,
+                totals.total,
                 totals.currency,
                 {
                     tender: {
@@ -1163,7 +1162,7 @@ async function seedBusySaturdayDemo(now, progress) {
             ]);
             for (const item of lineItems) {
                 await client.query(`INSERT INTO order_line_items
-             (id, order_id, kind, sku, name, quantity, unit_price_cents, discount_cents, tax_cents, total_cents, metadata_json)
+             (id, order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`, [
                     item.id,
                     orderId,
@@ -1171,10 +1170,10 @@ async function seedBusySaturdayDemo(now, progress) {
                     item.sku,
                     item.name,
                     item.quantity,
-                    item.unitPriceCents,
-                    item.discountCents,
-                    item.taxCents,
-                    item.totalCents,
+                    item.unitPrice,
+                    item.discount,
+                    item.tax,
+                    item.total,
                     null,
                 ]);
             }
@@ -1197,11 +1196,11 @@ async function seedBusySaturdayDemo(now, progress) {
                     issuedAt: issuedAt.toISOString(),
                     currency: totals.currency,
                     totals: {
-                        subtotalCents: totals.subtotalCents,
-                        discountCents: totals.discountCents,
-                        taxCents: totals.taxCents,
-                        tipCents: totals.tipCents,
-                        totalCents: totals.totalCents,
+                        subtotal: totals.subtotal,
+                        discount: totals.discount,
+                        tax: totals.tax,
+                        tip: totals.tip,
+                        total: totals.total,
                     },
                     lineItems: lineItems.map((item) => ({
                         id: item.id,
@@ -1209,10 +1208,10 @@ async function seedBusySaturdayDemo(now, progress) {
                         sku: item.sku,
                         name: item.name,
                         quantity: item.quantity,
-                        unitPriceCents: item.unitPriceCents,
-                        discountCents: item.discountCents,
-                        taxCents: item.taxCents,
-                        totalCents: item.totalCents,
+                        unitPrice: item.unitPrice,
+                        discount: item.discount,
+                        tax: item.tax,
+                        total: item.total,
                     })),
                 };
                 const receiptId = (0, crypto_1.randomUUID)();
@@ -1290,21 +1289,21 @@ async function seedBusySaturdayDemo(now, progress) {
             id: closedDrawerId,
             register_session_id: closedRegisterSessionId,
             opened_at: closedDrawerOpenedAt,
-            opening_float_cents: closedDrawerFloatCents,
+            opening_float: closedDrawerFloat,
         }, closedDrawerClosedAt);
-        const countedCashCents = closeoutSnapshot.expectedCashCents - 250;
-        const overShortCents = countedCashCents - closeoutSnapshot.expectedCashCents;
+        const countedCash = closeoutSnapshot.expectedCash - 250;
+        const overShort = countedCash - closeoutSnapshot.expectedCash;
         setMessage('Building closeout snapshot');
         addTotal(1);
         await client.query(`UPDATE cash_drawer_sessions
-         SET expected_cash_cents = $1,
-             counted_cash_cents = $2,
-             over_short_cents = $3,
+         SET expected_cash = $1,
+             counted_cash = $2,
+             over_short = $3,
              closeout_snapshot_json = $4
          WHERE id = $5`, [
-            closeoutSnapshot.expectedCashCents,
-            countedCashCents,
-            overShortCents,
+            closeoutSnapshot.expectedCash,
+            countedCash,
+            overShort,
             closeoutSnapshot,
             closedDrawerId,
         ]);

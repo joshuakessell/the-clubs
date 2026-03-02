@@ -52,12 +52,12 @@ function registerCheckinAddOnRoutes(fastify) {
                 }
                 const addLineItems = items.map((item) => ({
                     description: item.quantity > 1 ? `${item.label} x${item.quantity}` : item.label,
-                    amount: (0, utils_1.roundToCents)(item.quantity * item.unitPrice),
+                    amount: (0, utils_1.roundToWhole)(item.quantity * item.unitPrice),
                     kind: 'ADDON',
                 }));
                 const addTotal = addLineItems.reduce((sum, item) => sum + item.amount, 0);
                 const nextLineItems = [...baseQuote.lineItems, ...addLineItems];
-                const nextTotal = (0, utils_1.roundToCents)(baseQuote.total + addTotal);
+                const nextTotal = (0, utils_1.roundToWhole)(baseQuote.total + addTotal);
                 const nextQuote = {
                     ...baseQuote.quote,
                     lineItems: nextLineItems,

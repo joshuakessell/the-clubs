@@ -169,28 +169,27 @@ function registerCheckoutStaffRoutes(fastify) {
                             messages: body.note ? [body.note] : [],
                         };
                         const paymentIntent = await client.query(`INSERT INTO payment_intents
-                 (amount, status, quote_json, payment_method, register_number, tip_cents, paid_at, paid_by_staff_id)
+                 (amount, status, quote_json, payment_method, register_number, tip, paid_at, paid_by_staff_id)
                  VALUES ($1, 'PAID', $2, $3, $4, $5, NOW(), $6)
-                 RETURNING id, amount, payment_method, register_number, tip_cents`, [
+                 RETURNING id, amount, payment_method, register_number, tip`, [
                             feeAmount,
                             JSON.stringify(quoteJson),
                             body.paymentMethod ?? null,
                             resolvedRegisterNumber,
-                            body.tipCents ?? 0,
+                            body.tip ?? 0,
                             staffId,
                         ]);
                         const intent = paymentIntent.rows[0];
-                        const feeCents = (0, orderAudit_1.toCents)(feeAmount) ?? 0;
                         const lineItems = [
                             {
                                 kind: 'LATE_FEE',
                                 name: 'Late Fee',
                                 quantity: 1,
-                                unitPriceCents: feeCents,
-                                totalCents: feeCents,
+                                unitPrice: feeAmount,
+                                total: feeAmount,
                             },
                         ];
-                        const totals = (0, orderAudit_1.computeOrderTotals)(lineItems, feeCents, intent.tip_cents ?? 0);
+                        const totals = (0, orderAudit_1.computeOrderTotals)(lineItems, feeAmount, intent.tip ?? 0);
                         const ensured = await (0, orderAudit_1.ensureOrderWithReceipt)(client, {
                             dedupeKey: { field: 'checkoutRequestId', value: request.params.requestId },
                             customerId: checkoutRequest.customer_id ?? null,
@@ -207,8 +206,8 @@ function registerCheckoutStaffRoutes(fastify) {
                             tender: {
                                 paymentIntentId: intent.id,
                                 paymentMethod: intent.payment_method ?? null,
-                                amountCents: feeCents,
-                                tipCents: intent.tip_cents ?? 0,
+                                amount: feeAmount,
+                                tip: intent.tip ?? 0,
                                 registerNumber: intent.register_number ?? null,
                             },
                         });
@@ -219,7 +218,7 @@ function registerCheckoutStaffRoutes(fastify) {
                                 customerId: checkoutRequest.customer_id,
                                 visitId,
                                 entryType: 'CHECKOUT_FEE_PAID',
-                                amountCents: ensured.order.total_cents,
+                                amount: ensured.order.total,
                                 sourceApp: 'EMPLOYEE_REGISTER',
                                 actorType: 'STAFF',
                                 actorStaffId: staffId,
@@ -229,7 +228,7 @@ function registerCheckoutStaffRoutes(fastify) {
                                     checkoutRequestId: request.params.requestId,
                                     orderId: ensured.order.id,
                                     paymentIntentId: intent.id,
-                                    totalCents: ensured.order.total_cents,
+                                    total: ensured.order.total,
                                     visitId,
                                 },
                                 dedupeKey: `LEDGER:CHECKOUT_FEE_PAID:${request.params.requestId}`,
@@ -242,7 +241,7 @@ function registerCheckoutStaffRoutes(fastify) {
                                 actorType: 'STAFF',
                                 actorStaffId: staffId,
                                 actorStaffName: request.staff.name,
-                                summary: `Checkout fee paid ($${(ensured.order.total_cents / 100).toFixed(2)})`,
+                                summary: `Checkout fee paid ($${ensured.order.total.toFixed(2)})`,
                                 metadata: {
                                     checkoutRequestId: request.params.requestId,
                                     orderId: ensured.order.id,
@@ -450,7 +449,7 @@ function registerCheckoutStaffRoutes(fastify) {
                     await client.query(`
               INSERT INTO late_checkout_ban_alerts
                 (customer_id, checkout_request_id, occupancy_id, visit_id,
-                 late_minutes, fee_amount_cents, recommended_ban_days,
+                 late_minutes, fee_amount, recommended_ban_days,
                  status, created_by_staff_id, created_by_staff_name)
               VALUES
                 ($1, $2, $3, $4, $5, $6, 30, 'PENDING', $7, $8)
@@ -486,7 +485,7 @@ function registerCheckoutStaffRoutes(fastify) {
                         customerId: checkoutRequest.customer_id,
                         visitId: block.visit_id,
                         entryType: 'LATE_FEE',
-                        amountCents: feeAmount * 100,
+                        amount: feeAmount,
                         sourceApp: 'EMPLOYEE_REGISTER',
                         actorType: 'STAFF',
                         actorStaffId: staffId,

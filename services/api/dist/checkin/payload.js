@@ -244,11 +244,12 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
             ledgerTotal = total;
         }
     }
-    else if (session.checkin_mode === 'CHECKIN' && session.status === 'ACTIVE') {
-        // Build ledger line items for new check-ins:
+    else if (session.checkin_mode === 'CHECKIN') {
+        // Build ledger line items for new check-ins (all non-terminal statuses):
         //   1. Past Due Balance (if any)
         //   2. Membership Fee (for non-members)
         //   3. Rental Cost (when rental type is selected)
+        //   4. DB charges (upgrade fees, late fees, etc.)
         const items = [];
         let total = 0;
         // 1. Past Due Balance (already in dollars from DB)
@@ -256,45 +257,70 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
             items.push({ description: 'Past Due Balance', amount: pastDueBalance });
             total += pastDueBalance;
         }
-        // 2. Membership Fee (non-members only)
-        const membershipCardType = customer?.membership_card_type;
-        const membershipValidUntilRaw = (0, utils_1.toDate)(customer?.membership_valid_until);
-        const hasMembership = membershipCardType === 'SIX_MONTH' &&
-            membershipValidUntilRaw != null &&
-            new Date() <= membershipValidUntilRaw;
-        if (!hasMembership) {
-            if (session.membership_choice === 'SIX_MONTH') {
-                items.push({ description: '6-Month Membership', amount: 43 });
-                total += 43;
-            }
-            else {
-                items.push({ description: 'Membership Fee', amount: 13 });
-                total += 13;
+        if (paymentLineItems) {
+            for (const item of paymentLineItems) {
+                items.push(item);
+                total += item.amount;
             }
         }
-        // 3. Rental Cost (simplified preview price — exact price at payment time)
-        const rentalType = session.proposed_rental_type;
-        if (rentalType && session.selection_confirmed) {
-            const rentalLabel = {
-                LOCKER: 'Locker',
-                STANDARD: 'Standard Room',
-                DOUBLE: 'Double Room',
-                SPECIAL: 'Special Room',
-                GYM_LOCKER: 'Gym Locker',
-            };
-            // Simplified base prices in dollars (weekday non-discount defaults)
-            const rentalPrice = {
-                LOCKER: 17,
-                STANDARD: 30,
-                DOUBLE: 40,
-                SPECIAL: 50,
-                GYM_LOCKER: 0,
-            };
-            const label = rentalLabel[rentalType] ?? rentalType;
-            const price = rentalPrice[rentalType] ?? 0;
-            if (price > 0) {
-                items.push({ description: label, amount: price });
-                total += price;
+        else {
+            // 2. Membership Fee (non-members only)
+            const membershipCardType = customer?.membership_card_type;
+            const membershipValidUntilRaw = (0, utils_1.toDate)(customer?.membership_valid_until);
+            const hasMembership = !!membershipNumber ||
+                (membershipCardType === 'SIX_MONTH' &&
+                    membershipValidUntilRaw != null &&
+                    new Date() <= membershipValidUntilRaw);
+            if (!hasMembership) {
+                if (session.membership_choice === 'SIX_MONTH') {
+                    items.push({ description: '6-Month Membership', amount: 43 });
+                    total += 43;
+                }
+                else {
+                    items.push({ description: 'Membership Fee', amount: 13 });
+                    total += 13;
+                }
+            }
+            // 3. Rental Cost (simplified preview price — exact price at payment time)
+            const isWaitlisted = !!session.waitlist_desired_type;
+            const rentalType = isWaitlisted ? session.backup_rental_type : session.proposed_rental_type;
+            if (rentalType && (session.selection_confirmed || isWaitlisted)) {
+                const rentalLabel = {
+                    LOCKER: 'Locker',
+                    STANDARD: 'Standard Room',
+                    DOUBLE: 'Double Room',
+                    SPECIAL: 'Special Room',
+                    GYM_LOCKER: 'Gym Locker',
+                };
+                // Simplified base prices in dollars (weekday non-discount defaults)
+                const rentalPrice = {
+                    LOCKER: 17,
+                    STANDARD: 30,
+                    DOUBLE: 40,
+                    SPECIAL: 50,
+                    GYM_LOCKER: 0,
+                };
+                const label = rentalLabel[rentalType] ?? rentalType;
+                const price = rentalPrice[rentalType] ?? 0;
+                if (price > 0) {
+                    items.push({ description: label, amount: price });
+                    total += price;
+                }
+            }
+        }
+        // 4. DB charges (upgrade fees, late fees, etc.) for this visit
+        const checkinVisitId = blockForSession?.visit_id || activeVisitId;
+        if (checkinVisitId) {
+            const charges = await client.query(`SELECT type, amount
+         FROM charges
+         WHERE visit_id = $1
+           AND created_at >= date_trunc('day', NOW())`, [checkinVisitId]);
+            for (const charge of charges.rows) {
+                const amount = (0, utils_1.toNumber)(charge.amount);
+                if (amount === undefined)
+                    continue;
+                items.push({ description: formatChargeDescription(charge.type), amount });
+                total += amount;
             }
         }
         if (items.length > 0) {
@@ -308,6 +334,21 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
         : typeof membershipValidUntilRaw === 'string'
             ? membershipValidUntilRaw
             : undefined;
+    let waitlistPosition;
+    let waitlistEstimatedReadyAt;
+    if (session.waitlist_desired_type) {
+        const allDesiredTypes = extractWaitlistDesiredTypes(session.waitlist_desired_types_json) || [session.waitlist_desired_type];
+        const queueLengthResult = await client.query(`SELECT COUNT(*) as count 
+       FROM waitlist
+       WHERE status IN ('ACTIVE', 'OFFERED')
+       AND desired_tier = ANY($1::text[])`, [allDesiredTypes]);
+        const baseQueueLength = parseInt(queueLengthResult.rows[0]?.count || '0', 10);
+        waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries
+        // Estimate: 20 mins per person in line
+        const estimatedWaitMinutes = waitlistPosition * 20;
+        const readyAt = new Date(Date.now() + estimatedWaitMinutes * 60000);
+        waitlistEstimatedReadyAt = readyAt.toISOString();
+    }
     const payload = {
         sessionId: session.id,
         customerId: session.customer_id ?? undefined,
@@ -358,6 +399,8 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
         backupRentalType: session.backup_rental_type || undefined,
         waitlistRequestedResourceNumber: session.waitlist_requested_resource_number || undefined,
         waitlistRequestedResourceType: session.waitlist_requested_resource_type || undefined,
+        waitlistPosition,
+        waitlistEstimatedReadyAt,
         blockEndsAt: blockForSession?.ends_at
             ? blockForSession.ends_at.toISOString()
             : activeBlockEndsAt,

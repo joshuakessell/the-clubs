@@ -24,15 +24,15 @@ function coalesceNumber(...values) {
 function extractTipFromMetadata(metadata) {
     if (!metadata)
         return undefined;
-    const direct = toInteger(metadata['tip_revision_cents'] ??
-        metadata['tip_revision_amount_cents'] ??
-        metadata['tip_cents'] ??
-        metadata['tip_amount_cents']);
+    const direct = toInteger(metadata['tip_revision'] ??
+        metadata['tip_revision_amount'] ??
+        metadata['tip'] ??
+        metadata['tip_amount']);
     if (direct !== undefined)
         return direct;
     const revision = metadata['tip_revision'];
     if (isRecord(revision)) {
-        const revisionTip = toInteger(revision['tip_cents'] ?? revision['tip_amount_cents']);
+        const revisionTip = toInteger(revision['tip'] ?? revision['tip_amount']);
         if (revisionTip !== undefined)
             return revisionTip;
     }
@@ -44,9 +44,9 @@ function sumLineItems(lineItems) {
     let sum = 0;
     let hasValue = false;
     for (const item of lineItems) {
-        if (item?.totalCents === undefined)
+        if (item?.total === undefined)
             continue;
-        sum += item.totalCents;
+        sum += item.total;
         hasValue = true;
     }
     return hasValue ? sum : undefined;
@@ -61,47 +61,47 @@ function calcTotals(input) {
     if (input.expectPayment && !payment) {
         discrepancies.push('PAYMENT_MISSING');
     }
-    const discountCents = order?.discountCents ?? 0;
-    const taxCents = order?.taxCents ?? 0;
+    const discount = order?.discount ?? 0;
+    const tax = order?.tax ?? 0;
     const tipFromMetadata = extractTipFromMetadata(payment?.metadata ?? undefined);
-    const tipCents = Math.max(0, coalesceNumber(payment?.tipRevisionCents, tipFromMetadata, payment?.tipCents, order?.tipCents, 0) ?? 0);
-    let subtotalCents = coalesceNumber(order?.subtotalCents, sumLineItems(order?.lineItems));
-    if (subtotalCents === undefined && order?.totalCents !== undefined) {
-        subtotalCents = order.totalCents - discountCents - taxCents - tipCents;
+    const tip = Math.max(0, coalesceNumber(payment?.tipRevision, tipFromMetadata, payment?.tip, order?.tip, 0) ?? 0);
+    let subtotal = coalesceNumber(order?.subtotal, sumLineItems(order?.lineItems));
+    if (subtotal === undefined && order?.total !== undefined) {
+        subtotal = order.total - discount - tax - tip;
     }
-    if (subtotalCents === undefined && payment?.baseAmountCents !== undefined) {
-        subtotalCents = payment.baseAmountCents;
+    if (subtotal === undefined && payment?.baseAmount !== undefined) {
+        subtotal = payment.baseAmount;
     }
-    if (subtotalCents === undefined && payment?.totalCents !== undefined) {
-        subtotalCents = payment.totalCents - discountCents - taxCents - tipCents;
+    if (subtotal === undefined && payment?.total !== undefined) {
+        subtotal = payment.total - discount - tax - tip;
     }
-    if (subtotalCents === undefined) {
-        subtotalCents = 0;
+    if (subtotal === undefined) {
+        subtotal = 0;
     }
-    let totalCents = order?.totalCents;
-    if (totalCents === undefined && order) {
-        totalCents = subtotalCents - discountCents + taxCents + tipCents;
+    let total = order?.total;
+    if (total === undefined && order) {
+        total = subtotal - discount + tax + tip;
     }
-    if (totalCents === undefined && payment?.totalCents !== undefined) {
-        totalCents = payment.totalCents;
+    if (total === undefined && payment?.total !== undefined) {
+        total = payment.total;
     }
-    if (totalCents === undefined && payment?.baseAmountCents !== undefined) {
-        totalCents = payment.baseAmountCents - discountCents + taxCents + tipCents;
+    if (total === undefined && payment?.baseAmount !== undefined) {
+        total = payment.baseAmount - discount + tax + tip;
     }
-    if (totalCents === undefined) {
-        totalCents = subtotalCents - discountCents + taxCents + tipCents;
+    if (total === undefined) {
+        total = subtotal - discount + tax + tip;
     }
-    if (order?.totalCents !== undefined &&
-        payment?.totalCents !== undefined &&
-        Math.abs(order.totalCents - payment.totalCents) > 1) {
+    if (order?.total !== undefined &&
+        payment?.total !== undefined &&
+        Math.abs(order.total - payment.total) > 1) {
         discrepancies.push('TOTAL_MISMATCH');
     }
     return {
-        subtotalCents,
-        discountCents,
-        taxCents,
-        tipCents,
-        totalCents,
+        subtotal,
+        discount,
+        tax,
+        tip,
+        total,
         discrepancies,
     };
 }

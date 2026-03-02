@@ -18,7 +18,10 @@ class LocalLaneSSEClients {
         const set = this.clientsByLane.get(laneId) ?? new Set();
         const heartbeatTimer = setInterval(() => {
             try {
-                res.write(': heartbeat\n\n');
+                // Send as a data event (not a comment) so EventSource.onmessage fires.
+                // SSE comments (`: heartbeat`) are silently ignored by the browser,
+                // causing the client's keepalive timer to never reset.
+                res.write(`data: ${JSON.stringify({ type: 'HEARTBEAT', timestamp: new Date().toISOString() })}\n\n`);
             }
             catch {
                 // Response ended — cleanup will happen via 'close' event

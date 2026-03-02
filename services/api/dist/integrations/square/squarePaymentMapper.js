@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.mapSquareStatus = mapSquareStatus;
 exports.mapSquarePayment = mapSquarePayment;
-function toCents(value) {
+function toDollars(value) {
     if (value === null || value === undefined)
         return null;
     if (typeof value === 'number' && Number.isFinite(value))
@@ -15,11 +15,11 @@ function toCents(value) {
 function toMoneyAmount(money, fallbackCurrency) {
     if (!money)
         return null;
-    const amountCents = toCents(money.amount ?? null);
-    if (amountCents === null)
+    const amount = toDollars(money.amount ?? null);
+    if (amount === null)
         return null;
     const currency = money.currency || fallbackCurrency || 'USD';
-    return { amountCents, currency };
+    return { amount, currency };
 }
 function mapSourceType(sourceType) {
     if (!sourceType)
@@ -33,9 +33,9 @@ function mapSourceType(sourceType) {
 }
 function mapSquareStatus(payment) {
     const status = payment.status?.toUpperCase();
-    const refunded = toCents(payment.refundedMoney?.amount ?? null) ?? 0;
-    const total = toCents(payment.totalMoney?.amount ?? null) ??
-        toCents(payment.amountMoney?.amount ?? null) ??
+    const refunded = toDollars(payment.refundedMoney?.amount ?? null) ?? 0;
+    const total = toDollars(payment.totalMoney?.amount ?? null) ??
+        toDollars(payment.amountMoney?.amount ?? null) ??
         0;
     if (status === 'COMPLETED') {
         if (refunded > 0) {
@@ -58,7 +58,7 @@ function mapSquareStatus(payment) {
 }
 function mapSquarePayment(payment) {
     const totalMoney = payment.totalMoney ?? payment.amountMoney ?? null;
-    const amount = toMoneyAmount(totalMoney) ?? { amountCents: 0, currency: 'USD' };
+    const amount = toMoneyAmount(totalMoney) ?? { amount: 0, currency: 'USD' };
     const tipAmount = toMoneyAmount(payment.tipMoney ?? null, amount.currency);
     const taxAmount = toMoneyAmount(payment.taxMoney ?? null, amount.currency);
     const createdAt = payment.createdAt ?? payment.updatedAt ?? new Date().toISOString();

@@ -17,6 +17,7 @@ async function extractStaffFromToken(request) {
         request.headers['Authorization'] ??
         request.headers['AUTHORIZATION'];
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        request.log.debug({ hasAuth: !!authHeader, url: request.url }, 'auth_reject: no Bearer header');
         return false;
     }
     const token = authHeader.substring(7);
@@ -34,6 +35,8 @@ async function extractStaffFromToken(request) {
         AND ss.expires_at > NOW()
         AND s.active = true`, [tokenHash]);
         if (sessionResult.rows.length === 0) {
+            // Log the first 8 chars of the token hash for correlation (safe — hash is not reversible)
+            request.log.warn({ tokenHashPrefix: tokenHash.slice(0, 8), tokenRawPrefix: token.slice(0, 8), url: request.url }, 'auth_reject: no active session found for token hash');
             return false;
         }
         const row = sessionResult.rows[0];
@@ -52,7 +55,7 @@ async function extractStaffFromToken(request) {
         return true;
     }
     catch (error) {
-        request.log.error(error, 'Error validating session token');
+        request.log.error({ err: error, url: request.url }, 'auth_reject: DB error validating session token');
         return false;
     }
 }

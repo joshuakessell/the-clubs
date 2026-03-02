@@ -18,30 +18,30 @@ const LineItemSchema = zod_1.z.object({
     sku: zod_1.z.string().optional().nullable(),
     name: zod_1.z.string().min(1),
     quantity: zod_1.z.number().int().positive(),
-    unitPriceCents: zod_1.z.number().int().nonnegative(),
-    discountCents: zod_1.z.number().int().nonnegative().optional().nullable(),
-    taxCents: zod_1.z.number().int().nonnegative().optional().nullable(),
+    unitPrice: zod_1.z.number().int().nonnegative(),
+    discount: zod_1.z.number().int().nonnegative().optional().nullable(),
+    tax: zod_1.z.number().int().nonnegative().optional().nullable(),
 });
 const AddLineItemsSchema = zod_1.z.object({
     items: zod_1.z.array(LineItemSchema).min(1),
 });
 const MarkPaidSchema = zod_1.z.object({
-    tipCents: zod_1.z.number().int().optional().nullable(),
+    tip: zod_1.z.number().int().optional().nullable(),
 });
 function toNumber(value) {
     const n = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(n) ? n : 0;
 }
 function computeLineTotal(item) {
-    const discount = item.discountCents ?? 0;
-    const tax = item.taxCents ?? 0;
-    const subtotal = item.quantity * item.unitPriceCents;
+    const discount = item.discount ?? 0;
+    const tax = item.tax ?? 0;
+    const subtotal = item.quantity * item.unitPrice;
     const total = subtotal - discount + tax;
     return {
-        subtotalCents: subtotal,
-        discountCents: discount,
-        taxCents: tax,
-        totalCents: total,
+        subtotal: subtotal,
+        discount: discount,
+        tax: tax,
+        total: total,
     };
 }
 function buildReceiptNumber(order) {
@@ -69,7 +69,7 @@ async function orderRoutes(fastify) {
         }
         try {
             const order = await (0, db_1.query)(`INSERT INTO orders
-         (customer_id, register_session_id, created_by_staff_id, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency, metadata_json)
+         (customer_id, register_session_id, created_by_staff_id, status, subtotal, discount, tax, tip, total, currency, metadata_json)
          VALUES ($1, $2, $3, 'OPEN', 0, 0, 0, 0, 0, 'USD', $4)
          RETURNING *`, [
                 body.customerId ?? null,
@@ -111,7 +111,7 @@ async function orderRoutes(fastify) {
         }
         try {
             const result = await (0, db_1.transaction)(async (client) => {
-                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
+                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
                 if (orderResult.rows.length === 0) {
                     throw { statusCode: 404, message: 'Order not found' };
                 }
@@ -123,7 +123,7 @@ async function orderRoutes(fastify) {
                 for (const item of body.items) {
                     const computed = computeLineTotal(item);
                     const line = await client.query(`INSERT INTO order_line_items
-               (order_id, kind, sku, name, quantity, unit_price_cents, discount_cents, tax_cents, total_cents, metadata_json)
+               (order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json)
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
                RETURNING *`, [
                         order.id,
@@ -131,40 +131,40 @@ async function orderRoutes(fastify) {
                         item.sku ?? null,
                         item.name,
                         item.quantity,
-                        item.unitPriceCents,
-                        computed.discountCents,
-                        computed.taxCents,
-                        computed.totalCents,
+                        item.unitPrice,
+                        computed.discount,
+                        computed.tax,
+                        computed.total,
                     ]);
                     inserted.push(line.rows[0]);
                 }
                 const totalsResult = await client.query(`SELECT
-               COALESCE(SUM(quantity * unit_price_cents), 0) as subtotal_cents,
-               COALESCE(SUM(discount_cents), 0) as discount_cents,
-               COALESCE(SUM(tax_cents), 0) as tax_cents,
-               COALESCE(SUM(total_cents), 0) as total_cents
+               COALESCE(SUM(quantity * unit_price), 0) as subtotal,
+               COALESCE(SUM(discount), 0) as discount,
+               COALESCE(SUM(tax), 0) as tax,
+               COALESCE(SUM(total), 0) as total
              FROM order_line_items
              WHERE order_id = $1`, [order.id]);
                 const totals = totalsResult.rows[0];
-                const subtotalCents = toNumber(totals.subtotal_cents);
-                const discountCents = toNumber(totals.discount_cents);
-                const taxCents = toNumber(totals.tax_cents);
-                const itemsTotalCents = toNumber(totals.total_cents);
+                const subtotal = toNumber(totals.subtotal);
+                const discount = toNumber(totals.discount);
+                const tax = toNumber(totals.tax);
+                const itemsTotal = toNumber(totals.total);
                 await client.query(`UPDATE orders
-             SET subtotal_cents = $1,
-                 discount_cents = $2,
-                 tax_cents = $3,
-                 total_cents = $4
-             WHERE id = $5`, [subtotalCents, discountCents, taxCents, itemsTotalCents + order.tip_cents, order.id]);
-                return { order, inserted, subtotalCents, discountCents, taxCents, itemsTotalCents };
+             SET subtotal = $1,
+                 discount = $2,
+                 tax = $3,
+                 total = $4
+             WHERE id = $5`, [subtotal, discount, tax, itemsTotal + order.tip, order.id]);
+                return { order, inserted, subtotal, discount, tax, itemsTotal };
             });
             return reply.send({
                 orderId: result.order.id,
                 itemsAdded: result.inserted.length,
-                subtotalCents: result.subtotalCents,
-                discountCents: result.discountCents,
-                taxCents: result.taxCents,
-                totalCents: result.itemsTotalCents + result.order.tip_cents,
+                subtotal: result.subtotal,
+                discount: result.discount,
+                tax: result.tax,
+                total: result.itemsTotal + result.order.tip,
             });
         }
         catch (error) {
@@ -196,7 +196,7 @@ async function orderRoutes(fastify) {
         }
         try {
             const result = await (0, db_1.transaction)(async (client) => {
-                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
+                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
                 if (orderResult.rows.length === 0) {
                     throw { statusCode: 404, message: 'Order not found' };
                 }
@@ -205,34 +205,34 @@ async function orderRoutes(fastify) {
                     throw { statusCode: 409, message: `Order is ${order.status}` };
                 }
                 const totalsResult = await client.query(`SELECT
-               COALESCE(SUM(quantity * unit_price_cents), 0) as subtotal_cents,
-               COALESCE(SUM(discount_cents), 0) as discount_cents,
-               COALESCE(SUM(tax_cents), 0) as tax_cents,
-               COALESCE(SUM(total_cents), 0) as total_cents
+               COALESCE(SUM(quantity * unit_price), 0) as subtotal,
+               COALESCE(SUM(discount), 0) as discount,
+               COALESCE(SUM(tax), 0) as tax,
+               COALESCE(SUM(total), 0) as total
              FROM order_line_items
              WHERE order_id = $1`, [order.id]);
                 const totals = totalsResult.rows[0];
-                const subtotalCents = toNumber(totals.subtotal_cents);
-                const discountCents = toNumber(totals.discount_cents);
-                const taxCents = toNumber(totals.tax_cents);
-                const tipCents = body.tipCents ?? order.tip_cents;
-                const totalCents = subtotalCents - discountCents + taxCents + tipCents;
+                const subtotal = toNumber(totals.subtotal);
+                const discount = toNumber(totals.discount);
+                const tax = toNumber(totals.tax);
+                const tip = body.tip ?? order.tip;
+                const total = subtotal - discount + tax + tip;
                 const updated = await client.query(`UPDATE orders
              SET status = 'PAID',
-                 subtotal_cents = $1,
-                 discount_cents = $2,
-                 tax_cents = $3,
-                 tip_cents = $4,
-                 total_cents = $5
+                 subtotal = $1,
+                 discount = $2,
+                 tax = $3,
+                 tip = $4,
+                 total = $5
              WHERE id = $6
-             RETURNING *`, [subtotalCents, discountCents, taxCents, tipCents, totalCents, order.id]);
+             RETURNING *`, [subtotal, discount, tax, tip, total, order.id]);
                 const paidOrder = updated.rows[0];
                 if (paidOrder.customer_id) {
                     const ledger = await (0, customerSpendLedger_1.insertCustomerSpendLedgerEntry)(client, {
                         customerId: paidOrder.customer_id,
                         visitId: paidOrder.metadata_json?.visitId ?? null,
                         entryType: 'ORDER_PAID',
-                        amountCents: paidOrder.total_cents,
+                        amount: paidOrder.total,
                         sourceApp: 'EMPLOYEE_REGISTER',
                         actorType: 'STAFF',
                         actorStaffId: request.staff.staffId,
@@ -241,8 +241,8 @@ async function orderRoutes(fastify) {
                         metadata: {
                             orderId: paidOrder.id,
                             registerSessionId: paidOrder.register_session_id,
-                            totalCents: paidOrder.total_cents,
-                            tipCents: paidOrder.tip_cents,
+                            total: paidOrder.total,
+                            tip: paidOrder.tip,
                         },
                         dedupeKey: `LEDGER:ORDER_PAID:${paidOrder.id}`,
                     });
@@ -254,10 +254,10 @@ async function orderRoutes(fastify) {
                         actorType: 'STAFF',
                         actorStaffId: request.staff.staffId,
                         actorStaffName: request.staff.name,
-                        summary: `Retail purchase ($${(paidOrder.total_cents / 100).toFixed(2)})`,
+                        summary: `Retail purchase ($${paidOrder.total.toFixed(2)})`,
                         metadata: {
                             orderId: paidOrder.id,
-                            totalCents: paidOrder.total_cents,
+                            total: paidOrder.total,
                             spendLedgerEntryId: ledger.id,
                         },
                         dedupeKey: `ACT:ORDER_PAID:${paidOrder.id}`,
@@ -309,14 +309,14 @@ async function orderRoutes(fastify) {
                     customerName,
                     visitId: paidOrder.metadata_json?.visitId ?? null,
                     orderId: paidOrder.id,
-                    amountCents: paidOrder.total_cents,
-                    summary: `${saleEventType === 'ADDON_SOLD' ? 'Add-on' : saleEventType === 'UPGRADE_PAID' ? 'Upgrade' : 'Sale'} — $${(paidOrder.total_cents / 100).toFixed(2)}`,
+                    amount: paidOrder.total,
+                    summary: `${saleEventType === 'ADDON_SOLD' ? 'Add-on' : saleEventType === 'UPGRADE_PAID' ? 'Upgrade' : 'Sale'} — $${paidOrder.total.toFixed(2)}`,
                     metadata: {
-                        subtotalCents: paidOrder.subtotal_cents,
-                        discountCents: paidOrder.discount_cents,
-                        taxCents: paidOrder.tax_cents,
-                        tipCents: paidOrder.tip_cents,
-                        totalCents: paidOrder.total_cents,
+                        subtotal: paidOrder.subtotal,
+                        discount: paidOrder.discount,
+                        tax: paidOrder.tax,
+                        tip: paidOrder.tip,
+                        total: paidOrder.total,
                         registerSessionId: paidOrder.register_session_id,
                         lineItemCount: lineItems.rows.length,
                         itemKinds: Array.from(kinds),
@@ -328,11 +328,11 @@ async function orderRoutes(fastify) {
             return reply.send({
                 orderId: result.id,
                 status: result.status,
-                subtotalCents: result.subtotal_cents,
-                discountCents: result.discount_cents,
-                taxCents: result.tax_cents,
-                tipCents: result.tip_cents,
-                totalCents: result.total_cents,
+                subtotal: result.subtotal,
+                discount: result.discount,
+                tax: result.tax,
+                tip: result.tip,
+                total: result.total,
             });
         }
         catch (error) {
@@ -354,7 +354,7 @@ async function orderRoutes(fastify) {
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
             const result = await (0, db_1.transaction)(async (client) => {
-                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
+                const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [request.params.orderId]);
                 if (orderResult.rows.length === 0) {
                     throw { statusCode: 404, message: 'Order not found' };
                 }
@@ -383,11 +383,11 @@ async function orderRoutes(fastify) {
                     issuedAt: new Date().toISOString(),
                     currency: order.currency,
                     totals: {
-                        subtotalCents: order.subtotal_cents,
-                        discountCents: order.discount_cents,
-                        taxCents: order.tax_cents,
-                        tipCents: order.tip_cents,
-                        totalCents: order.total_cents,
+                        subtotal: order.subtotal,
+                        discount: order.discount,
+                        tax: order.tax,
+                        tip: order.tip,
+                        total: order.total,
                     },
                     lineItems: lineItems.rows.map((item) => ({
                         id: item.id,
@@ -395,10 +395,10 @@ async function orderRoutes(fastify) {
                         sku: item.sku,
                         name: item.name,
                         quantity: item.quantity,
-                        unitPriceCents: item.unit_price_cents,
-                        discountCents: item.discount_cents,
-                        taxCents: item.tax_cents,
-                        totalCents: item.total_cents,
+                        unitPrice: item.unit_price,
+                        discount: item.discount,
+                        tax: item.tax,
+                        total: item.total,
                     })),
                 };
                 const insertReceipt = await client.query(`INSERT INTO receipts (order_id, receipt_number, receipt_json)

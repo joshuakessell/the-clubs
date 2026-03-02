@@ -45,7 +45,14 @@ const FlowCommandRequestSchema = zod_1.z.object({
 });
 const SetStepCommandSchema = FlowCommandRequestSchema.extend({
     type: zod_1.z.literal('SET_STEP'),
-    payload: zod_1.z.object({ step: zod_1.z.string().min(1) }),
+    payload: zod_1.z.object({
+        step: zod_1.z.string().min(1),
+        paymentMethod: zod_1.z.string().optional(),
+        paymentFailed: zod_1.z.boolean().optional(),
+        failureReason: zod_1.z.string().optional(),
+        splitCashAmount: zod_1.z.number().optional(),
+        splitCreditAmount: zod_1.z.number().optional(),
+    }),
 });
 const BackStepCommandSchema = FlowCommandRequestSchema.extend({
     type: zod_1.z.literal('BACK_STEP'),
@@ -90,27 +97,27 @@ const FlowCommandRequestByTypeSchema = zod_1.z.discriminatedUnion('type', [
 ]);
 const FLOW_STEPS = [
     'RENTAL',
-    'WAITLIST_PREFERENCES',
     'WAITLIST_BACKUP',
     'PAYMENT',
     'AGREEMENT',
+    'ASSIGNMENT',
     'COMPLETE',
 ];
 const FLOW_STEP_INDEX = {
     RENTAL: 0,
-    WAITLIST_PREFERENCES: 1,
-    WAITLIST_BACKUP: 2,
-    PAYMENT: 3,
-    AGREEMENT: 4,
+    WAITLIST_BACKUP: 1,
+    PAYMENT: 2,
+    AGREEMENT: 3,
+    ASSIGNMENT: 4,
     COMPLETE: 5,
 };
 const ALLOWED_STEP_TRANSITIONS = {
-    RENTAL: new Set(['RENTAL', 'WAITLIST_PREFERENCES']),
-    WAITLIST_PREFERENCES: new Set(['RENTAL', 'WAITLIST_PREFERENCES', 'WAITLIST_BACKUP']),
-    WAITLIST_BACKUP: new Set(['WAITLIST_PREFERENCES', 'WAITLIST_BACKUP', 'PAYMENT']),
-    PAYMENT: new Set(['WAITLIST_BACKUP', 'PAYMENT', 'AGREEMENT']),
-    AGREEMENT: new Set(['PAYMENT', 'AGREEMENT', 'COMPLETE']),
-    COMPLETE: new Set(['AGREEMENT', 'COMPLETE']),
+    RENTAL: new Set(['RENTAL', 'WAITLIST_BACKUP', 'PAYMENT']),
+    WAITLIST_BACKUP: new Set(['RENTAL', 'WAITLIST_BACKUP', 'PAYMENT']),
+    PAYMENT: new Set(['RENTAL', 'WAITLIST_BACKUP', 'PAYMENT', 'AGREEMENT']),
+    AGREEMENT: new Set(['PAYMENT', 'AGREEMENT', 'ASSIGNMENT']),
+    ASSIGNMENT: new Set(['AGREEMENT', 'ASSIGNMENT', 'COMPLETE']),
+    COMPLETE: new Set(['ASSIGNMENT', 'COMPLETE']),
 };
 function assertAllowedStepTransition(params) {
     const { currentStep, nextStep, type } = params;
@@ -131,14 +138,15 @@ function assertAllowedStepTransition(params) {
         }
         return;
     }
-    // SET_STEP: allow no-op, forward one step, or any backward jump.
+    // SET_STEP: allow no-op, any backward jump, or a forward transition
+    // that's in the ALLOWED_STEP_TRANSITIONS matrix.
     if (nextStep === currentStep)
-        return;
+        return; // no-op
     if (nextIndex < currentIndex)
-        return;
-    if (nextIndex === currentIndex + 1)
-        return;
-    throw new FlowCommandError(400, 'InvalidTransition', `SET_STEP may only advance by one step (or jump backwards). ${currentStep} -> ${nextStep} not allowed`);
+        return; // backward jump always OK
+    if (ALLOWED_STEP_TRANSITIONS[currentStep].has(nextStep))
+        return; // matrix allows it
+    throw new FlowCommandError(400, 'InvalidTransition', `SET_STEP transition ${currentStep} -> ${nextStep} not allowed`);
 }
 function assertStepIsValidForFlow(params) {
     const { currentStep, nextStep } = params;
@@ -176,7 +184,6 @@ function computeFlowUpdate(input) {
         const movingBackwards = requestedIndex < currentIndex;
         const clear = {
             rental: movingBackwards && requestedIndex <= FLOW_STEPS.indexOf('RENTAL'),
-            waitlistPreferences: movingBackwards && requestedIndex <= FLOW_STEPS.indexOf('WAITLIST_PREFERENCES'),
             waitlistBackup: movingBackwards && requestedIndex <= FLOW_STEPS.indexOf('WAITLIST_BACKUP'),
             paymentIntent: movingBackwards && requestedIndex <= FLOW_STEPS.indexOf('PAYMENT'),
             agreement: movingBackwards && requestedIndex <= FLOW_STEPS.indexOf('AGREEMENT'),
@@ -193,7 +200,6 @@ function computeFlowUpdate(input) {
         // Back clears LEAVING step AND anything after it (should be same as jumping back)
         const clear = {
             rental: requestedIndex <= FLOW_STEPS.indexOf('RENTAL'),
-            waitlistPreferences: requestedIndex <= FLOW_STEPS.indexOf('WAITLIST_PREFERENCES'),
             waitlistBackup: requestedIndex <= FLOW_STEPS.indexOf('WAITLIST_BACKUP'),
             paymentIntent: requestedIndex <= FLOW_STEPS.indexOf('PAYMENT'),
             agreement: requestedIndex <= FLOW_STEPS.indexOf('AGREEMENT'),
@@ -203,20 +209,14 @@ function computeFlowUpdate(input) {
     // For command-specific step transitions (Propose/Confirm typically advance step)
     const noClear = {
         rental: false,
-        waitlistPreferences: false,
         waitlistBackup: false,
         paymentIntent: false,
         agreement: false,
     };
     if (type === 'PROPOSE_SELECTION' || type === 'CONFIRM_SELECTION') {
-        let nextTargetStep = currentStep;
-        if (type === 'CONFIRM_SELECTION' && currentStep === 'RENTAL') {
-            // Default: advance to WAITLIST_PREFERENCES (will be overridden in the
-            // handler if the room is available, skipping directly to PAYMENT).
-            nextTargetStep = 'WAITLIST_PREFERENCES';
-        }
+        // Selection stays on current step — employee clicks "Next" to advance.
         // No clearing for these; they are purely additive.
-        return { nextStep: nextTargetStep, clear: noClear };
+        return { nextStep: currentStep, clear: noClear };
     }
     if (type === 'WAITLIST_UPDATE') {
         // Purely additive update to draft fields.
@@ -226,7 +226,6 @@ function computeFlowUpdate(input) {
         // CANCEL_STEP clears the step we are currently on, without changing step.
         const clear = {
             rental: currentStep === 'RENTAL',
-            waitlistPreferences: currentStep === 'WAITLIST_PREFERENCES',
             waitlistBackup: currentStep === 'WAITLIST_BACKUP',
             paymentIntent: currentStep === 'PAYMENT',
             agreement: currentStep === 'AGREEMENT',
@@ -321,7 +320,7 @@ function registerCheckinFlowCommandRoutes(fastify) {
                     if (!rentalType) {
                         throw new FlowCommandError(400, 'InvalidPayload', 'payload.rentalType is required');
                     }
-                    if (session.selection_confirmed) {
+                    if (session.selection_confirmed && session.flow_step !== 'WAITLIST_BACKUP') {
                         throw new FlowCommandError(400, 'SelectionLocked', 'Selection is already locked');
                     }
                     nextProposedRentalType = rentalType;
@@ -397,7 +396,7 @@ function registerCheckinFlowCommandRoutes(fastify) {
                     nextSelectionConfirmed,
                     nextSelectionConfirmedBy,
                     nextSelectionLockedAt,
-                    clear.waitlistPreferences || clear.waitlistBackup,
+                    clear.waitlistBackup,
                     nextWaitlistDesiredType,
                     stringifyIfObject(nextWaitlistDesiredTypesJson),
                     nextBackupRentalType,
@@ -433,58 +432,14 @@ function registerCheckinFlowCommandRoutes(fastify) {
              RETURNING *`, params);
                 const finalSession = updatedSession.rows[0];
                 const finalStep = finalSession.flow_step;
-                // ── Auto-skip waitlist steps for available rooms ──
-                // When CONFIRM_SELECTION advances to WAITLIST_PREFERENCES but the
-                // room IS available, skip directly to PAYMENT.
-                if (type === 'CONFIRM_SELECTION' &&
-                    currentStep === 'RENTAL' &&
-                    finalStep === 'WAITLIST_PREFERENCES' &&
-                    finalSession.selection_confirmed) {
-                    const rentalType = finalSession.desired_rental_type ?? finalSession.proposed_rental_type;
-                    if (rentalType && rentalType !== 'LOCKER') {
-                        // Check if this room type is available
-                        const availResult = await client.query(`SELECT COUNT(*) as count FROM rooms
-                 WHERE type = $1::public.rental_type AND status = 'CLEAN'
-                   AND id NOT IN (
-                     SELECT assigned_resource_id FROM lane_sessions
-                     WHERE assigned_resource_id IS NOT NULL
-                       AND status NOT IN ('COMPLETED', 'CANCELLED')
-                   )`, [rentalType]);
-                        const availableCount = parseInt(availResult.rows[0]?.count ?? '0', 10);
-                        if (availableCount > 0) {
-                            // Skip to PAYMENT directly
-                            const skipVersion = (finalSession.flow_version ?? 0) + 1;
-                            const skipped = await client.query(`UPDATE lane_sessions
-                   SET flow_step = 'PAYMENT',
-                       flow_version = $1,
-                       updated_at = NOW()
-                   WHERE id = $2
-                   RETURNING *`, [skipVersion, sessionId]);
-                            if (skipped.rows.length > 0) {
-                                Object.assign(finalSession, skipped.rows[0]);
-                            }
-                        }
-                    }
-                    else if (rentalType === 'LOCKER') {
-                        // Lockers are always available — skip directly to PAYMENT
-                        const skipVersion = (finalSession.flow_version ?? 0) + 1;
-                        const skipped = await client.query(`UPDATE lane_sessions
-                 SET flow_step = 'PAYMENT',
-                     flow_version = $1,
-                     updated_at = NOW()
-                 WHERE id = $2
-                 RETURNING *`, [skipVersion, sessionId]);
-                        if (skipped.rows.length > 0) {
-                            Object.assign(finalSession, skipped.rows[0]);
-                        }
-                    }
-                }
+                // Auto-skip logic removed — employee now explicitly navigates
+                // between steps using SET_STEP. CONFIRM_SELECTION stays on RENTAL.
                 // ── Auto-create payment intent when entering PAYMENT step ──
                 if (finalSession.flow_step === 'PAYMENT' && !finalSession.payment_intent_id) {
-                    const rentalType = (finalSession.desired_rental_type ??
-                        finalSession.backup_rental_type ??
-                        finalSession.proposed_rental_type ??
-                        'LOCKER');
+                    let rentalType = (finalSession.desired_rental_type ?? finalSession.proposed_rental_type ?? 'LOCKER');
+                    if (finalSession.waitlist_desired_type && finalSession.backup_rental_type) {
+                        rentalType = finalSession.backup_rental_type;
+                    }
                     let customerAge;
                     let membershipCardType;
                     let membershipValidUntil;
@@ -526,6 +481,35 @@ function registerCheckinFlowCommandRoutes(fastify) {
                    status = 'AWAITING_PAYMENT',
                    updated_at = NOW()
                WHERE id = $3`, [intent.id, JSON.stringify(quote), sessionId]);
+                }
+                // ── Mark payment intent as PAID when moving to AGREEMENT step ──
+                if (finalSession.flow_step === 'AGREEMENT' &&
+                    finalSession.payment_intent_id &&
+                    type === 'SET_STEP') {
+                    const requestedMethod = payload?.['paymentMethod'];
+                    if (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT') {
+                        const intentStatusRes = await client.query(`SELECT status FROM payment_intents WHERE id = $1`, [finalSession.payment_intent_id]);
+                        if (intentStatusRes.rows[0]?.status !== 'PAID') {
+                            await client.query(`UPDATE payment_intents
+                   SET status = 'PAID',
+                       payment_method = $1,
+                       paid_at = NOW(),
+                       updated_at = NOW()
+                   WHERE id = $2`, [requestedMethod, finalSession.payment_intent_id]);
+                            await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [sessionId]);
+                        }
+                    }
+                }
+                // ── Handle Simulated Payment Failure ──
+                if (finalSession.flow_step === 'PAYMENT' &&
+                    finalSession.payment_intent_id &&
+                    type === 'SET_STEP' &&
+                    payload?.['paymentFailed']) {
+                    const failureReason = payload['failureReason'] || 'Payment failed';
+                    await client.query(`UPDATE payment_intents
+               SET failure_reason = $1,
+                   updated_at = NOW()
+               WHERE id = $2`, [failureReason, finalSession.payment_intent_id]);
                 }
                 return { applied: true, deduped: false, session: finalSession };
             });

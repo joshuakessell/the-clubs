@@ -8,6 +8,7 @@ function createBroadcaster(params) {
     const localLaneSockets = params?.localLaneSockets;
     const localLaneSSE = params?.localLaneSSE;
     const lastLaneVersions = new Map();
+    const log = params?.logger ?? console;
     // Global publish is a no-op (previously used for AppSync Events).
     const publishGlobal = (_event) => { };
     // Lane publish is a no-op (previously used for AppSync Events).
@@ -33,6 +34,7 @@ function createBroadcaster(params) {
             return true;
         const last = lastLaneVersions.get(lane);
         if (typeof last === 'number' && flowVersion < last) {
+            log.warn({ lane, sessionId: payload.sessionId, flowVersion, lastVersion: last }, 'SSE: dropping stale SESSION_UPDATED (version < last)');
             return false;
         }
         lastLaneVersions.set(lane, flowVersion);
@@ -73,6 +75,7 @@ function createBroadcaster(params) {
             broadcast(createEvent('ROOM_RELEASED', payload));
         },
         broadcastSessionUpdated(payload, lane) {
+            log.info({ sessionId: payload.sessionId, status: payload.status, flowVersion: payload.flowVersion, lane, sseClients: localLaneSSE?.clientCount ?? 0 }, 'SESSION_UPDATED broadcast');
             broadcastToLane(createEvent('SESSION_UPDATED', payload), lane);
         },
         broadcastCustomerConfirmationRequired(payload, lane) {

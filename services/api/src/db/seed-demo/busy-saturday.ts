@@ -1223,7 +1223,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
 
     const openDrawerId = randomUUID();
     const openDrawerOpenedAt = new Date(openRegisterOpenedAt.getTime() + 10 * 60 * 1000);
-    const openDrawerFloat = 200;
+    const openDrawerFloat = 200; // $200 opening float
     await client.query(
       `INSERT INTO cash_drawer_sessions
          (id, register_session_id, opened_by_staff_id, opened_at, opening_float, status)
@@ -1240,7 +1240,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
     const closedDrawerId = randomUUID();
     const closedDrawerOpenedAt = new Date(closedRegisterOpenedAt.getTime() + 20 * 60 * 1000);
     const closedDrawerClosedAt = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-    const closedDrawerFloat = 150;
+    const closedDrawerFloat = 150; // $150 opening float
     await client.query(
       `INSERT INTO cash_drawer_sessions
          (id, register_session_id, opened_by_staff_id, opened_at, opening_float, closed_by_staff_id, closed_at, status)
@@ -1290,7 +1290,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       sessionId: openDrawerId,
       occurredAt: new Date(openDrawerOpenedAt.getTime() + 30 * 60 * 1000),
       type: 'PAID_IN',
-      amount: 5000,
+      amount: 50,
       reason: 'Tip jar start',
       staffId: primaryStaff.id,
     });
@@ -1299,7 +1299,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       sessionId: openDrawerId,
       occurredAt: new Date(openDrawerOpenedAt.getTime() + 90 * 60 * 1000),
       type: 'PAID_OUT',
-      amount: 2500,
+      amount: 25,
       reason: 'Supplies',
       staffId: primaryStaff.id,
     });
@@ -1317,7 +1317,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       sessionId: openDrawerId,
       occurredAt: new Date(openDrawerOpenedAt.getTime() + 150 * 60 * 1000),
       type: 'ADJUSTMENT',
-      amount: 300,
+      amount: 3,
       reason: 'Drawer audit',
       staffId: primaryStaff.id,
     });
@@ -1327,7 +1327,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       sessionId: closedDrawerId,
       occurredAt: new Date(closedDrawerOpenedAt.getTime() + 45 * 60 * 1000),
       type: 'PAID_IN',
-      amount: 8000,
+      amount: 80,
       reason: 'Extra change',
       staffId: secondaryStaff.id,
     });
@@ -1336,7 +1336,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       sessionId: closedDrawerId,
       occurredAt: new Date(closedDrawerOpenedAt.getTime() + 120 * 60 * 1000),
       type: 'PAID_OUT',
-      amount: 3200,
+      amount: 32,
       reason: 'Vendor payout',
       staffId: secondaryStaff.id,
     });
@@ -1345,7 +1345,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       sessionId: closedDrawerId,
       occurredAt: new Date(closedDrawerOpenedAt.getTime() + 180 * 60 * 1000),
       type: 'DROP',
-      amount: 15000,
+      amount: 150,
       reason: 'Safe drop',
       staffId: secondaryStaff.id,
     });
@@ -1403,11 +1403,11 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       name: string;
       unitPrice: number;
     }> = [
-      { kind: 'RETAIL', sku: 'RET-001', name: 'Bottled Water', unitPrice: 300 },
-      { kind: 'RETAIL', sku: 'RET-002', name: 'Energy Drink', unitPrice: 500 },
-      { kind: 'RETAIL', sku: 'RET-003', name: 'Towel Rental', unitPrice: 500 },
-      { kind: 'RETAIL', sku: 'RET-004', name: 'Swiss Navy', unitPrice: 1200 },
-      { kind: 'RETAIL', sku: 'RET-005', name: 'Snack Bar', unitPrice: 400 },
+      { kind: 'RETAIL', sku: 'RET-001', name: 'Bottled Water', unitPrice: 3 },
+      { kind: 'RETAIL', sku: 'RET-002', name: 'Energy Drink', unitPrice: 5 },
+      { kind: 'RETAIL', sku: 'RET-003', name: 'Towel Rental', unitPrice: 5 },
+      { kind: 'RETAIL', sku: 'RET-004', name: 'Swiss Navy', unitPrice: 12 },
+      { kind: 'RETAIL', sku: 'RET-005', name: 'Snack Bar', unitPrice: 4 },
     ];
 
     function randomDateBetween(start: Date, end: Date): Date {
@@ -1482,7 +1482,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
                 : 'PAID';
 
       const lineItems = buildLineItems(params.seed);
-      const tip = paymentMethod === 'CREDIT' && params.seed % 5 === 0 ? randInt(100, 900) : 0;
+      const tip = 0; // Tips are cash-only, not tracked in app
       const totals = buildOrderTotals(lineItems, tip);
       const orderId = randomUUID();
 
@@ -1677,7 +1677,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       closedDrawerClosedAt
     );
 
-    const countedCash = closeoutSnapshot.expectedCash - 250;
+    const countedCash = closeoutSnapshot.expectedCash - 2.50;
     const overShort = countedCash - closeoutSnapshot.expectedCash;
 
     setMessage('Building closeout snapshot');

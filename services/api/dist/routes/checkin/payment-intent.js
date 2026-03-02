@@ -193,7 +193,7 @@ function registerCheckinPaymentIntentRoutes(fastify) {
         }
         const staffId = request.staff.staffId;
         const { id } = request.params;
-        const { squareTransactionId, paymentMethod, registerNumber, tipCents } = request.body ?? {};
+        const { squareTransactionId, paymentMethod, registerNumber, tip } = request.body ?? {};
         const resolvedPaymentMethod = paymentMethod === 'CASH' || paymentMethod === 'CREDIT'
             ? paymentMethod
             : squareTransactionId
@@ -202,8 +202,8 @@ function registerCheckinPaymentIntentRoutes(fastify) {
         const resolvedRegisterNumber = typeof registerNumber === 'number' && Number.isFinite(registerNumber)
             ? Math.trunc(registerNumber)
             : undefined;
-        const resolvedTipCents = typeof tipCents === 'number' && Number.isFinite(tipCents)
-            ? Math.trunc(tipCents)
+        const resolvedTip = typeof tip === 'number' && Number.isFinite(tip)
+            ? Math.trunc(tip)
             : undefined;
         try {
             const result = await (0, db_1.transaction)(async (client) => {
@@ -245,9 +245,9 @@ function registerCheckinPaymentIntentRoutes(fastify) {
                     return { customerId, registerSessionId };
                 };
                 const ensureAuditTrail = async (intentRow, quote) => {
-                    const amountCents = (0, orderAudit_1.toCents)(intentRow.amount);
-                    const lineItems = (0, orderAudit_1.buildLineItemsFromQuote)(intentRow.quote_json, amountCents);
-                    const totals = (0, orderAudit_1.computeOrderTotals)(lineItems.items, amountCents, intentRow.tip_cents ?? 0);
+                    const amount = (0, orderAudit_1.toDollars)(intentRow.amount);
+                    const lineItems = (0, orderAudit_1.buildLineItemsFromQuote)(intentRow.quote_json, amount);
+                    const totals = (0, orderAudit_1.computeOrderTotals)(lineItems.items, amount, intentRow.tip ?? 0);
                     const { customerId, registerSessionId } = await resolveOrderContext(intentRow, quote);
                     await (0, orderAudit_1.ensureOrderWithReceipt)(client, {
                         dedupeKey: { field: 'paymentIntentId', value: intentRow.id },
@@ -265,8 +265,8 @@ function registerCheckinPaymentIntentRoutes(fastify) {
                         tender: {
                             paymentIntentId: intentRow.id,
                             paymentMethod: intentRow.payment_method ?? null,
-                            amountCents: amountCents ?? null,
-                            tipCents: intentRow.tip_cents ?? 0,
+                            amount: amount ?? null,
+                            tip: intentRow.tip ?? 0,
                             registerNumber: intentRow.register_number ?? null,
                             providerPaymentId: intentRow.square_transaction_id ?? squareTransactionId ?? null,
                         },
@@ -295,7 +295,7 @@ function registerCheckinPaymentIntentRoutes(fastify) {
                square_transaction_id = COALESCE($1, square_transaction_id),
                payment_method = COALESCE($2, payment_method),
                register_number = COALESCE($3, register_number),
-               tip_cents = COALESCE($4, tip_cents),
+               tip = COALESCE($4, tip),
                paid_by_staff_id = COALESCE($5, paid_by_staff_id),
                updated_at = NOW()
            WHERE id = $6
@@ -303,7 +303,7 @@ function registerCheckinPaymentIntentRoutes(fastify) {
                     squareTransactionId || null,
                     resolvedPaymentMethod ?? null,
                     resolvedRegisterNumber ?? null,
-                    resolvedTipCents ?? null,
+                    resolvedTip ?? null,
                     staffId,
                     id,
                 ]);

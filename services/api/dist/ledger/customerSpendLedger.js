@@ -22,7 +22,7 @@ async function insertCustomerSpendLedgerEntry(client, input) {
     }
     const inserted = await client.query(`
     INSERT INTO customer_spend_ledger_entries
-      (occurred_at, customer_id, visit_id, entry_type, amount_cents, currency,
+      (occurred_at, customer_id, visit_id, entry_type, amount, currency,
        source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
     VALUES
       ($1, $2::uuid, $3::uuid, $4, $5::bigint, $6, $7, $8, $9::uuid, $10, $11, $12::jsonb, $13)
@@ -32,7 +32,7 @@ async function insertCustomerSpendLedgerEntry(client, input) {
         input.customerId,
         input.visitId ?? null,
         input.entryType,
-        input.amountCents,
+        input.amount,
         currency,
         input.sourceApp,
         input.actorType,
@@ -76,9 +76,9 @@ async function listCustomerSpendLedgerByVisit(client, params) {
       SELECT
         e.visit_id,
         MAX(e.occurred_at) AS group_occurred_at,
-        SUM(CASE WHEN e.amount_cents > 0 THEN e.amount_cents ELSE 0 END) AS gross_cents,
-        SUM(CASE WHEN e.amount_cents < 0 THEN -e.amount_cents ELSE 0 END) AS refunds_cents,
-        SUM(e.amount_cents) AS net_cents,
+        SUM(CASE WHEN e.amount > 0 THEN e.amount ELSE 0 END) AS gross,
+        SUM(CASE WHEN e.amount < 0 THEN -e.amount ELSE 0 END) AS refunds,
+        SUM(e.amount) AS net,
         COUNT(*) AS entry_count
       FROM customer_spend_ledger_entries e
       WHERE e.customer_id = $1
@@ -91,9 +91,9 @@ async function listCustomerSpendLedgerByVisit(client, params) {
       v.started_at AS visit_started_at,
       v.ended_at AS visit_ended_at,
       b.group_occurred_at,
-      b.gross_cents,
-      b.refunds_cents,
-      b.net_cents,
+      b.gross,
+      b.refunds,
+      b.net,
       b.entry_count
     FROM base b
     LEFT JOIN visits v ON v.id = b.visit_id
@@ -122,9 +122,9 @@ async function listCustomerSpendLedgerByVisit(client, params) {
             visitId: r.visit_id,
             visitStartedAt: r.visit_started_at ? r.visit_started_at.toISOString() : null,
             visitEndedAt: r.visit_ended_at ? r.visit_ended_at.toISOString() : null,
-            grossCents: Number(r.gross_cents) || 0,
-            refundsCents: Number(r.refunds_cents) || 0,
-            netCents: Number(r.net_cents) || 0,
+            gross: Number(r.gross) || 0,
+            refunds: Number(r.refunds) || 0,
+            net: Number(r.net) || 0,
             entryCount: Number(r.entry_count) || 0,
             cursor: Buffer.from(JSON.stringify(cursorObj), 'utf8').toString('base64'),
         };
@@ -134,7 +134,7 @@ async function listCustomerSpendLedgerByVisit(client, params) {
 }
 async function listVisitSpendLedgerEntries(client, params) {
     const rows = await client.query(`
-    SELECT id, occurred_at, entry_type, amount_cents, currency, summary, metadata
+    SELECT id, occurred_at, entry_type, amount, currency, summary, metadata
     FROM customer_spend_ledger_entries
     WHERE customer_id = $1
       AND (
@@ -148,16 +148,16 @@ async function listVisitSpendLedgerEntries(client, params) {
         id: r.id,
         occurredAt: r.occurred_at.toISOString(),
         entryType: r.entry_type,
-        amountCents: Number(r.amount_cents) || 0,
+        amount: Number(r.amount) || 0,
         currency: r.currency,
         summary: r.summary,
         metadata: r.metadata,
     }));
     const totalsRow = await client.query(`
     SELECT
-      SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS gross_cents,
-      SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END) AS refunds_cents,
-      SUM(amount_cents) AS net_cents
+      SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS gross,
+      SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS refunds,
+      SUM(amount) AS net
     FROM customer_spend_ledger_entries
     WHERE customer_id = $1
       AND (
@@ -169,9 +169,9 @@ async function listVisitSpendLedgerEntries(client, params) {
     return {
         entries,
         totals: {
-            grossCents: Number(t?.gross_cents) || 0,
-            refundsCents: Number(t?.refunds_cents) || 0,
-            netCents: Number(t?.net_cents) || 0,
+            gross: Number(t?.gross) || 0,
+            refunds: Number(t?.refunds) || 0,
+            net: Number(t?.net) || 0,
         },
     };
 }

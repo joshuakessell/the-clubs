@@ -430,9 +430,9 @@ function registerCheckinAgreementRoutes(fastify) {
                         : `agr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
                     await client.query(`INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
                VALUES ($1, $2, $3, $4, $5)
-               ON CONFLICT (session_id, command_id) DO NOTHING`, [session.id, commandId, 'CUSTOMER', 'SET_STEP', { step: 'AGREEMENT' }]);
+               ON CONFLICT (session_id, command_id) DO NOTHING`, [session.id, commandId, 'CUSTOMER', 'SET_STEP', { step: 'ASSIGNMENT' }]);
                     await client.query(`UPDATE lane_sessions
-               SET flow_step = 'AGREEMENT',
+               SET flow_step = 'ASSIGNMENT',
                    flow_version = COALESCE(flow_version, 0) + 1,
                    flow_last_command_id = $1,
                    flow_last_actor = 'CUSTOMER',
@@ -528,9 +528,32 @@ function registerCheckinAgreementRoutes(fastify) {
                     rentalType,
                 };
                 fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, laneId);
-                return { success: true, sessionId: session.id, customerId: session.customer_id, visitId, checkinBlockId };
+                return { success: true, sessionId: session.id, customerId: session.customer_id, visitId, checkinBlockId, assignedResourceType, assignedResourceNumber, rentalType };
             });
             await (0, db_1.transaction)(async (client) => {
+                // Activity event: AGREEMENT_SIGNED (resource assignment details)
+                await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+                    customerId: result.customerId,
+                    actionType: 'AGREEMENT_SIGNED',
+                    actionCategory: 'CHECKIN',
+                    sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
+                    actorType: request.staff ? 'STAFF' : 'CUSTOMER',
+                    actorStaffId: request.staff?.staffId ?? null,
+                    actorStaffName: request.staff?.name ?? null,
+                    summary: `Agreement signed — ${result.assignedResourceType} ${result.assignedResourceNumber} (${result.rentalType})`,
+                    metadata: {
+                        visitId: result.visitId,
+                        checkinBlockId: result.checkinBlockId,
+                        laneId,
+                        laneSessionId: result.sessionId,
+                        ...(result.assignedResourceType === 'room'
+                            ? { roomNumber: result.assignedResourceNumber }
+                            : { lockerNumber: result.assignedResourceNumber }),
+                    },
+                    dedupeKey: result.checkinBlockId ? `ACT:AGREEMENT_SIGNED:${result.checkinBlockId}` : null,
+                    searchParts: [result.assignedResourceNumber ?? ''],
+                });
+                // Activity event: CHECKIN_COMPLETED
                 const event = await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
                     customerId: result.customerId,
                     actionType: 'CHECKIN_COMPLETED',
@@ -552,12 +575,12 @@ function registerCheckinAgreementRoutes(fastify) {
                 request.log.info({
                     customerActivityEventId: event.id,
                     customerId: result.customerId,
-                    actionType: 'CHECKIN_COMPLETED',
-                    actionCategory: 'CHECKIN',
-                    sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
-                    actorType: request.staff ? 'STAFF' : 'CUSTOMER',
-                    actorStaffId: request.staff?.staffId ?? null,
-                }, 'customer_activity_event');
+                    sessionId: result.sessionId,
+                    assignedResourceType: result.assignedResourceType,
+                    assignedResourceNumber: result.assignedResourceNumber,
+                    rentalType: result.rentalType,
+                    laneId,
+                }, 'Agreement signed and check-in completed');
             });
             const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, result.sessionId));
             fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
@@ -1417,4 +1440,58 @@ function registerCheckinAgreementRoutes(fastify) {
             });
         }
     }
+    /**
+     * POST /v1/checkin/lane/:laneId/kiosk-sign
+     *
+     * Lightweight kiosk endpoint: records that the customer signed the agreement
+     * digitally, without triggering full check-in completion (no payment/assignment
+     * prereqs). Broadcasts SESSION_UPDATED so the employee register sees the signed status.
+     */
+    fastify.post('/v1/checkin/lane/:laneId/kiosk-sign', {
+        preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff],
+    }, async (request, reply) => {
+        const { laneId } = request.params;
+        const { signaturePayload, sessionId } = request.body;
+        if (!signaturePayload || signaturePayload.length < 16) {
+            return reply.status(400).send({ error: 'Signature payload is required' });
+        }
+        try {
+            const updatedSessionId = await (0, db_1.transaction)(async (client) => {
+                let sessionResult;
+                if (sessionId) {
+                    sessionResult = await client.query(`SELECT id, lane_id FROM lane_sessions
+               WHERE id = $1 AND lane_id = $2 AND status NOT IN ('COMPLETED', 'CANCELLED')
+               LIMIT 1`, [sessionId, laneId]);
+                }
+                else {
+                    sessionResult = await client.query(`SELECT id, lane_id FROM lane_sessions
+               WHERE lane_id = $1 AND status NOT IN ('COMPLETED', 'CANCELLED')
+               ORDER BY created_at DESC
+               LIMIT 1`, [laneId]);
+                }
+                if (sessionResult.rows.length === 0) {
+                    throw { statusCode: 404, message: 'No active session found' };
+                }
+                const session = sessionResult.rows[0];
+                await client.query(`UPDATE lane_sessions
+             SET agreement_signed_method = 'DIGITAL',
+                 agreement_bypass_pending = false,
+                 updated_at = NOW()
+             WHERE id = $1`, [session.id]);
+                return session.id;
+            });
+            // Broadcast so employee register sees the signed status
+            const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, updatedSessionId));
+            fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
+            return reply.send({ success: true });
+        }
+        catch (error) {
+            request.log.error(error, 'Failed to record kiosk signature');
+            const httpErr = (0, utils_1.getHttpError)(error);
+            if (httpErr) {
+                return reply.status(httpErr.statusCode).send({ error: httpErr.message });
+            }
+            return reply.status(500).send({ error: 'Failed to record signature' });
+        }
+    });
 }

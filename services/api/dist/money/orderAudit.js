@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.toCents = toCents;
+exports.toDollars = toDollars;
 exports.buildReceiptNumber = buildReceiptNumber;
 exports.buildLineItemsFromQuote = buildLineItemsFromQuote;
 exports.computeOrderTotals = computeOrderTotals;
@@ -16,13 +16,13 @@ function toNumber(value) {
     const n = Number(value);
     return Number.isFinite(n) ? n : undefined;
 }
-function toCents(value) {
+function toDollars(value) {
     if (value === null || value === undefined)
         return undefined;
     const n = typeof value === 'number' ? value : Number(value);
     if (!Number.isFinite(n))
         return undefined;
-    return Math.round(n * 100);
+    return Math.round(n);
 }
 function normalizeKind(value) {
     if (typeof value !== 'string')
@@ -58,10 +58,10 @@ function parseQuote(raw) {
     }
     return isRecord(parsed) ? parsed : null;
 }
-function buildLineItemsFromQuote(quoteJson, fallbackAmountCents) {
+function buildLineItemsFromQuote(quoteJson, fallbackAmount) {
     const parsed = parseQuote(quoteJson);
     const quoteType = typeof parsed?.type === 'string' ? parsed.type : undefined;
-    const amountFromQuote = toCents(toNumber(parsed?.amount) ?? undefined) ?? fallbackAmountCents ?? 0;
+    const amountFromQuote = toDollars(toNumber(parsed?.amount) ?? undefined) ?? fallbackAmount ?? 0;
     if (quoteType === 'UPGRADE') {
         const fromTier = typeof parsed?.fromTier === 'string' ? parsed.fromTier : undefined;
         const toTier = typeof parsed?.toTier === 'string' ? parsed.toTier : undefined;
@@ -73,8 +73,8 @@ function buildLineItemsFromQuote(quoteJson, fallbackAmountCents) {
                     kind: 'UPGRADE',
                     name,
                     quantity: 1,
-                    unitPriceCents: amountFromQuote,
-                    totalCents: amountFromQuote,
+                    unitPrice: amountFromQuote,
+                    total: amountFromQuote,
                 },
             ],
         };
@@ -89,8 +89,8 @@ function buildLineItemsFromQuote(quoteJson, fallbackAmountCents) {
                     kind: 'MANUAL',
                     name: label,
                     quantity: 1,
-                    unitPriceCents: amountFromQuote,
-                    totalCents: amountFromQuote,
+                    unitPrice: amountFromQuote,
+                    total: amountFromQuote,
                 },
             ],
         };
@@ -103,8 +103,8 @@ function buildLineItemsFromQuote(quoteJson, fallbackAmountCents) {
                     kind: 'LATE_FEE',
                     name: 'Late Fee',
                     quantity: 1,
-                    unitPriceCents: amountFromQuote,
-                    totalCents: amountFromQuote,
+                    unitPrice: amountFromQuote,
+                    total: amountFromQuote,
                 },
             ],
         };
@@ -118,8 +118,8 @@ function buildLineItemsFromQuote(quoteJson, fallbackAmountCents) {
                     kind: 'MANUAL',
                     name: description,
                     quantity: 1,
-                    unitPriceCents: amountFromQuote,
-                    totalCents: amountFromQuote,
+                    unitPrice: amountFromQuote,
+                    total: amountFromQuote,
                 },
             ],
         };
@@ -134,10 +134,8 @@ function buildLineItemsFromQuote(quoteJson, fallbackAmountCents) {
             const amount = toNumber(rawItem.amount);
             if (typeof description !== 'string' || amount === undefined)
                 continue;
-            const amountCents = toCents(amount) ?? 0;
             const quantity = toNumber(rawItem.quantity) ?? 1;
             const unitPrice = toNumber(rawItem.unitPrice) ?? amount;
-            const unitPriceCents = toCents(unitPrice) ?? amountCents;
             const kind = normalizeKind(rawItem.kind) ?? 'RETAIL';
             const sku = typeof rawItem.sku === 'string' ? rawItem.sku : null;
             items.push({
@@ -145,10 +143,10 @@ function buildLineItemsFromQuote(quoteJson, fallbackAmountCents) {
                 sku,
                 name: description,
                 quantity,
-                unitPriceCents,
-                totalCents: amountCents,
-                discountCents: 0,
-                taxCents: 0,
+                unitPrice,
+                total: amount,
+                discount: 0,
+                tax: 0,
             });
         }
     }
@@ -157,23 +155,23 @@ function buildLineItemsFromQuote(quoteJson, fallbackAmountCents) {
             kind: 'MANUAL',
             name: 'Payment',
             quantity: 1,
-            unitPriceCents: amountFromQuote,
-            totalCents: amountFromQuote,
+            unitPrice: amountFromQuote,
+            total: amountFromQuote,
         });
     }
     return { items, quoteType };
 }
-function computeOrderTotals(lineItems, amountCents, tipCents) {
-    const subtotalFromItems = lineItems.reduce((sum, item) => sum + (item.totalCents ?? 0), 0);
-    const subtotalCents = subtotalFromItems > 0 ? subtotalFromItems : (amountCents ?? 0);
-    const baseTotal = amountCents ?? subtotalCents;
-    const totalCents = baseTotal + tipCents;
+function computeOrderTotals(lineItems, amount, tip) {
+    const subtotalFromItems = lineItems.reduce((sum, item) => sum + (item.total ?? 0), 0);
+    const subtotal = subtotalFromItems > 0 ? subtotalFromItems : (amount ?? 0);
+    const baseTotal = amount ?? subtotal;
+    const total = baseTotal + tip;
     return {
-        subtotalCents,
-        discountCents: 0,
-        taxCents: 0,
-        tipCents,
-        totalCents,
+        subtotal,
+        discount: 0,
+        tax: 0,
+        tip,
+        total,
         currency: 'USD',
     };
 }
@@ -191,34 +189,34 @@ async function ensureOrderWithReceipt(client, input) {
         };
         const orderInsert = await client.query(`INSERT INTO orders
        (customer_id, register_session_id, created_by_staff_id, status,
-        subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency, metadata_json)
+        subtotal, discount, tax, tip, total, currency, metadata_json)
        VALUES ($1, $2, $3, 'PAID', $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`, [
             input.customerId ?? null,
             input.registerSessionId ?? null,
             input.createdByStaffId ?? null,
-            input.totals.subtotalCents,
-            input.totals.discountCents,
-            input.totals.taxCents,
-            input.totals.tipCents,
-            input.totals.totalCents,
+            input.totals.subtotal,
+            input.totals.discount,
+            input.totals.tax,
+            input.totals.tip,
+            input.totals.total,
             input.currency ?? input.totals.currency,
             metadata,
         ]);
         order = orderInsert.rows[0];
         for (const item of input.lineItems) {
             await client.query(`INSERT INTO order_line_items
-         (order_id, kind, sku, name, quantity, unit_price_cents, discount_cents, tax_cents, total_cents, metadata_json)
+         (order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [
                 order.id,
                 item.kind,
                 item.sku ?? null,
                 item.name,
                 item.quantity,
-                item.unitPriceCents,
-                item.discountCents ?? 0,
-                item.taxCents ?? 0,
-                item.totalCents ?? item.unitPriceCents * item.quantity,
+                item.unitPrice,
+                item.discount ?? 0,
+                item.tax ?? 0,
+                item.total ?? item.unitPrice * item.quantity,
                 item.metadata ?? null,
             ]);
         }
@@ -235,11 +233,11 @@ async function ensureOrderWithReceipt(client, input) {
         issuedAt: new Date().toISOString(),
         currency: order.currency,
         totals: {
-            subtotalCents: order.subtotal_cents,
-            discountCents: order.discount_cents,
-            taxCents: order.tax_cents,
-            tipCents: order.tip_cents,
-            totalCents: order.total_cents,
+            subtotal: order.subtotal,
+            discount: order.discount,
+            tax: order.tax,
+            tip: order.tip,
+            total: order.total,
         },
         tender: input.tender ?? null,
         lineItems: lineItems.rows.map((item) => ({
@@ -248,10 +246,10 @@ async function ensureOrderWithReceipt(client, input) {
             sku: item.sku,
             name: item.name,
             quantity: item.quantity,
-            unitPriceCents: item.unit_price_cents,
-            discountCents: item.discount_cents,
-            taxCents: item.tax_cents,
-            totalCents: item.total_cents,
+            unitPrice: item.unit_price,
+            discount: item.discount,
+            tax: item.tax,
+            total: item.total,
         })),
     };
     const receiptInsert = await client.query(`INSERT INTO receipts (order_id, receipt_number, receipt_json)

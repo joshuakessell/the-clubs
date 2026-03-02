@@ -20,5 +20,5 @@ exports.MarkFeePaidSchema = zod_1.z.object({
     note: zod_1.z.string().optional(),
     paymentMethod: zod_1.z.enum(['CASH', 'CREDIT']).optional(),
     registerNumber: zod_1.z.number().int().min(1).max(3).optional(),
-    tipCents: zod_1.z.number().int().nonnegative().optional(),
+    tip: zod_1.z.number().int().nonnegative().optional(),
 });

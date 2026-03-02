@@ -1409,7 +1409,7 @@ export async function appendIncrementalDemoSimulation(params: {
     if (le.feeAmount > 0) {
       const paymentIntentId = randomUUID();
       const chargeId = randomUUID();
-      const feeAmount = Math.round(le.feeAmount * 100);
+      const feeAmount = Math.round(le.feeAmount);
 
       await params.client.query(
         `INSERT INTO payment_intents
@@ -1540,11 +1540,11 @@ export async function appendIncrementalDemoSimulation(params: {
 
   // 8) Orders (anonymous + customer-linked)
   const RETAIL_CATALOG = [
-    { name: 'Bottled Water', sku: 'WATER', price: 300 },
-    { name: 'Energy Drink', sku: 'ENERGY_DRINK', price: 500 },
-    { name: 'Towel Rental', sku: 'TOWEL_RENTAL', price: 500 },
-    { name: 'Swiss Navy', sku: 'SWISS_NAVY', price: 1200 },
-    { name: 'Snack Bar', sku: 'SNACK_BAR', price: 400 },
+    { name: 'Bottled Water', sku: 'WATER', price: 3 },
+    { name: 'Energy Drink', sku: 'ENERGY_DRINK', price: 5 },
+    { name: 'Towel Rental', sku: 'TOWEL_RENTAL', price: 5 },
+    { name: 'Swiss Navy', sku: 'SWISS_NAVY', price: 12 },
+    { name: 'Snack Bar', sku: 'SNACK_BAR', price: 4 },
   ];
 
   async function insertOrder(order: {
@@ -1578,7 +1578,7 @@ export async function appendIncrementalDemoSimulation(params: {
     }
 
     const tax = 0; // prices are tax-inclusive
-    const tip = rng2() < 0.12 ? 2 + Math.floor(rng2() * 7) : 0;
+    const tip = 0; // Tips are cash-only, not tracked in app
     const total = subtotal + tip;
     const orderId = randomUUID();
     const paymentMethod = rng2() < 0.33 ? 'CASH' : 'CREDIT';

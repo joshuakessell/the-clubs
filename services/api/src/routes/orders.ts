@@ -27,9 +27,7 @@ const AddLineItemsSchema = z.object({
   items: z.array(LineItemSchema).min(1),
 });
 
-const MarkPaidSchema = z.object({
-  tip: z.number().int().optional().nullable(),
-});
+const MarkPaidSchema = z.object({});
 
 type OrderRow = {
   id: string;
@@ -302,7 +300,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           const subtotal = toNumber(totals.subtotal);
           const discount = toNumber(totals.discount);
           const tax = toNumber(totals.tax);
-          const tip = body.tip ?? order.tip;
+          const tip = 0; // Tips are cash-only, not tracked in app
           const total = subtotal - discount + tax + tip;
 
           const updated = await client.query<OrderRow>(
@@ -335,7 +333,6 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
                 orderId: paidOrder.id,
                 registerSessionId: paidOrder.register_session_id,
                 total: paidOrder.total,
-                tip: paidOrder.tip,
               },
               dedupeKey: `LEDGER:ORDER_PAID:${paidOrder.id}`,
             });
@@ -424,7 +421,6 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
               subtotal: paidOrder.subtotal,
               discount: paidOrder.discount,
               tax: paidOrder.tax,
-              tip: paidOrder.tip,
               total: paidOrder.total,
               registerSessionId: paidOrder.register_session_id,
               lineItemCount: lineItems.rows.length,
@@ -442,7 +438,6 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
           subtotal: result.subtotal,
           discount: result.discount,
           tax: result.tax,
-          tip: result.tip,
           total: result.total,
         });
       } catch (error) {

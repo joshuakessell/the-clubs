@@ -9,14 +9,14 @@ const db_1 = require("../../db");
 // ---------------------------------------------------------------------------
 const CreateProductSchema = zod_1.z.object({
     name: zod_1.z.string().min(1).max(200),
-    priceCents: zod_1.z.number().int().nonnegative(),
+    price: zod_1.z.number().int().nonnegative(),
     sku: zod_1.z.string().max(100).optional().nullable(),
     category: zod_1.z.string().max(50).optional().default('RETAIL'),
     sortOrder: zod_1.z.number().int().optional().default(0),
 });
 const UpdateProductSchema = zod_1.z.object({
     name: zod_1.z.string().min(1).max(200).optional(),
-    priceCents: zod_1.z.number().int().nonnegative().optional(),
+    price: zod_1.z.number().int().nonnegative().optional(),
     sku: zod_1.z.string().max(100).optional().nullable(),
     category: zod_1.z.string().max(50).optional(),
     sortOrder: zod_1.z.number().int().optional(),
@@ -38,7 +38,7 @@ function formatRow(r) {
         id: r.id,
         sku: r.sku,
         name: r.name,
-        priceCents: toNumber(r.price_cents),
+        price: toNumber(r.price),
         category: r.category,
         isActive: r.is_active,
         sortOrder: toNumber(r.sort_order),
@@ -104,9 +104,9 @@ function registerAdminProductRoutes(fastify) {
             });
         }
         try {
-            const result = await (0, db_1.query)(`INSERT INTO products (name, price_cents, sku, category, sort_order)
+            const result = await (0, db_1.query)(`INSERT INTO products (name, price, sku, category, sort_order)
            VALUES ($1, $2, $3, $4, $5)
-           RETURNING *`, [body.name, body.priceCents, body.sku ?? null, body.category, body.sortOrder]);
+           RETURNING *`, [body.name, body.price, body.sku ?? null, body.category, body.sortOrder]);
             return reply.status(201).send({ product: formatRow(result.rows[0]) });
         }
         catch (error) {
@@ -137,9 +137,9 @@ function registerAdminProductRoutes(fastify) {
             sets.push(`name = $${idx++}`);
             params.push(body.name);
         }
-        if (body.priceCents !== undefined) {
-            sets.push(`price_cents = $${idx++}`);
-            params.push(body.priceCents);
+        if (body.price !== undefined) {
+            sets.push(`price = $${idx++}`);
+            params.push(body.price);
         }
         if (body.sku !== undefined) {
             sets.push(`sku = $${idx++}`);

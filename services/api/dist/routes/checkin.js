@@ -18,6 +18,7 @@ const scan_1 = require("./checkin/scan");
 const selection_1 = require("./checkin/selection");
 const switch_resource_1 = require("./checkin/switch-resource");
 const waitlist_1 = require("./checkin/waitlist");
+const kiosk_heartbeat_1 = require("./checkin/kiosk-heartbeat");
 /**
  * Check-in flow routes.
  */
@@ -39,4 +40,5 @@ async function checkinRoutes(fastify) {
     (0, demo_payment_1.registerCheckinDemoPaymentRoutes)(fastify);
     (0, flow_command_1.registerCheckinFlowCommandRoutes)(fastify);
     (0, reset_1.registerCheckinResetRoutes)(fastify);
+    (0, kiosk_heartbeat_1.registerKioskHeartbeatRoutes)(fastify);
 }

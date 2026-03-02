@@ -115,7 +115,7 @@ async function main() {
     const localLaneSSE = new localSSE_1.LocalLaneSSEClients();
     fastify.decorate('localLaneSockets', localLaneSockets);
     fastify.decorate('localLaneSSE', localLaneSSE);
-    const broadcaster = (0, broadcaster_1.createBroadcaster)({ localLaneSockets, localLaneSSE });
+    const broadcaster = (0, broadcaster_1.createBroadcaster)({ localLaneSockets, localLaneSSE, logger: fastify.log });
     // Decorate fastify with broadcaster for access in routes
     fastify.decorate('broadcaster', broadcaster);
     fastify.decorate('dbHealthy', SKIP_DB);
