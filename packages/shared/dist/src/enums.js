@@ -1,7 +1,7 @@
 /**
  * Room status representing the cleaning state.
- * Normal flow: DIRTY → CLEANING → CLEAN
- * Skipping steps requires explicit override.
+ * Normal flow: DIRTY → CLEAN (single step)
+ * CLEANING is retained in the enum for DB backward compatibility but is not used in the UI.
  */
 export const RoomStatus = {
     DIRTY: 'DIRTY',
@@ -9,6 +9,8 @@ export const RoomStatus = {
     CLEAN: 'CLEAN',
     // Room is in use (occupied). Included to match DB enum `room_status`.
     OCCUPIED: 'OCCUPIED',
+    // Room/locker is taken out of service by admin. Excluded from availability.
+    OUT_OF_SERVICE: 'OUT_OF_SERVICE',
 };
 /**
  * Type of room available at the club.

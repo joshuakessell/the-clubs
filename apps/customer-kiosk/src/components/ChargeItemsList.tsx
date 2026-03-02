@@ -176,7 +176,6 @@ export function ChargeItemsList({
     return () => { if (totalFadeTimerRef.current) clearTimeout(totalFadeTimerRef.current); };
   }, [showTotal]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const showCharges = isActive && lineItems.length > 0;
 
   return (
     <>
@@ -236,7 +235,7 @@ export function ChargeItemsList({
                   textAlign: 'right',
                 }}
               >
-                ${item.amount.toFixed(2)}
+                {'$' + item.amount.toFixed(2)}
               </span>
             </div>
           );
@@ -272,7 +271,7 @@ export function ChargeItemsList({
                 textAlign: 'right' as const,
               }}
             >
-              ${total.toFixed(2)}
+              {'$' + total.toFixed(2)}
             </span>
           </div>
         )}
@@ -311,7 +310,7 @@ export function ChargeItemsList({
         )}
 
         {/* Welcome message for members with no charges */}
-        {!showCharges && !showTotal && isMember && (
+        {!(isActive && lineItems.length > 0) && !showTotal && isMember && (
           <p
             className="text-sm"
             style={{

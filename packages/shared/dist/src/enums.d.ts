@@ -1,13 +1,14 @@
 /**
  * Room status representing the cleaning state.
- * Normal flow: DIRTY → CLEANING → CLEAN
- * Skipping steps requires explicit override.
+ * Normal flow: DIRTY → CLEAN (single step)
+ * CLEANING is retained in the enum for DB backward compatibility but is not used in the UI.
  */
 export declare const RoomStatus: {
     readonly DIRTY: "DIRTY";
     readonly CLEANING: "CLEANING";
     readonly CLEAN: "CLEAN";
     readonly OCCUPIED: "OCCUPIED";
+    readonly OUT_OF_SERVICE: "OUT_OF_SERVICE";
 };
 export type RoomStatus = (typeof RoomStatus)[keyof typeof RoomStatus];
 /**
