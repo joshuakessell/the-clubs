@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from
 import type { FastifyInstance } from 'fastify';
 import Fastify from 'fastify';
 import { query, initializeDatabase, closeDatabase } from '../src/db/index.js';
-import { generateSessionToken } from '../src/auth/utils.js';
+import { generateSessionToken, hashSessionToken } from '../src/auth/utils.js';
 import { timeoffRoutes } from '../src/routes/timeoff.js';
 
 describe('Time off requests', () => {
@@ -101,12 +101,12 @@ describe('Time off requests', () => {
     await query(
       `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
        VALUES ($1, 'test-device-admin', 'desktop', $2, NOW() + INTERVAL '24 hours')`,
-      [adminId, adminToken]
+      [adminId, hashSessionToken(adminToken)]
     );
     await query(
       `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
        VALUES ($1, 'test-device-staff', 'desktop', $2, NOW() + INTERVAL '24 hours')`,
-      [staffId, staffToken]
+      [staffId, hashSessionToken(staffToken)]
     );
   });
 

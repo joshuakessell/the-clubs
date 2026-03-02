@@ -8,7 +8,7 @@ import { checkinRoutes } from '../src/routes/checkin.js';
 import { customerRoutes } from '../src/routes/customers.js';
 import { inventoryRoutes } from '../src/routes/inventory.js';
 import { sessionDocumentsRoutes } from '../src/routes/session-documents.js';
-import { hashPin, generateSessionToken } from '../src/auth/utils.js';
+import { hashPin, generateSessionToken, hashSessionToken } from '../src/auth/utils.js';
 import type { SessionUpdatedPayload, CustomerConfirmedPayload } from '@the-clubs/shared';
 import { truncateAllTables } from './testDb.js';
 
@@ -109,7 +109,7 @@ describe('Check-in Flow', () => {
     await query(
       `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
        VALUES ($1, $2, $3, $4, $5)`,
-      [staffId, 'test-device', 'tablet', staffToken, expiresAt]
+      [staffId, 'test-device', 'tablet', hashSessionToken(staffToken), expiresAt]
     );
 
     // Clean up any existing test data first - delete in order to respect foreign key constraints

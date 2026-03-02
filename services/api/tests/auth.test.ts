@@ -5,7 +5,7 @@ import Fastify from 'fastify';
 import { authRoutes } from '../src/routes/auth.js';
 import { webauthnRoutes } from '../src/routes/webauthn.js';
 import { adminRoutes } from '../src/routes/admin.js';
-import { hashPin, generateSessionToken } from '../src/auth/utils.js';
+import { hashPin, generateSessionToken, hashSessionToken } from '../src/auth/utils.js';
 import {
   storeChallenge,
   consumeChallenge,
@@ -112,10 +112,11 @@ describe('Auth Tests', () => {
 
     // Create admin session for testing
     adminToken = generateSessionToken();
+    const adminTokenHash = hashSessionToken(adminToken);
     await query(
       `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
        VALUES ($1, 'test-device', 'desktop', $2, NOW() + INTERVAL '24 hours')`,
-      [adminStaffId, adminToken]
+      [adminStaffId, adminTokenHash]
     );
   });
 
@@ -158,9 +159,9 @@ describe('PIN Login', () => {
       expect(body.staffId).toBe(staffStaffId);
       expect(body.name).toBe('Staff User');
 
-      // Verify session was created
+      // Verify session was created (stored as hash)
       const sessionResult = await query(`SELECT * FROM staff_sessions WHERE session_token = $1`, [
-        body.sessionToken,
+        hashSessionToken(body.sessionToken),
       ]);
       expect(sessionResult.rows.length).toBe(1);
     });
@@ -230,7 +231,7 @@ describe('PIN Login', () => {
       // The API logs audit entries using the session UUID (not the opaque token string).
       const sessionResult = await query<{ id: string }>(
         `SELECT id FROM staff_sessions WHERE session_token = $1`,
-        [body.sessionToken]
+        [hashSessionToken(body.sessionToken)]
       );
       const sessionId = sessionResult.rows[0]!.id;
 
@@ -604,7 +605,7 @@ describe('PIN Login', () => {
       // Verify reauth_ok_until was set in database
       const sessionResult = await query(
         `SELECT reauth_ok_until FROM staff_sessions WHERE session_token = $1`,
-        [adminToken]
+        [hashSessionToken(adminToken)]
       );
       expect(sessionResult.rows[0]?.reauth_ok_until).not.toBeNull();
 
@@ -793,7 +794,7 @@ describe('PIN Login', () => {
         `UPDATE staff_sessions 
          SET reauth_ok_until = NOW() - INTERVAL '1 minute'
          WHERE session_token = $1`,
-        [adminToken]
+        [hashSessionToken(adminToken)]
       );
 
       // Try to reset PIN - should fail with expired re-auth

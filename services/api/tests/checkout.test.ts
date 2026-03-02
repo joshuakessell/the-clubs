@@ -46,14 +46,16 @@ vi.mock('../src/auth/middleware.js', async () => {
       }
 
       const token = authHeader.substring(7);
-      // Validate token against database
+      // Validate token against database (session_token stores the SHA-256 hash)
+      const { hashSessionToken } = await import('../src/auth/utils.js');
       try {
+        const tokenHash = hashSessionToken(token);
         const sessionResult = await query<{ staff_id: string; name: string; role: string }>(
           `SELECT s.staff_id, st.name, st.role
            FROM staff_sessions s
            JOIN staff st ON s.staff_id = st.id
            WHERE s.session_token = $1 AND s.revoked_at IS NULL AND st.active = true`,
-          [token]
+          [tokenHash]
         );
 
         if (sessionResult.rows.length > 0) {
@@ -113,16 +115,20 @@ describe('Checkout Flow', () => {
     previousDemoMode = process.env.DEMO_MODE;
     process.env.DEMO_MODE = 'false';
 
-    // Initialize database connection
-    const config = {
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      database: process.env.DB_NAME || 'club_operations',
-      user: process.env.DB_USER || 'clubops',
-      password: process.env.DB_PASSWORD || 'clubops_dev',
-      // Prevent "hung" test runs when DB isn't reachable.
-      connectionTimeoutMillis: 3000,
-    };
+    // Initialize database connection — prefer DATABASE_URL (used in CI)
+    let config: pg.PoolConfig;
+    if (process.env.DATABASE_URL) {
+      config = { connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 3000 };
+    } else {
+      config = {
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432', 10),
+        database: process.env.DB_NAME || 'club_operations',
+        user: process.env.DB_USER || 'clubops',
+        password: process.env.DB_PASSWORD || 'clubops_dev',
+        connectionTimeoutMillis: 3000,
+      };
+    }
 
     pool = new pg.Pool(config);
 
@@ -173,11 +179,12 @@ describe('Checkout Flow', () => {
     );
     testStaffId = staffResult.rows[0]!.id;
 
+    const { hashSessionToken } = await import('../src/auth/utils.js');
     const sessionToken = `test-token-${Date.now()}`;
     await pool.query(
       `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
        VALUES ($1, 'test-device', 'tablet', $2, NOW() + INTERVAL '1 hour')`,
-      [testStaffId, sessionToken]
+      [testStaffId, hashSessionToken(sessionToken)]
     );
     testStaffToken = sessionToken;
 

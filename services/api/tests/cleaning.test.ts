@@ -3,7 +3,7 @@ import Fastify, { FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { cleaningRoutes } from '../src/routes/cleaning.js';
 import { createBroadcaster, type Broadcaster } from '../src/realtime/broadcaster.js';
-import { generateSessionToken } from '../src/auth/utils.js';
+import { generateSessionToken, hashSessionToken } from '../src/auth/utils.js';
 import { RoomStatus, validateTransition } from '@the-clubs/shared';
 import { truncateAllTables } from './testDb.js';
 
@@ -92,15 +92,20 @@ describe('Cleaning Batch Endpoint', () => {
   const testStaffId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
 
   beforeAll(async () => {
-    // Connect to test database
-    const dbConfig = {
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      database: process.env.DB_NAME || 'club_operations',
-      user: process.env.DB_USER || 'clubops',
-      password: process.env.DB_PASSWORD || 'clubops_dev',
-      connectionTimeoutMillis: 3000,
-    };
+    // Connect to test database — prefer DATABASE_URL (used in CI) over individual env vars
+    let dbConfig: pg.PoolConfig;
+    if (process.env.DATABASE_URL) {
+      dbConfig = { connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 3000 };
+    } else {
+      dbConfig = {
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432', 10),
+        database: process.env.DB_NAME || 'club_operations',
+        user: process.env.DB_USER || 'clubops',
+        password: process.env.DB_PASSWORD || 'clubops_dev',
+        connectionTimeoutMillis: 3000,
+      };
+    }
 
     pool = new pg.Pool(dbConfig);
 
@@ -162,7 +167,7 @@ describe('Cleaning Batch Endpoint', () => {
     await pool.query(
       `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
        VALUES ($1, $2, $3, $4, $5)`,
-      [testStaffId, 'test-device', 'tablet', staffToken, expiresAt]
+      [testStaffId, 'test-device', 'tablet', hashSessionToken(staffToken), expiresAt]
     );
 
     // Insert test rooms with known statuses
