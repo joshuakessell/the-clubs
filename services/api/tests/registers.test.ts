@@ -46,6 +46,7 @@ describe('Register Routes', () => {
     if (!dbAvailable) return;
     await query('DELETE FROM register_sessions');
     await query('DELETE FROM devices');
+    await query('DELETE FROM cleaning_events');
     await query('DELETE FROM staff');
   });
 

@@ -115,6 +115,7 @@ describe('Time off requests', () => {
     await query('DELETE FROM time_off_requests');
     await query('DELETE FROM audit_log');
     await query('DELETE FROM staff_sessions');
+    await query('DELETE FROM cleaning_events');
     await query('DELETE FROM staff');
   });
 

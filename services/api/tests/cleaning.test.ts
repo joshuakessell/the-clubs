@@ -20,8 +20,8 @@ declare module 'fastify' {
  */
 describe('Transition Validation (shared package)', () => {
   describe('Adjacent transitions (valid without override)', () => {
-    it('should allow DIRTY → CLEANING', () => {
-      const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEANING);
+    it('should allow DIRTY → CLEAN (direct transition)', () => {
+      const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEAN);
       expect(result.ok).toBe(true);
       expect(result.needsOverride).toBeUndefined();
     });
@@ -36,8 +36,8 @@ describe('Transition Validation (shared package)', () => {
       expect(result.ok).toBe(true);
     });
 
-    it('should allow CLEAN → CLEANING', () => {
-      const result = validateTransition(RoomStatus.CLEAN, RoomStatus.CLEANING);
+    it('should allow DIRTY → OCCUPIED', () => {
+      const result = validateTransition(RoomStatus.DIRTY, RoomStatus.OCCUPIED);
       expect(result.ok).toBe(true);
     });
 
@@ -54,14 +54,25 @@ describe('Transition Validation (shared package)', () => {
   });
 
   describe('Non-adjacent transitions (require override)', () => {
-    it('should reject DIRTY → CLEAN without override', () => {
-      const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEAN);
+    it('should reject DIRTY → CLEANING without override (CLEANING removed from adjacency)', () => {
+      const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEANING);
       expect(result.ok).toBe(false);
       expect(result.needsOverride).toBe(true);
     });
 
-    it('should allow DIRTY → CLEAN with override', () => {
-      const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEAN, true);
+    it('should allow DIRTY → CLEANING with override', () => {
+      const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEANING, true);
+      expect(result.ok).toBe(true);
+    });
+
+    it('should reject CLEAN → CLEANING without override', () => {
+      const result = validateTransition(RoomStatus.CLEAN, RoomStatus.CLEANING);
+      expect(result.ok).toBe(false);
+      expect(result.needsOverride).toBe(true);
+    });
+
+    it('should allow CLEAN → CLEANING with override', () => {
+      const result = validateTransition(RoomStatus.CLEAN, RoomStatus.CLEANING, true);
       expect(result.ok).toBe(true);
     });
   });
@@ -200,14 +211,14 @@ describe('Cleaning Batch Endpoint', () => {
 
   describe('Valid transitions', () => {
     it(
-      'should transition DIRTY → CLEANING',
+      'should transition DIRTY → CLEAN',
       runIfDbAvailable(async () => {
         const response = await injectAsStaff({
           method: 'POST',
           url: '/v1/cleaning/batch',
           payload: {
             roomIds: [testRoomIds.dirty],
-            targetStatus: 'CLEANING',
+            targetStatus: 'CLEAN',
             staffId: testStaffId,
           },
         });
@@ -218,13 +229,13 @@ describe('Cleaning Batch Endpoint', () => {
         expect(body.summary.failed).toBe(0);
         expect(body.rooms[0].success).toBe(true);
         expect(body.rooms[0].previousStatus).toBe('DIRTY');
-        expect(body.rooms[0].newStatus).toBe('CLEANING');
+        expect(body.rooms[0].newStatus).toBe('CLEAN');
 
         // Verify database state
         const result = await pool.query('SELECT status FROM rooms WHERE id = $1', [
           testRoomIds.dirty,
         ]);
-        expect(result.rows[0].status).toBe('CLEANING');
+        expect(result.rows[0].status).toBe('CLEAN');
       })
     );
 
@@ -278,14 +289,14 @@ describe('Cleaning Batch Endpoint', () => {
 
   describe('Invalid transitions (without override)', () => {
     it(
-      'should reject DIRTY → CLEAN without override',
+      'should reject DIRTY → CLEANING without override (CLEANING not adjacent)',
       runIfDbAvailable(async () => {
         const response = await injectAsStaff({
           method: 'POST',
           url: '/v1/cleaning/batch',
           payload: {
             roomIds: [testRoomIds.dirty],
-            targetStatus: 'CLEAN',
+            targetStatus: 'CLEANING',
             staffId: testStaffId,
           },
         });
@@ -372,22 +383,30 @@ describe('Cleaning Batch Endpoint', () => {
     it(
       'should handle partial failures in batch',
       runIfDbAvailable(async () => {
+        // DIRTY → CLEAN is valid, CLEANING → CLEAN is valid, CLEAN → CLEAN is no-op (valid)
+        // So all 3 should succeed. Let's test a genuinely mixed case instead:
+        // Set one room to OCCUPIED (which can't go directly to CLEANING)
+        await pool.query('UPDATE rooms SET status = $1 WHERE id = $2', [
+          'OCCUPIED',
+          testRoomIds.dirty,
+        ]);
+
         const response = await injectAsStaff({
           method: 'POST',
           url: '/v1/cleaning/batch',
           payload: {
             roomIds: [testRoomIds.dirty, testRoomIds.cleaning, testRoomIds.clean],
-            targetStatus: 'CLEAN',
+            targetStatus: 'CLEANING',
             staffId: testStaffId,
           },
         });
 
         expect(response.statusCode).toBe(200);
         const body = JSON.parse(response.body);
-        expect(body.summary.success).toBe(2);
-        expect(body.summary.failed).toBe(1);
-
-        const dirtyRoom = body.rooms.find(
+        // OCCUPIED → CLEANING is not adjacent, so dirty room (now OCCUPIED) should fail
+        // CLEANING → CLEANING is same-status no-op (valid)
+        // CLEAN → CLEANING is not adjacent, should fail
+        const occupiedRoom = body.rooms.find(
           (r: { roomId: string }) => r.roomId === testRoomIds.dirty
         );
         const cleaningRoom = body.rooms.find(
@@ -397,10 +416,11 @@ describe('Cleaning Batch Endpoint', () => {
           (r: { roomId: string }) => r.roomId === testRoomIds.clean
         );
 
-        expect(dirtyRoom.success).toBe(false);
-        expect(dirtyRoom.requiresOverride).toBe(true);
         expect(cleaningRoom.success).toBe(true);
-        expect(cleanRoom.success).toBe(true);
+        expect(occupiedRoom.success).toBe(false);
+        expect(cleanRoom.success).toBe(false);
+        expect(body.summary.success).toBe(1);
+        expect(body.summary.failed).toBe(2);
       })
     );
   });

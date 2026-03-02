@@ -207,11 +207,11 @@ describe('Check-in Flow Commands', () => {
     expect(json.error).toBe('VersionMismatch');
   });
 
-  it('rejects SET_STEP forward jumps beyond +1 with 400', async () => {
+  it('rejects SET_STEP forward jumps beyond allowed transitions with 400', async () => {
     if (!dbAvailable) return;
 
     await query(
-      `UPDATE lane_sessions SET flow_version = 1, flow_step = 'LANGUAGE' WHERE id = $1`,
+      `UPDATE lane_sessions SET flow_version = 1, flow_step = 'RENTAL' WHERE id = $1`,
       [sessionId]
     );
 
@@ -225,7 +225,7 @@ describe('Check-in Flow Commands', () => {
         actor: 'CUSTOMER',
         expectedFlowVersion: 1,
         type: 'SET_STEP',
-        payload: { step: 'PAYMENT' },
+        payload: { step: 'AGREEMENT' },
       },
     });
 
@@ -405,7 +405,8 @@ describe('Check-in Flow Commands', () => {
     expect(updated.rows[0]!.selection_confirmed).toBe(true);
     expect(updated.rows[0]!.selection_confirmed_by).toBe('CUSTOMER');
     expect(updated.rows[0]!.desired_rental_type).toBe('STANDARD');
-    expect(updated.rows[0]!.flow_step).toBe('WAITLIST_PREFERENCES');
+    // CONFIRM_SELECTION stays on the current step (RENTAL) — employee advances explicitly
+    expect(updated.rows[0]!.flow_step).toBe('RENTAL');
     expect(updated.rows[0]!.flow_version).toBe(3);
   });
 

@@ -14,15 +14,20 @@ describe('demo seed (busy Saturday) database assertions', () => {
   let pool: pg.Pool;
 
   beforeAll(async () => {
-    pool = new pg.Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
-      database: process.env.DB_NAME || 'club_operations',
-      user: process.env.DB_USER || 'clubops',
-      password: process.env.DB_PASSWORD || 'clubops_dev',
-      // Prevent "hung" test runs when DB isn't reachable.
-      connectionTimeoutMillis: 3000,
-    });
+    let poolConfig: pg.PoolConfig;
+    if (process.env.DATABASE_URL) {
+      poolConfig = { connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 3000 };
+    } else {
+      poolConfig = {
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432', 10),
+        database: process.env.DB_NAME || 'club_operations',
+        user: process.env.DB_USER || 'clubops',
+        password: process.env.DB_PASSWORD || 'clubops_dev',
+        connectionTimeoutMillis: 3000,
+      };
+    }
+    pool = new pg.Pool(poolConfig);
   });
 
   afterAll(async () => {

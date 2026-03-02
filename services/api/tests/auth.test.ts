@@ -335,7 +335,7 @@ describe('PIN Login', () => {
       await query(
         `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
          VALUES ($1, 'test-device', 'desktop', $2, NOW() + INTERVAL '24 hours')`,
-        [staffStaffId, staffToken]
+        [staffStaffId, hashSessionToken(staffToken)]
       );
 
       const response = await fastify.inject({
@@ -397,7 +397,7 @@ describe('PIN Login', () => {
       await query(
         `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
          VALUES ($1, 'test-device', 'desktop', $2, NOW() + INTERVAL '24 hours')`,
-        [staffStaffId, staffToken]
+        [staffStaffId, hashSessionToken(staffToken)]
       );
 
       const credentialId = 'test-credential-id';
