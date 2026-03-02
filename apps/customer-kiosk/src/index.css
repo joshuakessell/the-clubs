@@ -51,6 +51,13 @@ body {
   background-color: var(--color-surface-base);
 }
 
+/* ── Kiosk: deeper dark-blue background ─────────── */
+:root.dark {
+  --background: #0a1628;
+  --background-1: #0f1d32;
+  --background-2: #13243d;
+}
+
 h1, h2, h3, h4 {
   font-family: var(--font-display);
   letter-spacing: -0.02em;

@@ -261,310 +261,346 @@ export function IdleScreen() {
           position: 'relative',
         }}
       >
-        {/* ── Logo + Glow Group ──────────────────────────────── */}
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            transition,
-            ...(isCheckinActive
-              ? {
-                  paddingTop: 28,
-                  transform: 'scale(0.65)',
-                  transformOrigin: 'top center',
-                }
-              : {
-                  paddingTop: 'calc(50dvh - 186px)',
-                  transform: 'scale(1)',
-                  transformOrigin: 'top center',
-                }),
-          }}
-        >
-          {/* Glow ring */}
-          <div className="relative">
-            <div
-              className="absolute inset-4 rounded-full animate-pulse"
-              style={{
-                boxShadow: '0 0 100px 40px var(--color-accent-glow)',
-                opacity: 0.55,
-                transition,
-              }}
-            />
-            <div className="relative flex items-center justify-center">
-              <img
-                src={isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg'}
-                alt={t('brand.clubName')}
-                className="kiosk-logo"
-                width="240"
-                height="240"
+        {/* ── Idle state: centered branding panel (matches employee register) ── */}
+        {!isCheckinActive && (
+          <div
+            className="flex flex-1 flex-col items-center justify-center gap-12 text-center p-12"
+            style={{ width: '100%' }}
+          >
+            {/* Animated glow ring + logo */}
+            <div className="relative">
+              <div
+                className="absolute inset-6 rounded-full animate-pulse"
                 style={{
-                  width: 240,
-                  height: 240,
-                  filter: 'drop-shadow(0 0 20px var(--color-accent-glow))',
-                  transform: isCheckinActive ? 'translateY(-12px)' : undefined,
-                  transition,
+                  boxShadow: '0 0 80px 30px var(--color-accent-glow)',
+                  opacity: 0.5,
                 }}
               />
+              <div className="relative flex items-center justify-center">
+                <img
+                  src={isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg'}
+                  alt={t('brand.clubName')}
+                  width="240"
+                  height="240"
+                  style={{
+                    width: 240,
+                    height: 240,
+                    objectFit: 'contain',
+                    filter: 'drop-shadow(0 0 20px var(--color-accent-glow))',
+                  }}
+                />
+              </div>
             </div>
-          </div>
 
-          {/* Brand name — follows logo */}
-          <h1
-            className="mt-6 text-5xl font-extrabold tracking-tight uppercase"
-            style={{
-              fontFamily: 'var(--font-brand)',
-              color: 'var(--color-text-primary)',
-              transition,
-            }}
-          >
-            {t('brand.clubName')}
-          </h1>
-        </div>
-
-        {/* ── ID Prompt — fades out in place when check-in active ──── */}
-        <p
-          className="mt-6 text-xl"
-          style={{
-            color: 'var(--color-text-secondary)',
-            transition: 'opacity 2.4s cubic-bezier(0.4, 0, 0.2, 1)',
-            opacity: isCheckinActive ? 0 : 1,
-            pointerEvents: isCheckinActive ? 'none' : 'auto',
-          }}
-        >
-          {t('idle.presentId')}
-        </p>
-
-        {/* ── Check-in Card — fades in after logo animation ──────── */}
-        {isCheckinActive && (
-          <div
-            className="flex flex-col"
-            style={{
-              position: 'absolute',
-              top: '55%',
-              left: '50%',
-              transform: `translate(-50%, -50%) translateY(${groupSlideOffset}px)`,
-              transition: 'opacity 1s ease, transform 1s ease',
-              opacity: showCard ? 1 : 0,
-              width: '100%',
-              maxWidth: 400,
-              padding: '0 24px',
-              pointerEvents: showCard ? 'auto' : 'none',
-            }}
-          >
-            <div
-              className="flex flex-col rounded-xl"
-              style={{
-                backgroundColor: 'var(--color-surface-primary)',
-                border: '1px solid var(--color-border-subtle)',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-                overflow: 'hidden',
-              }}
-            >
-              {/* Card header */}
-              <div
-                className="py-3 px-5"
+            {/* Brand + subtitle */}
+            <div>
+              <h1
+                className="text-3xl font-extrabold tracking-tight uppercase"
                 style={{
-                  backgroundColor: 'var(--color-surface-overlay)',
-                  borderBottom: '1px solid var(--color-border-subtle)',
+                  fontFamily: 'var(--font-brand)',
+                  color: 'var(--color-text-primary)',
                 }}
               >
-                <p
-                  className="text-base font-semibold"
-                  style={{ color: 'var(--color-text-primary)' }}
-                >
-                  {isMember ? `Welcome back, ${customerName}!` : `Welcome, ${customerName}`}
-                </p>
-              </div>
+                {t('brand.clubName')}
+              </h1>
+              <p
+                className="mt-4 text-xl"
+                style={{ color: 'var(--color-text-secondary)' }}
+              >
+                Customer Kiosk
+              </p>
+            </div>
 
-              {/* Card body — charge items, total, payment messages */}
-              <div className="p-5 flex flex-col gap-4">
-                {/* Charge items */}
-                {chargeItems.map((item, i) => {
-                  const opacity =
-                    item.phase === 'fading-in' || item.phase === 'visible' ? 1 : 0;
-                  const itemTransition =
-                    item.phase === 'fading-in'
-                      ? 'opacity 1s ease, transform 1s ease'
-                      : 'none';
-                  const translateY =
-                    item.phase === 'hidden' ? 8 : 0;
-
-                  return (
-                    <div
-                      key={`${item.description}-${i}`}
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'baseline',
-                        width: '100%',
-                        opacity,
-                        transform: `translateY(${translateY}px)`,
-                        transition: itemTransition,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: '1.3rem',
-                          fontWeight: 500,
-                          color: 'var(--color-text-secondary)',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {item.description}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '1.3rem',
-                          fontWeight: 700,
-                          color: 'var(--color-text-primary)',
-                          fontVariantNumeric: 'tabular-nums',
-                          whiteSpace: 'nowrap',
-                          marginLeft: 16,
-                          minWidth: 72,
-                          textAlign: 'right',
-                        }}
-                      >
-                        ${item.amount.toFixed(2)}
-                      </span>
-                    </div>
-                  );
-                })}
-
-                {/* ── Total Due — for payment step, fade in/out ──────── */}
-                {totalVisible && total != null && (
-                  <>
-                    <div
-                      style={{
-                        borderTop: '1px solid var(--color-border-subtle)',
-                        marginTop: 4,
-                        paddingTop: 12,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'baseline',
-                        width: '100%',
-                        transition: 'opacity 1s ease, transform 1s ease',
-                        opacity: showTotal ? 1 : 0,
-                        transform: showTotal ? 'translateY(0)' : 'translateY(12px)',
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: '1.5rem',
-                          fontWeight: 700,
-                          color: 'var(--color-text-primary)',
-                        }}
-                      >
-                        Total Due
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '1.5rem',
-                          fontWeight: 700,
-                          fontVariantNumeric: 'tabular-nums',
-                          color: 'var(--color-accent-primary)',
-                          marginLeft: 16,
-                          minWidth: 72,
-                          textAlign: 'right' as const,
-                        }}
-                      >
-                        ${total.toFixed(2)}
-                      </span>
-                    </div>
-                  </>
-                )}
-
-                {/* Payment instruction */}
-                {showPaymentInstructions && total != null && total > 0 && (
-                  <p
-                    className="text-sm font-medium"
-                    style={{
-                      color: 'var(--color-text-muted)',
-                      animation: 'fadeSlideIn 0.5s ease 0.5s both',
-                      textAlign: 'center',
-                      marginTop: 8,
-                    }}
-                  >
-                    Please provide cash or card to the attendant.
-                  </p>
-                )}
-
-                {/* Payment received */}
-                {showPaymentReceived && (
-                  <div
-                    className="flex items-center justify-center gap-2 rounded-lg px-4 py-2"
-                    style={{
-                      backgroundColor: 'rgba(34,197,94,0.1)',
-                      border: '1px solid rgba(34,197,94,0.3)',
-                      animation: 'fadeSlideIn 0.4s ease both',
-                      marginTop: 8,
-                    }}
-                  >
-                    <span style={{ color: 'var(--color-status-success)' }}>✓</span>
-                    <span
-                      className="text-sm font-semibold"
-                      style={{ color: 'var(--color-status-success)' }}
-                    >
-                      Payment Received
-                    </span>
-                  </div>
-                )}
-
-                {/* Welcome message for members with no charges */}
-                {!showCharges && !showTotal && isMember && (
-                  <p
-                    className="text-sm"
-                    style={{
-                      color: 'var(--color-text-muted)',
-                      opacity: 0.7,
-                      animation: 'fadeSlideIn 0.5s ease 0.3s both',
-                      textAlign: 'center',
-                    }}
-                  >
-                    Welcome back! Your attendant is preparing your visit.
-                  </p>
-                )}
-              </div>
+            {/* Status indicator */}
+            <div
+              className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
+              style={{
+                backgroundColor: 'var(--color-surface-overlay)',
+                color: 'var(--color-text-muted)',
+                border: '1px solid var(--color-border-subtle)',
+              }}
+            >
+              <div
+                className="h-2 w-2 rounded-full animate-pulse"
+                style={{ backgroundColor: 'var(--color-status-success)' }}
+              />
+              {t('idle.readyForCheckin')}
             </div>
           </div>
         )}
 
-        {/* ── Status indicator — fixed at bottom, never moves ──── */}
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 48,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 10,
-          }}
-        >
-          <div
-            className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
-            style={{
-              backgroundColor: isCheckinActive
-                ? 'rgba(34,197,94,0.08)'
-                : 'var(--color-surface-overlay)',
-              color: isCheckinActive
-                ? 'var(--color-status-success)'
-                : 'var(--color-text-muted)',
-              border: isCheckinActive
-                ? '1px solid rgba(34,197,94,0.3)'
-                : '1px solid var(--color-border-subtle)',
-            }}
-          >
+        {/* ── Active check-in state ── */}
+        {isCheckinActive && (
+          <>
+            {/* Logo + Glow — shrinks and moves to top */}
             <div
-              className={`h-2 w-2 rounded-full ${isCheckinActive ? 'animate-pulse' : ''}`}
               style={{
-                backgroundColor: isCheckinActive
-                  ? 'var(--color-status-success)'
-                  : 'var(--color-text-muted)',
-                opacity: isCheckinActive ? 1 : 0.3,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                paddingTop: 28,
+                transform: 'scale(0.65)',
+                transformOrigin: 'top center',
+                transition,
               }}
-            />
-            {isCheckinActive ? 'Check-in Active' : t('idle.readyForCheckin')}
-          </div>
-        </div>
+            >
+              <div className="relative">
+                <div
+                  className="absolute inset-4 rounded-full animate-pulse"
+                  style={{
+                    boxShadow: '0 0 100px 40px var(--color-accent-glow)',
+                    opacity: 0.55,
+                  }}
+                />
+                <div className="relative flex items-center justify-center">
+                  <img
+                    src={isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg'}
+                    alt={t('brand.clubName')}
+                    className="kiosk-logo"
+                    width="240"
+                    height="240"
+                    style={{
+                      width: 240,
+                      height: 240,
+                      filter: 'drop-shadow(0 0 20px var(--color-accent-glow))',
+                      transform: 'translateY(-12px)',
+                      transition,
+                    }}
+                  />
+                </div>
+              </div>
+
+              <h1
+                className="mt-6 text-5xl font-extrabold tracking-tight uppercase"
+                style={{
+                  fontFamily: 'var(--font-brand)',
+                  color: 'var(--color-text-primary)',
+                  transition,
+                }}
+              >
+                {t('brand.clubName')}
+              </h1>
+            </div>
+
+            {/* ── Check-in Card — fades in after logo animation ──────── */}
+            <div
+              className="flex flex-col"
+              style={{
+                position: 'absolute',
+                top: '55%',
+                left: '50%',
+                transform: `translate(-50%, -50%) translateY(${groupSlideOffset}px)`,
+                transition: 'opacity 1s ease, transform 1s ease',
+                opacity: showCard ? 1 : 0,
+                width: '100%',
+                maxWidth: 400,
+                padding: '0 24px',
+                pointerEvents: showCard ? 'auto' : 'none',
+              }}
+            >
+              <div
+                className="flex flex-col rounded-xl"
+                style={{
+                  backgroundColor: 'var(--color-surface-primary)',
+                  border: '1px solid var(--color-border-subtle)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Card header */}
+                <div
+                  className="py-3 px-5"
+                  style={{
+                    backgroundColor: 'var(--color-surface-overlay)',
+                    borderBottom: '1px solid var(--color-border-subtle)',
+                  }}
+                >
+                  <p
+                    className="text-base font-semibold"
+                    style={{ color: 'var(--color-text-primary)' }}
+                  >
+                    {isMember ? `Welcome back, ${customerName}!` : `Welcome, ${customerName}`}
+                  </p>
+                </div>
+
+                {/* Card body — charge items, total, payment messages */}
+                <div className="p-5 flex flex-col gap-4">
+                  {/* Charge items */}
+                  {chargeItems.map((item, i) => {
+                    const opacity =
+                      item.phase === 'fading-in' || item.phase === 'visible' ? 1 : 0;
+                    const itemTransition =
+                      item.phase === 'fading-in'
+                        ? 'opacity 1s ease, transform 1s ease'
+                        : 'none';
+                    const translateY =
+                      item.phase === 'hidden' ? 8 : 0;
+
+                    return (
+                      <div
+                        key={`${item.description}-${i}`}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'baseline',
+                          width: '100%',
+                          opacity,
+                          transform: `translateY(${translateY}px)`,
+                          transition: itemTransition,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '1.3rem',
+                            fontWeight: 500,
+                            color: 'var(--color-text-secondary)',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {item.description}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '1.3rem',
+                            fontWeight: 700,
+                            color: 'var(--color-text-primary)',
+                            fontVariantNumeric: 'tabular-nums',
+                            whiteSpace: 'nowrap',
+                            marginLeft: 16,
+                            minWidth: 72,
+                            textAlign: 'right',
+                          }}
+                        >
+                          ${item.amount.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })}
+
+                  {/* ── Total Due — for payment step, fade in/out ──────── */}
+                  {totalVisible && total != null && (
+                    <>
+                      <div
+                        style={{
+                          borderTop: '1px solid var(--color-border-subtle)',
+                          marginTop: 4,
+                          paddingTop: 12,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'baseline',
+                          width: '100%',
+                          transition: 'opacity 1s ease, transform 1s ease',
+                          opacity: showTotal ? 1 : 0,
+                          transform: showTotal ? 'translateY(0)' : 'translateY(12px)',
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: '1.5rem',
+                            fontWeight: 700,
+                            color: 'var(--color-text-primary)',
+                          }}
+                        >
+                          Total Due
+                        </span>
+                        <span
+                          style={{
+                            fontSize: '1.5rem',
+                            fontWeight: 700,
+                            fontVariantNumeric: 'tabular-nums',
+                            color: 'var(--color-accent-primary)',
+                            marginLeft: 16,
+                            minWidth: 72,
+                            textAlign: 'right' as const,
+                          }}
+                        >
+                          ${total.toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Payment instruction */}
+                  {showPaymentInstructions && total != null && total > 0 && (
+                    <p
+                      className="text-sm font-medium"
+                      style={{
+                        color: 'var(--color-text-muted)',
+                        animation: 'fadeSlideIn 0.5s ease 0.5s both',
+                        textAlign: 'center',
+                        marginTop: 8,
+                      }}
+                    >
+                      Please provide cash or card to the attendant.
+                    </p>
+                  )}
+
+                  {/* Payment received */}
+                  {showPaymentReceived && (
+                    <div
+                      className="flex items-center justify-center gap-2 rounded-lg px-4 py-2"
+                      style={{
+                        backgroundColor: 'rgba(34,197,94,0.1)',
+                        border: '1px solid rgba(34,197,94,0.3)',
+                        animation: 'fadeSlideIn 0.4s ease both',
+                        marginTop: 8,
+                      }}
+                    >
+                      <span style={{ color: 'var(--color-status-success)' }}>✓</span>
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: 'var(--color-status-success)' }}
+                      >
+                        Payment Received
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Welcome message for members with no charges */}
+                  {!showCharges && !showTotal && isMember && (
+                    <p
+                      className="text-sm"
+                      style={{
+                        color: 'var(--color-text-muted)',
+                        opacity: 0.7,
+                        animation: 'fadeSlideIn 0.5s ease 0.3s both',
+                        textAlign: 'center',
+                      }}
+                    >
+                      Welcome back! Your attendant is preparing your visit.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* ── Status indicator — fixed at bottom ──── */}
+            <div
+              style={{
+                position: 'fixed',
+                bottom: 48,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 10,
+              }}
+            >
+              <div
+                className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
+                style={{
+                  backgroundColor: 'rgba(34,197,94,0.08)',
+                  color: 'var(--color-status-success)',
+                  border: '1px solid rgba(34,197,94,0.3)',
+                }}
+              >
+                <div
+                  className="h-2 w-2 rounded-full animate-pulse"
+                  style={{ backgroundColor: 'var(--color-status-success)' }}
+                />
+                Check-in Active
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <style>{`
