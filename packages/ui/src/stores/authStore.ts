@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getApiUrl } from '@the-clubs/shared';
 
 export interface StaffSession {
   staffId: string;
@@ -40,7 +41,7 @@ function loadOrCreateDeviceId(): string {
   return id;
 }
 
-const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '/api';
+
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: loadSession(),
@@ -72,7 +73,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ isValidating: true });
     try {
-      const res = await fetch(`${API_BASE}/v1/auth/me`, {
+      const res = await fetch(getApiUrl('/api/v1/auth/me'), {
         headers: { Authorization: `Bearer ${session.sessionToken}` },
       });
       if (res.status === 401) {

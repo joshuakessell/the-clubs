@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { getApiUrl } from '@the-clubs/shared';
 
 /**
  * Session guard hook for staff-facing apps (employee register, office dashboard).
@@ -88,8 +89,7 @@ export function useSessionGuard() {
                         // This prevents race conditions and transient 401s from
                         // kicking the user back to the lock screen.
                         try {
-                            const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '/api';
-                            const meRes = await originalFetch.call(window, `${API_BASE}/v1/auth/me`, {
+                            const meRes = await originalFetch.call(window, getApiUrl('/api/v1/auth/me'), {
                                 headers: { Authorization: `Bearer ${currentSession.sessionToken}` },
                             });
                             if (meRes.status === 401) {

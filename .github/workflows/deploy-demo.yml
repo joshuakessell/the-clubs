@@ -1,8 +1,9 @@
-name: Deploy to Production
+name: Deploy to Demo
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,9 +12,10 @@ permissions:
 env:
   NODE_VERSION: "22"
   AWS_REGION: us-east-1
+  DEMO_API_URL: https://api-demo.joshuakessell.com
 
 jobs:
-  build-test:
+  build:
     name: Build & Test
     runs-on: ubuntu-latest
     steps:
@@ -29,9 +31,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build all packages
+      - name: Build all packages (demo API endpoint)
         env:
-          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_API_BASE_URL: ${{ env.DEMO_API_URL }}
         run: pnpm run build
 
       - name: Typecheck
@@ -41,7 +43,7 @@ jobs:
       - name: Upload SPA artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: spa-dist
+          name: demo-spa-dist
           retention-days: 1
           path: |
             apps/customer-kiosk/dist/
@@ -51,7 +53,7 @@ jobs:
       - name: Upload API artifact
         uses: actions/upload-artifact@v4
         with:
-          name: api-bundle
+          name: demo-api-bundle
           retention-days: 1
           path: |
             services/api/src/
@@ -74,16 +76,15 @@ jobs:
             pnpm-workspace.yaml
             tsconfig.base.json
 
-
-  deploy-spas:
-    name: Deploy SPAs to S3 + CloudFront
-    needs: build-test
+  deploy-demo-spas:
+    name: Deploy Demo SPAs to S3 + CloudFront
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Download SPA artifacts
         uses: actions/download-artifact@v4
         with:
-          name: spa-dist
+          name: demo-spa-dist
           path: apps/
 
       - name: Configure AWS credentials (OIDC)
@@ -92,54 +93,41 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy Customer Kiosk
-        run: |
-          aws s3 sync apps/customer-kiosk/dist/ \
-            s3://${{ vars.S3_CUSTOMER_KIOSK }} --delete \
-            --cache-control "public, max-age=31536000, immutable" \
-            --exclude "index.html"
-          aws s3 cp apps/customer-kiosk/dist/index.html \
-            s3://${{ vars.S3_CUSTOMER_KIOSK }}/index.html \
-            --cache-control "no-cache, no-store, must-revalidate"
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ vars.CF_CUSTOMER_KIOSK }} \
-            --paths "/*"
-
-      - name: Deploy Employee Register
+      - name: Deploy Demo Employee Register
         run: |
           aws s3 sync apps/employee-register/dist/ \
-            s3://${{ vars.S3_EMPLOYEE_REGISTER }} --delete \
+            s3://${{ vars.S3_DEMO_EMPLOYEE_REGISTER }} --delete \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "index.html"
           aws s3 cp apps/employee-register/dist/index.html \
-            s3://${{ vars.S3_EMPLOYEE_REGISTER }}/index.html \
+            s3://${{ vars.S3_DEMO_EMPLOYEE_REGISTER }}/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
           aws cloudfront create-invalidation \
-            --distribution-id ${{ vars.CF_EMPLOYEE_REGISTER }} \
+            --distribution-id ${{ vars.CF_DEMO_EMPLOYEE_REGISTER }} \
             --paths "/*"
 
-      - name: Deploy Office Dashboard
+      - name: Deploy Demo Customer Kiosk
         run: |
-          aws s3 sync apps/office-dashboard/dist/ \
-            s3://${{ vars.S3_OFFICE_DASHBOARD }} --delete \
+          aws s3 sync apps/customer-kiosk/dist/ \
+            s3://${{ vars.S3_DEMO_CUSTOMER_KIOSK }} --delete \
             --cache-control "public, max-age=31536000, immutable" \
             --exclude "index.html"
-          aws s3 cp apps/office-dashboard/dist/index.html \
-            s3://${{ vars.S3_OFFICE_DASHBOARD }}/index.html \
+          aws s3 cp apps/customer-kiosk/dist/index.html \
+            s3://${{ vars.S3_DEMO_CUSTOMER_KIOSK }}/index.html \
             --cache-control "no-cache, no-store, must-revalidate"
           aws cloudfront create-invalidation \
-            --distribution-id ${{ vars.CF_OFFICE_DASHBOARD }} \
+            --distribution-id ${{ vars.CF_DEMO_CUSTOMER_KIOSK }} \
             --paths "/*"
 
-  deploy-api:
-    name: Deploy API to Production
-    needs: build-test
+  deploy-demo-api:
+    name: Deploy API to Demo (Staging EC2)
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Download API artifact
         uses: actions/download-artifact@v4
         with:
-          name: api-bundle
+          name: demo-api-bundle
           path: .
 
       - name: Build Docker image in CI
@@ -148,22 +136,22 @@ jobs:
           docker save the-clubs-api:latest | gzip > api-image.tar.gz
           ls -lh api-image.tar.gz
 
-      - name: Copy image + compose to EC2
+      - name: Copy image + compose to Staging EC2
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.STAGING_EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "api-image.tar.gz,docker-compose.prod.yml"
           target: /home/ec2-user/
 
-      - name: Deploy on EC2
+      - name: Deploy on Staging EC2
         uses: appleboy/ssh-action@v1
         env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          KIOSK_TOKEN: ${{ secrets.KIOSK_TOKEN }}
+          DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          KIOSK_TOKEN: ${{ secrets.DEMO_KIOSK_TOKEN }}
         with:
-          host: ${{ secrets.EC2_HOST }}
+          host: ${{ secrets.STAGING_EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: DB_PASSWORD,KIOSK_TOKEN
@@ -181,13 +169,13 @@ jobs:
             mv /home/ec2-user/docker-compose.prod.yml /home/ec2-user/the-clubs/
             cd /home/ec2-user/the-clubs
 
-            # Production .env — NO demo mode, NO auto-seed
+            # Demo .env — full demo mode with auto-seed
             printf '%s\n' \
               'DB_NAME=club_operations' \
               'DB_USER=clubops' \
               'ALLOWED_ORIGINS=*' \
-              'DEMO_MODE=false' \
-              'SEED_ON_STARTUP=false' \
+              'DEMO_MODE=true' \
+              'SEED_ON_STARTUP=true' \
               "DB_PASSWORD=${DB_PASSWORD}" \
               "KIOSK_TOKEN=${KIOSK_TOKEN}" \
               > /home/ec2-user/.env
@@ -197,27 +185,35 @@ jobs:
               --env-file /home/ec2-user/.env \
               up -d
 
-            echo "✓ Containers started, waiting for health..."
-            sleep 5
+            echo "✓ Demo containers started"
 
-            # Run base seed (idempotent) — creates staff, rooms, lockers, devices, agreements
-            docker compose -f docker-compose.prod.yml exec -T api \
-              npx tsx src/db/seed.ts || echo "⚠ Seed skipped (may need manual run)"
-
-            echo "✓ Production deploy complete"
+            # Wait for health
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+                echo "✓ Demo API is healthy!"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "⚠ Health check timeout — check logs"
+            docker compose -f docker-compose.prod.yml logs --tail=30 api
+            exit 1
 
   notify-deployment:
-    name: Notify Deployment Status
+    name: Notify Demo Deployment Status
     if: always()
-    needs: [deploy-api, deploy-spas]
+    needs: [deploy-demo-api, deploy-demo-spas]
     runs-on: ubuntu-latest
     steps:
       - name: Deployment Status
         run: |
-          if [ "${{ needs.deploy-api.result }}" == "success" ] && [ "${{ needs.deploy-spas.result }}" == "success" ]; then
-            echo "✓ Deployment to production succeeded!"
+          if [ "${{ needs.deploy-demo-api.result }}" == "success" ] && [ "${{ needs.deploy-demo-spas.result }}" == "success" ]; then
+            echo "✓ Demo deployment succeeded!"
+            echo "  Employee: https://employee-demo.joshuakessell.com"
+            echo "  Customer: https://customer-demo.joshuakessell.com"
+            echo "  API:      https://api-demo.joshuakessell.com"
             exit 0
           else
-            echo "✗ Deployment to production failed!"
+            echo "✗ Demo deployment failed!"
             exit 1
           fi

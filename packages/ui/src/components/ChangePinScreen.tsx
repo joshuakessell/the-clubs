@@ -1,7 +1,6 @@
 import { useState, useRef, useCallback, useEffect, type KeyboardEvent, type ClipboardEvent } from 'react';
 import { useAuthStore } from '../stores/authStore';
-
-const API_BASE = (import.meta as any).env?.VITE_API_URL || '/api';
+import { getApiUrl } from '@the-clubs/shared';
 const PIN_LENGTH = 6;
 
 type Step = 'enter' | 'confirm';
@@ -51,7 +50,7 @@ export function ChangePinScreen() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/v1/auth/change-pin`, {
+      const response = await fetch(getApiUrl('/api/v1/auth/change-pin'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

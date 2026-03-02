@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent, type KeyboardEvent, type ClipboardEvent } from 'react';
 import { useAuthStore, type StaffSession } from '../stores/authStore';
-
-const API_BASE = (import.meta as any).env?.VITE_API_URL || '/api';
+import { getApiUrl } from '@the-clubs/shared';
 
 interface StaffMember {
   id: string;
@@ -53,7 +52,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
   useEffect(() => {
     const fetchStaff = async () => {
       try {
-        const res = await fetch(`${API_BASE}/v1/auth/staff`);
+        const res = await fetch(getApiUrl('/api/v1/auth/staff'));
         if (res.ok) {
           const data: { staff: StaffMember[] } = await res.json();
           setStaffList(data.staff);
@@ -185,7 +184,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/v1/auth/login-pin`, {
+      const response = await fetch(getApiUrl('/api/v1/auth/login-pin'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffLookup: lookup, deviceId, pin: pinValue }),

@@ -392,7 +392,7 @@ resource "aws_iam_role" "github_actions_deploy" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:ref:refs/heads/main"
+            "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:ref:refs/heads/*"
           }
         }
       }
@@ -402,7 +402,7 @@ resource "aws_iam_role" "github_actions_deploy" {
   tags = local.common_tags
 }
 
-# S3 + CloudFront deploy permissions for all SPAs
+# S3 + CloudFront deploy permissions for all SPAs (production + demo)
 resource "aws_iam_role_policy" "deploy_spas" {
   name = "DeploySPAs"
   role = aws_iam_role.github_actions_deploy.name
@@ -414,7 +414,13 @@ resource "aws_iam_role_policy" "deploy_spas" {
         Sid    = "S3ListBuckets"
         Effect = "Allow"
         Action = "s3:ListBucket"
-        Resource = [for k, v in local.spas : aws_s3_bucket.spa[k].arn]
+        Resource = concat(
+          [for k, v in local.spas : aws_s3_bucket.spa[k].arn],
+          [
+            "arn:aws:s3:::${var.project_name}-demo-employee-register",
+            "arn:aws:s3:::${var.project_name}-demo-customer-kiosk",
+          ]
+        )
       },
       {
         Sid    = "S3WriteObjects"
@@ -423,13 +429,19 @@ resource "aws_iam_role_policy" "deploy_spas" {
           "s3:PutObject",
           "s3:DeleteObject"
         ]
-        Resource = [for k, v in local.spas : "${aws_s3_bucket.spa[k].arn}/*"]
+        Resource = concat(
+          [for k, v in local.spas : "${aws_s3_bucket.spa[k].arn}/*"],
+          [
+            "arn:aws:s3:::${var.project_name}-demo-employee-register/*",
+            "arn:aws:s3:::${var.project_name}-demo-customer-kiosk/*",
+          ]
+        )
       },
       {
         Sid    = "CloudFrontInvalidate"
         Effect = "Allow"
         Action = "cloudfront:CreateInvalidation"
-        Resource = [for k, v in local.spas : aws_cloudfront_distribution.spa[k].arn]
+        Resource = "*"
       }
     ]
   })
