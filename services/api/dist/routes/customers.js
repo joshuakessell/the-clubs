@@ -1,73 +1,14 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.customerRoutes = customerRoutes;
 const zod_1 = require("zod");
-const db_1 = require("../db");
 const middleware_1 = require("../auth/middleware");
-const crypto_1 = __importDefault(require("crypto"));
-const identity_1 = require("../checkin/identity");
-const customerActivityLog_1 = require("../activity/customerActivityLog");
+const customerService_1 = require("../services/customerService");
+// ── Zod Schemas ──
 const SearchQuerySchema = zod_1.z.object({
     q: zod_1.z.string().min(3),
     limit: zod_1.z.coerce.number().int().min(1).max(20).optional().default(10),
 });
-const IdTypeSchema = zod_1.z.enum(['STATE_ID', 'DRIVERS_LICENSE', 'PASSPORT', 'OTHER']);
-function normalizeScanText(raw) {
-    const lf = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const lines = lf.split('\n').map((line) => line.replace(/[ \t]+/g, ' ').trimEnd());
-    return lines.join('\n').trim();
-}
-function computeSha256Hex(value) {
-    return crypto_1.default.createHash('sha256').update(value).digest('hex');
-}
-function toDateOnly(dob) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dob))
-        return null;
-    // Validate it parses to a real date.
-    const d = new Date(`${dob}T00:00:00Z`);
-    if (!Number.isFinite(d.getTime()))
-        return null;
-    return dob;
-}
-function toDateOnlyString(value) {
-    if (!value)
-        return null;
-    if (typeof value === 'string') {
-        return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
-    }
-    if (value instanceof Date) {
-        return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : null;
-    }
-    return null;
-}
-function toIsoTimestamp(value) {
-    if (!value)
-        return null;
-    return Number.isFinite(value.getTime()) ? value.toISOString() : null;
-}
-function toDobMonthDay(value) {
-    if (!value)
-        return null;
-    if (typeof value === 'string') {
-        const parts = value.split('-');
-        if (parts.length >= 3) {
-            const mm = parts[1];
-            const dd = parts[2];
-            if (mm && dd)
-                return `${mm}/${dd}`;
-        }
-        return null;
-    }
-    if (value instanceof Date) {
-        const mm = String(value.getUTCMonth() + 1).padStart(2, '0');
-        const dd = String(value.getUTCDate()).padStart(2, '0');
-        return `${mm}/${dd}`;
-    }
-    return null;
-}
 const CustomerNotesListSchema = zod_1.z.object({
     limit: zod_1.z.coerce.number().int().min(1).max(100).optional().default(25),
     cursor: zod_1.z.string().optional(),
@@ -77,160 +18,70 @@ const CreateCustomerNoteSchema = zod_1.z.object({
     isImportant: zod_1.z.boolean().optional(),
     sourceApp: zod_1.z.enum(['EMPLOYEE_REGISTER', 'OFFICE_DASHBOARD']).optional(),
 });
-function parseNotesCursor(raw) {
-    if (!raw)
-        return null;
-    try {
-        const parsed = JSON.parse(Buffer.from(raw, 'base64').toString('utf8'));
-        if (!parsed || typeof parsed !== 'object')
-            return null;
-        if (typeof parsed.createdAt !== 'string' || typeof parsed.id !== 'string')
-            return null;
-        const d = new Date(parsed.createdAt);
-        if (!Number.isFinite(d.getTime()))
-            return null;
-        return { createdAt: d, id: parsed.id };
-    }
-    catch {
-        return null;
-    }
-}
-function buildNotesCursor(value) {
-    return Buffer.from(JSON.stringify({ createdAt: value.createdAt.toISOString(), id: value.id }), 'utf8').toString('base64');
-}
-function normalizePersonNameForMatch(input) {
-    const lowered = input.toLowerCase().trim();
-    const noPunct = lowered.replace(/[^a-z0-9 ]+/g, ' ');
-    const collapsed = noPunct.replace(/\s+/g, ' ').trim();
-    if (!collapsed)
-        return '';
-    const tokens = collapsed.split(' ').filter(Boolean);
-    const suffixes = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
-    while (tokens.length > 1 && suffixes.has(tokens[tokens.length - 1])) {
-        tokens.pop();
-    }
-    return tokens.join(' ');
-}
-function splitNamePartsForMatch(input) {
-    const normalizedFull = normalizePersonNameForMatch(input);
-    if (!normalizedFull)
-        return null;
-    const tokens = normalizedFull.split(' ').filter(Boolean);
-    if (tokens.length === 0)
-        return null;
-    const firstToken = tokens[0];
-    const lastToken = tokens[tokens.length - 1];
-    return { normalizedFull, firstToken, lastToken };
-}
-function scoreNameSimilarity(input, stored) {
-    let score = 0;
-    const inputFirst = input.firstToken;
-    const inputLast = input.lastToken;
-    const storedFirst = stored.firstToken;
-    const storedLast = stored.lastToken;
-    if (input.normalizedFull === stored.normalizedFull)
-        score += 3;
-    const direct = inputFirst === storedFirst && inputLast === storedLast;
-    const swapped = inputFirst === storedLast && inputLast === storedFirst;
-    if (direct)
-        score += 2;
-    else if (swapped)
-        score += 1;
-    if (inputLast === storedLast)
-        score += 1;
-    if (inputFirst === storedFirst)
-        score += 1;
-    if (inputFirst[0] && storedFirst[0] && inputFirst[0] === storedFirst[0])
-        score += 0.5;
-    if (inputLast[0] && storedLast[0] && inputLast[0] === storedLast[0])
-        score += 0.5;
-    if (storedFirst.startsWith(inputFirst) || inputFirst.startsWith(storedFirst))
-        score += 0.5;
-    if (storedLast.startsWith(inputLast) || inputLast.startsWith(storedLast))
-        score += 0.5;
-    return score;
-}
+const IdTypeSchema = zod_1.z.enum(['STATE_ID', 'DRIVERS_LICENSE', 'PASSPORT', 'OTHER']);
+const CreateFromScanSchema = zod_1.z
+    .object({
+    idScanValue: zod_1.z.string().min(1).optional(),
+    idScanHash: zod_1.z.string().min(16).optional(),
+    rawScanText: zod_1.z.string().min(1).optional(),
+    firstName: zod_1.z.string().min(1),
+    lastName: zod_1.z.string().min(1),
+    dob: zod_1.z.string().min(1),
+    idExpirationDate: zod_1.z.string().optional(),
+    idNumber: zod_1.z.string().optional(),
+    state: zod_1.z.string().optional(),
+    idType: IdTypeSchema.optional(),
+    idTypeOther: zod_1.z.string().optional(),
+    fullName: zod_1.z.string().optional(),
+    addressLine1: zod_1.z.string().optional(),
+    city: zod_1.z.string().optional(),
+    addressState: zod_1.z.string().optional(),
+    postalCode: zod_1.z.string().optional(),
+})
+    .refine((v) => Boolean(v.idScanValue || v.rawScanText), { message: 'idScanValue or rawScanText is required' })
+    .refine((v) => v.idType !== 'OTHER' || Boolean(v.idTypeOther?.trim()), { message: 'idTypeOther is required when idType is OTHER' });
+const MatchIdentitySchema = zod_1.z.object({
+    firstName: zod_1.z.string().min(1),
+    lastName: zod_1.z.string().min(1),
+    dob: zod_1.z.string().min(1),
+    idNumber: zod_1.z.string().optional(),
+});
+const CreateManualSchema = zod_1.z
+    .object({
+    firstName: zod_1.z.string().min(1),
+    lastName: zod_1.z.string().min(1),
+    dob: zod_1.z.string().min(1),
+    idExpirationDate: zod_1.z.string().min(1),
+    idType: IdTypeSchema,
+    idTypeOther: zod_1.z.string().optional(),
+    idNumber: zod_1.z.string().trim().min(1).optional(),
+})
+    .refine((v) => v.idType !== 'OTHER' || Boolean(v.idTypeOther?.trim()), { message: 'idTypeOther is required when idType is OTHER' });
+/**
+ * Customer routes — thin wrappers around customerService.
+ */
 async function customerRoutes(fastify) {
-    /**
-     * GET /v1/customers/search - Prefix search by first or last name (case-insensitive).
-     * Requires staff auth; returns limited identity fields only.
-     */
-    fastify.get('/v1/customers/search', {
-        preHandler: [middleware_1.requireAuth],
-    }, async (request, reply) => {
-        if (!request.staff) {
+    // GET /v1/customers/search
+    fastify.get('/v1/customers/search', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+        if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        }
         let parsed;
         try {
             parsed = SearchQuerySchema.parse(request.query);
         }
         catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
+            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
         }
-        const { q, limit } = parsed;
-        const like = `${q}%`;
         try {
-            const result = await (0, db_1.query)(`
-        SELECT id, name, membership_number, dob
-        FROM customers
-        WHERE
-          name ILIKE $1
-          OR split_part(name, ' ', 2) ILIKE $1
-        ORDER BY name
-        LIMIT $2
-        `, [like, limit]);
-            const toMonthDay = (dob) => {
-                if (!dob)
-                    return undefined;
-                // pg typically returns DATE as "YYYY-MM-DD" string; handle Date defensively.
-                if (typeof dob === 'string') {
-                    const parts = dob.split('-');
-                    if (parts.length >= 3) {
-                        const mm = parts[1];
-                        const dd = parts[2];
-                        if (mm && dd)
-                            return `${mm}/${dd}`;
-                    }
-                    return undefined;
-                }
-                if (dob instanceof Date) {
-                    const mm = String(dob.getUTCMonth() + 1).padStart(2, '0');
-                    const dd = String(dob.getUTCDate()).padStart(2, '0');
-                    return `${mm}/${dd}`;
-                }
-                return undefined;
-            };
-            const suggestions = result.rows.map((row) => {
-                const nameParts = row.name.split(' ');
-                const firstName = nameParts[0] || row.name;
-                const lastName = nameParts.slice(1).join(' ') || '';
-                const disambiguator = (row.membership_number && row.membership_number.slice(-4)) || row.id.slice(0, 8);
-                return {
-                    id: row.id,
-                    name: row.name,
-                    firstName,
-                    lastName,
-                    membershipNumber: row.membership_number || undefined,
-                    dobMonthDay: toMonthDay(row.dob),
-                    disambiguator,
-                };
-            });
+            const suggestions = await (0, customerService_1.searchCustomers)(parsed.q, parsed.limit);
             return reply.send({ suggestions });
         }
         catch (error) {
-            request.log.error(error, 'Failed to search customers');
+            fastify.log.error(error, 'Failed to search customers');
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * GET /v1/customers/:customerId/notes
-     *
-     * Structured customer notes (staff-auth), newest first.
-     */
+    // GET /v1/customers/:customerId/notes
     fastify.get('/v1/customers/:customerId/notes', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
@@ -239,54 +90,18 @@ async function customerRoutes(fastify) {
             parsed = CustomerNotesListSchema.parse(request.query);
         }
         catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
+            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
         }
-        const cursor = parseNotesCursor(parsed.cursor);
         try {
-            const rows = await (0, db_1.query)(`
-          SELECT id, customer_id, created_at, created_by_staff_id, created_by_staff_name, source_app, note, is_important
-          FROM customer_notes
-          WHERE customer_id = $1
-            AND deleted_at IS NULL
-            AND (
-              $2::timestamptz IS NULL
-              OR (created_at < $2 OR (created_at = $2 AND id < $3::uuid))
-            )
-          ORDER BY created_at DESC, id DESC
-          LIMIT $4
-          `, [
-                request.params.customerId,
-                cursor?.createdAt ?? null,
-                cursor?.id ?? '00000000-0000-0000-0000-000000000000',
-                parsed.limit,
-            ]);
-            const notes = rows.rows.map((r) => ({
-                id: r.id,
-                customerId: r.customer_id,
-                createdAt: r.created_at.toISOString(),
-                createdByStaffId: r.created_by_staff_id,
-                createdByStaffName: r.created_by_staff_name,
-                sourceApp: r.source_app,
-                note: r.note,
-                isImportant: r.is_important,
-                cursor: buildNotesCursor({ createdAt: r.created_at, id: r.id }),
-            }));
-            const nextCursor = notes.length === parsed.limit ? notes[notes.length - 1].cursor : null;
-            return reply.send({ notes, nextCursor });
+            const result = await (0, customerService_1.listCustomerNotes)(request.params.customerId, { limit: parsed.limit, cursor: parsed.cursor });
+            return reply.send(result);
         }
         catch (error) {
-            request.log.error(error, 'Failed to fetch customer notes');
+            fastify.log.error(error, 'Failed to fetch customer notes');
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * POST /v1/customers/:customerId/notes
-     *
-     * Add a structured note for the customer.
-     */
+    // POST /v1/customers/:customerId/notes
     fastify.post('/v1/customers/:customerId/notes', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
@@ -295,191 +110,37 @@ async function customerRoutes(fastify) {
             parsed = CreateCustomerNoteSchema.parse(request.body);
         }
         catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
+            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
         }
-        const noteText = parsed.note.trim();
-        if (!noteText)
-            return reply.status(400).send({ error: 'note is required' });
         try {
-            const created = await (0, db_1.transaction)(async (client) => {
-                const inserted = await client.query(`
-            INSERT INTO customer_notes
-              (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
-            VALUES
-              ($1::uuid, $2::uuid, $3, $4, $5, $6)
-            RETURNING id, created_at
-            `, [
-                    request.params.customerId,
-                    request.staff.staffId,
-                    request.staff.name,
-                    parsed.sourceApp ?? 'EMPLOYEE_REGISTER',
-                    noteText,
-                    parsed.isImportant ?? false,
-                ]);
-                const row = inserted.rows[0];
-                const preview = noteText.length > 80 ? `${noteText.slice(0, 77)}…` : noteText;
-                const event = await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
-                    customerId: request.params.customerId,
-                    actionType: 'NOTE_ADDED',
-                    actionCategory: 'NOTE',
-                    sourceApp: parsed.sourceApp ?? 'EMPLOYEE_REGISTER',
-                    actorType: 'STAFF',
-                    actorStaffId: request.staff.staffId,
-                    actorStaffName: request.staff.name,
-                    summary: `Note added: ${preview}`,
-                    metadata: {
-                        noteId: row.id,
-                        isImportant: parsed.isImportant ?? false,
-                    },
-                    dedupeKey: null,
-                });
-                request.log.info({
-                    customerActivityEventId: event.id,
-                    customerId: request.params.customerId,
-                    actionType: 'NOTE_ADDED',
-                    actionCategory: 'NOTE',
-                    sourceApp: parsed.sourceApp ?? 'EMPLOYEE_REGISTER',
-                    actorType: 'STAFF',
-                    actorStaffId: request.staff.staffId,
-                }, 'customer_activity_event');
-                return row;
-            });
-            return reply.send({
-                id: created.id,
-                createdAt: created.created_at.toISOString(),
-            });
+            const result = await (0, customerService_1.createCustomerNote)(request.params.customerId, parsed.note, { staffId: request.staff.staffId, staffName: request.staff.name }, { isImportant: parsed.isImportant, sourceApp: parsed.sourceApp });
+            return reply.send(result);
         }
         catch (error) {
-            request.log.error(error, 'Failed to create customer note');
-            return reply.status(500).send({ error: 'Internal server error' });
-        }
-    });
-    /**
-     * GET /v1/customers/:id - Fetch full customer profile fields.
-     * Requires staff auth.
-     */
-    fastify.get('/v1/customers/:id', {
-        preHandler: [middleware_1.requireAuth],
-    }, async (request, reply) => {
-        if (!request.staff) {
-            return reply.status(401).send({ error: 'Unauthorized' });
-        }
-        const customerId = request.params.id;
-        const normalizedId = customerId?.trim();
-        if (!normalizedId) {
-            return reply.status(400).send({ error: 'Invalid customer id' });
-        }
-        try {
-            const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedId);
-            const result = await (0, db_1.query)(`
-          SELECT
-            id,
-            name,
-            dob,
-            membership_number,
-            membership_valid_until,
-            id_number,
-            id_type,
-            id_type_other,
-            id_expiration_date,
-            primary_language,
-            id_scan_hash,
-            past_due_balance
-          FROM customers
-          WHERE ${looksLikeUuid ? 'id = $1' : 'membership_number = $1'}
-          LIMIT 1
-          `, [normalizedId]);
-            if (result.rows.length === 0) {
-                return reply.status(404).send({ error: 'Customer not found' });
+            if (error && typeof error === 'object' && 'statusCode' in error) {
+                const err = error;
+                return reply.status(err.statusCode).send({ error: err.message });
             }
-            const row = result.rows[0];
-            const nameParts = row.name.split(' ');
-            const firstName = nameParts[0] || row.name;
-            const lastName = nameParts.slice(1).join(' ') || '';
-            const idTypeParsed = row.id_type ? IdTypeSchema.safeParse(row.id_type) : null;
-            const idType = idTypeParsed?.success ? idTypeParsed.data : null;
-            const lastVisitResult = await (0, db_1.query)(`
-          SELECT cb.starts_at
-          FROM checkin_blocks cb
-          JOIN visits v ON v.id = cb.visit_id
-          WHERE v.customer_id = $1
-          ORDER BY cb.starts_at DESC
-          LIMIT 1
-          `, [row.id]);
-            const lastVisitAt = lastVisitResult.rows.length > 0
-                ? toIsoTimestamp(lastVisitResult.rows[0].starts_at)
-                : null;
-            const pastDueBalance = typeof row.past_due_balance === 'string'
-                ? parseInt(row.past_due_balance, 10) || 0
-                : (row.past_due_balance ?? 0);
-            return reply.send({
-                customer: {
-                    id: row.id,
-                    name: row.name,
-                    firstName,
-                    lastName,
-                    dob: toDateOnlyString(row.dob),
-                    dobMonthDay: toDobMonthDay(row.dob),
-                    membershipNumber: row.membership_number,
-                    membershipValidUntil: toDateOnlyString(row.membership_valid_until),
-                    idNumber: row.id_number,
-                    idType,
-                    idTypeOther: row.id_type_other,
-                    idExpirationDate: toDateOnlyString(row.id_expiration_date),
-                    primaryLanguage: row.primary_language === 'EN' || row.primary_language === 'ES'
-                        ? row.primary_language
-                        : null,
-                    lastVisitAt,
-                    pastDueBalance,
-                    hasEncryptedLookupMarker: Boolean(row.id_scan_hash),
-                },
-            });
-        }
-        catch (error) {
-            request.log.error(error, 'Failed to fetch customer profile');
+            fastify.log.error(error, 'Failed to create customer note');
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * POST /v1/customers/create-from-scan
-     *
-     * Creates (or returns existing) customer record derived from an ID scan that produced NO_MATCH.
-     * Persists id_scan_hash + id_scan_value so subsequent scans match instantly.
-     *
-     * Auth required.
-     */
-    const CreateFromScanSchema = zod_1.z
-        .object({
-        // Preferred: send normalized value + hash from /v1/checkin/scan response.
-        idScanValue: zod_1.z.string().min(1).optional(),
-        idScanHash: zod_1.z.string().min(16).optional(),
-        // Fallback: raw scan text; server will normalize + hash.
-        rawScanText: zod_1.z.string().min(1).optional(),
-        // Identity fields (minimum)
-        firstName: zod_1.z.string().min(1),
-        lastName: zod_1.z.string().min(1),
-        dob: zod_1.z.string().min(1),
-        idExpirationDate: zod_1.z.string().optional(),
-        idNumber: zod_1.z.string().optional(),
-        state: zod_1.z.string().optional(),
-        idType: IdTypeSchema.optional(),
-        idTypeOther: zod_1.z.string().optional(),
-        fullName: zod_1.z.string().optional(),
-        // Optional prefill fields (not currently persisted in DB schema)
-        addressLine1: zod_1.z.string().optional(),
-        city: zod_1.z.string().optional(),
-        addressState: zod_1.z.string().optional(),
-        postalCode: zod_1.z.string().optional(),
-    })
-        .refine((v) => Boolean(v.idScanValue || v.rawScanText), {
-        message: 'idScanValue or rawScanText is required',
-    })
-        .refine((v) => v.idType !== 'OTHER' || Boolean(v.idTypeOther?.trim()), {
-        message: 'idTypeOther is required when idType is OTHER',
+    // GET /v1/customers/:id
+    fastify.get('/v1/customers/:id', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+        if (!request.staff)
+            return reply.status(401).send({ error: 'Unauthorized' });
+        try {
+            const customer = await (0, customerService_1.getCustomerProfile)(request.params.id);
+            if (!customer)
+                return reply.status(404).send({ error: 'Customer not found' });
+            return reply.send({ customer });
+        }
+        catch (error) {
+            fastify.log.error(error, 'Failed to fetch customer profile');
+            return reply.status(500).send({ error: 'Internal server error' });
+        }
     });
+    // POST /v1/customers/create-from-scan
     fastify.post('/v1/customers/create-from-scan', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
@@ -488,139 +149,22 @@ async function customerRoutes(fastify) {
             body = CreateFromScanSchema.parse(request.body);
         }
         catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
-        const idScanValue = normalizeScanText(body.idScanValue || body.rawScanText || '');
-        if (!idScanValue) {
-            return reply.status(400).send({ error: 'Invalid scan input' });
-        }
-        const idScanHash = (0, identity_1.computeIdScanIdentityHash)({
-            firstName: body.firstName,
-            lastName: body.lastName,
-            fullName: body.fullName,
-            dob: body.dob,
-        }) ||
-            body.idScanHash ||
-            computeSha256Hex(idScanValue);
-        const dob = toDateOnly(body.dob);
-        if (!dob) {
-            return reply.status(400).send({ error: 'Invalid dob; expected YYYY-MM-DD' });
-        }
-        const idExpirationDate = body.idExpirationDate ? toDateOnly(body.idExpirationDate) : null;
-        if (body.idExpirationDate && !idExpirationDate) {
-            return reply.status(400).send({ error: 'Invalid idExpirationDate; expected YYYY-MM-DD' });
-        }
-        const idType = body.idType ?? null;
-        const idTypeOther = idType === 'OTHER' ? (body.idTypeOther?.trim() || null) : null;
-        const idScanIssue = (0, identity_1.getIdScanIssue)({ dob, idExpirationDate });
-        if (idScanIssue) {
-            return reply.status(403).send({
-                error: (0, identity_1.getIdScanIssueMessage)(idScanIssue),
-                code: idScanIssue,
-            });
-        }
-        const name = (body.fullName?.trim() || `${body.firstName} ${body.lastName}`.trim()).slice(0, 255);
-        if (!name) {
-            return reply.status(400).send({ error: 'Invalid name' });
+            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
         }
         try {
-            // Idempotent behavior: if another lane already created this customer, return it.
-            const existing = await (0, db_1.query)(`SELECT id, name, dob, membership_number, banned_until, id_scan_hash, id_scan_value
-         FROM customers
-         WHERE id_scan_hash = $1 OR id_scan_value = $2
-         LIMIT 1`, [idScanHash, idScanValue]);
-            if (existing.rows.length > 0) {
-                const row = existing.rows[0];
-                if (row.banned_until && row.banned_until > new Date()) {
-                    return reply.status(403).send({ error: 'Customer is banned' });
-                }
-                // Backfill missing identifiers if needed.
-                const needsScanUpdate = !row.id_scan_hash ||
-                    !row.id_scan_value ||
-                    row.id_scan_hash !== idScanHash ||
-                    row.id_scan_value !== idScanValue;
-                if (needsScanUpdate || body.idNumber || body.state || idType || idTypeOther) {
-                    await (0, db_1.query)(`UPDATE customers
-             SET id_scan_hash = CASE WHEN id_scan_hash IS NULL OR id_scan_hash <> $1 THEN $1 ELSE id_scan_hash END,
-                 id_scan_value = CASE WHEN id_scan_value IS NULL OR id_scan_value <> $2 THEN $2 ELSE id_scan_value END,
-                 id_expiration_date = COALESCE(id_expiration_date, $4::date),
-                 id_number = CASE WHEN $5::text IS NOT NULL THEN $5 ELSE id_number END,
-                 id_state = CASE WHEN $6::text IS NOT NULL THEN $6 ELSE id_state END,
-                 id_type = CASE WHEN $7::text IS NOT NULL THEN $7 ELSE id_type END,
-                 id_type_other = CASE WHEN $7::text IS NOT NULL THEN $8 ELSE id_type_other END,
-                 updated_at = NOW()
-             WHERE id = $3`, [
-                        idScanHash,
-                        idScanValue,
-                        row.id,
-                        idExpirationDate,
-                        body.idNumber || null,
-                        body.state || null,
-                        idType,
-                        idTypeOther,
-                    ]);
-                }
-                else if (idExpirationDate) {
-                    await (0, db_1.query)(`UPDATE customers
-               SET id_expiration_date = $1::date,
-                   updated_at = NOW()
-               WHERE id = $2`, [idExpirationDate, row.id]);
-                }
-                return reply.send({
-                    created: false,
-                    customer: {
-                        id: row.id,
-                        name: row.name,
-                        dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob,
-                        membershipNumber: row.membership_number,
-                    },
-                });
-            }
-            const inserted = await (0, db_1.query)(`INSERT INTO customers
-           (name, dob, id_expiration_date, id_number, id_state, id_type, id_type_other, id_scan_hash, id_scan_value, created_at, updated_at)
-         VALUES ($1, $2::date, $3::date, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-         RETURNING id, name, dob, membership_number`, [
-                name,
-                dob,
-                idExpirationDate,
-                body.idNumber || null,
-                body.state || null,
-                idType,
-                idTypeOther,
-                idScanHash,
-                idScanValue,
-            ]);
-            const row = inserted.rows[0];
-            return reply.send({
-                created: true,
-                customer: {
-                    id: row.id,
-                    name: row.name,
-                    dob: row.dob ? row.dob.toISOString().slice(0, 10) : null,
-                    membershipNumber: row.membership_number,
-                },
-            });
+            const result = await (0, customerService_1.createFromScan)(body);
+            return reply.send(result);
         }
         catch (error) {
-            request.log.error(error, 'Failed to create customer from scan');
+            if (error && typeof error === 'object' && 'statusCode' in error) {
+                const err = error;
+                return reply.status(err.statusCode).send({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+            }
+            fastify.log.error(error, 'Failed to create customer from scan');
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * POST /v1/customers/match-identity
-     *
-     * Staff-only endpoint for exact-ish identity match by (firstName,lastName,dob).
-     * Used by manual "First Time Customer / Alternate ID" to avoid accidental duplicates.
-     */
-    const MatchIdentitySchema = zod_1.z.object({
-        firstName: zod_1.z.string().min(1),
-        lastName: zod_1.z.string().min(1),
-        dob: zod_1.z.string().min(1), // YYYY-MM-DD
-        idNumber: zod_1.z.string().optional(),
-    });
+    // POST /v1/customers/match-identity
     fastify.post('/v1/customers/match-identity', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
@@ -629,100 +173,22 @@ async function customerRoutes(fastify) {
             body = MatchIdentitySchema.parse(request.body);
         }
         catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
+            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
         }
-        const dob = toDateOnly(body.dob);
-        if (!dob)
-            return reply.status(400).send({ error: 'Invalid dob; expected YYYY-MM-DD' });
-        const inputParts = splitNamePartsForMatch(`${body.firstName} ${body.lastName}`);
-        if (!inputParts)
-            return reply.status(400).send({ error: 'Invalid name' });
         try {
-            // 1) Check by ID number first (exact match, highest priority)
-            if (body.idNumber?.trim()) {
-                const byIdNumber = await (0, db_1.query)(`SELECT id, name, dob, membership_number
-             FROM customers
-             WHERE UPPER(id_number) = UPPER($1)
-             LIMIT 1`, [body.idNumber.trim()]);
-                if (byIdNumber.rows.length > 0) {
-                    const row = byIdNumber.rows[0];
-                    return reply.send({
-                        matchCount: 1,
-                        matchReason: 'ID_NUMBER',
-                        bestMatch: {
-                            id: row.id,
-                            name: row.name,
-                            dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob,
-                            membershipNumber: row.membership_number,
-                        },
-                    });
-                }
-            }
-            // 2) Fuzzy match by name + DOB
-            const res = await (0, db_1.query)(`SELECT id, name, dob, membership_number, created_at
-           FROM customers
-           WHERE dob = $1::date
-           ORDER BY created_at ASC
-           LIMIT 50`, [dob]);
-            const matches = res.rows
-                .map((row) => {
-                const parts = splitNamePartsForMatch(row.name);
-                if (!parts)
-                    return null;
-                const score = scoreNameSimilarity(inputParts, parts) + (row.membership_number ? 0.5 : 0);
-                if (score < 1.5)
-                    return null;
-                return {
-                    id: row.id,
-                    name: row.name,
-                    dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob,
-                    membershipNumber: row.membership_number,
-                    score,
-                    createdAt: row.created_at,
-                };
-            })
-                .filter(Boolean);
-            matches.sort((a, b) => b.score - a.score || a.createdAt.getTime() - b.createdAt.getTime());
-            const best = matches[0] ?? null;
-            return reply.send({
-                matchCount: matches.length,
-                bestMatch: best
-                    ? {
-                        id: best.id,
-                        name: best.name,
-                        dob: best.dob,
-                        membershipNumber: best.membershipNumber,
-                    }
-                    : null,
-            });
+            const result = await (0, customerService_1.matchIdentity)(body);
+            return reply.send(result);
         }
         catch (error) {
-            request.log.error(error, 'Failed to match customer identity');
+            if (error && typeof error === 'object' && 'statusCode' in error) {
+                const err = error;
+                return reply.status(err.statusCode).send({ error: err.message });
+            }
+            fastify.log.error(error, 'Failed to match customer identity');
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * POST /v1/customers/create-manual
-     *
-     * Staff-only endpoint to create a customer record from manual entry (firstName,lastName,dob).
-     * This intentionally does NOT de-dupe; caller should use /match-identity first if desired.
-     */
-    const CreateManualSchema = zod_1.z
-        .object({
-        firstName: zod_1.z.string().min(1),
-        lastName: zod_1.z.string().min(1),
-        dob: zod_1.z.string().min(1), // YYYY-MM-DD
-        idExpirationDate: zod_1.z.string().min(1), // YYYY-MM-DD
-        idType: IdTypeSchema,
-        idTypeOther: zod_1.z.string().optional(),
-        idNumber: zod_1.z.string().trim().min(1).optional(),
-    })
-        .refine((v) => v.idType !== 'OTHER' || Boolean(v.idTypeOther?.trim()), {
-        message: 'idTypeOther is required when idType is OTHER',
-    });
+    // POST /v1/customers/create-manual
     fastify.post('/v1/customers/create-manual', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
@@ -731,91 +197,18 @@ async function customerRoutes(fastify) {
             body = CreateManualSchema.parse(request.body);
         }
         catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
-        const dob = toDateOnly(body.dob);
-        if (!dob)
-            return reply.status(400).send({ error: 'Invalid dob; expected YYYY-MM-DD' });
-        const idExpirationDate = toDateOnly(body.idExpirationDate);
-        if (!idExpirationDate) {
-            return reply.status(400).send({ error: 'Invalid idExpirationDate; expected YYYY-MM-DD' });
-        }
-        const idType = body.idType;
-        const idTypeOther = idType === 'OTHER' ? body.idTypeOther?.trim() || null : null;
-        const name = `${body.firstName} ${body.lastName}`.trim().slice(0, 255);
-        if (!name)
-            return reply.status(400).send({ error: 'Invalid name' });
-        const idScanValue = body.idNumber?.trim() || null;
-        const idScanIssue = (0, identity_1.getIdScanIssue)({ dob, idExpirationDate });
-        if (idScanIssue) {
-            return reply.status(403).send({
-                error: (0, identity_1.getIdScanIssueMessage)(idScanIssue),
-                code: idScanIssue,
-            });
+            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
         }
         try {
-            // Dedup: check if a customer with the same ID number already exists
-            if (idScanValue) {
-                const byIdNumber = await (0, db_1.query)(`SELECT id, name, dob, membership_number
-             FROM customers
-             WHERE UPPER(id_number) = UPPER($1)
-             LIMIT 1`, [idScanValue]);
-                if (byIdNumber.rows.length > 0) {
-                    const row = byIdNumber.rows[0];
-                    return reply.send({
-                        created: false,
-                        existing: true,
-                        matchReason: 'ID_NUMBER',
-                        customer: {
-                            id: row.id,
-                            name: row.name,
-                            dob: row.dob ? row.dob.toISOString().slice(0, 10) : null,
-                            membershipNumber: row.membership_number,
-                        },
-                    });
-                }
-            }
-            // Dedup: check if a customer with same name + DOB already exists
-            {
-                const byNameDob = await (0, db_1.query)(`SELECT id, name, dob, membership_number
-             FROM customers
-             WHERE dob = $1::date
-               AND LOWER(name) = LOWER($2)
-             LIMIT 1`, [dob, name]);
-                if (byNameDob.rows.length > 0) {
-                    const row = byNameDob.rows[0];
-                    return reply.send({
-                        created: false,
-                        existing: true,
-                        matchReason: 'NAME_DOB',
-                        customer: {
-                            id: row.id,
-                            name: row.name,
-                            dob: row.dob ? row.dob.toISOString().slice(0, 10) : null,
-                            membershipNumber: row.membership_number,
-                        },
-                    });
-                }
-            }
-            const inserted = await (0, db_1.query)(`INSERT INTO customers (name, dob, id_expiration_date, id_type, id_type_other, id_scan_value, id_number, created_at, updated_at)
-           VALUES ($1, $2::date, $3::date, $4, $5, $6, $7, NOW(), NOW())
-           RETURNING id, name, dob, membership_number`, [name, dob, idExpirationDate, idType, idTypeOther, idScanValue, idScanValue]);
-            const row = inserted.rows[0];
-            return reply.send({
-                created: true,
-                customer: {
-                    id: row.id,
-                    name: row.name,
-                    dob: row.dob ? row.dob.toISOString().slice(0, 10) : null,
-                    membershipNumber: row.membership_number,
-                },
-            });
+            const result = await (0, customerService_1.createManual)(body);
+            return reply.send(result);
         }
         catch (error) {
-            request.log.error(error, 'Failed to create customer (manual)');
+            if (error && typeof error === 'object' && 'statusCode' in error) {
+                const err = error;
+                return reply.status(err.statusCode).send({ error: err.message, ...(err.code ? { code: err.code } : {}) });
+            }
+            fastify.log.error(error, 'Failed to create customer (manual)');
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });

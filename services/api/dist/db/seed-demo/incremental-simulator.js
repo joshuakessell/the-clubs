@@ -1080,7 +1080,7 @@ async function appendIncrementalDemoSimulation(params) {
         if (le.feeAmount > 0) {
             const paymentIntentId = (0, crypto_1.randomUUID)();
             const chargeId = (0, crypto_1.randomUUID)();
-            const feeAmount = Math.round(le.feeAmount * 100);
+            const feeAmount = Math.round(le.feeAmount);
             await params.client.query(`INSERT INTO payment_intents
            (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
          VALUES ($1, $2, 0, 'PAID', $3, $4, $4, $4)`, [
@@ -1189,11 +1189,11 @@ async function appendIncrementalDemoSimulation(params) {
     }
     // 8) Orders (anonymous + customer-linked)
     const RETAIL_CATALOG = [
-        { name: 'Bottled Water', sku: 'WATER', price: 300 },
-        { name: 'Energy Drink', sku: 'ENERGY_DRINK', price: 500 },
-        { name: 'Towel Rental', sku: 'TOWEL_RENTAL', price: 500 },
-        { name: 'Swiss Navy', sku: 'SWISS_NAVY', price: 1200 },
-        { name: 'Snack Bar', sku: 'SNACK_BAR', price: 400 },
+        { name: 'Bottled Water', sku: 'WATER', price: 3 },
+        { name: 'Energy Drink', sku: 'ENERGY_DRINK', price: 5 },
+        { name: 'Towel Rental', sku: 'TOWEL_RENTAL', price: 5 },
+        { name: 'Swiss Navy', sku: 'SWISS_NAVY', price: 12 },
+        { name: 'Snack Bar', sku: 'SNACK_BAR', price: 4 },
     ];
     async function insertOrder(order) {
         const rng2 = rng;
@@ -1217,7 +1217,7 @@ async function appendIncrementalDemoSimulation(params) {
             subtotal += lineTotal;
         }
         const tax = 0; // prices are tax-inclusive
-        const tip = rng2() < 0.12 ? 2 + Math.floor(rng2() * 7) : 0;
+        const tip = 0; // Tips are cash-only, not tracked in app
         const total = subtotal + tip;
         const orderId = (0, crypto_1.randomUUID)();
         const paymentMethod = rng2() < 0.33 ? 'CASH' : 'CREDIT';

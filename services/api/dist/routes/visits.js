@@ -2,13 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.visitRoutes = visitRoutes;
 const zod_1 = require("zod");
-const db_1 = require("../db");
 const middleware_1 = require("../auth/middleware");
-const rounding_1 = require("../time/rounding");
 const broadcast_1 = require("../inventory/broadcast");
-const auditLog_1 = require("../audit/auditLog");
 const active_1 = require("./visits/active");
-const utils_1 = require("../visits/utils");
+const visitService_1 = require("../services/visitService");
 /**
  * Schema for creating an initial visit.
  */
@@ -141,100 +138,11 @@ async function visitRoutes(fastify) {
             });
         }
         try {
-            const result = await (0, db_1.serializableTransaction)(async (client) => {
-                // 1. Verify customer exists
-                const customerResult = await client.query('SELECT id, name, membership_number, banned_until FROM customers WHERE id = $1', [body.customerId]);
-                if (customerResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'Customer not found' };
-                }
-                const customer = customerResult.rows[0];
-                // Check if customer is banned
-                if (customer.banned_until) {
-                    const now = new Date();
-                    if (customer.banned_until > now) {
-                        const remainingDays = Math.ceil((customer.banned_until.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                        throw {
-                            statusCode: 403,
-                            message: `Customer is banned until ${customer.banned_until.toISOString()}. Remaining: ${remainingDays} day(s).`,
-                        };
-                    }
-                }
-                // 2. Check for existing active visit
-                const existingVisit = await client.query(`SELECT id FROM visits WHERE customer_id = $1 AND ended_at IS NULL`, [body.customerId]);
-                if (existingVisit.rows.length > 0) {
-                    throw { statusCode: 409, message: 'Member already has an active visit' };
-                }
-                // 3. Handle room assignment if requested
-                let assignedRoomId = null;
-                if (body.roomId) {
-                    const roomResult = await client.query(`SELECT id, number, status, assigned_to_customer_id FROM rooms 
-             WHERE id = $1 FOR UPDATE`, [body.roomId]);
-                    if (roomResult.rows.length === 0) {
-                        throw { statusCode: 404, message: 'Room not found' };
-                    }
-                    const room = roomResult.rows[0];
-                    if (room.status !== 'CLEAN') {
-                        throw {
-                            statusCode: 400,
-                            message: `Room ${room.number} is not available (status: ${room.status})`,
-                        };
-                    }
-                    if (room.assigned_to_customer_id) {
-                        throw { statusCode: 409, message: `Room ${room.number} is already assigned` };
-                    }
-                    await client.query(`UPDATE rooms SET assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`, [body.customerId, body.roomId]);
-                    assignedRoomId = body.roomId;
-                }
-                // 4. Handle locker assignment if requested
-                let assignedLockerId = null;
-                if (body.lockerId) {
-                    const lockerResult = await client.query(`SELECT id, number, status, assigned_to_customer_id FROM lockers 
-             WHERE id = $1 FOR UPDATE`, [body.lockerId]);
-                    if (lockerResult.rows.length === 0) {
-                        throw { statusCode: 404, message: 'Locker not found' };
-                    }
-                    const locker = lockerResult.rows[0];
-                    if (locker.assigned_to_customer_id) {
-                        throw { statusCode: 409, message: `Locker ${locker.number} is already assigned` };
-                    }
-                    await client.query(`UPDATE lockers SET assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`, [body.customerId, body.lockerId]);
-                    assignedLockerId = body.lockerId;
-                }
-                // 5. Create the visit
-                const now = new Date();
-                const initialBlockEndsAt = (0, rounding_1.roundUpToQuarterHour)(new Date(now.getTime() + 6 * 60 * 60 * 1000)); // 6 hours from now, rounded up to next 15m boundary
-                const visitResult = await client.query(`INSERT INTO visits (customer_id, started_at)
-           VALUES ($1, $2)
-           RETURNING id, customer_id, started_at, ended_at, created_at, updated_at`, [body.customerId, now]);
-                const visit = visitResult.rows[0];
-                // 6. Create the initial block
-                const blockResult = await client.query(`INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id)
-           VALUES ($1, 'INITIAL', $2, $3, $4, $5, $6)
-           RETURNING id, visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id, session_id, agreement_signed, created_at, updated_at`, [visit.id, now, initialBlockEndsAt, body.rentalType, assignedRoomId, assignedLockerId]);
-                const block = blockResult.rows[0];
-                return {
-                    visit: {
-                        id: visit.id,
-                        customerId: visit.customer_id,
-                        startedAt: visit.started_at,
-                        endedAt: visit.ended_at,
-                        createdAt: visit.created_at,
-                        updatedAt: visit.updated_at,
-                    },
-                    block: {
-                        id: block.id,
-                        visitId: block.visit_id,
-                        blockType: block.block_type,
-                        startsAt: block.starts_at,
-                        endsAt: block.ends_at,
-                        rentalType: block.rental_type,
-                        roomId: block.room_id,
-                        lockerId: block.locker_id,
-                        agreementSigned: block.agreement_signed,
-                        createdAt: block.created_at,
-                        updatedAt: block.updated_at,
-                    },
-                };
+            const result = await (0, visitService_1.createVisit)({
+                customerId: body.customerId,
+                rentalType: body.rentalType,
+                roomId: body.roomId,
+                lockerId: body.lockerId,
             });
             // Broadcast inventory update AFTER commit for immediate UI refresh.
             if (fastify.broadcaster) {
@@ -269,144 +177,12 @@ async function visitRoutes(fastify) {
             });
         }
         try {
-            const result = await (0, db_1.serializableTransaction)(async (client) => {
-                const requestedRenewalHours = body.renewalHours ?? 6;
-                // 1. Get the visit and verify it's active
-                const visitResult = await client.query(`SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = $1 FOR UPDATE`, [request.params.visitId]);
-                if (visitResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'Visit not found' };
-                }
-                const visit = visitResult.rows[0];
-                if (visit.ended_at) {
-                    throw { statusCode: 400, message: 'Visit has already ended' };
-                }
-                // Check if customer is banned
-                const customerResult = await client.query('SELECT id, name, membership_number, banned_until FROM customers WHERE id = $1', [visit.customer_id]);
-                if (customerResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'Customer not found' };
-                }
-                const customer = customerResult.rows[0];
-                if (customer.banned_until) {
-                    const now = new Date();
-                    if (customer.banned_until > now) {
-                        const remainingDays = Math.ceil((customer.banned_until.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-                        throw {
-                            statusCode: 403,
-                            message: `Customer is banned until ${customer.banned_until.toISOString()}. Remaining: ${remainingDays} day(s).`,
-                        };
-                    }
-                }
-                // 2. Get all existing blocks for this visit
-                const blocksResult = await client.query(`SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id, session_id, agreement_signed
-           FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC`, [visit.id]);
-                const blocks = blocksResult.rows;
-                if (blocks.length === 0) {
-                    throw { statusCode: 400, message: 'Visit has no blocks' };
-                }
-                // 3. Check if renewal would exceed 14-hour maximum
-                const totalHoursIfRenewed = (0, utils_1.calculateTotalHoursWithExtension)(blocks, requestedRenewalHours);
-                if (totalHoursIfRenewed > 14) {
-                    const currentTotal = (0, utils_1.calculateTotalHours)(blocks);
-                    throw {
-                        statusCode: 400,
-                        message: `Renewal would exceed 14-hour maximum. Current total: ${currentTotal} hours, renewal would add ${requestedRenewalHours} hours.`,
-                    };
-                }
-                // 4. Get the latest block end time (renewal starts from here, not from now)
-                const latestBlockEnd = (0, utils_1.getLatestBlockEnd)(blocks);
-                if (!latestBlockEnd) {
-                    throw { statusCode: 400, message: 'Cannot determine renewal start time' };
-                }
-                const diffMs = Math.abs(latestBlockEnd.getTime() - Date.now());
-                if (diffMs > 60 * 60 * 1000) {
-                    throw {
-                        statusCode: 400,
-                        message: 'Renewal is only available within 1 hour of checkout',
-                    };
-                }
-                // 5. Renewal extends from previous checkout time, not from now
-                const renewalStartsAt = latestBlockEnd;
-                const renewalEndsAt = requestedRenewalHours === 2
-                    ? new Date(renewalStartsAt.getTime() + 2 * 60 * 60 * 1000)
-                    : (0, rounding_1.roundUpToQuarterHour)(new Date(renewalStartsAt.getTime() + 6 * 60 * 60 * 1000)); // 6 hours from previous checkout, rounded up to next 15m boundary
-                // 6. Handle room assignment if requested
-                let assignedRoomId = null;
-                if (body.roomId) {
-                    const roomResult = await client.query(`SELECT id, number, status, assigned_to_customer_id FROM rooms 
-             WHERE id = $1 FOR UPDATE`, [body.roomId]);
-                    if (roomResult.rows.length === 0) {
-                        throw { statusCode: 404, message: 'Room not found' };
-                    }
-                    const room = roomResult.rows[0];
-                    if (room.status !== 'CLEAN') {
-                        throw {
-                            statusCode: 400,
-                            message: `Room ${room.number} is not available (status: ${room.status})`,
-                        };
-                    }
-                    if (room.assigned_to_customer_id &&
-                        room.assigned_to_customer_id !== visit.customer_id) {
-                        throw { statusCode: 409, message: `Room ${room.number} is already assigned` };
-                    }
-                    if (!room.assigned_to_customer_id) {
-                        await client.query(`UPDATE rooms SET assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`, [visit.customer_id, body.roomId]);
-                    }
-                    assignedRoomId = body.roomId;
-                }
-                // 7. Handle locker assignment if requested
-                let assignedLockerId = null;
-                if (body.lockerId) {
-                    const lockerResult = await client.query(`SELECT id, number, status, assigned_to_customer_id FROM lockers 
-             WHERE id = $1 FOR UPDATE`, [body.lockerId]);
-                    if (lockerResult.rows.length === 0) {
-                        throw { statusCode: 404, message: 'Locker not found' };
-                    }
-                    const locker = lockerResult.rows[0];
-                    if (locker.assigned_to_customer_id &&
-                        locker.assigned_to_customer_id !== visit.customer_id) {
-                        throw { statusCode: 409, message: `Locker ${locker.number} is already assigned` };
-                    }
-                    if (!locker.assigned_to_customer_id) {
-                        await client.query(`UPDATE lockers SET assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`, [visit.customer_id, body.lockerId]);
-                    }
-                    assignedLockerId = body.lockerId;
-                }
-                // 8. Create the renewal block
-                const blockResult = await client.query(`INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING id, visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id, session_id, agreement_signed, created_at, updated_at`, [
-                    visit.id,
-                    requestedRenewalHours === 2 ? 'FINAL2H' : 'RENEWAL',
-                    renewalStartsAt,
-                    renewalEndsAt,
-                    body.rentalType,
-                    assignedRoomId,
-                    assignedLockerId,
-                ]);
-                const block = blockResult.rows[0];
-                return {
-                    visit: {
-                        id: visit.id,
-                        customerId: visit.customer_id,
-                        startedAt: visit.started_at,
-                        endedAt: visit.ended_at,
-                        createdAt: visit.created_at,
-                        updatedAt: new Date(),
-                    },
-                    block: {
-                        id: block.id,
-                        visitId: block.visit_id,
-                        blockType: block.block_type,
-                        startsAt: block.starts_at,
-                        endsAt: block.ends_at,
-                        rentalType: block.rental_type,
-                        roomId: block.room_id,
-                        lockerId: block.locker_id,
-                        agreementSigned: block.agreement_signed,
-                        createdAt: block.created_at,
-                        updatedAt: block.updated_at,
-                    },
-                };
+            const result = await (0, visitService_1.renewVisit)({
+                visitId: request.params.visitId,
+                rentalType: body.rentalType,
+                roomId: body.roomId,
+                lockerId: body.lockerId,
+                renewalHours: body.renewalHours,
             });
             // Broadcast inventory update AFTER commit for immediate UI refresh.
             if (fastify.broadcaster) {
@@ -424,19 +200,6 @@ async function visitRoutes(fastify) {
         }
     });
     (0, active_1.registerVisitActiveRoutes)(fastify);
-    /**
-     * POST /v1/visits/:visitId/final-extension - Create final 2-hour extension
-     *
-     * After a customer has used 12 hours (two 6-hour blocks), allow only one additional
-     * extension of 2 hours for $20, same for any rental type.
-     *
-     * Requirements:
-     * - Visit must have exactly 2 blocks (12 hours)
-     * - No previous final extension
-     * - Flat fee $20 (manual Square confirmation)
-     * - Does NOT require signature (informational only)
-     * - Requires step-up re-auth
-     */
     fastify.post('/v1/visits/:visitId/final-extension', {
         preHandler: [middleware_1.requireAuth, middleware_1.requireReauth],
     }, async (request, reply) => {
@@ -447,171 +210,12 @@ async function visitRoutes(fastify) {
         const { visitId } = request.params;
         const { rentalType, roomId, lockerId } = request.body;
         try {
-            const result = await (0, db_1.serializableTransaction)(async (client) => {
-                // 1. Get visit and verify it's active
-                const visitResult = await client.query(`SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = $1 FOR UPDATE`, [visitId]);
-                if (visitResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'Visit not found' };
-                }
-                const visit = visitResult.rows[0];
-                if (visit.ended_at) {
-                    throw { statusCode: 400, message: 'Visit has already ended' };
-                }
-                // 2. Get all blocks for this visit
-                const blocksResult = await client.query(`SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id
-           FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC`, [visit.id]);
-                const blocks = blocksResult.rows;
-                // 3. Verify exactly 2 blocks exist (12 hours)
-                if (blocks.length !== 2) {
-                    throw {
-                        statusCode: 400,
-                        message: `Final extension requires exactly 2 blocks (current: ${blocks.length}). Visit must have completed two 6-hour blocks first.`,
-                    };
-                }
-                // 4. Verify no previous final extension
-                const hasFinalExtension = blocks.some((block) => block.block_type === 'FINAL2H');
-                if (hasFinalExtension) {
-                    throw {
-                        statusCode: 400,
-                        message: 'Final extension has already been applied to this visit',
-                    };
-                }
-                // 5. Verify both blocks are INITIAL or RENEWAL (not FINAL2H)
-                const invalidBlocks = blocks.filter((block) => block.block_type === 'FINAL2H');
-                if (invalidBlocks.length > 0) {
-                    throw { statusCode: 400, message: 'Visit contains invalid block types' };
-                }
-                // 6. Calculate total hours - should be 12 hours (two 6-hour blocks)
-                const totalHours = (0, utils_1.calculateTotalHours)(blocks);
-                if (totalHours !== 12) {
-                    throw {
-                        statusCode: 400,
-                        message: `Final extension requires exactly 12 hours (current: ${totalHours} hours). Visit must have completed two 6-hour blocks first.`,
-                    };
-                }
-                // 7. Verify 2-hour extension won't exceed 14-hour maximum
-                if (totalHours + 2 > 14) {
-                    throw { statusCode: 400, message: 'Final extension would exceed 14-hour maximum' };
-                }
-                // 8. Get latest block end time
-                const latestBlockEnd = (0, utils_1.getLatestBlockEnd)(blocks);
-                if (!latestBlockEnd) {
-                    throw { statusCode: 400, message: 'Cannot determine extension start time' };
-                }
-                // 9. Handle room/locker assignment if requested
-                let assignedRoomId = null;
-                let assignedLockerId = null;
-                if (roomId) {
-                    const roomResult = await client.query(`SELECT id, number, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [roomId]);
-                    if (roomResult.rows.length === 0) {
-                        throw { statusCode: 404, message: 'Room not found' };
-                    }
-                    const room = roomResult.rows[0];
-                    if (room.status !== 'CLEAN') {
-                        throw {
-                            statusCode: 400,
-                            message: `Room ${room.number} is not available (status: ${room.status})`,
-                        };
-                    }
-                    if (room.assigned_to_customer_id &&
-                        room.assigned_to_customer_id !== visit.customer_id) {
-                        throw { statusCode: 409, message: `Room ${room.number} is already assigned` };
-                    }
-                    if (!room.assigned_to_customer_id) {
-                        await client.query(`UPDATE rooms SET assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`, [visit.customer_id, roomId]);
-                    }
-                    assignedRoomId = roomId;
-                }
-                if (lockerId) {
-                    const lockerResult = await client.query(`SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`, [lockerId]);
-                    if (lockerResult.rows.length === 0) {
-                        throw { statusCode: 404, message: 'Locker not found' };
-                    }
-                    const locker = lockerResult.rows[0];
-                    if (locker.assigned_to_customer_id &&
-                        locker.assigned_to_customer_id !== visit.customer_id) {
-                        throw { statusCode: 409, message: `Locker ${locker.number} is already assigned` };
-                    }
-                    if (!locker.assigned_to_customer_id) {
-                        await client.query(`UPDATE lockers SET assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`, [visit.customer_id, lockerId]);
-                    }
-                    assignedLockerId = lockerId;
-                }
-                // 10. Create final 2-hour extension block
-                const extensionStartsAt = latestBlockEnd;
-                const extensionEndsAt = new Date(extensionStartsAt.getTime() + 2 * 60 * 60 * 1000); // 2 hours
-                const blockResult = await client.query(`INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id, agreement_signed)
-           VALUES ($1, 'FINAL2H', $2, $3, $4, $5, $6, true)
-           RETURNING id, visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id, session_id, agreement_signed, created_at, updated_at`, [
-                    visit.id,
-                    extensionStartsAt,
-                    extensionEndsAt,
-                    rentalType,
-                    assignedRoomId,
-                    assignedLockerId,
-                ]);
-                const block = blockResult.rows[0];
-                // 11. Create payment intent for $20 flat fee
-                const intentResult = await client.query(`INSERT INTO payment_intents (amount, status, quote_json)
-           VALUES ($1, 'DUE', $2)
-           RETURNING id, amount`, [
-                    20.0,
-                    JSON.stringify({
-                        type: 'FINAL_EXTENSION',
-                        visitId: visit.id,
-                        blockId: block.id,
-                        hours: 2,
-                        amount: 20.0,
-                    }),
-                ]);
-                const paymentIntent = intentResult.rows[0];
-                // 12. Log final extension started
-                await (0, auditLog_1.insertAuditLog)(client, {
-                    staffId: staff.staffId,
-                    action: 'FINAL_EXTENSION_STARTED',
-                    entityType: 'visit',
-                    entityId: visitId,
-                    oldValue: {
-                        totalHours: totalHours,
-                        blockCount: blocks.length,
-                    },
-                    newValue: {
-                        blockId: block.id,
-                        blockType: 'FINAL2H',
-                        extensionHours: 2,
-                        newEndsAt: extensionEndsAt.toISOString(),
-                        paymentIntentId: paymentIntent.id,
-                        rentalType,
-                    },
-                });
-                return {
-                    visit: {
-                        id: visit.id,
-                        customerId: visit.customer_id,
-                        startedAt: visit.started_at,
-                        endedAt: visit.ended_at,
-                        createdAt: visit.created_at,
-                        updatedAt: new Date(),
-                    },
-                    block: {
-                        id: block.id,
-                        visitId: block.visit_id,
-                        blockType: block.block_type,
-                        startsAt: block.starts_at,
-                        endsAt: block.ends_at,
-                        rentalType: block.rental_type,
-                        roomId: block.room_id,
-                        lockerId: block.locker_id,
-                        sessionId: block.session_id,
-                        agreementSigned: block.agreement_signed,
-                        createdAt: block.created_at,
-                        updatedAt: block.updated_at,
-                    },
-                    paymentIntentId: paymentIntent.id,
-                    amount: typeof paymentIntent.amount === 'string'
-                        ? parseFloat(paymentIntent.amount)
-                        : paymentIntent.amount,
-                };
+            const result = await (0, visitService_1.createFinalExtension)({
+                visitId,
+                rentalType,
+                roomId,
+                lockerId,
+                staffId: staff.staffId,
             });
             return reply.status(201).send(result);
         }
