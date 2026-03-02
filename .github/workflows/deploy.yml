@@ -57,7 +57,7 @@ jobs:
           else
             echo "demo_mode=true"          >> "$GITHUB_OUTPUT"
             echo "seed_on_startup=true"    >> "$GITHUB_OUTPUT"
-            echo "host_port=3001"          >> "$GITHUB_OUTPUT"
+            echo "host_port=80"            >> "$GITHUB_OUTPUT"
             echo "project_name=demo"       >> "$GITHUB_OUTPUT"
           fi
 
