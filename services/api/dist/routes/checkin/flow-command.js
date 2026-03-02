@@ -247,6 +247,68 @@ async function isLanFallbackEnabledForLane(params) {
 }
 // NOTE: This function is duplicated from realtime-lan.ts (B-8 review finding).
 // A future refactor should extract both into a shared `checkin/laneFeatureFlags.ts` utility.
+/**
+ * Apply payment-related side effects after a flow command is processed.
+ *
+ * 1. Auto-create payment intent when entering PAYMENT step (pricing + insert).
+ * 2. Mark payment intent as PAID when moving to AGREEMENT step.
+ * 3. Record simulated payment failure.
+ */
+async function applyFlowPaymentSideEffects(client, params) {
+    const { session, sessionId, type, payload } = params;
+    // ── Auto-create payment intent when entering PAYMENT step ──
+    if (session.flow_step === 'PAYMENT' && !session.payment_intent_id) {
+        let rentalType = (session.desired_rental_type ?? session.proposed_rental_type ?? 'LOCKER');
+        if (session.waitlist_desired_type && session.backup_rental_type) {
+            rentalType = session.backup_rental_type;
+        }
+        let customerAge;
+        let membershipCardType;
+        let membershipValidUntil;
+        if (session.customer_id) {
+            const custResult = await client.query(`SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`, [session.customer_id]);
+            if (custResult.rows.length > 0) {
+                const cust = custResult.rows[0];
+                customerAge = (0, identity_1.calculateAge)(cust.dob);
+                membershipCardType = cust.membership_card_type || undefined;
+                membershipValidUntil = (0, utils_1.toDate)(cust.membership_valid_until) || undefined;
+            }
+        }
+        const includeSixMonth = session.membership_choice === 'SIX_MONTH' || !!session.membership_purchase_intent;
+        const isRenewal = session.checkin_mode === 'RENEWAL';
+        const renewalHours = session.renewal_hours === 2 || session.renewal_hours === 6 ? session.renewal_hours : null;
+        const pricingInput = {
+            rentalType,
+            customerAge,
+            checkInTime: new Date(),
+            membershipCardType,
+            membershipValidUntil,
+            includeSixMonthMembershipPurchase: includeSixMonth,
+        };
+        const quote = isRenewal && renewalHours
+            ? (0, engine_1.calculateRenewalQuote)({ ...pricingInput, renewalHours })
+            : (0, engine_1.calculatePriceQuote)(pricingInput);
+        const intentResult = await client.query(`INSERT INTO payment_intents (lane_session_id, amount, status, quote_json) VALUES ($1, $2, 'DUE', $3) RETURNING *`, [sessionId, quote.total, JSON.stringify(quote)]);
+        const intent = intentResult.rows[0];
+        await client.query(`UPDATE lane_sessions SET payment_intent_id = $1, price_quote_json = $2, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = $3`, [intent.id, JSON.stringify(quote), sessionId]);
+    }
+    // ── Mark payment intent as PAID when moving to AGREEMENT step ──
+    if (session.flow_step === 'AGREEMENT' && session.payment_intent_id && type === 'SET_STEP') {
+        const requestedMethod = payload?.['paymentMethod'];
+        if (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT') {
+            const intentStatusRes = await client.query(`SELECT status FROM payment_intents WHERE id = $1`, [session.payment_intent_id]);
+            if (intentStatusRes.rows[0]?.status !== 'PAID') {
+                await client.query(`UPDATE payment_intents SET status = 'PAID', payment_method = $1, paid_at = NOW(), updated_at = NOW() WHERE id = $2`, [requestedMethod, session.payment_intent_id]);
+                await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [sessionId]);
+            }
+        }
+    }
+    // ── Handle simulated payment failure ──
+    if (session.flow_step === 'PAYMENT' && session.payment_intent_id && type === 'SET_STEP' && payload?.['paymentFailed']) {
+        const failureReason = payload['failureReason'] || 'Payment failed';
+        await client.query(`UPDATE payment_intents SET failure_reason = $1, updated_at = NOW() WHERE id = $2`, [failureReason, session.payment_intent_id]);
+    }
+}
 function registerCheckinFlowCommandRoutes(fastify) {
     fastify.post('/v1/checkin/lane/:laneId/flow-command', {
         preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff],
@@ -434,83 +496,13 @@ function registerCheckinFlowCommandRoutes(fastify) {
                 const finalStep = finalSession.flow_step;
                 // Auto-skip logic removed — employee now explicitly navigates
                 // between steps using SET_STEP. CONFIRM_SELECTION stays on RENTAL.
-                // ── Auto-create payment intent when entering PAYMENT step ──
-                if (finalSession.flow_step === 'PAYMENT' && !finalSession.payment_intent_id) {
-                    let rentalType = (finalSession.desired_rental_type ?? finalSession.proposed_rental_type ?? 'LOCKER');
-                    if (finalSession.waitlist_desired_type && finalSession.backup_rental_type) {
-                        rentalType = finalSession.backup_rental_type;
-                    }
-                    let customerAge;
-                    let membershipCardType;
-                    let membershipValidUntil;
-                    if (finalSession.customer_id) {
-                        const custResult = await client.query(`SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`, [finalSession.customer_id]);
-                        if (custResult.rows.length > 0) {
-                            const cust = custResult.rows[0];
-                            customerAge = (0, identity_1.calculateAge)(cust.dob);
-                            membershipCardType = cust.membership_card_type || undefined;
-                            membershipValidUntil = (0, utils_1.toDate)(cust.membership_valid_until) || undefined;
-                        }
-                    }
-                    const includeSixMonth = finalSession.membership_choice === 'SIX_MONTH' ||
-                        !!finalSession.membership_purchase_intent;
-                    const isRenewal = finalSession.checkin_mode === 'RENEWAL';
-                    const renewalHours = finalSession.renewal_hours === 2 || finalSession.renewal_hours === 6
-                        ? finalSession.renewal_hours
-                        : null;
-                    const pricingInput = {
-                        rentalType,
-                        customerAge,
-                        checkInTime: new Date(),
-                        membershipCardType,
-                        membershipValidUntil,
-                        includeSixMonthMembershipPurchase: includeSixMonth,
-                    };
-                    const quote = isRenewal && renewalHours
-                        ? (0, engine_1.calculateRenewalQuote)({ ...pricingInput, renewalHours })
-                        : (0, engine_1.calculatePriceQuote)(pricingInput);
-                    // Create payment intent
-                    const intentResult = await client.query(`INSERT INTO payment_intents
-               (lane_session_id, amount, status, quote_json)
-               VALUES ($1, $2, 'DUE', $3)
-               RETURNING *`, [sessionId, quote.total, JSON.stringify(quote)]);
-                    const intent = intentResult.rows[0];
-                    await client.query(`UPDATE lane_sessions
-               SET payment_intent_id = $1,
-                   price_quote_json = $2,
-                   status = 'AWAITING_PAYMENT',
-                   updated_at = NOW()
-               WHERE id = $3`, [intent.id, JSON.stringify(quote), sessionId]);
-                }
-                // ── Mark payment intent as PAID when moving to AGREEMENT step ──
-                if (finalSession.flow_step === 'AGREEMENT' &&
-                    finalSession.payment_intent_id &&
-                    type === 'SET_STEP') {
-                    const requestedMethod = payload?.['paymentMethod'];
-                    if (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT') {
-                        const intentStatusRes = await client.query(`SELECT status FROM payment_intents WHERE id = $1`, [finalSession.payment_intent_id]);
-                        if (intentStatusRes.rows[0]?.status !== 'PAID') {
-                            await client.query(`UPDATE payment_intents
-                   SET status = 'PAID',
-                       payment_method = $1,
-                       paid_at = NOW(),
-                       updated_at = NOW()
-                   WHERE id = $2`, [requestedMethod, finalSession.payment_intent_id]);
-                            await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [sessionId]);
-                        }
-                    }
-                }
-                // ── Handle Simulated Payment Failure ──
-                if (finalSession.flow_step === 'PAYMENT' &&
-                    finalSession.payment_intent_id &&
-                    type === 'SET_STEP' &&
-                    payload?.['paymentFailed']) {
-                    const failureReason = payload['failureReason'] || 'Payment failed';
-                    await client.query(`UPDATE payment_intents
-               SET failure_reason = $1,
-                   updated_at = NOW()
-               WHERE id = $2`, [failureReason, finalSession.payment_intent_id]);
-                }
+                // Apply payment-related side effects (auto-create intent, mark PAID, record failure).
+                await applyFlowPaymentSideEffects(client, {
+                    session: finalSession,
+                    sessionId,
+                    type,
+                    payload,
+                });
                 return { applied: true, deduped: false, session: finalSession };
             });
             const { laneId: sessionLaneId, payload: sessionPayload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, sessionId));

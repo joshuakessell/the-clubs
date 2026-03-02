@@ -306,6 +306,11 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
                     items.push({ description: label, amount: price });
                     total += price;
                 }
+                // Add the waitlisted desired type as a separate line (informational, $0)
+                if (isWaitlisted && session.waitlist_desired_type) {
+                    const desiredLabel = rentalLabel[session.waitlist_desired_type] ?? session.waitlist_desired_type;
+                    items.push({ description: `${desiredLabel} (waitlist)`, amount: 0 });
+                }
             }
         }
         // 4. DB charges (upgrade fees, late fees, etc.) for this visit
@@ -341,7 +346,7 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
         const queueLengthResult = await client.query(`SELECT COUNT(*) as count 
        FROM waitlist
        WHERE status IN ('ACTIVE', 'OFFERED')
-       AND desired_tier = ANY($1::text[])`, [allDesiredTypes]);
+       AND desired_tier = ANY($1::rental_type[])`, [allDesiredTypes]);
         const baseQueueLength = parseInt(queueLengthResult.rows[0]?.count || '0', 10);
         waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries
         // Estimate: 20 mins per person in line

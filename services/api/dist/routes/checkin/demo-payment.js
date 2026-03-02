@@ -8,6 +8,32 @@ const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
 const customerActivityLog_1 = require("../../activity/customerActivityLog");
 const SPLIT_CARD_LINE_ITEM = 'Card Payment';
+/**
+ * Recalculate a price quote after a split-card payment.
+ * Removes any prior Card Payment line items and adds a new one for the split amount.
+ */
+function recalculateSplitQuote(baseQuote, splitAmount) {
+    const cardLineTotal = baseQuote.lineItems
+        .filter((item) => item.description === SPLIT_CARD_LINE_ITEM)
+        .reduce((sum, item) => sum + item.amount, 0);
+    const baseTotal = (0, utils_1.roundToWhole)(baseQuote.total - cardLineTotal);
+    const roundedSplit = (0, utils_1.roundToWhole)(splitAmount);
+    if (roundedSplit <= 0 || roundedSplit >= baseTotal) {
+        throw { statusCode: 400, message: 'Split card amount must be less than the total' };
+    }
+    const remainingTotal = (0, utils_1.roundToWhole)(baseTotal - roundedSplit);
+    const nextLineItems = [
+        ...baseQuote.lineItems.filter((item) => item.description !== SPLIT_CARD_LINE_ITEM),
+        { description: SPLIT_CARD_LINE_ITEM, amount: -roundedSplit },
+    ];
+    const nextQuote = {
+        ...baseQuote.quote,
+        lineItems: nextLineItems,
+        total: remainingTotal,
+        messages: baseQuote.messages,
+    };
+    return { nextQuote, remainingTotal };
+}
 function registerCheckinDemoPaymentRoutes(fastify) {
     /**
      * POST /v1/checkin/lane/:laneId/demo-take-payment
@@ -56,35 +82,11 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                     if (!baseQuote) {
                         throw { statusCode: 400, message: 'No price quote available for session' };
                     }
-                    const cardLineItems = baseQuote.lineItems.filter((item) => item.description === SPLIT_CARD_LINE_ITEM);
-                    const cardLineTotal = cardLineItems.reduce((sum, item) => sum + item.amount, 0);
-                    const baseTotal = (0, utils_1.roundToWhole)(baseQuote.total - cardLineTotal);
-                    const roundedSplit = (0, utils_1.roundToWhole)(normalizedSplitAmount);
-                    if (roundedSplit <= 0 || roundedSplit >= baseTotal) {
-                        throw { statusCode: 400, message: 'Split card amount must be less than the total' };
-                    }
-                    const remainingTotal = (0, utils_1.roundToWhole)(baseTotal - roundedSplit);
-                    const nextLineItems = [
-                        ...baseQuote.lineItems.filter((item) => item.description !== SPLIT_CARD_LINE_ITEM),
-                        { description: SPLIT_CARD_LINE_ITEM, amount: -roundedSplit },
-                    ];
-                    const nextQuote = {
-                        ...baseQuote.quote,
-                        lineItems: nextLineItems,
-                        total: remainingTotal,
-                        messages: baseQuote.messages,
-                    };
+                    const { nextQuote, remainingTotal } = recalculateSplitQuote(baseQuote, normalizedSplitAmount);
                     await client.query(`UPDATE payment_intents
-             SET amount = $1,
-                 quote_json = $2,
-                 failure_reason = NULL,
-                 failure_at = NULL,
-                 updated_at = NOW()
+             SET amount = $1, quote_json = $2, failure_reason = NULL, failure_at = NULL, updated_at = NOW()
              WHERE id = $3`, [remainingTotal, JSON.stringify(nextQuote), intent.id]);
-                    await client.query(`UPDATE lane_sessions
-             SET price_quote_json = $1,
-                 updated_at = NOW()
-             WHERE id = $2`, [JSON.stringify(nextQuote), session.id]);
+                    await client.query(`UPDATE lane_sessions SET price_quote_json = $1, updated_at = NOW() WHERE id = $2`, [JSON.stringify(nextQuote), session.id]);
                     return {
                         sessionId: session.id,
                         success: true,
