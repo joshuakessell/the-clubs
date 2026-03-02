@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
-import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../../../stores/useRegisterStore';
 import { useCheckinFlow } from '../CheckinFlowContext';
 
