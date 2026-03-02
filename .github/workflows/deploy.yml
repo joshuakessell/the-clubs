@@ -242,7 +242,7 @@ jobs:
             # Load pre-built image
             echo "Loading Docker image..."
             docker load < /home/ec2-user/api-image.tar.gz
-            rm /home/ec2-user/api-image.tar.gz
+            rm -f /home/ec2-user/api-image.tar.gz
 
             # Move compose file into place
             mkdir -p /home/ec2-user/the-clubs
