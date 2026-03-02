@@ -290,6 +290,12 @@ jobs:
             for i in $(seq 1 30); do
               if curl -sf http://localhost:${HOST_PORT}/health > /dev/null 2>&1; then
                 echo "✓ API is healthy on port ${HOST_PORT}!"
+                echo "⏳ Waiting 30s for DB init + seed to complete..."
+                sleep 30
+                echo "── Container logs (last 80 lines) ──"
+                docker compose -f docker-compose.prod.yml \
+                  --project-name "${PROJECT_NAME}" \
+                  logs --tail=80 api
                 exit 0
               fi
               sleep 2
