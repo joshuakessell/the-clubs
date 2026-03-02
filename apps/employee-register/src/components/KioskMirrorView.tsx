@@ -260,7 +260,7 @@ export function KioskMirrorView({ sessionPayload }: KioskMirrorViewProps) {
                       width: '100%',
                     }}
                   >
-                    <span style={{ fontSize: 12, fontWeight: 500, color: '#9ca3af', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: '#9ca3af', whiteSpace: 'nowrap', fontStyle: item.description.includes('(waitlist)') ? 'italic' : undefined }}>
                       {item.description}
                     </span>
                     <span

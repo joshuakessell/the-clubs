@@ -14,6 +14,7 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{
     Params: { laneId: string };
+    Body: { cancelled?: boolean };
   }>(
     '/v1/checkin/lane/:laneId/reset',
     {
@@ -25,6 +26,7 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
       }
 
       const { laneId } = request.params;
+      const isCancelled = !!(request.body as any)?.cancelled;
 
       try {
         const result = await transaction(async (client) => {
@@ -42,15 +44,16 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
           }
 
           const session = sessionResult.rows[0]!;
+          const newStatus = isCancelled ? 'CANCELLED' : 'COMPLETED';
           request.log.info(
-            { laneId, sessionId: session.id, actor: 'employee-kiosk', action: 'reset_complete' },
-            'Completing lane session (reset)'
+            { laneId, sessionId: session.id, actor: 'employee-kiosk', action: 'reset_complete', newStatus },
+            `${isCancelled ? 'Cancelling' : 'Completing'} lane session (reset)`
           );
 
-          // Always clear state and mark completed to keep reset idempotent.
+          // Always clear state and mark appropriately to keep reset idempotent.
           await client.query(
             `UPDATE lane_sessions
-           SET status = 'COMPLETED',
+           SET status = $2,
                staff_id = NULL,
                customer_id = NULL,
                customer_display_name = NULL,
@@ -75,7 +78,7 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
                flow_version = 0,
                updated_at = NOW()
            WHERE id = $1`,
-            [session.id]
+            [session.id, newStatus]
           );
 
           return { success: true, sessionId: session.id };

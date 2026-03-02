@@ -1,0 +1,228 @@
+/**
+ * Switch resource service — business logic for swapping a customer's room/locker mid-visit.
+ *
+ * Extracted from routes/checkin/switch-resource.ts. Zero HTTP/Fastify concepts.
+ */
+import { getRoomTierFromNumber } from '@the-clubs/shared';
+import { insertAuditLog } from '../audit/auditLog';
+import { serializableTransaction, transaction } from '../db';
+import { getUpgradeFee, type RentalType } from '../pricing/engine';
+import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
+
+// ── Types ──
+
+type RentalTier = 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL';
+type SwitchPaymentOutcome = 'CASH_SUCCESS' | 'CREDIT_SUCCESS' | 'CREDIT_DECLINE';
+type PreviousRoomStatus = 'CLEAN' | 'CLEANING' | 'DIRTY';
+
+export type SwitchHttpError = {
+  statusCode: number;
+  message: string;
+  code?: string;
+  additionalFee?: number;
+  currentRentalType?: RentalTier;
+  targetRentalType?: RentalTier;
+  visitId?: string;
+  checkinBlockId?: string;
+  targetResourceType?: 'room' | 'locker';
+  targetResourceId?: string;
+  targetResourceNumber?: string;
+};
+
+export interface SwitchResourceInput {
+  visitId: string;
+  targetResourceType: 'room' | 'locker';
+  targetResourceId: string;
+  previousRoomStatus?: PreviousRoomStatus;
+  paymentOutcome?: SwitchPaymentOutcome;
+  declineReason?: string;
+  staffId: string;
+}
+
+export interface StaffContext {
+  staffId: string;
+  staffName: string;
+}
+
+// ── Helpers ──
+
+function normalizeRentalTier(value: string | null | undefined): RentalTier {
+  if (value === 'STANDARD' || value === 'DOUBLE' || value === 'SPECIAL') return value;
+  return 'LOCKER';
+}
+
+function computeAdditionalFee(from: RentalTier, to: RentalTier): number {
+  if (from === to) return 0;
+  const fee = getUpgradeFee(from as RentalType, to as RentalType);
+  return typeof fee === 'number' && Number.isFinite(fee) && fee > 0 ? fee : 0;
+}
+
+function getTierFromRoomNumber(roomNumber: string): RentalTier {
+  const parsed = Number.parseInt(roomNumber, 10);
+  if (!Number.isFinite(parsed)) return 'STANDARD';
+  return getRoomTierFromNumber(parsed);
+}
+
+// ── Service Methods ──
+
+export async function switchResource(input: SwitchResourceInput) {
+  const previousRoomStatus: PreviousRoomStatus = input.previousRoomStatus ?? 'DIRTY';
+
+  return serializableTransaction(async (client) => {
+    const visitResult = await client.query<{ id: string; customer_id: string; ended_at: Date | null }>(
+      `SELECT id, customer_id, ended_at FROM visits WHERE id = $1 FOR UPDATE`,
+      [input.visitId]
+    );
+    if (visitResult.rows.length === 0) throw { statusCode: 404, message: 'Visit not found' } satisfies SwitchHttpError;
+    const visit = visitResult.rows[0]!;
+    if (visit.ended_at) throw { statusCode: 409, message: 'Visit is already completed' } satisfies SwitchHttpError;
+
+    const blockResult = await client.query<{ id: string; room_id: string | null; locker_id: string | null; rental_type: string }>(
+      `SELECT id, room_id, locker_id, rental_type::text FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC LIMIT 1 FOR UPDATE`,
+      [input.visitId]
+    );
+    if (blockResult.rows.length === 0) throw { statusCode: 404, message: 'No active check-in block found' } satisfies SwitchHttpError;
+    const block = blockResult.rows[0]!;
+
+    const currentResourceType: 'room' | 'locker' | null = block.room_id ? 'room' : block.locker_id ? 'locker' : null;
+    const currentResourceId = block.room_id || block.locker_id;
+    if (!currentResourceType || !currentResourceId) throw { statusCode: 400, message: 'Current visit has no assigned room/locker' } satisfies SwitchHttpError;
+    if (currentResourceType === input.targetResourceType && String(currentResourceId) === String(input.targetResourceId)) throw { statusCode: 400, message: 'Selected resource is already assigned' } satisfies SwitchHttpError;
+
+    // Get current resource number
+    let currentResourceNumber = '';
+    if (currentResourceType === 'room') {
+      const r = await client.query<{ id: string; number: string }>(`SELECT id, number FROM rooms WHERE id = $1 FOR UPDATE`, [currentResourceId]);
+      if (r.rows.length === 0) throw { statusCode: 404, message: 'Current room not found' } satisfies SwitchHttpError;
+      currentResourceNumber = r.rows[0]!.number;
+    } else {
+      const r = await client.query<{ id: string; number: string }>(`SELECT id, number FROM lockers WHERE id = $1 FOR UPDATE`, [currentResourceId]);
+      if (r.rows.length === 0) throw { statusCode: 404, message: 'Current locker not found' } satisfies SwitchHttpError;
+      currentResourceNumber = r.rows[0]!.number;
+    }
+
+    // Validate target
+    let targetResourceNumber = '';
+    let targetRentalType: RentalTier;
+    if (input.targetResourceType === 'room') {
+      const r = await client.query<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
+        `SELECT id, number, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [input.targetResourceId]
+      );
+      if (r.rows.length === 0) throw { statusCode: 404, message: 'Target room not found' } satisfies SwitchHttpError;
+      const room = r.rows[0]!;
+      if (room.status !== 'CLEAN' || room.assigned_to_customer_id) throw { statusCode: 409, message: `Room ${room.number} is not available` } satisfies SwitchHttpError;
+      targetResourceNumber = room.number;
+      targetRentalType = getTierFromRoomNumber(room.number);
+    } else {
+      const r = await client.query<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
+        `SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`, [input.targetResourceId]
+      );
+      if (r.rows.length === 0) throw { statusCode: 404, message: 'Target locker not found' } satisfies SwitchHttpError;
+      const locker = r.rows[0]!;
+      if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id) throw { statusCode: 409, message: `Locker ${locker.number} is not available` } satisfies SwitchHttpError;
+      targetResourceNumber = locker.number;
+      targetRentalType = 'LOCKER';
+    }
+
+    // Fee calculation
+    const currentRentalType = normalizeRentalTier(block.rental_type);
+    const additionalFee = computeAdditionalFee(currentRentalType, targetRentalType);
+    let paymentIntentId: string | null = null;
+
+    if (additionalFee > 0) {
+      if (!input.paymentOutcome) {
+        throw { statusCode: 409, code: 'PAYMENT_REQUIRED', message: 'Additional payment required for this switch', additionalFee, currentRentalType, targetRentalType } satisfies SwitchHttpError;
+      }
+      if (input.paymentOutcome === 'CREDIT_DECLINE') {
+        throw {
+          statusCode: 402, code: 'PAYMENT_DECLINED', message: input.declineReason ?? 'Credit declined',
+          additionalFee, currentRentalType, targetRentalType,
+          visitId: input.visitId, checkinBlockId: block.id,
+          targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber,
+        } satisfies SwitchHttpError;
+      }
+
+      const pr = await client.query<{ id: string }>(
+        `INSERT INTO payment_intents (amount, status, quote_json, paid_at) VALUES ($1, 'PAID', $2, NOW()) RETURNING id`,
+        [additionalFee, JSON.stringify({ type: 'SWITCH_UPCHARGE', method: input.paymentOutcome, visitId: input.visitId, checkinBlockId: block.id, currentRentalType, targetRentalType, targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber })]
+      );
+      paymentIntentId = pr.rows[0]!.id;
+      await client.query(`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES ($1, $2, 'UPGRADE_FEE', $3, $4)`, [input.visitId, block.id, additionalFee, paymentIntentId]);
+    }
+
+    // Release current resource
+    if (currentResourceType === 'room') {
+      await client.query(`UPDATE rooms SET assigned_to_customer_id = NULL, status = $1, last_status_change = NOW(), updated_at = NOW() WHERE id = $2`, [previousRoomStatus, currentResourceId]);
+    } else {
+      await client.query(`UPDATE lockers SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = $1`, [currentResourceId]);
+    }
+
+    // Assign target resource
+    if (input.targetResourceType === 'room') {
+      await client.query(`UPDATE rooms SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = $2`, [visit.customer_id, input.targetResourceId]);
+    } else {
+      await client.query(`UPDATE lockers SET assigned_to_customer_id = $1, status = 'OCCUPIED', updated_at = NOW() WHERE id = $2`, [visit.customer_id, input.targetResourceId]);
+    }
+
+    // Update checkin block
+    await client.query(
+      `UPDATE checkin_blocks SET room_id = $1, locker_id = $2, rental_type = $3::public.rental_type, updated_at = NOW() WHERE id = $4`,
+      [input.targetResourceType === 'room' ? input.targetResourceId : null, input.targetResourceType === 'locker' ? input.targetResourceId : null, targetRentalType, block.id]
+    );
+
+    await insertAuditLog(client, {
+      staffId: input.staffId, action: 'UPDATE', entityType: input.targetResourceType, entityId: input.targetResourceId,
+      oldValue: { visitId: input.visitId, checkinBlockId: block.id, resourceType: currentResourceType, resourceId: currentResourceId, resourceNumber: currentResourceNumber, rentalType: currentRentalType, previousRoomStatus: currentResourceType === 'room' ? previousRoomStatus : null },
+      newValue: { resourceType: input.targetResourceType, resourceId: input.targetResourceId, resourceNumber: targetResourceNumber, rentalType: targetRentalType, additionalFee, paymentIntentId },
+    });
+
+    return {
+      visitId: input.visitId, checkinBlockId: block.id,
+      previousResourceType: currentResourceType, previousResourceId: currentResourceId, previousResourceNumber: currentResourceNumber, previousRentalType: currentRentalType,
+      newResourceType: input.targetResourceType, newResourceId: input.targetResourceId, newResourceNumber: targetResourceNumber, newRentalType: targetRentalType,
+      additionalFee, paymentIntentId,
+    };
+  });
+}
+
+/** Log customer activity for a resource switch (best-effort, after successful switch). */
+export async function logResourceSwitch(result: Awaited<ReturnType<typeof switchResource>>, staff: StaffContext) {
+  await transaction(async (client) => {
+    const visitRow = await client.query<{ customer_id: string }>(`SELECT customer_id FROM visits WHERE id = $1 LIMIT 1`, [result.visitId]);
+    const customerId = visitRow.rows[0]?.customer_id;
+    if (!customerId) return;
+
+    const actionType = result.newResourceType === 'room' ? 'ROOM_CHANGED' : 'LOCKER_CHANGED';
+    await insertCustomerActivityEvent(client, {
+      customerId, actionType, actionCategory: 'RESOURCE_CHANGE', sourceApp: 'EMPLOYEE_REGISTER',
+      actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.staffName,
+      summary: result.newResourceType === 'room'
+        ? `Room changed: ${result.previousResourceNumber ?? '—'} → ${result.newResourceNumber}`
+        : `Locker changed: ${result.previousResourceNumber ?? '—'} → ${result.newResourceNumber}`,
+      metadata: {
+        visitId: result.visitId, checkinBlockId: result.checkinBlockId,
+        fromResourceType: result.previousResourceType, fromResourceId: result.previousResourceId, fromResourceNumber: result.previousResourceNumber,
+        toResourceType: result.newResourceType, toResourceId: result.newResourceId, toResourceNumber: result.newResourceNumber,
+        additionalFee: result.additionalFee, paymentIntentId: result.paymentIntentId,
+      },
+      dedupeKey: `ACT:${actionType}:${result.checkinBlockId}:${result.newResourceId}`,
+      searchParts: [result.newResourceNumber, result.previousResourceNumber ?? ''],
+    });
+  });
+}
+
+/** Persist a cancelled payment intent after a declined switch (outside the aborted serializable txn). */
+export async function persistDeclinedSwitchPayment(err: SwitchHttpError) {
+  if (err.code !== 'PAYMENT_DECLINED' || !err.checkinBlockId || !err.visitId) return;
+  await transaction(async (client) => {
+    await client.query(
+      `INSERT INTO payment_intents (amount, status, quote_json) VALUES ($1, 'CANCELLED', $2)`,
+      [err.additionalFee ?? 0, JSON.stringify({
+        type: 'SWITCH_UPCHARGE', visitId: err.visitId, checkinBlockId: err.checkinBlockId,
+        currentRentalType: err.currentRentalType, targetRentalType: err.targetRentalType,
+        targetResourceType: err.targetResourceType, targetResourceId: err.targetResourceId,
+        targetResourceNumber: err.targetResourceNumber, declineReason: err.message,
+      })]
+    );
+  });
+}

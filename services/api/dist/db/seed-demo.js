@@ -478,45 +478,27 @@ async function seedDemoData(options = {}) {
             result.setHours(hour, minute, 0, 0);
             return result;
         }
-        // ─── Weekly schedule template ────────────────────────────────────────
+        // ─── Dynamic staff assignment ─────────────────────────────────────
+        // Assign staff to shift slots dynamically based on whoever exists in the DB.
+        // Ideally there are 10+ staff; if fewer, we recycle them across slots.
         // Shift A = 1st (12am–8am), B = 2nd (8am–4pm), C = 3rd (4pm–12am)
-        //
-        // Employees by name (resolved to id below):
-        //   FT 1st: John Erikson, Marcus Rivera       (5 shifts/week each)
-        //   FT 2nd: Tyler Brooks, Ryan Mitchell        (5 shifts/week each)
-        //   FT 3rd: Derek Nguyen, Chris Patterson      (5 shifts/week each)
-        //   PT fill: Jason Morales, Brandon Reyes, Kyle Foster, Sean Caldwell
-        //
-        // Keys: 0=Sun 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat
-        // Double-staffing on busy periods:
-        //   Fri+Sat 3rd shift (C) and Sat+Sun 1st shift (A)
         // ────────────────────────────────────────────────────────────────────
-        function findStaffId(name) {
-            const s = staff.find((st) => st.name === name);
-            if (!s)
-                throw new Error(`Staff member "${name}" not found in DB`);
-            return s.id;
-        }
-        // Resolve staff IDs (will throw early if seed.ts hasn't been run)
-        const sJohn = findStaffId('John Erikson');
-        const sMarcus = findStaffId('Marcus Rivera');
-        const sTyler = findStaffId('Tyler Brooks');
-        const sRyan = findStaffId('Ryan Mitchell');
-        const sDerek = findStaffId('Derek Nguyen');
-        const sChris = findStaffId('Chris Patterson');
-        const sJason = findStaffId('Jason Morales');
-        const sBrandon = findStaffId('Brandon Reyes');
-        const sKyle = findStaffId('Kyle Foster');
-        const sSean = findStaffId('Sean Caldwell');
+        // Pick staff by index (wraps around if fewer than needed)
+        const staffIds = staff.map((s) => s.id);
+        const pick = (idx) => staffIds[idx % staffIds.length];
+        // Assign 10 logical slots (wraps around available staff)
+        const s0 = pick(0), s1 = pick(1), s2 = pick(2), s3 = pick(3);
+        const s4 = pick(4), s5 = pick(5), s6 = pick(6), s7 = pick(7);
+        const s8 = pick(8), s9 = pick(9);
         const weeklySchedule = {
-            //            1st (A)                  2nd (B)             3rd (C)
-            0: { A: [sJohn, sKyle], B: [sTyler], C: [sDerek] }, // Sun (double 1st)
-            1: { A: [sJohn], B: [sTyler], C: [sDerek] }, // Mon
-            2: { A: [sMarcus], B: [sRyan], C: [sChris] }, // Tue
-            3: { A: [sJohn], B: [sTyler], C: [sDerek] }, // Wed
-            4: { A: [sMarcus], B: [sRyan], C: [sChris] }, // Thu
-            5: { A: [sJohn], B: [sRyan, sJason], C: [sDerek, sBrandon] }, // Fri (double 3rd + extra 2nd)
-            6: { A: [sMarcus, sSean], B: [sTyler, sJason], C: [sChris, sBrandon] }, // Sat (double all)
+            //            1st (A)         2nd (B)         3rd (C)
+            0: { A: [s0, s8], B: [s2], C: [s4] }, // Sun (double 1st)
+            1: { A: [s0], B: [s2], C: [s4] }, // Mon
+            2: { A: [s1], B: [s3], C: [s5] }, // Tue
+            3: { A: [s0], B: [s2], C: [s4] }, // Wed
+            4: { A: [s1], B: [s3], C: [s5] }, // Thu
+            5: { A: [s0], B: [s3, s6], C: [s4, s7] }, // Fri (double 3rd + extra 2nd)
+            6: { A: [s1, s9], B: [s2, s6], C: [s5, s7] }, // Sat (double all)
         };
         // Seed shifts for the 28-day window
         const shiftsCreated = [];

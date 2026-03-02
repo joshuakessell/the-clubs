@@ -1,0 +1,299 @@
+name: Deploy
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main, dev]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - demo
+          - production
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NODE_VERSION: "22"
+  AWS_REGION: us-east-1
+
+jobs:
+  # ── Determine which environment to deploy to ──────────────────
+  resolve-env:
+    name: Resolve Environment
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+      demo_mode: ${{ steps.env.outputs.demo_mode }}
+      seed_on_startup: ${{ steps.env.outputs.seed_on_startup }}
+      host_port: ${{ steps.env.outputs.host_port }}
+      project_name: ${{ steps.env.outputs.project_name }}
+    steps:
+      - id: env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ inputs.environment }}"
+          elif [ "${{ github.event.pull_request.base.ref }}" = "main" ]; then
+            ENV="production"
+          else
+            ENV="demo"
+          fi
+
+          echo "environment=$ENV" >> "$GITHUB_OUTPUT"
+
+          if [ "$ENV" = "production" ]; then
+            echo "demo_mode=false"        >> "$GITHUB_OUTPUT"
+            echo "seed_on_startup=false"   >> "$GITHUB_OUTPUT"
+            echo "host_port=3000"          >> "$GITHUB_OUTPUT"
+            echo "project_name=prod"       >> "$GITHUB_OUTPUT"
+          else
+            echo "demo_mode=true"          >> "$GITHUB_OUTPUT"
+            echo "seed_on_startup=true"    >> "$GITHUB_OUTPUT"
+            echo "host_port=3001"          >> "$GITHUB_OUTPUT"
+            echo "project_name=demo"       >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "→ Deploying to $ENV"
+
+  # ── Build everything ──────────────────────────────────────────
+  build:
+    name: Build
+    needs: resolve-env
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+        continue-on-error: true
+
+      - name: Upload SPA artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spa-dist
+          retention-days: 1
+          path: |
+            apps/customer-kiosk/dist/
+            apps/employee-register/dist/
+            apps/office-dashboard/dist/
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-bundle
+          retention-days: 1
+          path: |
+            services/api/src/
+            services/api/migrations/
+            services/api/package.json
+            services/api/tsconfig.json
+            services/api/tsconfig.build.json
+            services/api/Dockerfile
+            packages/shared/src/
+            packages/shared/package.json
+            packages/shared/tsconfig.json
+            packages/ui/package.json
+            apps/customer-kiosk/package.json
+            apps/employee-register/package.json
+            apps/office-dashboard/package.json
+            docker-compose.prod.yml
+            .dockerignore
+            package.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            tsconfig.base.json
+
+  # ── Deploy SPAs to S3 + CloudFront ────────────────────────────
+  deploy-spas:
+    name: Deploy SPAs
+    needs: [resolve-env, build]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.environment }}
+    steps:
+      - name: Download SPA artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: spa-dist
+          path: apps/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Employee Register
+        run: |
+          aws s3 sync apps/employee-register/dist/ \
+            s3://${{ vars.S3_EMPLOYEE_REGISTER }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/employee-register/dist/index.html \
+            s3://${{ vars.S3_EMPLOYEE_REGISTER }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_EMPLOYEE_REGISTER }} \
+            --paths "/*"
+
+      - name: Deploy Customer Kiosk
+        run: |
+          aws s3 sync apps/customer-kiosk/dist/ \
+            s3://${{ vars.S3_CUSTOMER_KIOSK }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/customer-kiosk/dist/index.html \
+            s3://${{ vars.S3_CUSTOMER_KIOSK }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_CUSTOMER_KIOSK }} \
+            --paths "/*"
+
+      - name: Deploy Office Dashboard
+        if: needs.resolve-env.outputs.environment == 'production'
+        run: |
+          aws s3 sync apps/office-dashboard/dist/ \
+            s3://${{ vars.S3_OFFICE_DASHBOARD }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/office-dashboard/dist/index.html \
+            s3://${{ vars.S3_OFFICE_DASHBOARD }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_OFFICE_DASHBOARD }} \
+            --paths "/*"
+
+  # ── Deploy API to EC2 ─────────────────────────────────────────
+  deploy-api:
+    name: Deploy API
+    needs: [resolve-env, build]
+    runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.environment }}
+    steps:
+      - name: Download API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-bundle
+          path: .
+
+      - name: Build Docker image
+        run: |
+          docker build -t the-clubs-api:latest -f services/api/Dockerfile .
+          docker save the-clubs-api:latest | gzip > api-image.tar.gz
+          ls -lh api-image.tar.gz
+
+      - name: Copy to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "api-image.tar.gz,docker-compose.prod.yml"
+          target: /home/ec2-user/
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          KIOSK_TOKEN: ${{ secrets.KIOSK_TOKEN }}
+          DEMO_MODE: ${{ needs.resolve-env.outputs.demo_mode }}
+          SEED_ON_STARTUP: ${{ needs.resolve-env.outputs.seed_on_startup }}
+          HOST_PORT: ${{ needs.resolve-env.outputs.host_port }}
+          PROJECT_NAME: ${{ needs.resolve-env.outputs.project_name }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP,HOST_PORT,PROJECT_NAME
+          command_timeout: 10m
+          script: |
+            set -e
+
+            # Load pre-built image
+            echo "Loading Docker image..."
+            docker load < /home/ec2-user/api-image.tar.gz
+            rm /home/ec2-user/api-image.tar.gz
+
+            # Move compose file into place
+            mkdir -p /home/ec2-user/the-clubs
+            mv /home/ec2-user/docker-compose.prod.yml /home/ec2-user/the-clubs/
+            cd /home/ec2-user/the-clubs
+
+            # Write environment-scoped .env
+            ENV_FILE="/home/ec2-user/.env.${PROJECT_NAME}"
+            printf '%s\n' \
+              'DB_NAME=club_operations' \
+              'DB_USER=clubops' \
+              'ALLOWED_ORIGINS=*' \
+              "DEMO_MODE=${DEMO_MODE}" \
+              "SEED_ON_STARTUP=${SEED_ON_STARTUP}" \
+              "DB_PASSWORD=${DB_PASSWORD}" \
+              "KIOSK_TOKEN=${KIOSK_TOKEN}" \
+              "HOST_PORT=${HOST_PORT}" \
+              > "$ENV_FILE"
+
+            # Start/restart this environment's stack (isolated by project name)
+            docker compose -f docker-compose.prod.yml \
+              --project-name "${PROJECT_NAME}" \
+              --env-file "$ENV_FILE" \
+              up -d
+
+            echo "✓ ${PROJECT_NAME} containers started on port ${HOST_PORT}, waiting for health..."
+
+            # Health check on the correct port
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:${HOST_PORT}/health > /dev/null 2>&1; then
+                echo "✓ API is healthy on port ${HOST_PORT}!"
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "⚠ Health check timeout on port ${HOST_PORT}"
+            docker compose -f docker-compose.prod.yml \
+              --project-name "${PROJECT_NAME}" \
+              logs --tail=30 api
+            exit 1
+
+  # ── Status report ─────────────────────────────────────────────
+  notify:
+    name: Deployment Status
+    if: always()
+    needs: [resolve-env, deploy-api, deploy-spas]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          ENV="${{ needs.resolve-env.outputs.environment }}"
+          API="${{ needs.deploy-api.result }}"
+          SPA="${{ needs.deploy-spas.result }}"
+
+          if [ "$API" = "success" ] && [ "$SPA" = "success" ]; then
+            echo "✓ $ENV deployment succeeded!"
+            exit 0
+          else
+            echo "✗ $ENV deployment failed! (api=$API, spas=$SPA)"
+            exit 1
+          fi

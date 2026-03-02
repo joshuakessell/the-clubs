@@ -1,12 +1,10 @@
-import { useState, useCallback } from 'react';
-import { getApiUrl } from '@the-clubs/shared';
+import { useState } from 'react';
 import { useCheckinFlow } from '../CheckinFlowContext';
 
 export function PaymentStep() {
-  const { state, actions, meta } = useCheckinFlow();
+  const { state, actions } = useCheckinFlow();
   const { sp } = state;
   const { sendFlowCommand } = actions;
-  const { token, laneId, currentSessionId } = meta;
 
   const isPaid = sp.paymentStatus === 'PAID';
   const [loading, setLoading] = useState(false);
@@ -15,31 +13,26 @@ export function PaymentStep() {
   const [splitCashDollars, setSplitCashDollars] = useState(0);
   const splitCreditDollars = totalDollars - splitCashDollars;
 
-  // Membership upgrade/downgrade
-  const membershipChoice = sp.membershipChoice;
-  const isMember = (() => {
-    const validUntil = sp.customerMembershipValidUntil;
-    if (!validUntil) return false;
-    return new Date(validUntil + 'T23:59:59') >= new Date();
-  })();
-  const isMembershipItem = (item: { description: string }) =>
-    item.description === 'Membership Fee' || item.description === '6-Month Membership';
-
-  const setMembershipChoice = useCallback(async (choice: 'ONE_TIME' | 'SIX_MONTH' | 'NONE') => {
-    if (!laneId || !token) return;
-    try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      await fetch(
-        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/membership-choice`),
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ choice, sessionId: currentSessionId ?? undefined }),
-        }
-      );
-    } catch { /* best-effort */ }
-  }, [laneId, token, currentSessionId]);
+  // Membership upgrade/downgrade — prepared for future UI wiring
+  // const membershipChoice = sp.membershipChoice;
+  // const isMember = (() => {
+  //   const validUntil = sp.customerMembershipValidUntil;
+  //   if (!validUntil) return false;
+  //   return new Date(validUntil + 'T23:59:59') >= new Date();
+  // })();
+  // const isMembershipItem = (item: { description: string }) =>
+  //   item.description === 'Membership Fee' || item.description === '6-Month Membership';
+  // const setMembershipChoice = useCallback(async (choice: 'ONE_TIME' | 'SIX_MONTH' | 'NONE') => {
+  //   if (!laneId || !token) return;
+  //   try {
+  //     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  //     if (token) headers['Authorization'] = `Bearer ${token}`;
+  //     await fetch(
+  //       getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/membership-choice`),
+  //       { method: 'POST', headers, body: JSON.stringify({ choice, sessionId: currentSessionId ?? undefined }) }
+  //     );
+  //   } catch { /* best-effort */ }
+  // }, [laneId, token, currentSessionId]);
 
   const handleMarkPaid = async (method: 'CASH' | 'CREDIT') => {
     setLoading(true);

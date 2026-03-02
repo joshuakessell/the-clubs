@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../stores/useRegisterStore';
@@ -19,6 +19,32 @@ export function AccountPanel() {
   const { currentSessionId, customerId, customerName, activeCheckinInfo, laneId } = useRegisterStore();
   const token = useAuthStore((s) => s.session?.sessionToken);
   const [resuming, setResuming] = useState(false);
+  const [hasLiveSession, setHasLiveSession] = useState(false);
+
+  // Auto-check for an active session on this lane when no customer is selected
+  const noCustomer = !currentSessionId && !customerId && !customerName;
+  useEffect(() => {
+    if (!noCustomer || !laneId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(
+          getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`),
+          { headers },
+        );
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          const s = data.session;
+          setHasLiveSession(!!s && s.status !== 'COMPLETED' && s.status !== 'CANCELLED');
+        }
+      } catch {
+        // Non-critical
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [noCustomer, laneId, token]);
 
   const handleResumeSession = async () => {
     if (!laneId) return;
@@ -42,6 +68,7 @@ export function AccountPanel() {
             sessionPayload: s,
           });
         } else {
+          setHasLiveSession(false);
           useRegisterStore.setState({
             successToastMessage: 'No active session found on this lane.',
           });
@@ -54,7 +81,7 @@ export function AccountPanel() {
     }
   };
 
-  if (!currentSessionId && !customerId && !customerName) {
+  if (noCustomer) {
     return (
       <PanelShell align="center">
         <div className="flex flex-col items-center gap-3 text-center py-12">
@@ -69,21 +96,23 @@ export function AccountPanel() {
             Scan an ID or search for a customer to view their account.
           </p>
 
-          {/* Resume active session button */}
-          <button
-            type="button"
-            disabled={resuming}
-            onClick={() => void handleResumeSession()}
-            className="mt-4 rounded-lg border px-5 py-2.5 text-sm font-semibold transition"
-            style={{
-              borderColor: 'var(--color-accent-primary)',
-              color: 'var(--color-accent-primary)',
-              backgroundColor: 'rgba(99, 102, 241, 0.06)',
-              opacity: resuming ? 0.6 : 1,
-            }}
-          >
-            {resuming ? 'Checking…' : '🔄 Resume Active Session'}
-          </button>
+          {/* Resume active session button — only shown when a live session exists on this lane */}
+          {hasLiveSession && (
+            <button
+              type="button"
+              disabled={resuming}
+              onClick={() => void handleResumeSession()}
+              className="mt-4 rounded-lg border px-5 py-2.5 text-sm font-semibold transition"
+              style={{
+                borderColor: 'var(--color-accent-primary)',
+                color: 'var(--color-accent-primary)',
+                backgroundColor: 'rgba(99, 102, 241, 0.06)',
+                opacity: resuming ? 0.6 : 1,
+              }}
+            >
+              {resuming ? 'Checking…' : '🔄 Resume Active Session'}
+            </button>
+          )}
         </div>
       </PanelShell>
     );

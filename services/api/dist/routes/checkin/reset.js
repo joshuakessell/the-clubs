@@ -19,6 +19,7 @@ function registerCheckinResetRoutes(fastify) {
             return reply.status(401).send({ error: 'Unauthorized' });
         }
         const { laneId } = request.params;
+        const isCancelled = !!request.body?.cancelled;
         try {
             const result = await (0, db_1.transaction)(async (client) => {
                 // Grab the most recent non-cancelled session (active or already completed).
@@ -30,10 +31,11 @@ function registerCheckinResetRoutes(fastify) {
                     throw { statusCode: 404, message: 'No active session found' };
                 }
                 const session = sessionResult.rows[0];
-                request.log.info({ laneId, sessionId: session.id, actor: 'employee-kiosk', action: 'reset_complete' }, 'Completing lane session (reset)');
-                // Always clear state and mark completed to keep reset idempotent.
+                const newStatus = isCancelled ? 'CANCELLED' : 'COMPLETED';
+                request.log.info({ laneId, sessionId: session.id, actor: 'employee-kiosk', action: 'reset_complete', newStatus }, `${isCancelled ? 'Cancelling' : 'Completing'} lane session (reset)`);
+                // Always clear state and mark appropriately to keep reset idempotent.
                 await client.query(`UPDATE lane_sessions
-           SET status = 'COMPLETED',
+           SET status = $2,
                staff_id = NULL,
                customer_id = NULL,
                customer_display_name = NULL,
@@ -57,7 +59,7 @@ function registerCheckinResetRoutes(fastify) {
                flow_step = NULL,
                flow_version = 0,
                updated_at = NOW()
-           WHERE id = $1`, [session.id]);
+           WHERE id = $1`, [session.id, newStatus]);
                 return { success: true, sessionId: session.id };
             });
             const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, result.sessionId));

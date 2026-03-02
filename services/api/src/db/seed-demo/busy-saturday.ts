@@ -1677,7 +1677,7 @@ export async function seedBusySaturdayDemo(now: Date, progress?: ProgressReporte
       closedDrawerClosedAt
     );
 
-    const countedCash = closeoutSnapshot.expectedCash - 2.50;
+    const countedCash = closeoutSnapshot.expectedCash - 3;
     const overShort = countedCash - closeoutSnapshot.expectedCash;
 
     setMessage('Building closeout snapshot');

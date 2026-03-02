@@ -224,31 +224,31 @@ docker pull ghcr.io/your-org/the-clubs-api:latest
 
 ## Step 7: Test Full Deployment Pipeline
 
-### Trigger Staging Deployment
+### Trigger Demo Deployment
 
 ```bash
-# Push to develop branch to trigger staging deployment
-git push origin develop
+# Create and merge a PR targeting dev to trigger demo deployment
+# Or use workflow_dispatch for manual trigger
 
 # Monitor in GitHub Actions tab
+# GitHub → Actions → Deploy to Demo
 ```
 
 ### Monitor Logs
 
 ```bash
 # View workflow logs
-# GitHub → Actions → Deploy to Staging → View logs
+# GitHub → Actions → Deploy to Demo → View logs
 
-# SSH into staging and check container
+# SSH into demo server and check container
 ssh -i ~/.ssh/github-actions ec2-user@your-staging-host
-docker compose -f docker-compose.prod.yml -p club-ops-staging logs
+docker compose -f docker-compose.prod.yml logs
 ```
 
 ### Trigger Production Deployment
 
 ```bash
-# After testing in staging, push to main for production
-git push origin main
+# Create and merge a PR targeting main to trigger production deployment
 
 # Monitor deployment
 # GitHub → Actions → Deploy to Production

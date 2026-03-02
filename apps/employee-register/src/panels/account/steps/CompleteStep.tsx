@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
-import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../../../stores/useRegisterStore';
 import { useCheckinFlow } from '../CheckinFlowContext';
 
@@ -10,7 +9,7 @@ export function CompleteStep() {
   const { sendFlowCommand } = actions;
   const { token, laneId } = meta;
 
-  const { cancelSession } = useRegisterStore();
+  const { completeTransaction } = useRegisterStore();
 
   const [membershipCardNumber, setMembershipCardNumber] = useState('');
   const [membershipSaving, setMembershipSaving] = useState(false);
@@ -113,7 +112,7 @@ export function CompleteStep() {
   const handleCompleteTransaction = async () => {
     setCompleting(true);
     try {
-      await cancelSession();
+      await completeTransaction();
     } finally {
       setCompleting(false);
     }

@@ -50,17 +50,17 @@ docker-compose.monitoring.yml        ← Logging configuration for production
 
 ## Deployment Flow
 
-### Production (main → production)
+### Production (PR → main)
 ```
 Feature Branch
     ↓
-GitHub PR (CI runs)
+GitHub PR targeting main (CI runs)
     ↓
-Review & Merge to main
+Review & Merge
     ↓
-CI checks (lint, test, build)
+Deploy workflow triggers
     ↓
-Build Docker image → Push to GHCR
+Build Docker image
     ↓
 Deploy SPAs to S3 + CloudFront
     ↓
@@ -69,17 +69,21 @@ Deploy API to EC2 + Health Check
 ✅ Production live
 ```
 
-### Staging (develop → staging)
+### Demo/Development (PR → dev)
 ```
-Push to develop
+Feature Branch
     ↓
-CI checks
+GitHub PR targeting dev (CI runs)
     ↓
-Deploy API to Staging EC2
+Review & Merge
+    ↓
+Deploy workflow triggers
+    ↓
+Deploy SPAs + API to Demo servers
     ↓
 Health check
     ↓
-✅ Staging updated
+✅ Demo updated
 ```
 
 ## Quick Setup (5 Steps)
@@ -127,13 +131,13 @@ sudo curl -L https://github.com/docker/compose/releases/latest/download/docker-c
 sudo chmod +x /usr/local/bin/docker-compose
 ```
 
-### 4. Test Staging Deployment
+### 4. Test Demo Deployment
 ```bash
-# Push to develop branch
-git push origin develop
+# Create a PR targeting dev, merge it to trigger demo deployment
+# Or trigger manually via workflow_dispatch
 
 # Watch GitHub Actions
-# GitHub → Actions → Deploy to Staging
+# GitHub → Actions → Deploy to Demo
 
 # Verify
 curl http://staging-host:3001/health
@@ -141,8 +145,7 @@ curl http://staging-host:3001/health
 
 ### 5. Deploy to Production
 ```bash
-# After testing in staging, push to main
-git push origin main
+# Create a PR targeting main, merge it to trigger production deployment
 
 # Watch GitHub Actions
 # GitHub → Actions → Deploy to Production
