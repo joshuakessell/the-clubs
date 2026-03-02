@@ -74,7 +74,9 @@ COPY --from=prod-deps --chown=nodejs:nodejs /repo/packages/shared/node_modules .
 COPY --from=prod-deps --chown=nodejs:nodejs /repo/services/api/node_modules ./services/api/node_modules
 
 # Copy compiled shared package (exports point to dist/)
+# Note: Docker COPY follows pnpm workspace symlinks, so we need dist/ in BOTH locations
 COPY --from=build --chown=nodejs:nodejs /repo/packages/shared/dist ./packages/shared/dist
+COPY --from=build --chown=nodejs:nodejs /repo/packages/shared/dist ./services/api/node_modules/@the-clubs/shared/dist
 
 # Copy compiled API
 COPY --from=build --chown=nodejs:nodejs /repo/services/api/dist ./services/api/dist
