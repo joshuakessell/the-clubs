@@ -33,6 +33,7 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://${DB_USER:-clubops}:${DB_PASSWORD}@db:5432/${DB_NAME:-club_operations}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      KIOSK_TOKEN: ${KIOSK_TOKEN}
     ports:
       - "3000:3000"
     healthcheck:

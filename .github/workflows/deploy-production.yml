@@ -158,11 +158,12 @@ jobs:
         uses: appleboy/ssh-action@v1
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          KIOSK_TOKEN: ${{ secrets.KIOSK_TOKEN }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DB_PASSWORD
+          envs: DB_PASSWORD,KIOSK_TOKEN
           command_timeout: 10m
           script: |
             set -e
@@ -178,14 +179,13 @@ jobs:
             cd /home/ec2-user/the-clubs
 
             # Create .env if it doesn't exist
-            if [ ! -f /home/ec2-user/.env ]; then
-              cat > /home/ec2-user/.env << EOF
+            cat > /home/ec2-user/.env << EOF
             DB_NAME=club_operations
             DB_USER=clubops
             DB_PASSWORD=${DB_PASSWORD}
+            KIOSK_TOKEN=${KIOSK_TOKEN}
             CORS_ORIGINS=*
             EOF
-            fi
 
             # Start/restart containers (no --build, image already loaded)
             docker compose -f docker-compose.prod.yml \
