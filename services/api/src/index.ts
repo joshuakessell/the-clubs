@@ -332,10 +332,10 @@ async function main() {
             );
           } else if (SEED_ON_STARTUP) {
             fastify.log.info(
-              'DEMO_MODE enabled, rebuilding demo data on startup (SEED_ON_STARTUP=true)...'
+              'DEMO_MODE enabled, seeding demo data on startup (SEED_ON_STARTUP=true)...'
             );
             try {
-              await seedDemoData({ forceReseed: true });
+              await seedDemoData({ forceReseed: false });
             } catch (seedErr) {
               fastify.log.error(
                 seedErr,
