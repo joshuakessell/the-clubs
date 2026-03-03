@@ -88,7 +88,7 @@ jobs:
         run: pnpm run build
 
       - name: Typecheck
-        run: pnpm run typecheck
+        run: pnpm -r run typecheck
         continue-on-error: true
 
       - name: Upload SPA artifacts

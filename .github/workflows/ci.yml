@@ -33,11 +33,11 @@ jobs:
         run: pnpm run build
 
       - name: Lint
-        run: pnpm run lint
+        run: pnpm -r run lint
         continue-on-error: true
 
       - name: Typecheck
-        run: pnpm run typecheck
+        run: pnpm -r run typecheck
         continue-on-error: true
 
   test:
@@ -85,7 +85,7 @@ jobs:
         run: pnpm --filter @the-clubs/api exec tsx scripts/migrate.ts
 
       - name: Run tests
-        run: pnpm run test
+        run: pnpm -r run test
 
   dependency-audit:
     name: Dependency Audit
