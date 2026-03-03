@@ -1,17 +1,33 @@
 // Universal environment check (Node CJS + Vite ESM)
 declare const process: { env: Record<string, string | undefined> } | undefined;
+
+// IMPORTANT: Vite statically replaces `import.meta.env.VITE_*` references at build
+// time, but ONLY when accessed directly — not via a helper that returns the object.
+// We must read VITE_API_BASE_URL directly here so the value is inlined in the bundle.
+let _apiBaseUrl = '';
+try {
+  // @ts-ignore -- import.meta.env exists at runtime in Vite apps
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    // @ts-ignore -- direct access required for Vite static replacement
+    _apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
+  }
+} catch {
+  // CJS environment — fall through
+}
+if (!_apiBaseUrl && typeof process !== 'undefined' && process.env) {
+  _apiBaseUrl = process.env.VITE_API_BASE_URL ?? '';
+}
+
 const getEnv = () => {
   try {
-    // In Vite/ESM, import.meta.env is available
     // @ts-ignore -- import.meta.env exists at runtime in Vite apps
     if (typeof import.meta !== 'undefined' && import.meta.env) {
-      // @ts-ignore -- import.meta.env exists at runtime in Vite apps
+      // @ts-ignore
       return import.meta.env as KeyValue;
     }
   } catch {
     // Ignore ReferenceError in CJS
   }
-  // Fallback to process.env for Node
   if (typeof process !== 'undefined' && process.env) {
     return process.env as unknown as KeyValue;
   }
@@ -24,7 +40,7 @@ interface KeyValue {
 
 const env = getEnv();
 
-export const API_BASE_URL = typeof env?.VITE_API_BASE_URL === 'string' ? env.VITE_API_BASE_URL : '';
+export const API_BASE_URL = typeof _apiBaseUrl === 'string' && _apiBaseUrl ? _apiBaseUrl : '';
 
 const isDev = env?.DEV === true || env?.DEV === 'true';
 let didWarnApiBaseUrlSuffix = false;
