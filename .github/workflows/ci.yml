@@ -59,6 +59,11 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://test:test@localhost:5432/club_operations_test
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: club_operations_test
+      DB_USER: test
+      DB_PASSWORD: test
       KIOSK_TOKEN: test-kiosk-token
     steps:
       - uses: actions/checkout@v4
