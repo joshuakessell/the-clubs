@@ -26,7 +26,17 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
     catch (e: any) { if (e?.statusCode) return reply.status(e.statusCode).send({ error: e.message }); request.log.error(e, 'Failed to update staff'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
-  fastify.post<{ Params: { id: string } }>('/v1/admin/staff/:id/pin-reset', { preHandler: process.env.DEMO_MODE === 'true' ? [requireAuth, requireAdmin] : [requireReauthForAdmin] }, async (request, reply) => {
+  fastify.post<{ Params: { id: string } }>('/v1/admin/staff/:id/pin-reset', { 
+    preHandler: async (request, reply) => {
+      if (process.env.DEMO_MODE === 'true') {
+        await requireAuth(request, reply);
+        if (reply.sent || reply.statusCode >= 400) return;
+        await requireAdmin(request, reply);
+      } else {
+        await requireReauthForAdmin(request, reply);
+      }
+    }
+  }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     try { return reply.send(await resetStaffPin(request.params.id, request.staff.staffId)); }
     catch (e: any) { if (e?.statusCode) return reply.status(e.statusCode).send({ error: e.message }); request.log.error(e, 'Failed to reset PIN'); return reply.status(500).send({ error: 'Internal server error' }); }

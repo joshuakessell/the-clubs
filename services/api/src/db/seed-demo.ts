@@ -727,7 +727,7 @@ async function seedEmployeeShiftsAndTimeclock(now: Date, adminStaff: {id: string
 
       for (const empId of employeeIds) {
         // dynamic require simulation
-        const { query } = require('./index');
+        
         
         const shiftResult = await query<{ id: string }>(
           `INSERT INTO employee_shifts
@@ -790,7 +790,7 @@ async function seedEmployeeShiftsAndTimeclock(now: Date, adminStaff: {id: string
 }
 
 async function seedEmployeeBreaks(now: Date, progress: SeedProgress) {
-  const { query } = require('./index');
+  
   progress.setMessage('Seeding break sessions');
   progress.addTotal(1);
   const existingBreaks = await query<{ count: string }>(
@@ -867,7 +867,7 @@ async function seedEmployeeBreaks(now: Date, progress: SeedProgress) {
 }
 
 async function seedEmployeeDocuments(staff: {id: string; name: string; role: string}[], adminStaff: {id: string}, progress: SeedProgress) {
-  const { query } = require('./index');
+  
   const { randomUUID } = require('node:crypto');
   const docTypes = ['ID', 'W4', 'I9', 'OFFER_LETTER', 'NDA'];
   const documentsCreated: string[] = [];

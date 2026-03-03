@@ -31,7 +31,12 @@ describe('Auth Tests', () => {
   let adminToken: string;
   let dbAvailable = false;
 
+  let previousDemoMode: string | undefined;
+
   beforeAll(async () => {
+    previousDemoMode = process.env.DEMO_MODE;
+    process.env.DEMO_MODE = 'false';
+
     // Initialize test database once
     try {
       await query('SELECT 1');
@@ -131,6 +136,12 @@ describe('Auth Tests', () => {
   });
 
   afterAll(async () => {
+    if (previousDemoMode === undefined) {
+      delete process.env.DEMO_MODE;
+    } else {
+      process.env.DEMO_MODE = previousDemoMode;
+    }
+
     if (!dbAvailable) return;
     await fastify.close();
     try {
