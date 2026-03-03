@@ -1155,7 +1155,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
         const regNum = staffRes.rows.indexOf(emp) + 1;
         const deviceId = `register-${regNum}`;
         await query(
-          `INSERT INTO register_sessions (id, employee_id, register_number, device_id, signed_in_at)
+          `INSERT INTO register_sessions (id, employee_id, register_number, device_id, created_at)
            VALUES ($1, $2, $3, $4, NOW())`,
           [regId, emp.id, regNum, deviceId]
         );
