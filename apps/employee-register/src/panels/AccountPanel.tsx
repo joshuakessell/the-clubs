@@ -6,6 +6,7 @@ import { PanelShell } from '../views/PanelShell';
 import { ProfileTab } from './account/ProfileTab';
 import { EmployeeAssistTab } from './account/EmployeeAssistTab';
 import { ChargesTab } from './account/ChargesTab';
+import { CustomerNotesBar } from './account/CustomerNotesBar';
 
 /**
  * AccountPanel — Responsive customer account view.
@@ -194,6 +195,11 @@ style = {{
   </div>
         )}
 </div>
+
+{/* Notes bar — below all columns */}
+{customerId && (
+  <CustomerNotesBar customerId={customerId} />
+)}
   </PanelShell>
   );
 }
