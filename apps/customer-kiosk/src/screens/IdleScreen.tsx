@@ -4,6 +4,7 @@ import { BrandingHeader } from '../components/BrandingHeader';
 import { ChargeItemsList } from '../components/ChargeItemsList';
 import { useI18n } from '../i18n';
 import { useKioskSession } from '../KioskSessionContext';
+import { WaitlistDisclaimerModal } from '../components/WaitlistDisclaimerModal';
 
 /**
  * IdleScreen — Unified idle + check-in display.
@@ -126,7 +127,7 @@ export function IdleScreen() {
                 transition: 'opacity 1s ease, transform 1s ease',
                 opacity: showCard ? 1 : 0,
                 width: '100%',
-                maxWidth: 400,
+                maxWidth: 520,
                 padding: '0 24px',
                 pointerEvents: showCard ? 'auto' : 'none',
               }}
@@ -134,9 +135,9 @@ export function IdleScreen() {
               <div
                 className="flex flex-col rounded-xl"
                 style={{
-                  backgroundColor: 'var(--color-surface-primary)',
-                  border: '1px solid var(--color-border-subtle)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                  backgroundColor: 'var(--color-surface-raised, var(--color-surface-primary))',
+                  border: '1px solid var(--color-border-default)',
+                  boxShadow: '0 4px 24px rgba(0,0,0,0.25)',
                   overflow: 'hidden',
                 }}
               >
@@ -180,6 +181,9 @@ export function IdleScreen() {
             </div>
           </>
         )}
+
+        {/* Waitlist Disclaimer modal overlays the entire screen if step matches */}
+        <WaitlistDisclaimerModal />
       </div>
 
       <style>{`
