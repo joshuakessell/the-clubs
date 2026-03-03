@@ -223,25 +223,8 @@ export async function buildFullSessionUpdatedPayload(
   }
 
   let assignedResourceType = session.assigned_resource_type as 'room' | 'locker' | null;
-  let assignedResourceNumber: string | undefined;
+  const assignedResourceNumber = await fetchAssignedResourceNumber(client, assignedResourceType, session.assigned_resource_id);
 
-  if (session.assigned_resource_id && assignedResourceType) {
-    if (assignedResourceType === 'room') {
-      const roomResult = await client.query<{ number: string }>(
-        `SELECT number FROM rooms WHERE id = $1 LIMIT 1`,
-        [session.assigned_resource_id]
-      );
-      assignedResourceNumber = roomResult.rows[0]?.number;
-    } else if (assignedResourceType === 'locker') {
-      const lockerResult = await client.query<{ number: string }>(
-        `SELECT number FROM lockers WHERE id = $1 LIMIT 1`,
-        [session.assigned_resource_id]
-      );
-      assignedResourceNumber = lockerResult.rows[0]?.number;
-    }
-  }
-
-  // Payment intent: prefer the one pinned on the session, otherwise latest for session
   let paymentIntent: PaymentIntentRow | undefined;
   if (session.payment_intent_id) {
     const intentResult = await client.query<PaymentIntentRow>(
@@ -270,158 +253,17 @@ export async function buildFullSessionUpdatedPayload(
   let ledgerTotal: number | undefined;
 
 
-  if (session.checkin_mode === 'RENEWAL') {
-    const ledgerVisitId = blockForSession?.visit_id || activeVisitId;
-    if (ledgerVisitId) {
-      const ledgerItems: Array<{ description: string; amount: number }> = [];
-      let total = 0;
+  const { ledgerItems, total } = await buildLedgerLineItems(
+    client,
+    session,
+    customer,
+    pastDueBalance,
+    paymentLineItems,
+    blockForSession?.visit_id || activeVisitId
+  );
+  ledgerLineItems = ledgerItems.length > 0 ? ledgerItems : undefined;
+  ledgerTotal = total > 0 ? total : undefined;
 
-      const paidIntents = await client.query<{
-        quote_json: unknown;
-        amount: number | string;
-      }>(
-        `SELECT pi.quote_json, pi.amount
-         FROM payment_intents pi
-         JOIN lane_sessions ls ON ls.id = pi.lane_session_id
-         JOIN checkin_blocks cb ON cb.session_id = ls.id
-         WHERE cb.visit_id = $1
-           AND pi.status = 'PAID'
-           AND pi.paid_at >= date_trunc('day', NOW())`,
-        [ledgerVisitId]
-      );
-
-      for (const intent of paidIntents.rows) {
-        const items = extractPaymentLineItems(intent.quote_json);
-        if (items && items.length > 0) {
-          for (const item of items) {
-            ledgerItems.push(item);
-            total += item.amount;
-          }
-          continue;
-        }
-        const amount = toNumber(intent.amount);
-        if (amount !== undefined) {
-          ledgerItems.push({ description: 'Check-in', amount });
-          total += amount;
-        }
-      }
-
-      const charges = await client.query<{ type: string; amount: number | string }>(
-        `SELECT type, amount
-         FROM charges
-         WHERE visit_id = $1
-           AND created_at >= date_trunc('day', NOW())`,
-        [ledgerVisitId]
-      );
-
-      for (const charge of charges.rows) {
-        const amount = toNumber(charge.amount);
-        if (amount === undefined) continue;
-        ledgerItems.push({ description: formatChargeDescription(charge.type), amount });
-        total += amount;
-      }
-
-      ledgerLineItems = ledgerItems;
-      ledgerTotal = total;
-    }
-  } else if (session.checkin_mode === 'CHECKIN') {
-    // Build ledger line items for new check-ins (all non-terminal statuses):
-    //   1. Past Due Balance (if any)
-    //   2. Membership Fee (for non-members)
-    //   3. Rental Cost (when rental type is selected)
-    //   4. DB charges (upgrade fees, late fees, etc.)
-    const items: Array<{ description: string; amount: number }> = [];
-    let total = 0;
-
-    // 1. Past Due Balance (already in dollars from DB)
-    if (pastDueBalance > 0) {
-      items.push({ description: 'Past Due Balance', amount: pastDueBalance });
-      total += pastDueBalance;
-    }
-
-    if (paymentLineItems) {
-      for (const item of paymentLineItems) {
-        items.push(item);
-        total += item.amount;
-      }
-    } else {
-      // 2. Membership Fee (non-members only)
-      const membershipCardType = (customer as any)?.membership_card_type as string | undefined;
-      const membershipValidUntilRaw = toDate((customer as any)?.membership_valid_until);
-      const hasMembership =
-        !!membershipNumber ||
-        (membershipCardType === 'SIX_MONTH' &&
-          membershipValidUntilRaw != null &&
-          new Date() <= membershipValidUntilRaw);
-
-      if (!hasMembership) {
-        if (session.membership_choice === 'SIX_MONTH') {
-          items.push({ description: '6-Month Membership', amount: 43 });
-          total += 43;
-        } else {
-          items.push({ description: 'Membership Fee', amount: 13 });
-          total += 13;
-        }
-      }
-
-      // 3. Rental Cost (simplified preview price — exact price at payment time)
-      const isWaitlisted = !!session.waitlist_desired_type;
-      const rentalType = isWaitlisted ? session.backup_rental_type : session.proposed_rental_type;
-      if (rentalType && (session.selection_confirmed || isWaitlisted)) {
-        const rentalLabel: Record<string, string> = {
-          LOCKER: 'Locker',
-          STANDARD: 'Standard Room',
-          DOUBLE: 'Double Room',
-          SPECIAL: 'Special Room',
-          GYM_LOCKER: 'Gym Locker',
-        };
-        // Simplified base prices in dollars (weekday non-discount defaults)
-        const rentalPrice: Record<string, number> = {
-          LOCKER: 17,
-          STANDARD: 30,
-          DOUBLE: 40,
-          SPECIAL: 50,
-          GYM_LOCKER: 0,
-        };
-        const label = rentalLabel[rentalType] ?? rentalType;
-        const price = rentalPrice[rentalType] ?? 0;
-        if (price > 0) {
-          items.push({ description: label, amount: price });
-          total += price;
-        }
-
-        // Add the waitlisted desired type as a separate line (informational, $0)
-        if (isWaitlisted && session.waitlist_desired_type) {
-          const desiredLabel = rentalLabel[session.waitlist_desired_type] ?? session.waitlist_desired_type;
-          items.push({ description: `${desiredLabel} (waitlist)`, amount: 0 });
-        }
-      }
-    }
-
-    // 4. DB charges (upgrade fees, late fees, etc.) for this visit
-    const checkinVisitId = blockForSession?.visit_id || activeVisitId;
-    if (checkinVisitId) {
-      const charges = await client.query<{ type: string; amount: number | string }>(
-        `SELECT type, amount
-         FROM charges
-         WHERE visit_id = $1
-           AND created_at >= date_trunc('day', NOW())`,
-        [checkinVisitId]
-      );
-
-      for (const charge of charges.rows) {
-        const amount = toNumber(charge.amount);
-        if (amount === undefined) continue;
-        items.push({ description: formatChargeDescription(charge.type), amount });
-        total += amount;
-      }
-    }
-
-    if (items.length > 0) {
-      ledgerLineItems = items;
-      ledgerTotal = total;
-    }
-  }
 
   const membershipValidUntilRaw = (customer as any)?.membership_valid_until as unknown;
   let customerMembershipValidUntil: string | undefined;
@@ -431,29 +273,7 @@ export async function buildFullSessionUpdatedPayload(
     customerMembershipValidUntil = membershipValidUntilRaw;
   }
 
-  let waitlistPosition: number | undefined;
-  let waitlistEstimatedReadyAt: string | undefined;
-
-  if (session.waitlist_desired_type) {
-    const allDesiredTypes =
-      extractWaitlistDesiredTypes(session.waitlist_desired_types_json) || [session.waitlist_desired_type];
-
-    const queueLengthResult = await client.query<{ count: string }>(
-      `SELECT COUNT(*) as count 
-       FROM waitlist
-       WHERE status IN ('ACTIVE', 'OFFERED')
-       AND desired_tier = ANY($1::rental_type[])`,
-      [allDesiredTypes]
-    );
-
-    const baseQueueLength = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10);
-    waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries
-
-    // Estimate: 20 mins per person in line
-    const estimatedWaitMinutes = waitlistPosition * 20;
-    const readyAt = new Date(Date.now() + estimatedWaitMinutes * 60000);
-    waitlistEstimatedReadyAt = readyAt.toISOString();
-  }
+  const { waitlistPosition, waitlistEstimatedReadyAt } = await fetchWaitlistEstimates(client, session.waitlist_desired_type, session.waitlist_desired_types_json);
 
   const payload: SessionUpdatedPayload = {
     sessionId: session.id,
@@ -538,4 +358,199 @@ export async function buildFullSessionUpdatedPayload(
   };
 
   return { laneId, payload };
+}
+
+
+async function buildLedgerLineItems(
+  client: import('pg').PoolClient,
+  session: import('./types').LaneSessionRow,
+  customer: import('./types').CustomerRow | undefined,
+  pastDueBalance: number,
+  paymentLineItems: Array<{ description: string; amount: number }> | undefined,
+  checkinVisitId: string | undefined
+): Promise<{ ledgerItems: Array<{ description: string; amount: number }>; total: number }> {
+  const ledgerItems: Array<{ description: string; amount: number }> = [];
+  let total = 0;
+
+  if (session.checkin_mode === 'RENEWAL') {
+    if (checkinVisitId) {
+      const paidIntents = await client.query<{
+        quote_json: unknown;
+        amount: number | string;
+      }>(
+        `SELECT pi.quote_json, pi.amount
+         FROM payment_intents pi
+         JOIN lane_sessions ls ON ls.id = pi.lane_session_id
+         JOIN checkin_blocks cb ON cb.session_id = ls.id
+         WHERE cb.visit_id = $1
+           AND pi.status = 'PAID'
+           AND pi.paid_at >= date_trunc('day', NOW())`,
+        [checkinVisitId]
+      );
+
+      for (const intent of paidIntents.rows) {
+        const items = extractPaymentLineItems(intent.quote_json);
+        if (items && items.length > 0) {
+          for (const item of items) {
+            ledgerItems.push(item);
+            total += item.amount;
+          }
+          continue;
+        }
+        const amount = toNumber(intent.amount);
+        if (amount !== undefined) {
+          ledgerItems.push({ description: 'Check-in', amount });
+          total += amount;
+        }
+      }
+
+      const charges = await client.query<{ type: string; amount: number | string }>(
+        `SELECT type, amount
+         FROM charges
+         WHERE visit_id = $1
+           AND created_at >= date_trunc('day', NOW())`,
+        [checkinVisitId]
+      );
+
+      for (const charge of charges.rows) {
+        const amount = toNumber(charge.amount);
+        if (amount === undefined) continue;
+        ledgerItems.push({ description: formatChargeDescription(charge.type), amount });
+        total += amount;
+      }
+    }
+  } else if (session.checkin_mode === 'CHECKIN') {
+    if (pastDueBalance > 0) {
+      ledgerItems.push({ description: 'Past Due Balance', amount: pastDueBalance });
+      total += pastDueBalance;
+    }
+
+    if (paymentLineItems) {
+      for (const item of paymentLineItems) {
+        ledgerItems.push(item);
+        total += item.amount;
+      }
+    } else {
+      const membershipCardType = (customer as any)?.membership_card_type as string | undefined;
+      const membershipValidUntilRaw = toDate((customer as any)?.membership_valid_until);
+      const membershipNumber = customer?.membership_number || session.membership_number;
+      const hasMembership =
+        !!membershipNumber ||
+        (membershipCardType === 'SIX_MONTH' &&
+          membershipValidUntilRaw != null &&
+          new Date() <= membershipValidUntilRaw);
+
+      if (!hasMembership) {
+        if (session.membership_choice === 'SIX_MONTH') {
+          ledgerItems.push({ description: '6-Month Membership', amount: 43 });
+          total += 43;
+        } else {
+          ledgerItems.push({ description: 'Membership Fee', amount: 13 });
+          total += 13;
+        }
+      }
+
+      const isWaitlisted = !!session.waitlist_desired_type;
+      const rentalType = isWaitlisted ? session.backup_rental_type : session.proposed_rental_type;
+      if (rentalType && (session.selection_confirmed || isWaitlisted)) {
+        const rentalLabel: Record<string, string> = {
+          LOCKER: 'Locker',
+          STANDARD: 'Standard Room',
+          DOUBLE: 'Double Room',
+          SPECIAL: 'Special Room',
+          GYM_LOCKER: 'Gym Locker',
+        };
+        const rentalPrice: Record<string, number> = {
+          LOCKER: 17,
+          STANDARD: 30,
+          DOUBLE: 40,
+          SPECIAL: 50,
+          GYM_LOCKER: 0,
+        };
+        const label = rentalLabel[rentalType] ?? rentalType;
+        const price = rentalPrice[rentalType] ?? 0;
+        if (price > 0) {
+          ledgerItems.push({ description: label, amount: price });
+          total += price;
+        }
+
+        if (isWaitlisted && session.waitlist_desired_type) {
+          const desiredLabel = rentalLabel[session.waitlist_desired_type] ?? session.waitlist_desired_type;
+          ledgerItems.push({ description: `${desiredLabel} (waitlist)`, amount: 0 });
+        }
+      }
+    }
+
+    if (checkinVisitId) {
+      const charges = await client.query<{ type: string; amount: number | string }>(
+        `SELECT type, amount
+         FROM charges
+         WHERE visit_id = $1
+           AND created_at >= date_trunc('day', NOW())`,
+        [checkinVisitId]
+      );
+
+      for (const charge of charges.rows) {
+        const amount = toNumber(charge.amount);
+        if (amount === undefined) continue;
+        ledgerItems.push({ description: formatChargeDescription(charge.type), amount });
+        total += amount;
+      }
+    }
+  }
+
+  return { ledgerItems, total };
+}
+
+
+async function fetchAssignedResourceNumber(
+  client: import('pg').PoolClient,
+  resourceType: 'room' | 'locker' | null,
+  resourceId: string | null
+): Promise<string | undefined> {
+  if (!resourceId || !resourceType) return undefined;
+  if (resourceType === 'room') {
+    const roomResult = await client.query<{ number: string }>(
+      `SELECT number FROM rooms WHERE id = $1 LIMIT 1`,
+      [resourceId]
+    );
+    return roomResult.rows[0]?.number;
+  }
+  if (resourceType === 'locker') {
+    const lockerResult = await client.query<{ number: string }>(
+      `SELECT number FROM lockers WHERE id = $1 LIMIT 1`,
+      [resourceId]
+    );
+    return lockerResult.rows[0]?.number;
+  }
+  return undefined;
+}
+
+async function fetchWaitlistEstimates(
+  client: import('pg').PoolClient,
+  desiredType: string | null,
+  desiredTypesJson: unknown
+): Promise<{ waitlistPosition?: number; waitlistEstimatedReadyAt?: string }> {
+  if (!desiredType) return {};
+
+  const allDesiredTypes = extractWaitlistDesiredTypes(desiredTypesJson) || [desiredType];
+
+  const queueLengthResult = await client.query<{ count: string }>(
+    `SELECT COUNT(*) as count 
+     FROM waitlist
+     WHERE status IN ('ACTIVE', 'OFFERED')
+     AND desired_tier = ANY($1::rental_type[])`,
+    [allDesiredTypes]
+  );
+
+  const baseQueueLength = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10);
+  const waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries
+
+  const estimatedWaitMinutes = waitlistPosition * 20;
+  const readyAt = new Date(Date.now() + estimatedWaitMinutes * 60000);
+  
+  return {
+    waitlistPosition,
+    waitlistEstimatedReadyAt: readyAt.toISOString()
+  };
 }
