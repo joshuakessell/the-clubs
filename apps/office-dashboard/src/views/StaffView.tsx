@@ -42,7 +42,7 @@ export function StaffView() {
 
   const handlePinReset = useCallback(async (id: string) => {
     try {
-      const result = await dashboardMutate(`/api/v1/admin/staff/${id}/pin-reset`, 'POST', {}) as any;
+      const result = await dashboardMutate<{ name?: string }>(`/api/v1/admin/staff/${id}/pin-reset`, 'POST', {});
       const name = result?.name || 'Staff member';
       showToast(
         `${name}'s PIN has been reset to 000000. They will be prompted to change it upon signing in for the first time.`

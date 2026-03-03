@@ -137,14 +137,14 @@ export function ScheduleView() {
 
   const { data: shiftsData, loading: shiftsLoading, refetch: refetchShifts } =
     useDashboardFetch<ShiftEntry[]>(shiftsEndpoint);
-  const shifts: ShiftEntry[] = Array.isArray(shiftsData) ? shiftsData : [];
+  const shifts: ShiftEntry[] = useMemo(() => Array.isArray(shiftsData) ? shiftsData : [], [shiftsData]);
 
   // Admin-only fetches
   const { data: summaryData, refetch: refetchSummary } =
     useDashboardFetch<{ summary: WeeklySummaryEntry[] }>(
       isAdmin ? `/api/v1/admin/shifts/weekly-summary?weekStart=${weekStartStr}` : null,
     );
-  const summary: WeeklySummaryEntry[] = summaryData?.summary ?? [];
+  const summary: WeeklySummaryEntry[] = useMemo(() => summaryData?.summary ?? [], [summaryData]);
 
   const { data: staffData } = useDashboardFetch<{ staff: StaffMember[] }>(
     isAdmin ? '/api/v1/admin/staff' : null,
@@ -157,7 +157,7 @@ export function ScheduleView() {
     : `/api/v1/schedule/time-off-requests?from=${weekStartStr}&to=${weekEndStr}`;
   const { data: timeoffData, refetch: refetchTimeoff } =
     useDashboardFetch<{ requests: TimeOffRequest[] }>(timeoffEndpoint);
-  const timeoffRequests: TimeOffRequest[] = timeoffData?.requests ?? [];
+  const timeoffRequests: TimeOffRequest[] = useMemo(() => timeoffData?.requests ?? [], [timeoffData]);
 
   // Shift trade requests
   const tradesEndpoint = isAdmin
@@ -165,7 +165,7 @@ export function ScheduleView() {
     : `/api/v1/schedule/shift-trade-requests?from=${weekStart.toISOString()}&to=${weekEnd.toISOString()}`;
   const { data: tradesData, refetch: refetchTrades } =
     useDashboardFetch<{ trades: ShiftTradeRequest[] }>(tradesEndpoint);
-  const tradeRequests: ShiftTradeRequest[] = tradesData?.trades ?? [];
+  const tradeRequests: ShiftTradeRequest[] = useMemo(() => tradesData?.trades ?? [], [tradesData]);
 
   // ─── Derived data ───
   const shiftsByDayAndCode = useMemo(() => {
@@ -301,9 +301,9 @@ export function ScheduleView() {
       refetchTimeoff();
       setDayOffModal(null);
       setDayOffReason('');
-    } catch (err: any) {
+    } catch (err) {
       // 409 = already requested (idempotent), just close
-      if (err?.message?.includes('409')) {
+      if ((err as Error)?.message?.includes('409')) {
         setDayOffModal(null);
         setDayOffReason('');
       }
@@ -326,8 +326,8 @@ export function ScheduleView() {
       refetchTrades();
       setTradeModal(null);
       setTradeSelectedShiftId('');
-    } catch (err: any) {
-      if (err?.message?.includes('409')) {
+    } catch (err) {
+      if ((err as Error)?.message?.includes('409')) {
         setTradeModal(null);
         setTradeSelectedShiftId('');
       }

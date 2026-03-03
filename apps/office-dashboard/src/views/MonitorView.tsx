@@ -23,7 +23,9 @@ export function MonitorView() {
 
   // Auto-poll every 10 seconds for live updates
   const refetchRef = useRef(refetch);
-  refetchRef.current = refetch;
+  useEffect(() => {
+    refetchRef.current = refetch;
+  }, [refetch]);
   useEffect(() => {
     const id = setInterval(() => void refetchRef.current(), POLL_INTERVAL_MS);
     return () => clearInterval(id);

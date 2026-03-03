@@ -69,9 +69,9 @@ export function RoomManagementView() {
     try {
       await fn();
       await refetch();
-    } catch (err: any) {
-      const parsed = tryParseJson(err?.message);
-      setMutateError(parsed?.error ?? err?.message ?? 'Operation failed');
+    } catch (err) {
+      const parsed = tryParseJson((err as Error)?.message);
+      setMutateError(parsed?.error ?? (err as Error)?.message ?? 'Operation failed');
     } finally {
       setMutating(false);
     }
@@ -276,7 +276,7 @@ export function RoomManagementView() {
                 </label>
                 <select
                   value={newRoomType}
-                  onChange={(e) => setNewRoomType(e.target.value as any)}
+                  onChange={(e) => setNewRoomType(e.target.value as 'STANDARD' | 'DOUBLE' | 'SPECIAL')}
                   style={{
                     width: '100%',
                     padding: '6px 10px',
@@ -366,7 +366,7 @@ export function RoomManagementView() {
                         {isEditing ? (
                           <select
                             value={editType}
-                            onChange={(e) => setEditType(e.target.value as any)}
+                            onChange={(e) => setEditType(e.target.value as 'STANDARD' | 'DOUBLE' | 'SPECIAL')}
                             style={{
                               padding: '3px 6px',
                               fontSize: 12,
@@ -414,7 +414,7 @@ export function RoomManagementView() {
                               {!room.isOccupied && room.status !== 'OUT_OF_SERVICE' && (
                                 <ActionButton
                                   label="Edit Type"
-                                  onClick={() => { setEditingRoomId(room.id); setEditType(room.type as any); }}
+                                  onClick={() => { setEditingRoomId(room.id); setEditType(room.type as 'STANDARD' | 'DOUBLE' | 'SPECIAL'); }}
                                   disabled={mutating}
                                 />
                               )}
