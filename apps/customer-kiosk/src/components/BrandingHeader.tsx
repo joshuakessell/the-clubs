@@ -71,7 +71,7 @@ export function BrandingHeader({ isActive, isLightTheme, brandName, transition }
               width: 240,
               height: 240,
               filter: 'drop-shadow(0 0 20px var(--color-accent-glow))',
-              transform: 'translateY(-12px)',
+              transform: 'translateY(-7px)',
               transition,
             }}
           />

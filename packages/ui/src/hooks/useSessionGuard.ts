@@ -78,7 +78,6 @@ export function useSessionGuard() {
                 const isApiCall = url.includes('/api/') || url.includes('/v1/');
                 const isExcluded = url.includes('/auth/login')
                     || url.includes('/auth/me')
-                    || url.includes('/session-snapshot')
                     || url.includes('/realtime/sse');
 
                 if (isApiCall && !isExcluded) {
