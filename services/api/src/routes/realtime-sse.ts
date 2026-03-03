@@ -66,7 +66,7 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no', // Disable nginx buffering
-      });
+      } as import('http').OutgoingHttpHeaders);
 
       // Send initial connected event
       raw.write(`data: ${JSON.stringify({

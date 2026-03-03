@@ -43,9 +43,11 @@ async function realtimeSSERoutes(fastify) {
         if (!sseClients) {
             return reply.status(503).send({ error: 'SSE not available' });
         }
-        // Set SSE headers
+        // Set SSE headers and copy pre-existing ones (like CORS)
         const raw = reply.raw;
+        const headers = reply.getHeaders();
         raw.writeHead(200, {
+            ...headers,
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',

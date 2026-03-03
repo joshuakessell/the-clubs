@@ -25,6 +25,7 @@ const DEMO_INCREMENTAL = process.env.DEMO_INCREMENTAL !== 'false';
 const DEMO_SNAPSHOT_TABLES = [
     'agreements',
     'customer_activity_events',
+    'club_events',
     'customer_spend_ledger_entries',
     'customer_notes',
     'customers',
@@ -58,6 +59,7 @@ const DEMO_SNAPSHOT_TABLES = [
 const DEMO_TIMESTAMP_TABLES = [
     'agreements',
     'customer_activity_events',
+    'club_events',
     'customer_spend_ledger_entries',
     'customers',
     'rooms',
@@ -327,6 +329,26 @@ async function appendIncrementalDemoVisits(params) {
     return res.visitsCreated;
 }
 /**
+ * Synchronize legacy customer_activity_events into the new club_events table.
+ * Used at the conclusion of all seed/simulation paths so the dashboard
+ * activity logs are populated identically.
+ */
+async function syncDemoClubEvents(client) {
+    await client.query(`
+    INSERT INTO club_events
+      (occurred_at, event_type, event_domain, source_app,
+       staff_id, staff_name, customer_id, customer_name,
+       summary, metadata, search_blob, dedupe_key)
+    SELECT
+      e.occurred_at, e.action_type, e.action_category, e.source_app,
+      e.actor_staff_id, e.actor_staff_name, e.customer_id, c.name,
+      e.summary, e.metadata, e.search_blob, 'SYNC_' || e.id
+    FROM customer_activity_events e
+    LEFT JOIN customers c ON c.id = e.customer_id
+    ON CONFLICT DO NOTHING
+  `);
+}
+/**
  * Demo mode seeding for shifts and timeclock sessions.
  * Seeds shifts for past 14 days and next 14 days (28-day window).
  * In DEMO_MODE, restores a snapshot + shifts timestamps forward on startup
@@ -364,7 +386,10 @@ async function seedDemoData(options = {}) {
             if (lastSim.getTime() < now.getTime()) {
                 const appended = await appendIncrementalDemoVisits({ from: lastSim, to: now });
                 if (appended > 0) {
-                    console.log(`✅ Added ${appended} incremental demo visit(s).`);
+                    await (0, index_1.transaction)(async (client) => {
+                        await syncDemoClubEvents(client);
+                    });
+                    console.log(`✅ Added ${appended} incremental demo visit(s) and synced club events.`);
                 }
             }
             await saveDemoState({
@@ -444,6 +469,7 @@ async function seedDemoData(options = {}) {
             progress.setMessage('Saving demo snapshot');
             progress.addTotal(1);
             await (0, index_1.transaction)(async (client) => {
+                await syncDemoClubEvents(client);
                 await createDemoSnapshot(client);
             });
             await saveDemoState({ seedAnchor: now, lastShifted: now, lastSimulated: now });
@@ -643,6 +669,7 @@ async function seedDemoData(options = {}) {
         progress.setMessage('Saving demo snapshot');
         progress.addTotal(1);
         await (0, index_1.transaction)(async (client) => {
+            await syncDemoClubEvents(client);
             await createDemoSnapshot(client);
         });
         await saveDemoState({ seedAnchor: now, lastShifted: now });

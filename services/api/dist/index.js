@@ -300,9 +300,9 @@ async function main() {
                         fastify.log.info('DEMO_MODE enabled; skipping startup seed (SKIP_DEMO_SEED=true, CLI seed already ran).');
                     }
                     else if (SEED_ON_STARTUP) {
-                        fastify.log.info('DEMO_MODE enabled, rebuilding demo data on startup (SEED_ON_STARTUP=true)...');
+                        fastify.log.info('DEMO_MODE enabled, seeding demo data on startup (SEED_ON_STARTUP=true)...');
                         try {
-                            await (0, seed_demo_1.seedDemoData)({ forceReseed: true });
+                            await (0, seed_demo_1.seedDemoData)({ forceReseed: false });
                         }
                         catch (seedErr) {
                             fastify.log.error(seedErr, '❌ Demo seed failed (non-fatal) — server will continue without demo data.');
