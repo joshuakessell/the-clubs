@@ -265,18 +265,25 @@ jobs:
             # Clean up legacy containers (one-time migration from non-project-scoped names)
             docker rm -f club-ops-db club-ops-api 2>/dev/null || true
 
-            # Set up nginx reverse proxy (routes by hostname to correct API port)
+            # Set up nginx reverse proxy (shared by all environments — idempotent)
             mkdir -p /home/ec2-user/nginx
             mv /home/ec2-user/infra/nginx/api-proxy.conf /home/ec2-user/nginx/api-proxy.conf
             rm -rf /home/ec2-user/infra
-            docker rm -f api-proxy 2>/dev/null || true
-            docker run -d --name api-proxy \
-              --restart unless-stopped \
-              --add-host host.docker.internal:host-gateway \
-              -p 80:80 \
-              -v /home/ec2-user/nginx/api-proxy.conf:/etc/nginx/conf.d/default.conf:ro \
-              nginx:alpine
-            echo "✓ nginx reverse proxy running on port 80"
+            if docker ps -a --format '{{.Names}}' | grep -q '^api-proxy$'; then
+              # Proxy exists — config is bind-mounted so it's already updated; just reload
+              docker start api-proxy 2>/dev/null || true
+              docker exec api-proxy nginx -s reload 2>/dev/null || true
+              echo "✓ nginx proxy config reloaded"
+            else
+              # First deploy or proxy was manually removed — create it
+              docker run -d --name api-proxy \
+                --restart unless-stopped \
+                --add-host host.docker.internal:host-gateway \
+                -p 80:80 \
+                -v /home/ec2-user/nginx/api-proxy.conf:/etc/nginx/conf.d/default.conf:ro \
+                nginx:alpine
+              echo "✓ nginx reverse proxy created on port 80"
+            fi
 
             # Start/restart this environment's stack (isolated by project name)
             docker compose -f docker-compose.prod.yml \
