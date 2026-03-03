@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 
 export type DbClient = {
   query: <T = unknown>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>;
@@ -30,8 +30,8 @@ export type DemoAgreement = {
 
 function seededRng(seed: number): () => number {
   return () => {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
+    seed = Math.trunc(seed);
+    seed = Math.trunc(seed + 0x6d2b79f5);
     let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -46,7 +46,7 @@ function pickWeighted<T>(rng: () => number, items: Array<{ item: T; weight: numb
     acc += it.weight;
     if (roll <= acc) return it.item;
   }
-  return items[items.length - 1]!.item;
+  return items[items.length - 1].item;
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -195,8 +195,8 @@ function generateNewCustomerData(rng: () => number, now: Date): {
   idExpirationDate: Date;
 } {
   const seq = ++newCustomerSeq;
-  const firstName = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)]!;
-  const lastName = LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)]!;
+  const firstName = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)];
+  const lastName = LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)];
   const name = `${firstName} ${lastName}`;
   const dob = new Date(
     1970 + Math.floor(rng() * 35),
@@ -204,7 +204,7 @@ function generateNewCustomerData(rng: () => number, now: Date): {
     1 + Math.floor(rng() * 27)
   );
   const idNumber = `D${String(seq + 50000000).padStart(8, '0')}`;
-  const idState = ID_STATES[Math.floor(rng() * ID_STATES.length)]!;
+  const idState = ID_STATES[Math.floor(rng() * ID_STATES.length)];
   const idExpirationDate = new Date(
     now.getFullYear() + 2 + Math.floor(rng() * 4),
     Math.floor(rng() * 12),
@@ -371,7 +371,7 @@ export async function appendIncrementalDemoSimulation(params: {
       let customer: DemoCustomer;
       if (rng() < 0.8 && params.customers.length > 0) {
         // Returning customer — pick randomly from pool
-        customer = params.customers[Math.floor(rng() * params.customers.length)]!;
+        customer = params.customers[Math.floor(rng() * params.customers.length)];
       } else {
         // New customer — create inline
         const newCust = generateNewCustomerData(rng, params.to);
@@ -386,8 +386,8 @@ export async function appendIncrementalDemoSimulation(params: {
         params.customers.push(customer); // add to pool for future returning visits
       }
       touchedCustomerIds.add(customer.id);
-      const register = params.registerSessions[(customerIndex + j) % params.registerSessions.length]!;
-      const staffMember = params.staff.find((s) => s.id === register.employee_id) ?? params.staff[0]!;
+      const register = params.registerSessions[(customerIndex + j) % params.registerSessions.length];
+      const staffMember = params.staff.find((s) => s.id === register.employee_id) ?? params.staff[0];
 
       const visitId = randomUUID();
       const checkinBlockId = randomUUID();
@@ -398,18 +398,18 @@ export async function appendIncrementalDemoSimulation(params: {
 
       const preferLocker = useLockers && rng() < 0.62;
       if (preferLocker) {
-        const locker = params.lockers[lockerIndex++ % params.lockers.length]!;
+        const locker = params.lockers[lockerIndex++ % params.lockers.length];
         lockerId = locker.id;
         rentalType = 'LOCKER';
       } else if (params.rooms.length > 0) {
-        const room = params.rooms[roomIndex++ % params.rooms.length]!;
+        const room = params.rooms[roomIndex++ % params.rooms.length];
         roomId = room.id;
         rentalType =
           room.type === 'DOUBLE' || room.type === 'SPECIAL' || room.type === 'STANDARD'
             ? room.type
             : 'STANDARD';
       } else if (useLockers) {
-        const locker = params.lockers[lockerIndex++ % params.lockers.length]!;
+        const locker = params.lockers[lockerIndex++ % params.lockers.length];
         lockerId = locker.id;
         rentalType = 'LOCKER';
       }
@@ -572,7 +572,7 @@ export async function appendIncrementalDemoSimulation(params: {
           : 8 + Math.floor(rng() * 8); // 8-15 min off-peak
         const cleaningStart = new Date(end.getTime() + cleaningStartDelay * 60 * 1000);
         const cleaningDone = new Date(cleaningStart.getTime() + cleaningDuration * 60 * 1000);
-        const cleaner = params.staff[(roomIndex + j) % params.staff.length]!;
+        const cleaner = params.staff[(roomIndex + j) % params.staff.length];
         cleaningEvents.push({ roomId, startedAt: cleaningStart, completedAt: cleaningDone, staffId: cleaner.id });
       }
 
@@ -595,7 +595,7 @@ export async function appendIncrementalDemoSimulation(params: {
 
       // --- Room upgrades: ~4% of locker visits upgrade to a room mid-stay ---
       if (lockerId && !roomId && params.rooms.length > 0 && rng() < 0.04) {
-        const upgradeRoom = params.rooms[Math.floor(rng() * params.rooms.length)]!;
+        const upgradeRoom = params.rooms[Math.floor(rng() * params.rooms.length)];
         const upgradeMinutesIn = 30 + Math.floor(rng() * 90); // 30-120 min into stay
         const upgradeAt = new Date(start.getTime() + upgradeMinutesIn * 60 * 1000);
         if (upgradeAt < end) {
@@ -692,9 +692,9 @@ export async function appendIncrementalDemoSimulation(params: {
     // Spread guaranteed visits evenly across the simulation window
     const guaranteeStep = Math.floor(windowMs / (untouchedCustomers.length + 1));
     for (let gi = 0; gi < untouchedCustomers.length; gi++) {
-      const customer = untouchedCustomers[gi]!;
-      const register = params.registerSessions[gi % params.registerSessions.length]!;
-      const staffMember = params.staff.find((s) => s.id === register.employee_id) ?? params.staff[0]!;
+      const customer = untouchedCustomers[gi];
+      const register = params.registerSessions[gi % params.registerSessions.length];
+      const staffMember = params.staff.find((s) => s.id === register.employee_id) ?? params.staff[0];
 
       // Place the visit somewhere within the window, avoiding the very end
       let start = new Date(params.from.getTime() + (gi + 1) * guaranteeStep);
@@ -716,15 +716,15 @@ export async function appendIncrementalDemoSimulation(params: {
       let rentalType = 'LOCKER';
 
       if (useLockers && rng() < 0.62) {
-        const locker = params.lockers[lockerIndex++ % params.lockers.length]!;
+        const locker = params.lockers[lockerIndex++ % params.lockers.length];
         lockerId = locker.id;
       } else if (params.rooms.length > 0) {
-        const room = params.rooms[roomIndex++ % params.rooms.length]!;
+        const room = params.rooms[roomIndex++ % params.rooms.length];
         roomId = room.id;
         rentalType = room.type === 'DOUBLE' || room.type === 'SPECIAL' || room.type === 'STANDARD'
           ? room.type : 'STANDARD';
       } else if (useLockers) {
-        const locker = params.lockers[lockerIndex++ % params.lockers.length]!;
+        const locker = params.lockers[lockerIndex++ % params.lockers.length];
         lockerId = locker.id;
       }
 
@@ -864,7 +864,7 @@ export async function appendIncrementalDemoSimulation(params: {
       if (roomId) {
         const cleaningStart = new Date(end.getTime() + (3 + Math.floor(rng() * 6)) * 60 * 1000);
         const cleaningDone = new Date(cleaningStart.getTime() + (8 + Math.floor(rng() * 8)) * 60 * 1000);
-        const cleaner = params.staff[gi % params.staff.length]!;
+        const cleaner = params.staff[gi % params.staff.length];
         cleaningEvents.push({ roomId, startedAt: cleaningStart, completedAt: cleaningDone, staffId: cleaner.id });
       }
 
@@ -961,7 +961,7 @@ export async function appendIncrementalDemoSimulation(params: {
         'Customer left personal items — placed in lost and found',
         'Quiet room preference noted for next visit',
       ];
-      const noteText = generalNotes[Math.floor(rng() * generalNotes.length)]!;
+      const noteText = generalNotes[Math.floor(rng() * generalNotes.length)];
       const noteAt = new Date(
         ev.occurredAt.getTime() - Math.floor(rng() * 60) * 60 * 1000 // during the visit
       );
@@ -1008,7 +1008,7 @@ export async function appendIncrementalDemoSimulation(params: {
         'Feedback: Would love more towels available',
         'Feedback: Clean and comfortable, will return!',
       ];
-      const noteText = feedbackNotes[Math.floor(rng() * feedbackNotes.length)]!;
+      const noteText = feedbackNotes[Math.floor(rng() * feedbackNotes.length)];
       const noteAt = new Date(ev.occurredAt.getTime() + 1 * 60 * 1000);
 
       await params.client.query(
@@ -1200,7 +1200,7 @@ export async function appendIncrementalDemoSimulation(params: {
     );
 
     // Resolve staff name for activity events
-    const upgradeStaff = params.staff.find((s) => s.id === ug.staffId) ?? params.staff[0]!;
+    const upgradeStaff = params.staff.find((s) => s.id === ug.staffId) ?? params.staff[0];
 
     // UPGRADE_STARTED activity event (5 min before upgrade)
     await params.client.query(
@@ -1437,7 +1437,7 @@ export async function appendIncrementalDemoSimulation(params: {
       );
 
       // Resolve staff for checkout — use first staff member as the checkout staff
-      const lateStaff = params.staff[0]!;
+      const lateStaff = params.staff[0];
 
       // CHECKOUT_FEE_PAID activity event
       await params.client.query(
@@ -1500,7 +1500,7 @@ export async function appendIncrementalDemoSimulation(params: {
     // BAN_APPROVED / BAN_DENIED activity events (for bans applied due to ≥60 min late)
     if (le.banApplied) {
       const banDecision = rng() < 0.80 ? 'BAN_APPROVED' : 'BAN_DENIED';
-      const adminStaff = params.staff.find((s) => s.name.includes('Manager')) ?? params.staff[0]!;
+      const adminStaff = params.staff.find((s) => s.name.includes('Manager')) ?? params.staff[0];
       const banDecisionAt = new Date(le.createdAt.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000);
       if (banDecisionAt <= params.to) {
         await params.client.query(
@@ -1563,7 +1563,7 @@ export async function appendIncrementalDemoSimulation(params: {
 
     for (let i = 0; i < itemCount; i++) {
       const catalogIdx = Math.floor(rng2() * RETAIL_CATALOG.length);
-      const product = RETAIL_CATALOG[catalogIdx]!;
+      const product = RETAIL_CATALOG[catalogIdx];
       const qty = 1 + (rng2() < 0.15 ? 1 : 0);
       const lineTotal = product.price * qty;
       lineItems.push({

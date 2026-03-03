@@ -1,6 +1,6 @@
 import { loadEnvFromDotEnvIfPresent } from '../env/loadEnv';
 import { closeDatabase, query, transaction } from './index';
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { seedBusySaturdayDemo } from './seed-demo/busy-saturday';
 import { SeedProgress } from './seed-demo/progress';
 import { generateAgreementPdf } from '../utils/pdf-generator';
@@ -113,7 +113,7 @@ async function loadDemoState(): Promise<{
     };
   }>(`SELECT value_json FROM demo_state WHERE key = $1`, [DEMO_STATE_KEY]);
   if (res.rows.length === 0) return null;
-  const value = res.rows[0]!.value_json || {};
+  const value = res.rows[0].value_json || {};
   if (!value.seedAnchorIso || typeof value.snapshotVersion !== 'number') return null;
   return {
     seedAnchorIso: value.seedAnchorIso,
@@ -236,7 +236,7 @@ async function validateSeededCustomers(client: DbClient): Promise<void> {
         OR id_expiration_date IS NULL
         OR COALESCE(NULLIF(TRIM(primary_language), ''), NULL) IS NULL`
   );
-  const missingProfileCount = parseInt(missingProfile.rows[0]?.count || '0', 10);
+  const missingProfileCount = Number.parseInt(missingProfile.rows[0]?.count || '0', 10);
   if (missingProfileCount > 0) {
     throw new Error(
       `Seeded demo customers missing required profile fields: ${missingProfileCount}. ` +
@@ -254,7 +254,7 @@ async function validateSeededCustomers(client: DbClient): Promise<void> {
        WHERE v.customer_id = c.id
      )`
   );
-  const missingLastVisitCount = parseInt(missingLastVisit.rows[0]?.count || '0', 10);
+  const missingLastVisitCount = Number.parseInt(missingLastVisit.rows[0]?.count || '0', 10);
   if (missingLastVisitCount > 0) {
     throw new Error(
       `Seeded demo customers missing visit history: ${missingLastVisitCount}. ` +
@@ -364,14 +364,14 @@ async function getActiveAgreement(): Promise<DemoAgreement> {
      ORDER BY created_at DESC
      LIMIT 1`
   );
-  if (res.rows.length > 0) return res.rows[0]!;
+  if (res.rows.length > 0) return res.rows[0];
   const fallback = await query<DemoAgreement>(
     `SELECT id, version, title, body_text
      FROM agreements
      ORDER BY created_at DESC
      LIMIT 1`
   );
-  if (fallback.rows.length > 0) return fallback.rows[0]!;
+  if (fallback.rows.length > 0) return fallback.rows[0];
 
   const created = await query<DemoAgreement>(
     `INSERT INTO agreements (version, title, body_text, active)
@@ -379,7 +379,7 @@ async function getActiveAgreement(): Promise<DemoAgreement> {
      RETURNING id, version, title, body_text`,
     ['demo-1', 'Club Agreement', 'Demo agreement text']
   );
-  return created.rows[0]!;
+  return created.rows[0];
 }
 
 async function appendIncrementalDemoVisits(params: { from: Date; to: Date }): Promise<number> {
@@ -599,7 +599,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
       [past14Days, next14Days]
     );
 
-    const shouldSeedShifts = parseInt(existingShifts.rows[0]?.count || '0', 10) === 0;
+    const shouldSeedShifts = Number.parseInt(existingShifts.rows[0]?.count || '0', 10) === 0;
 
     if (!shouldSeedShifts) {
       progress.log('⚠️  Demo shifts already exist. Skipping shift/timeclock seed.');
@@ -630,7 +630,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
     }
 
     const staff = staffResult.rows;
-    const adminStaff = staff.find((s) => s.role === 'ADMIN') || staff[0]!;
+    const adminStaff = staff.find((s) => s.role === 'ADMIN') || staff[0];
 
     // Define shift windows (America/Chicago timezone)
     // Shift A: 12:00 AM to 8:00 AM
@@ -658,7 +658,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
 
     // Pick staff by index (wraps around if fewer than needed)
     const staffIds = staff.map((s) => s.id);
-    const pick = (idx: number) => staffIds[idx % staffIds.length]!;
+    const pick = (idx: number) => staffIds[idx % staffIds.length];
 
     // Assign 10 logical slots (wraps around available staff)
     const s0 = pick(0), s1 = pick(1), s2 = pick(2), s3 = pick(3);
@@ -692,17 +692,19 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
       const dayPlan = weeklySchedule[dow]!;
 
       for (const [code, employeeIds] of Object.entries(dayPlan) as ['A' | 'B' | 'C', string[]][]) {
-        const startHour = code === 'A' ? 0 : code === 'B' ? 8 : 16;
+        let startHour = 16;
+        if (code === 'A') startHour = 0;
+        else if (code === 'B') startHour = 8;
         const shiftStart = new Date(baseDate);
         shiftStart.setHours(startHour, 0, 0, 0);
 
         const shiftEnd = code === 'C'
           ? new Date(new Date(baseDate).setDate(baseDate.getDate() + 1))  // midnight next day
-          : new Date(baseDate.getTime());
-        if (code !== 'C') {
-          shiftEnd.setHours(startHour + 8, 0, 0, 0);
-        } else {
+          : new Date(baseDate);
+        if (code === 'C') {
           shiftEnd.setHours(0, 0, 0, 0);
+        } else {
+          shiftEnd.setHours(startHour + 8, 0, 0, 0);
         }
 
         for (const empId of employeeIds) {
@@ -713,7 +715,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
              RETURNING id`,
             [empId, shiftStart, shiftEnd, code, adminStaff.id]
           );
-          const shiftId = shiftResult.rows[0]!.id;
+          const shiftId = shiftResult.rows[0].id;
           shiftsCreated.push(shiftId);
 
           // Seed timeclock sessions for past days
@@ -739,7 +741,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
                  RETURNING id`,
                 [empId, shiftId, clockIn, clockOut]
               );
-              timeclockSessionsCreated.push(tcResult.rows[0]!.id);
+              timeclockSessionsCreated.push(tcResult.rows[0].id);
             }
           } else if (dayOffset === 0) {
             // TODAY: clock in employees whose shift has started
@@ -750,7 +752,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
                  WHERE employee_id = $1 AND clock_out_at IS NULL`,
                 [empId]
               );
-              if (parseInt(existing.rows[0]?.count || '0', 10) === 0) {
+              if (Number.parseInt(existing.rows[0]?.count || '0', 10) === 0) {
                 const clockInTime = new Date(shiftStart.getTime() + Math.random() * 5 * 60 * 1000);
                 const tcResult = await query<{ id: string }>(
                   `INSERT INTO timeclock_sessions
@@ -759,7 +761,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
                    RETURNING id`,
                   [empId, shiftId, clockInTime]
                 );
-                timeclockSessionsCreated.push(tcResult.rows[0]!.id);
+                timeclockSessionsCreated.push(tcResult.rows[0].id);
               }
             }
           }
@@ -774,7 +776,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
     const existingBreaks = await query<{ count: string }>(
       `SELECT COUNT(*) as count FROM staff_break_sessions`
     );
-    if (parseInt(existingBreaks.rows[0]?.count || '0', 10) === 0) {
+    if (Number.parseInt(existingBreaks.rows[0]?.count || '0', 10) === 0) {
       const openTimeclockSessions = await query<{
         id: string;
         employee_id: string;
@@ -788,7 +790,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
       );
 
       if (openTimeclockSessions.rows.length > 0) {
-        const openBreakSession = openTimeclockSessions.rows[0]!;
+        const openBreakSession = openTimeclockSessions.rows[0];
         await query(
           `INSERT INTO staff_break_sessions
            (staff_id, timeclock_session_id, started_at, break_type, status, notes)
@@ -829,7 +831,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
            LIMIT 1`
         );
         if (recentClosedSession.rows.length > 0) {
-          const session = recentClosedSession.rows[0]!;
+          const session = recentClosedSession.rows[0];
           const breakStart = new Date(session.clock_in_at.getTime() + 60 * 60 * 1000);
           const breakEnd = new Date(session.clock_in_at.getTime() + 90 * 60 * 1000);
           await query(
@@ -852,8 +854,8 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
       const numDocs = Math.floor(Math.random() * 2) + 1; // 1 or 2 docs
 
       for (let i = 0; i < numDocs; i++) {
-        const docType = docTypes[Math.floor(Math.random() * docTypes.length)]!;
-        const filename = `${docType.toLowerCase()}_${employee.name.replace(/\s+/g, '_')}.pdf`;
+        const docType = docTypes[Math.floor(Math.random() * docTypes.length)];
+        const filename = `${docType.toLowerCase()}_${employee.name.replaceAll(/\s+/g, '_')}.pdf`;
         const storageKey = `${employee.id}/${randomUUID()}/${filename}`;
 
         progress.addTotal(1);
@@ -864,7 +866,7 @@ export async function seedDemoData(options: { forceReseed?: boolean } = {}): Pro
            RETURNING id`,
           [employee.id, docType, filename, storageKey, adminStaff.id]
         );
-        documentsCreated.push(docResult.rows[0]!.id);
+        documentsCreated.push(docResult.rows[0].id);
         progress.tick();
       }
     }

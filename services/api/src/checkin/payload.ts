@@ -59,7 +59,7 @@ function formatChargeDescription(type: string): string {
     case 'LATE_FEE':
       return 'Late Fee';
     default:
-      return type.replace(/_/g, ' ');
+      return type.replaceAll('_', ' ');
   }
 }
 
@@ -81,8 +81,8 @@ function isGymLockerEligible(membershipNumber: string | null | undefined): boole
     return false;
   }
 
-  const membershipNum = parseInt(membershipNumber, 10);
-  if (isNaN(membershipNum)) {
+  const membershipNum = Number.parseInt(membershipNumber, 10);
+  if (Number.isNaN(membershipNum)) {
     return false;
   }
 
@@ -93,10 +93,10 @@ function isGymLockerEligible(membershipNumber: string | null | undefined): boole
 
   for (const range of ranges) {
     const [startStr, endStr] = range.split('-').map((s) => s.trim());
-    const start = parseInt(startStr || '', 10);
-    const end = parseInt(endStr || '', 10);
+    const start = Number.parseInt(startStr || '', 10);
+    const end = Number.parseInt(endStr || '', 10);
 
-    if (!isNaN(start) && !isNaN(end) && membershipNum >= start && membershipNum <= end) {
+    if (!Number.isNaN(start) && !Number.isNaN(end) && membershipNum >= start && membershipNum <= end) {
       return true;
     }
   }
@@ -127,7 +127,7 @@ export async function buildFullSessionUpdatedPayload(
     throw new Error(`Lane session not found: ${sessionId}`);
   }
 
-  const session = sessionResult.rows[0]!;
+  const session = sessionResult.rows[0];
   const laneId = session.lane_id;
 
   const customer = session.customer_id
@@ -170,7 +170,7 @@ export async function buildFullSessionUpdatedPayload(
       [session.customer_id]
     );
     if (lastVisitResult.rows.length > 0) {
-      customerLastVisitAt = lastVisitResult.rows[0]!.starts_at.toISOString();
+      customerLastVisitAt = lastVisitResult.rows[0].starts_at.toISOString();
     }
   }
 
@@ -217,8 +217,8 @@ export async function buildFullSessionUpdatedPayload(
       [session.customer_id]
     );
     if (activeVisitResult.rows.length > 0) {
-      activeVisitId = activeVisitResult.rows[0]!.visit_id;
-      activeBlockEndsAt = activeVisitResult.rows[0]!.ends_at.toISOString();
+      activeVisitId = activeVisitResult.rows[0].visit_id;
+      activeBlockEndsAt = activeVisitResult.rows[0].ends_at.toISOString();
     }
   }
 
@@ -261,7 +261,7 @@ export async function buildFullSessionUpdatedPayload(
   }
 
   const paymentTotalRaw = toNumber(paymentIntent?.amount);
-  const paymentTotal = paymentTotalRaw !== undefined ? paymentTotalRaw / 100 : undefined;
+  const paymentTotal = paymentTotalRaw === undefined ? undefined : paymentTotalRaw / 100;
   const paymentLineItems =
     extractPaymentLineItems(session.price_quote_json) ??
     extractPaymentLineItems(paymentIntent?.quote_json);
@@ -366,7 +366,7 @@ export async function buildFullSessionUpdatedPayload(
 
       // 3. Rental Cost (simplified preview price — exact price at payment time)
       const isWaitlisted = !!session.waitlist_desired_type;
-      const rentalType = isWaitlisted ? (session.backup_rental_type as string | null) : (session.proposed_rental_type as string | null);
+      const rentalType = isWaitlisted ? session.backup_rental_type : session.proposed_rental_type;
       if (rentalType && (session.selection_confirmed || isWaitlisted)) {
         const rentalLabel: Record<string, string> = {
           LOCKER: 'Locker',
@@ -392,7 +392,7 @@ export async function buildFullSessionUpdatedPayload(
 
         // Add the waitlisted desired type as a separate line (informational, $0)
         if (isWaitlisted && session.waitlist_desired_type) {
-          const desiredLabel = rentalLabel[session.waitlist_desired_type as string] ?? (session.waitlist_desired_type as string);
+          const desiredLabel = rentalLabel[session.waitlist_desired_type] ?? session.waitlist_desired_type;
           items.push({ description: `${desiredLabel} (waitlist)`, amount: 0 });
         }
       }
@@ -424,12 +424,12 @@ export async function buildFullSessionUpdatedPayload(
   }
 
   const membershipValidUntilRaw = (customer as any)?.membership_valid_until as unknown;
-  const customerMembershipValidUntil =
-    membershipValidUntilRaw instanceof Date
-      ? membershipValidUntilRaw.toISOString().slice(0, 10)
-      : typeof membershipValidUntilRaw === 'string'
-        ? membershipValidUntilRaw
-        : undefined;
+  let customerMembershipValidUntil: string | undefined;
+  if (membershipValidUntilRaw instanceof Date) {
+    customerMembershipValidUntil = membershipValidUntilRaw.toISOString().slice(0, 10);
+  } else if (typeof membershipValidUntilRaw === 'string') {
+    customerMembershipValidUntil = membershipValidUntilRaw;
+  }
 
   let waitlistPosition: number | undefined;
   let waitlistEstimatedReadyAt: string | undefined;
@@ -446,7 +446,7 @@ export async function buildFullSessionUpdatedPayload(
       [allDesiredTypes]
     );
 
-    const baseQueueLength = parseInt(queueLengthResult.rows[0]?.count || '0', 10);
+    const baseQueueLength = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10);
     waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries
 
     // Estimate: 20 mins per person in line
@@ -498,7 +498,7 @@ export async function buildFullSessionUpdatedPayload(
     agreementBypassPending: !!session.agreement_bypass_pending,
     agreementSignedMethod:
       session.agreement_signed_method === 'MANUAL' || session.agreement_signed_method === 'DIGITAL'
-        ? (session.agreement_signed_method as 'DIGITAL' | 'MANUAL')
+        ? session.agreement_signed_method
         : undefined,
     assignedResourceType: assignedResourceType || undefined,
     assignedResourceNumber,
@@ -516,7 +516,7 @@ export async function buildFullSessionUpdatedPayload(
     checkoutAt: blockForSession?.ends_at ? blockForSession.ends_at.toISOString() : undefined,
     renewalHours:
       session.renewal_hours === 2 || session.renewal_hours === 6
-        ? (session.renewal_hours as 2 | 6)
+        ? session.renewal_hours
         : undefined,
     ledgerLineItems,
     ledgerTotal,

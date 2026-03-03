@@ -14,10 +14,6 @@ on:
           - demo
           - production
 
-permissions:
-  contents: read
-  id-token: write
-
 env:
   NODE_VERSION: "22"
   AWS_REGION: us-east-1
@@ -134,6 +130,9 @@ jobs:
     needs: [resolve-env, build]
     runs-on: ubuntu-latest
     environment: ${{ needs.resolve-env.outputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Download SPA artifacts
         uses: actions/download-artifact@v4
