@@ -690,14 +690,14 @@ describe('PIN Login', () => {
       const staffResult = await query(`SELECT pin_hash FROM staff WHERE id = $1`, [staffStaffId]);
       const newPinHash = staffResult.rows[0]!.pin_hash;
 
-      // Try to login with new PIN
+      // Try to login with reset PIN (resetStaffPin always resets to '000000')
       const loginResponse = await fastify.inject({
         method: 'POST',
         url: '/v1/auth/login-pin',
         payload: {
           staffLookup: 'Staff User',
           deviceId: 'test-device',
-          pin: '666666',
+          pin: '000000',
         },
       });
 
