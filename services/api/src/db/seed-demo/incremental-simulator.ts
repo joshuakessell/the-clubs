@@ -241,7 +241,7 @@ export async function appendIncrementalDemoSimulation(params: {
 
   const intervalMs = 60 * 60 * 1000;
   const intervals = Math.max(1, Math.ceil(windowMs / intervalMs));
-  const maxVisits = Math.min(2500, intervals * 70);
+  const maxVisits = Math.min(30000, intervals * 70);
 
   const useLockers = params.lockers.length > 0;
 
