@@ -414,8 +414,8 @@ async function appendIncrementalDemoVisits(params: { from: Date; to: Date }): Pr
   const staff = staffRes.rows;
   const registerSessions = registerRes.rows;
 
-  const res = await transaction(async (client) =>
-    appendIncrementalDemoSimulation({
+  const res = await transaction(async (client) => {
+    const simRes = await appendIncrementalDemoSimulation({
       client,
       from: params.from,
       to: params.to,
@@ -425,8 +425,12 @@ async function appendIncrementalDemoVisits(params: { from: Date; to: Date }): Pr
       rooms,
       staff,
       registerSessions,
-    })
-  );
+    });
+    
+    await syncDemoClubEvents(client);
+    
+    return simRes;
+  });
 
   return res.visitsCreated;
 }

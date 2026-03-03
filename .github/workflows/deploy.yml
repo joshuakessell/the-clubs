@@ -85,6 +85,7 @@ jobs:
       - name: Build all packages
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_KIOSK_TOKEN: ${{ secrets.VITE_KIOSK_TOKEN }}
         run: pnpm run build
 
       - name: Typecheck

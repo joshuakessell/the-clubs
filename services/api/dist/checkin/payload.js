@@ -49,7 +49,8 @@ function extractPaymentLineItems(raw) {
         const amount = (0, utils_1.toNumber)(it['amount']);
         if (typeof description !== 'string' || amount === undefined)
             continue;
-        normalized.push({ description, amount });
+        // Note: DB stores amounts in cents; payload requires dollars for check-in UI
+        normalized.push({ description, amount: amount / 100 });
     }
     return normalized.length > 0 ? normalized : undefined;
 }
@@ -197,7 +198,8 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
        LIMIT 1`, [session.id]);
         paymentIntent = intentResult.rows[0];
     }
-    const paymentTotal = (0, utils_1.toNumber)(paymentIntent?.amount);
+    const paymentTotalRaw = (0, utils_1.toNumber)(paymentIntent?.amount);
+    const paymentTotal = paymentTotalRaw !== undefined ? paymentTotalRaw / 100 : undefined;
     const paymentLineItems = extractPaymentLineItems(session.price_quote_json) ??
         extractPaymentLineItems(paymentIntent?.quote_json);
     let ledgerLineItems;

@@ -315,17 +315,21 @@ async function appendIncrementalDemoVisits(params) {
     const rooms = roomsRes.rows;
     const staff = staffRes.rows;
     const registerSessions = registerRes.rows;
-    const res = await (0, index_1.transaction)(async (client) => (0, incremental_simulator_1.appendIncrementalDemoSimulation)({
-        client,
-        from: params.from,
-        to: params.to,
-        agreement,
-        customers,
-        lockers,
-        rooms,
-        staff,
-        registerSessions,
-    }));
+    const res = await (0, index_1.transaction)(async (client) => {
+        const simRes = await (0, incremental_simulator_1.appendIncrementalDemoSimulation)({
+            client,
+            from: params.from,
+            to: params.to,
+            agreement,
+            customers,
+            lockers,
+            rooms,
+            staff,
+            registerSessions,
+        });
+        await syncDemoClubEvents(client);
+        return simRes;
+    });
     return res.visitsCreated;
 }
 /**
