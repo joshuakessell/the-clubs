@@ -769,7 +769,7 @@ async function simulateVisits(params: {
           const cnt = lateCountByNight.get(night) ?? 0;
           if (cnt < 2) {
             lateCountByNight.set(night, cnt + 1);
-            await insertLateCheckout(client, { blockId, customerId: customer.id, lateMins, feeAmount: lateFee, banApplied: lateMins >= 60, at: end, staff, to, rng });
+            await insertLateCheckout(client, { blockId, visitId, customerId: customer.id, lateMins, feeAmount: lateFee, banApplied: lateMins >= 60, at: end, staff, to, rng });
           }
         }
       }
@@ -789,11 +789,11 @@ async function simulateVisits(params: {
       // --- Retail Orders (~24% customer-linked, ~55% anonymous) ---
       if (rng() < 0.24) {
         orderSeed++;
-        await insertOrder(client, { at: new Date(start.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: customer.id, seed: orderSeed, rng, to });
+        await insertOrder(client, { at: new Date(start.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: customer.id, visitId, seed: orderSeed, rng, to });
       }
       if (rng() < 0.55) {
         orderSeed++;
-        await insertOrder(client, { at: new Date(start.getTime() + (45 + Math.floor(rng() * 120)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: null, seed: orderSeed, rng, to });
+        await insertOrder(client, { at: new Date(start.getTime() + (45 + Math.floor(rng() * 120)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: null, visitId: null, seed: orderSeed, rng, to });
       }
 
       created++;
@@ -967,7 +967,7 @@ async function insertCheckoutRequest(client: DbClient, p: {
 // ---------------------------------------------------------------------------
 
 async function insertLateCheckout(client: DbClient, p: {
-  blockId: string; customerId: string; lateMins: number; feeAmount: number;
+  blockId: string; visitId: string; customerId: string; lateMins: number; feeAmount: number;
   banApplied: boolean; at: Date; staff: SimStaff[]; to: Date; rng: () => number;
 }): Promise<void> {
   const lateId = randomUUID();
@@ -998,7 +998,7 @@ async function insertLateCheckout(client: DbClient, p: {
       dedupeKey: `ACT:SIM:CHECKOUT_FEE_PAID:${p.blockId}`,
     });
     await insertLedgerEntry(client, {
-      at: p.at, customerId: p.customerId, visitId: '(SELECT visit_id FROM checkin_blocks WHERE id = \'' + p.blockId + '\')',
+      at: p.at, customerId: p.customerId, visitId: p.visitId,
       type: 'LATE_FEE', amount: Math.round(p.feeAmount), staffId: lateStaff.id, staffName: lateStaff.name,
       summary: 'Late checkout fee',
       metadata: { paymentIntentId: piId, lateMinutes: p.lateMins, feeAmount: p.feeAmount },
@@ -1029,7 +1029,7 @@ async function insertLateCheckout(client: DbClient, p: {
 // ---------------------------------------------------------------------------
 
 async function insertOrder(client: DbClient, p: {
-  at: Date; regSessionId: string; staffId: string; customerId: string | null;
+  at: Date; regSessionId: string; staffId: string; customerId: string | null; visitId: string | null;
   seed: number; rng: () => number; to: Date;
 }): Promise<void> {
   if (p.at > p.to) return;
@@ -1077,7 +1077,7 @@ async function insertOrder(client: DbClient, p: {
 
   if (p.customerId) {
     await insertLedgerEntry(client, {
-      at: p.at, customerId: p.customerId, visitId: orderId, type: 'ORDER_PAID', amount: total,
+      at: p.at, customerId: p.customerId, visitId: p.visitId ?? orderId, type: 'ORDER_PAID', amount: total,
       staffId: p.staffId, staffName: '', summary: 'Order paid',
       metadata: { orderId, total, currency: 'USD' }, dedupeKey: `LEDGER:SIM:ORDER_PAID:${orderId}`,
     });
@@ -1212,7 +1212,7 @@ async function seedActiveWaitlist(client: DbClient, p: {
 }): Promise<void> {
   // Check if active waitlist entries already exist
   const existing = await client.query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM waitlist WHERE status IN ('PENDING', 'OFFERED')`
+    `SELECT COUNT(*) as count FROM waitlist WHERE status IN ('ACTIVE', 'OFFERED')`
   );
   if (Number.parseInt(existing.rows[0]?.count || '0', 10) > 0) return;
 
@@ -1266,7 +1266,7 @@ async function seedActiveWaitlist(client: DbClient, p: {
 
     // Create the pending waitlist entry
     const wlId = randomUUID();
-    const status = i < 2 ? 'OFFERED' : 'PENDING';
+    const status = i < 2 ? 'OFFERED' : 'ACTIVE';
     const offeredAt = status === 'OFFERED' ? new Date(createdAt.getTime() + Math.floor(rng() * 5) * 60 * 1000) : null;
     const expiresAt = offeredAt ? new Date(offeredAt.getTime() + 10 * 60 * 1000) : null;
 
