@@ -64,7 +64,7 @@ export function RetailPanel() {
           .map((p: { id: string; name: string; price: number; category?: string }) => ({
             id: p.id,
             name: p.name,
-            price: p.price,
+            price: p.price / 100, // DB stores price_cents but returns as 'price'
             category: (p.category ?? 'RETAIL').toLowerCase(),
           }));
         setCatalog(items);
