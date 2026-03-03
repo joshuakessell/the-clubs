@@ -11,8 +11,8 @@ export interface UseSessionPollingFallbackOptions {
   laneId: string;
   /** Auth headers to include in snapshot requests. */
   authHeaders: Record<string, string>;
-  /** Called with the latest session payload when a snapshot is fetched. */
-  onSnapshot: (payload: SessionUpdatedPayload) => void;
+  /** Called with the latest session payload when a snapshot is fetched. Null if no session. */
+  onSnapshot: (payload: SessionUpdatedPayload | null) => void;
   /** Polling interval in ms. Defaults to 5000 (5s). */
   intervalMs?: number;
 }
@@ -56,8 +56,8 @@ export function useSessionPollingFallback({
         );
         if (!res.ok || cancelled) return;
         const data = await res.json();
-        if (data.session && !cancelled) {
-          onSnapshotRef.current(data.session);
+        if (!cancelled) {
+          onSnapshotRef.current(data.session || null);
         }
       } catch {
         // Network still down — will retry on next interval

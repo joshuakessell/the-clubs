@@ -57,14 +57,19 @@ export function BackupSelectionStep() {
 
   const handleSendDisclaimer = () => {
     startTransition(async () => {
-      // Advance to PAYMENT — the kiosk will show the disclaimer/upgrade
-      // notice because the session has waitlist fields set.
-      await sendFlowCommand({ type: 'SET_STEP', payload: { step: 'PAYMENT' } });
+      // Advance to WAITLIST_DISCLAIMER — the kiosk will show the disclaimer modal.
+      await sendFlowCommand({ type: 'SET_STEP', payload: { step: 'WAITLIST_DISCLAIMER' } });
     });
   };
 
   const handleBack = () => {
     startTransition(async () => {
+      // Clear waitlist intent and backup selection when backing out
+      await sendFlowCommand({
+        type: 'WAITLIST_UPDATE',
+        payload: { waitlistDesiredType: null, backupRentalType: null },
+      });
+      await new Promise((r) => setTimeout(r, 100));
       await sendFlowCommand({ type: 'BACK_STEP' });
     });
   };

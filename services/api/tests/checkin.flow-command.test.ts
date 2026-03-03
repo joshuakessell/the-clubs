@@ -605,7 +605,7 @@ describe('Check-in Flow Commands', () => {
       [sessionId]
     );
 
-    expect(updated.rows[0]!.flow_step).toBe('WAITLIST_BACKUP');
+    expect(updated.rows[0]!.flow_step).toBe('WAITLIST_DISCLAIMER');
     expect(updated.rows[0]!.payment_intent_id).toBeNull();
     expect(updated.rows[0]!.price_quote_json).toBeNull();
     expect(updated.rows[0]!.disclaimers_ack_json).toBeNull();

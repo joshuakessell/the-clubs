@@ -358,18 +358,25 @@ async function seedBusySaturdayDemo(now, progress) {
             const name = baseNames[idx];
             const dob = new Date(1980 + (idx % 25), (idx * 3) % 12, ((idx * 5) % 27) + 1);
             const idProfile = buildSeedIdProfile(idx + 1);
+            // Half active, half expired
+            const isActive = idx % 2 === 0;
+            const membershipValidUntil = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (isActive ? 90 : -30));
+            // Give every 4th member a past due balance
+            const pastDueBalance = idx % 4 === 0 ? 25 : 0;
             await client.query(`INSERT INTO customers
            (id, name, dob, membership_number, membership_card_type, membership_valid_until, id_expiration_date, id_number, id_state, id_type, id_type_other, primary_language, past_due_balance, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, NULL, NULL, $5, $6, $7, $8, $9, 'EN', 0, NOW(), NOW())`, [
+           VALUES ($1, $2, $3, $4, 'SIX_MONTH', $5, $6, $7, $8, $9, $10, 'EN', $11, NOW(), NOW())`, [
                 id,
                 name,
                 dob,
                 membershipNumber,
+                membershipValidUntil.toISOString(),
                 idProfile.idExpirationDate,
                 idProfile.idNumber,
                 idProfile.idState,
                 idProfile.idType,
                 idProfile.idTypeOther,
+                pastDueBalance,
             ]);
             customerIds.push(id);
             customerProfileById.set(id, { name, dob, membershipNumber });

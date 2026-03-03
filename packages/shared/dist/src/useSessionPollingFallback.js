@@ -28,8 +28,8 @@ export function useSessionPollingFallback({ sseConnected, hasActiveSession, lane
                 if (!res.ok || cancelled)
                     return;
                 const data = await res.json();
-                if (data.session && !cancelled) {
-                    onSnapshotRef.current(data.session);
+                if (!cancelled) {
+                    onSnapshotRef.current(data.session || null);
                 }
             }
             catch {

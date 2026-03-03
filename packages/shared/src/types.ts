@@ -233,6 +233,7 @@ export interface SessionUpdatedPayload {
     | 'RENTAL'
     | 'WAITLIST_PREFERENCES'
     | 'WAITLIST_BACKUP'
+    | 'WAITLIST_DISCLAIMER'
     | 'PAYMENT'
     | 'AGREEMENT'
     | 'COMPLETE';
@@ -246,6 +247,7 @@ export type CheckinFlowStep =
   | 'RENTAL'
   | 'WAITLIST_PREFERENCES'
   | 'WAITLIST_BACKUP'
+  | 'WAITLIST_DISCLAIMER'
   | 'PAYMENT'
   | 'AGREEMENT'
   | 'COMPLETE';

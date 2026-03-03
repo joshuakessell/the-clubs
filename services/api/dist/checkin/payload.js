@@ -49,8 +49,7 @@ function extractPaymentLineItems(raw) {
         const amount = (0, utils_1.toNumber)(it['amount']);
         if (typeof description !== 'string' || amount === undefined)
             continue;
-        // Note: DB stores amounts in cents; payload requires dollars for check-in UI
-        normalized.push({ description, amount: amount / 100 });
+        normalized.push({ description, amount });
     }
     return normalized.length > 0 ? normalized : undefined;
 }
@@ -61,7 +60,7 @@ function formatChargeDescription(type) {
         case 'LATE_FEE':
             return 'Late Fee';
         default:
-            return type.replace(/_/g, ' ');
+            return type.replaceAll('_', ' ');
     }
 }
 function normalizeCustomerIdType(value) {
@@ -80,8 +79,8 @@ function isGymLockerEligible(membershipNumber) {
     if (!rangesEnv.trim()) {
         return false;
     }
-    const membershipNum = parseInt(membershipNumber, 10);
-    if (isNaN(membershipNum)) {
+    const membershipNum = Number.parseInt(membershipNumber, 10);
+    if (Number.isNaN(membershipNum)) {
         return false;
     }
     const ranges = rangesEnv
@@ -90,9 +89,9 @@ function isGymLockerEligible(membershipNumber) {
         .filter(Boolean);
     for (const range of ranges) {
         const [startStr, endStr] = range.split('-').map((s) => s.trim());
-        const start = parseInt(startStr || '', 10);
-        const end = parseInt(endStr || '', 10);
-        if (!isNaN(start) && !isNaN(end) && membershipNum >= start && membershipNum <= end) {
+        const start = Number.parseInt(startStr || '', 10);
+        const end = Number.parseInt(endStr || '', 10);
+        if (!Number.isNaN(start) && !Number.isNaN(end) && membershipNum >= start && membershipNum <= end) {
             return true;
         }
     }
@@ -174,18 +173,7 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
         }
     }
     let assignedResourceType = session.assigned_resource_type;
-    let assignedResourceNumber;
-    if (session.assigned_resource_id && assignedResourceType) {
-        if (assignedResourceType === 'room') {
-            const roomResult = await client.query(`SELECT number FROM rooms WHERE id = $1 LIMIT 1`, [session.assigned_resource_id]);
-            assignedResourceNumber = roomResult.rows[0]?.number;
-        }
-        else if (assignedResourceType === 'locker') {
-            const lockerResult = await client.query(`SELECT number FROM lockers WHERE id = $1 LIMIT 1`, [session.assigned_resource_id]);
-            assignedResourceNumber = lockerResult.rows[0]?.number;
-        }
-    }
-    // Payment intent: prefer the one pinned on the session, otherwise latest for session
+    const assignedResourceNumber = await fetchAssignedResourceNumber(client, assignedResourceType, session.assigned_resource_id);
     let paymentIntent;
     if (session.payment_intent_id) {
         const intentResult = await client.query(`SELECT * FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]);
@@ -199,163 +187,23 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
         paymentIntent = intentResult.rows[0];
     }
     const paymentTotalRaw = (0, utils_1.toNumber)(paymentIntent?.amount);
-    const paymentTotal = paymentTotalRaw !== undefined ? paymentTotalRaw / 100 : undefined;
+    const paymentTotal = paymentTotalRaw ?? undefined;
     const paymentLineItems = extractPaymentLineItems(session.price_quote_json) ??
         extractPaymentLineItems(paymentIntent?.quote_json);
     let ledgerLineItems;
     let ledgerTotal;
-    if (session.checkin_mode === 'RENEWAL') {
-        const ledgerVisitId = blockForSession?.visit_id || activeVisitId;
-        if (ledgerVisitId) {
-            const ledgerItems = [];
-            let total = 0;
-            const paidIntents = await client.query(`SELECT pi.quote_json, pi.amount
-         FROM payment_intents pi
-         JOIN lane_sessions ls ON ls.id = pi.lane_session_id
-         JOIN checkin_blocks cb ON cb.session_id = ls.id
-         WHERE cb.visit_id = $1
-           AND pi.status = 'PAID'
-           AND pi.paid_at >= date_trunc('day', NOW())`, [ledgerVisitId]);
-            for (const intent of paidIntents.rows) {
-                const items = extractPaymentLineItems(intent.quote_json);
-                if (items && items.length > 0) {
-                    for (const item of items) {
-                        ledgerItems.push(item);
-                        total += item.amount;
-                    }
-                    continue;
-                }
-                const amount = (0, utils_1.toNumber)(intent.amount);
-                if (amount !== undefined) {
-                    ledgerItems.push({ description: 'Check-in', amount });
-                    total += amount;
-                }
-            }
-            const charges = await client.query(`SELECT type, amount
-         FROM charges
-         WHERE visit_id = $1
-           AND created_at >= date_trunc('day', NOW())`, [ledgerVisitId]);
-            for (const charge of charges.rows) {
-                const amount = (0, utils_1.toNumber)(charge.amount);
-                if (amount === undefined)
-                    continue;
-                ledgerItems.push({ description: formatChargeDescription(charge.type), amount });
-                total += amount;
-            }
-            ledgerLineItems = ledgerItems;
-            ledgerTotal = total;
-        }
-    }
-    else if (session.checkin_mode === 'CHECKIN') {
-        // Build ledger line items for new check-ins (all non-terminal statuses):
-        //   1. Past Due Balance (if any)
-        //   2. Membership Fee (for non-members)
-        //   3. Rental Cost (when rental type is selected)
-        //   4. DB charges (upgrade fees, late fees, etc.)
-        const items = [];
-        let total = 0;
-        // 1. Past Due Balance (already in dollars from DB)
-        if (pastDueBalance > 0) {
-            items.push({ description: 'Past Due Balance', amount: pastDueBalance });
-            total += pastDueBalance;
-        }
-        if (paymentLineItems) {
-            for (const item of paymentLineItems) {
-                items.push(item);
-                total += item.amount;
-            }
-        }
-        else {
-            // 2. Membership Fee (non-members only)
-            const membershipCardType = customer?.membership_card_type;
-            const membershipValidUntilRaw = (0, utils_1.toDate)(customer?.membership_valid_until);
-            const hasMembership = !!membershipNumber ||
-                (membershipCardType === 'SIX_MONTH' &&
-                    membershipValidUntilRaw != null &&
-                    new Date() <= membershipValidUntilRaw);
-            if (!hasMembership) {
-                if (session.membership_choice === 'SIX_MONTH') {
-                    items.push({ description: '6-Month Membership', amount: 43 });
-                    total += 43;
-                }
-                else {
-                    items.push({ description: 'Membership Fee', amount: 13 });
-                    total += 13;
-                }
-            }
-            // 3. Rental Cost (simplified preview price — exact price at payment time)
-            const isWaitlisted = !!session.waitlist_desired_type;
-            const rentalType = isWaitlisted ? session.backup_rental_type : session.proposed_rental_type;
-            if (rentalType && (session.selection_confirmed || isWaitlisted)) {
-                const rentalLabel = {
-                    LOCKER: 'Locker',
-                    STANDARD: 'Standard Room',
-                    DOUBLE: 'Double Room',
-                    SPECIAL: 'Special Room',
-                    GYM_LOCKER: 'Gym Locker',
-                };
-                // Simplified base prices in dollars (weekday non-discount defaults)
-                const rentalPrice = {
-                    LOCKER: 17,
-                    STANDARD: 30,
-                    DOUBLE: 40,
-                    SPECIAL: 50,
-                    GYM_LOCKER: 0,
-                };
-                const label = rentalLabel[rentalType] ?? rentalType;
-                const price = rentalPrice[rentalType] ?? 0;
-                if (price > 0) {
-                    items.push({ description: label, amount: price });
-                    total += price;
-                }
-                // Add the waitlisted desired type as a separate line (informational, $0)
-                if (isWaitlisted && session.waitlist_desired_type) {
-                    const desiredLabel = rentalLabel[session.waitlist_desired_type] ?? session.waitlist_desired_type;
-                    items.push({ description: `${desiredLabel} (waitlist)`, amount: 0 });
-                }
-            }
-        }
-        // 4. DB charges (upgrade fees, late fees, etc.) for this visit
-        const checkinVisitId = blockForSession?.visit_id || activeVisitId;
-        if (checkinVisitId) {
-            const charges = await client.query(`SELECT type, amount
-         FROM charges
-         WHERE visit_id = $1
-           AND created_at >= date_trunc('day', NOW())`, [checkinVisitId]);
-            for (const charge of charges.rows) {
-                const amount = (0, utils_1.toNumber)(charge.amount);
-                if (amount === undefined)
-                    continue;
-                items.push({ description: formatChargeDescription(charge.type), amount });
-                total += amount;
-            }
-        }
-        if (items.length > 0) {
-            ledgerLineItems = items;
-            ledgerTotal = total;
-        }
-    }
+    const { ledgerItems, total } = await buildLedgerLineItems(client, session, customer, pastDueBalance, paymentLineItems, blockForSession?.visit_id || activeVisitId);
+    ledgerLineItems = ledgerItems.length > 0 ? ledgerItems : undefined;
+    ledgerTotal = total > 0 ? total : undefined;
     const membershipValidUntilRaw = customer?.membership_valid_until;
-    const customerMembershipValidUntil = membershipValidUntilRaw instanceof Date
-        ? membershipValidUntilRaw.toISOString().slice(0, 10)
-        : typeof membershipValidUntilRaw === 'string'
-            ? membershipValidUntilRaw
-            : undefined;
-    let waitlistPosition;
-    let waitlistEstimatedReadyAt;
-    if (session.waitlist_desired_type) {
-        const allDesiredTypes = extractWaitlistDesiredTypes(session.waitlist_desired_types_json) || [session.waitlist_desired_type];
-        const queueLengthResult = await client.query(`SELECT COUNT(*) as count 
-       FROM waitlist
-       WHERE status IN ('ACTIVE', 'OFFERED')
-       AND desired_tier = ANY($1::rental_type[])`, [allDesiredTypes]);
-        const baseQueueLength = parseInt(queueLengthResult.rows[0]?.count || '0', 10);
-        waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries
-        // Estimate: 20 mins per person in line
-        const estimatedWaitMinutes = waitlistPosition * 20;
-        const readyAt = new Date(Date.now() + estimatedWaitMinutes * 60000);
-        waitlistEstimatedReadyAt = readyAt.toISOString();
+    let customerMembershipValidUntil;
+    if (membershipValidUntilRaw instanceof Date) {
+        customerMembershipValidUntil = membershipValidUntilRaw.toISOString().slice(0, 10);
     }
+    else if (typeof membershipValidUntilRaw === 'string') {
+        customerMembershipValidUntil = membershipValidUntilRaw;
+    }
+    const { waitlistPosition, waitlistEstimatedReadyAt } = await fetchWaitlistEstimates(client, session.waitlist_desired_type, session.waitlist_desired_types_json);
     const payload = {
         sessionId: session.id,
         customerId: session.customer_id ?? undefined,
@@ -433,4 +281,148 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
         flowLastCommandId: session.flow_last_command_id ?? undefined,
     };
     return { laneId, payload };
+}
+async function buildLedgerLineItems(client, session, customer, pastDueBalance, paymentLineItems, checkinVisitId) {
+    const ledgerItems = [];
+    let total = 0;
+    if (session.checkin_mode === 'RENEWAL') {
+        if (checkinVisitId) {
+            const paidIntents = await client.query(`SELECT pi.quote_json, pi.amount
+         FROM payment_intents pi
+         JOIN lane_sessions ls ON ls.id = pi.lane_session_id
+         JOIN checkin_blocks cb ON cb.session_id = ls.id
+         WHERE cb.visit_id = $1
+           AND pi.status = 'PAID'
+           AND pi.paid_at >= date_trunc('day', NOW())`, [checkinVisitId]);
+            for (const intent of paidIntents.rows) {
+                const items = extractPaymentLineItems(intent.quote_json);
+                if (items && items.length > 0) {
+                    for (const item of items) {
+                        ledgerItems.push(item);
+                        total += item.amount;
+                    }
+                    continue;
+                }
+                const amount = (0, utils_1.toNumber)(intent.amount);
+                if (amount !== undefined) {
+                    ledgerItems.push({ description: 'Check-in', amount });
+                    total += amount;
+                }
+            }
+            const charges = await client.query(`SELECT type, amount
+         FROM charges
+         WHERE visit_id = $1
+           AND created_at >= date_trunc('day', NOW())`, [checkinVisitId]);
+            for (const charge of charges.rows) {
+                const amount = (0, utils_1.toNumber)(charge.amount);
+                if (amount === undefined)
+                    continue;
+                ledgerItems.push({ description: formatChargeDescription(charge.type), amount });
+                total += amount;
+            }
+        }
+    }
+    else if (session.checkin_mode === 'CHECKIN') {
+        if (pastDueBalance > 0) {
+            ledgerItems.push({ description: 'Past Due Balance', amount: pastDueBalance });
+            total += pastDueBalance;
+        }
+        if (paymentLineItems) {
+            for (const item of paymentLineItems) {
+                ledgerItems.push(item);
+                total += item.amount;
+            }
+        }
+        else {
+            const membershipCardType = customer?.membership_card_type;
+            const membershipValidUntilRaw = (0, utils_1.toDate)(customer?.membership_valid_until);
+            const membershipNumber = customer?.membership_number || session.membership_number;
+            const hasMembership = !!membershipNumber ||
+                (membershipCardType === 'SIX_MONTH' &&
+                    membershipValidUntilRaw != null &&
+                    new Date() <= membershipValidUntilRaw);
+            if (!hasMembership) {
+                if (session.membership_choice === 'SIX_MONTH') {
+                    ledgerItems.push({ description: '6-Month Membership', amount: 43 });
+                    total += 43;
+                }
+                else {
+                    ledgerItems.push({ description: 'Membership Fee', amount: 13 });
+                    total += 13;
+                }
+            }
+            const isWaitlisted = !!session.waitlist_desired_type;
+            const rentalType = isWaitlisted ? session.backup_rental_type : session.proposed_rental_type;
+            if (rentalType && (session.selection_confirmed || isWaitlisted)) {
+                const rentalLabel = {
+                    LOCKER: 'Locker',
+                    STANDARD: 'Standard Room',
+                    DOUBLE: 'Double Room',
+                    SPECIAL: 'Special Room',
+                    GYM_LOCKER: 'Gym Locker',
+                };
+                const rentalPrice = {
+                    LOCKER: 17,
+                    STANDARD: 30,
+                    DOUBLE: 40,
+                    SPECIAL: 50,
+                    GYM_LOCKER: 0,
+                };
+                const label = rentalLabel[rentalType] ?? rentalType;
+                const price = rentalPrice[rentalType] ?? 0;
+                if (price > 0) {
+                    ledgerItems.push({ description: label, amount: price });
+                    total += price;
+                }
+                if (isWaitlisted && session.waitlist_desired_type) {
+                    const desiredLabel = rentalLabel[session.waitlist_desired_type] ?? session.waitlist_desired_type;
+                    ledgerItems.push({ description: `${desiredLabel} (waitlist)`, amount: 0 });
+                }
+            }
+        }
+        if (checkinVisitId) {
+            const charges = await client.query(`SELECT type, amount
+         FROM charges
+         WHERE visit_id = $1
+           AND created_at >= date_trunc('day', NOW())`, [checkinVisitId]);
+            for (const charge of charges.rows) {
+                const amount = (0, utils_1.toNumber)(charge.amount);
+                if (amount === undefined)
+                    continue;
+                ledgerItems.push({ description: formatChargeDescription(charge.type), amount });
+                total += amount;
+            }
+        }
+    }
+    return { ledgerItems, total };
+}
+async function fetchAssignedResourceNumber(client, resourceType, resourceId) {
+    if (!resourceId || !resourceType)
+        return undefined;
+    if (resourceType === 'room') {
+        const roomResult = await client.query(`SELECT number FROM rooms WHERE id = $1 LIMIT 1`, [resourceId]);
+        return roomResult.rows[0]?.number;
+    }
+    if (resourceType === 'locker') {
+        const lockerResult = await client.query(`SELECT number FROM lockers WHERE id = $1 LIMIT 1`, [resourceId]);
+        return lockerResult.rows[0]?.number;
+    }
+    return undefined;
+}
+async function fetchWaitlistEstimates(client, desiredType, desiredTypesJson) {
+    if (!desiredType)
+        return {};
+    const allDesiredTypes = extractWaitlistDesiredTypes(desiredTypesJson) || [desiredType];
+    const queueLengthResult = await client.query(`SELECT COUNT(*) as count 
+     FROM waitlist
+     WHERE status IN ('ACTIVE', 'OFFERED')
+     AND desired_tier = ANY($1::rental_type[])`, [allDesiredTypes]);
+    const baseQueueLength = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10);
+    const waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries
+    const estimatedWaitMinutes = waitlistPosition * 20;
+    const readyAt = new Date(Date.now() + estimatedWaitMinutes * 60000);
+    return {
+        waitlistPosition,
+        waitlistEstimatedReadyAt: readyAt.toISOString()
+    };
 }

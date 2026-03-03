@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.appendIncrementalDemoSimulation = appendIncrementalDemoSimulation;
-const crypto_1 = require("crypto");
+const node_crypto_1 = require("node:crypto");
 function seededRng(seed) {
     return () => {
-        seed |= 0;
-        seed = (seed + 0x6d2b79f5) | 0;
+        seed = Math.trunc(seed);
+        seed = Math.trunc(seed + 0x6d2b79f5);
         let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
         t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
         return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -20,7 +20,7 @@ function pickWeighted(rng, items) {
         if (roll <= acc)
             return it.item;
     }
-    return items[items.length - 1].item;
+    return items.at(-1).item;
 }
 function clamp(n, min, max) {
     return Math.max(min, Math.min(max, n));
@@ -117,7 +117,7 @@ function checkinPrice(rentalType) {
 }
 /** Get the night key (YYYY-MM-DD) for a date, treating 0:00-5:59 as previous day's night */
 function nightKey(d) {
-    const adjusted = new Date(d.getTime());
+    const adjusted = new Date(d);
     if (adjusted.getHours() < 6) {
         adjusted.setDate(adjusted.getDate() - 1);
     }
@@ -159,7 +159,7 @@ function generateNewCustomerData(rng, now) {
     const idState = ID_STATES[Math.floor(rng() * ID_STATES.length)];
     const idExpirationDate = new Date(now.getFullYear() + 2 + Math.floor(rng() * 4), Math.floor(rng() * 12), 1 + Math.floor(rng() * 27));
     return {
-        id: (0, crypto_1.randomUUID)(),
+        id: (0, node_crypto_1.randomUUID)(),
         name,
         dob,
         membershipNumber: null, // new customers are always guests
@@ -167,6 +167,7 @@ function generateNewCustomerData(rng, now) {
         idType: 'DRIVERS_LICENSE',
         idState,
         idExpirationDate,
+        membership_valid_until: null,
     };
 }
 async function appendIncrementalDemoSimulation(params) {
@@ -177,7 +178,7 @@ async function appendIncrementalDemoSimulation(params) {
     const rng = seededRng(rngSeed);
     const intervalMs = 60 * 60 * 1000;
     const intervals = Math.max(1, Math.ceil(windowMs / intervalMs));
-    const maxVisits = Math.min(2500, intervals * 70);
+    const maxVisits = Math.min(30000, intervals * 70);
     const useLockers = params.lockers.length > 0;
     // Track which customers received at least one visit in this simulation window
     const touchedCustomerIds = new Set();
@@ -238,22 +239,27 @@ async function appendIncrementalDemoSimulation(params) {
              (id, name, dob, membership_number, id_number, id_type, id_state, id_expiration_date, primary_language, past_due_balance, created_at, updated_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'EN', 0, $9, $9)`, [newCust.id, newCust.name, newCust.dob, newCust.membershipNumber,
                     newCust.idNumber, newCust.idType, newCust.idState, newCust.idExpirationDate, start]);
-                customer = { id: newCust.id, name: newCust.name, membership_number: null, dob: newCust.dob };
+                customer = {
+                    id: newCust.id,
+                    name: newCust.name,
+                    membership_number: null,
+                    membership_valid_until: null,
+                    dob: newCust.dob,
+                };
                 params.customers.push(customer); // add to pool for future returning visits
             }
             touchedCustomerIds.add(customer.id);
             const register = params.registerSessions[(customerIndex + j) % params.registerSessions.length];
             const staffMember = params.staff.find((s) => s.id === register.employee_id) ?? params.staff[0];
-            const visitId = (0, crypto_1.randomUUID)();
-            const checkinBlockId = (0, crypto_1.randomUUID)();
+            const visitId = (0, node_crypto_1.randomUUID)();
+            const checkinBlockId = (0, node_crypto_1.randomUUID)();
             let lockerId = null;
             let roomId = null;
             let rentalType = 'LOCKER';
             const preferLocker = useLockers && rng() < 0.62;
-            if (preferLocker) {
+            if (preferLocker || (!preferLocker && params.rooms.length === 0 && useLockers)) {
                 const locker = params.lockers[lockerIndex++ % params.lockers.length];
                 lockerId = locker.id;
-                rentalType = 'LOCKER';
             }
             else if (params.rooms.length > 0) {
                 const room = params.rooms[roomIndex++ % params.rooms.length];
@@ -262,11 +268,6 @@ async function appendIncrementalDemoSimulation(params) {
                     room.type === 'DOUBLE' || room.type === 'SPECIAL' || room.type === 'STANDARD'
                         ? room.type
                         : 'STANDARD';
-            }
-            else if (useLockers) {
-                const locker = params.lockers[lockerIndex++ % params.lockers.length];
-                lockerId = locker.id;
-                rentalType = 'LOCKER';
             }
             await params.client.query(`INSERT INTO visits (id, started_at, ended_at, customer_id, created_at, updated_at)
          VALUES ($1, $2, $3, $4, NOW(), NOW())`, [visitId, start, end, customer.id]);
@@ -333,10 +334,13 @@ async function appendIncrementalDemoSimulation(params) {
             ]);
             // Rental fee spend ledger entry — every visit has a rental charge
             const rentalPrice = checkinPrice(rentalType);
-            const rentalLabel = rentalType === 'LOCKER' ? 'Locker Rental'
-                : rentalType === 'DOUBLE' ? 'Double Room Rental'
-                    : rentalType === 'SPECIAL' ? 'Special Room Rental'
-                        : 'Standard Room Rental';
+            let rentalLabel = 'Standard Room Rental';
+            if (rentalType === 'LOCKER')
+                rentalLabel = 'Locker Rental';
+            else if (rentalType === 'DOUBLE')
+                rentalLabel = 'Double Room Rental';
+            else if (rentalType === 'SPECIAL')
+                rentalLabel = 'Special Room Rental';
             await params.client.query(`INSERT INTO customer_spend_ledger_entries
            (occurred_at, customer_id, visit_id, entry_type, amount, currency,
             source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
@@ -348,9 +352,10 @@ async function appendIncrementalDemoSimulation(params) {
                 { rentalType, price: rentalPrice },
                 `LEDGER:DEMO:RENTAL_FEE:${checkinBlockId}`,
             ]);
-            // Membership fee for non-members ($10)
-            if (!customer.membership_number) {
-                const membershipPrice = 10;
+            // Membership fee ($13) if no valid 6-month membership
+            const hasValidMembership = customer.membership_valid_until && new Date(customer.membership_valid_until) >= start;
+            if (!hasValidMembership) {
+                const membershipPrice = 13;
                 await params.client.query(`INSERT INTO customer_spend_ledger_entries
              (occurred_at, customer_id, visit_id, entry_type, amount, currency,
               source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
@@ -439,7 +444,7 @@ async function appendIncrementalDemoSimulation(params) {
                 }
             }
             // --- Payment intents for ~30% of visits ---
-            if (rng() < 0.30) {
+            if (rng() < 0.3) {
                 paymentEvents.push({
                     visitId,
                     checkinBlockId,
@@ -487,7 +492,7 @@ async function appendIncrementalDemoSimulation(params) {
          (id, agreement_id, customer_name, membership_number, signed_at,
           agreement_text_snapshot, agreement_version, checkin_block_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
-                (0, crypto_1.randomUUID)(),
+                (0, node_crypto_1.randomUUID)(),
                 params.agreement.id,
                 customer.name,
                 customer.membership_number,
@@ -522,12 +527,13 @@ async function appendIncrementalDemoSimulation(params) {
             const end = new Date(scheduledEnd.getTime() - checkoutDeltaMinutes * 60 * 1000);
             if (end <= start || end > params.to)
                 continue;
-            const visitId = (0, crypto_1.randomUUID)();
-            const checkinBlockId = (0, crypto_1.randomUUID)();
+            const visitId = (0, node_crypto_1.randomUUID)();
+            const checkinBlockId = (0, node_crypto_1.randomUUID)();
             let lockerId = null;
             let roomId = null;
             let rentalType = 'LOCKER';
-            if (useLockers && rng() < 0.62) {
+            const preferLocker = useLockers && rng() < 0.62;
+            if (preferLocker || (!preferLocker && params.rooms.length === 0 && useLockers)) {
                 const locker = params.lockers[lockerIndex++ % params.lockers.length];
                 lockerId = locker.id;
             }
@@ -536,10 +542,6 @@ async function appendIncrementalDemoSimulation(params) {
                 roomId = room.id;
                 rentalType = room.type === 'DOUBLE' || room.type === 'SPECIAL' || room.type === 'STANDARD'
                     ? room.type : 'STANDARD';
-            }
-            else if (useLockers) {
-                const locker = params.lockers[lockerIndex++ % params.lockers.length];
-                lockerId = locker.id;
             }
             await params.client.query(`INSERT INTO visits (id, started_at, ended_at, customer_id, created_at, updated_at)
          VALUES ($1, $2, $3, $4, NOW(), NOW())`, [visitId, start, end, customer.id]);
@@ -552,7 +554,7 @@ async function appendIncrementalDemoSimulation(params) {
          (id, agreement_id, customer_name, membership_number, signed_at,
           agreement_text_snapshot, agreement_version, checkin_block_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [
-                (0, crypto_1.randomUUID)(), params.agreement.id, customer.name, customer.membership_number,
+                (0, node_crypto_1.randomUUID)(), params.agreement.id, customer.name, customer.membership_number,
                 signedAt, params.agreement.body_text, params.agreement.version, checkinBlockId,
             ]);
             // Checkin activity events
@@ -593,10 +595,13 @@ async function appendIncrementalDemoSimulation(params) {
             ]);
             // Rental fee spend ledger entry
             const rentalPrice = checkinPrice(rentalType);
-            const rentalLabel = rentalType === 'LOCKER' ? 'Locker Rental'
-                : rentalType === 'DOUBLE' ? 'Double Room Rental'
-                    : rentalType === 'SPECIAL' ? 'Special Room Rental'
-                        : 'Standard Room Rental';
+            let rentalLabel = 'Standard Room Rental';
+            if (rentalType === 'LOCKER')
+                rentalLabel = 'Locker Rental';
+            else if (rentalType === 'DOUBLE')
+                rentalLabel = 'Double Room Rental';
+            else if (rentalType === 'SPECIAL')
+                rentalLabel = 'Special Room Rental';
             await params.client.query(`INSERT INTO customer_spend_ledger_entries
            (occurred_at, customer_id, visit_id, entry_type, amount, currency,
             source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
@@ -608,9 +613,10 @@ async function appendIncrementalDemoSimulation(params) {
                 { rentalType, price: rentalPrice },
                 `LEDGER:DEMO:G:RENTAL_FEE:${checkinBlockId}`,
             ]);
-            // Membership fee for non-members
-            if (!customer.membership_number) {
-                const membershipPrice = 10;
+            // Membership fee ($13) if no valid 6-month membership
+            const hasValidMembership = customer.membership_valid_until && new Date(customer.membership_valid_until) >= start;
+            if (!hasValidMembership) {
+                const membershipPrice = 13;
                 await params.client.query(`INSERT INTO customer_spend_ledger_entries
              (occurred_at, customer_id, visit_id, entry_type, amount, currency,
               source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
@@ -625,8 +631,8 @@ async function appendIncrementalDemoSimulation(params) {
             }
             const price = rentalPrice;
             // Payment intent + charge for the checkin fee
-            const paymentIntentId = (0, crypto_1.randomUUID)();
-            const chargeId = (0, crypto_1.randomUUID)();
+            const paymentIntentId = (0, node_crypto_1.randomUUID)();
+            const chargeId = (0, node_crypto_1.randomUUID)();
             await params.client.query(`INSERT INTO payment_intents
            (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
          VALUES ($1, $2, 0, 'PAID', $3, $4, $4, $4)`, [paymentIntentId, price, { type: 'CHECKIN', rentalType, price }, signedAt]);
@@ -678,7 +684,7 @@ async function appendIncrementalDemoSimulation(params) {
             await params.client.query(`INSERT INTO customer_notes
            (id, customer_id, created_at, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
          VALUES ($1, $2::uuid, $3, $4::uuid, $5, 'EMPLOYEE_REGISTER', $6, true)`, [
-                (0, crypto_1.randomUUID)(),
+                (0, node_crypto_1.randomUUID)(),
                 ev.customer.id,
                 noteAt,
                 ev.staffId,
@@ -708,7 +714,7 @@ async function appendIncrementalDemoSimulation(params) {
             ]);
         }
         // ~10% additional staff notes for general interactions
-        if (rng() < 0.10) {
+        if (rng() < 0.1) {
             const generalNotes = [
                 'Guest requested extra towels',
                 'Regular customer — VIP treatment',
@@ -724,7 +730,7 @@ async function appendIncrementalDemoSimulation(params) {
             );
             await params.client.query(`INSERT INTO customer_notes
            (id, customer_id, created_at, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
-         VALUES ($1, $2::uuid, $3, $4::uuid, $5, 'EMPLOYEE_REGISTER', $6, false)`, [(0, crypto_1.randomUUID)(), ev.customer.id, noteAt, ev.staffId, ev.staffName, noteText]);
+         VALUES ($1, $2::uuid, $3, $4::uuid, $5, 'EMPLOYEE_REGISTER', $6, false)`, [(0, node_crypto_1.randomUUID)(), ev.customer.id, noteAt, ev.staffId, ev.staffName, noteText]);
             await params.client.query(`
         INSERT INTO customer_activity_events
           (occurred_at, customer_id, action_type, action_category, source_app,
@@ -783,8 +789,8 @@ async function appendIncrementalDemoSimulation(params) {
     for (const ce of cleaningEvents) {
         if (ce.completedAt > params.to)
             continue;
-        const eventId1 = (0, crypto_1.randomUUID)();
-        const eventId2 = (0, crypto_1.randomUUID)();
+        const eventId1 = (0, node_crypto_1.randomUUID)();
+        const eventId2 = (0, node_crypto_1.randomUUID)();
         await params.client.query(`INSERT INTO cleaning_events
          (id, room_id, staff_id, started_at, completed_at, from_status, to_status, override_flag, device_id, created_at)
        VALUES
@@ -796,7 +802,7 @@ async function appendIncrementalDemoSimulation(params) {
     for (const wl of waitlistEvents) {
         if (wl.completedAt > params.to)
             continue;
-        const waitlistId = (0, crypto_1.randomUUID)();
+        const waitlistId = (0, node_crypto_1.randomUUID)();
         await params.client.query(`INSERT INTO waitlist
          (id, visit_id, checkin_block_id, desired_tier, backup_tier, room_id,
           status, created_at, updated_at, offered_at, offer_expires_at,
@@ -821,7 +827,7 @@ async function appendIncrementalDemoSimulation(params) {
           created_at, expires_at, released_at, release_reason)
        VALUES ($1, 'room'::inventory_resource_type, $2, 'UPGRADE_HOLD'::inventory_reservation_kind,
                $3, $4, $5, $6, 'waitlist_completed')`, [
-            (0, crypto_1.randomUUID)(),
+            (0, node_crypto_1.randomUUID)(),
             wl.roomId,
             waitlistId,
             wl.offeredAt,
@@ -833,10 +839,10 @@ async function appendIncrementalDemoSimulation(params) {
     for (const ug of upgradeEvents) {
         if (ug.upgradeAt > params.to)
             continue;
-        const renewalBlockId = (0, crypto_1.randomUUID)();
-        const waitlistId = (0, crypto_1.randomUUID)();
-        const paymentIntentId = (0, crypto_1.randomUUID)();
-        const chargeId = (0, crypto_1.randomUUID)();
+        const renewalBlockId = (0, node_crypto_1.randomUUID)();
+        const waitlistId = (0, node_crypto_1.randomUUID)();
+        const paymentIntentId = (0, node_crypto_1.randomUUID)();
+        const chargeId = (0, node_crypto_1.randomUUID)();
         const upgradeRentalType = ug.roomType;
         // Waitlist entry for the upgrade — must be inserted BEFORE checkin_blocks
         // because checkin_blocks.waitlist_id references waitlist(id).
@@ -879,7 +885,7 @@ async function appendIncrementalDemoSimulation(params) {
           created_at, expires_at, released_at, release_reason)
        VALUES ($1, 'room'::inventory_resource_type, $2, 'UPGRADE_HOLD'::inventory_reservation_kind,
                $3, $4, $5, $6, 'upgrade_completed')`, [
-            (0, crypto_1.randomUUID)(),
+            (0, node_crypto_1.randomUUID)(),
             ug.roomId,
             waitlistId,
             new Date(ug.upgradeAt.getTime() - 3 * 60 * 1000),
@@ -1007,8 +1013,8 @@ async function appendIncrementalDemoSimulation(params) {
     for (const pe of paymentEvents) {
         if (pe.paidAt > params.to)
             continue;
-        const paymentIntentId = (0, crypto_1.randomUUID)();
-        const chargeId = (0, crypto_1.randomUUID)();
+        const paymentIntentId = (0, node_crypto_1.randomUUID)();
+        const chargeId = (0, node_crypto_1.randomUUID)();
         const price = checkinPrice(pe.rentalType);
         await params.client.query(`INSERT INTO payment_intents
          (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
@@ -1036,7 +1042,7 @@ async function appendIncrementalDemoSimulation(params) {
     for (const cr of checkoutRequestEvents) {
         if (cr.completedAt > params.to)
             continue;
-        const crId = (0, crypto_1.randomUUID)();
+        const crId = (0, node_crypto_1.randomUUID)();
         await params.client.query(`INSERT INTO checkout_requests
          (id, occupancy_id, kiosk_device_id, customer_id, status,
           customer_checklist_json, late_minutes, late_fee_amount,
@@ -1062,7 +1068,7 @@ async function appendIncrementalDemoSimulation(params) {
     for (const le of lateCheckoutEvents) {
         if (le.createdAt > params.to)
             continue;
-        const lateEventId = (0, crypto_1.randomUUID)();
+        const lateEventId = (0, node_crypto_1.randomUUID)();
         await params.client.query(`INSERT INTO late_checkout_events
          (id, occupancy_id, checkout_request_id, late_minutes, fee_amount,
           ban_applied, created_at, customer_id)
@@ -1078,8 +1084,8 @@ async function appendIncrementalDemoSimulation(params) {
         ]);
         // Charge + payment intent for late fee
         if (le.feeAmount > 0) {
-            const paymentIntentId = (0, crypto_1.randomUUID)();
-            const chargeId = (0, crypto_1.randomUUID)();
+            const paymentIntentId = (0, node_crypto_1.randomUUID)();
+            const chargeId = (0, node_crypto_1.randomUUID)();
             const feeAmount = Math.round(le.feeAmount);
             await params.client.query(`INSERT INTO payment_intents
            (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
@@ -1152,7 +1158,7 @@ async function appendIncrementalDemoSimulation(params) {
         }
         // BAN_APPROVED / BAN_DENIED activity events (for bans applied due to ≥60 min late)
         if (le.banApplied) {
-            const banDecision = rng() < 0.80 ? 'BAN_APPROVED' : 'BAN_DENIED';
+            const banDecision = rng() < 0.8 ? 'BAN_APPROVED' : 'BAN_DENIED';
             const adminStaff = params.staff.find((s) => s.name.includes('Manager')) ?? params.staff[0];
             const banDecisionAt = new Date(le.createdAt.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000);
             if (banDecisionAt <= params.to) {
@@ -1207,7 +1213,7 @@ async function appendIncrementalDemoSimulation(params) {
             const qty = 1 + (rng2() < 0.15 ? 1 : 0);
             const lineTotal = product.price * qty;
             lineItems.push({
-                id: (0, crypto_1.randomUUID)(),
+                id: (0, node_crypto_1.randomUUID)(),
                 name: product.name,
                 sku: product.sku,
                 qty,
@@ -1219,7 +1225,7 @@ async function appendIncrementalDemoSimulation(params) {
         const tax = 0; // prices are tax-inclusive
         const tip = 0; // Tips are cash-only, not tracked in app
         const total = subtotal + tip;
-        const orderId = (0, crypto_1.randomUUID)();
+        const orderId = (0, node_crypto_1.randomUUID)();
         const paymentMethod = rng2() < 0.33 ? 'CASH' : 'CREDIT';
         await params.client.query(`INSERT INTO orders
          (id, customer_id, register_session_id, created_by_staff_id, created_at, status,
@@ -1242,7 +1248,7 @@ async function appendIncrementalDemoSimulation(params) {
            (id, order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json)
          VALUES ($1, $2, 'RETAIL', $3, $4, $5, $6, 0, 0, $7, NULL)`, [item.id, orderId, item.sku, item.name, item.qty, item.unitPrice, item.lineTotal]);
         }
-        const receiptId = (0, crypto_1.randomUUID)();
+        const receiptId = (0, node_crypto_1.randomUUID)();
         const receiptNumber = `D${order.createdAt.getUTCFullYear()}-${String(order.seed).padStart(6, '0')}`;
         const issuedAt = new Date(order.createdAt.getTime() + 2 * 60 * 1000);
         await params.client.query(`INSERT INTO receipts (id, order_id, issued_at, receipt_number, receipt_json)

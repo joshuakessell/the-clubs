@@ -67,22 +67,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;
@@ -91,7 +91,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     assignedResourceType: z.ZodOptional<z.ZodEnum<["room", "locker"]>>;
     assignedResourceNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
+    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
     flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
@@ -140,22 +140,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;
@@ -164,7 +164,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     assignedResourceType: z.ZodOptional<z.ZodEnum<["room", "locker"]>>;
     assignedResourceNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
+    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
     flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
@@ -213,22 +213,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;
@@ -237,7 +237,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     assignedResourceType: z.ZodOptional<z.ZodEnum<["room", "locker"]>>;
     assignedResourceNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
+    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
     flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;

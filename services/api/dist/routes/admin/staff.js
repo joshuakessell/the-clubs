@@ -54,7 +54,19 @@ function registerAdminStaffRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.post('/v1/admin/staff/:id/pin-reset', { preHandler: process.env.DEMO_MODE === 'true' ? [middleware_1.requireAuth, middleware_1.requireAdmin] : [middleware_1.requireReauthForAdmin] }, async (request, reply) => {
+    fastify.post('/v1/admin/staff/:id/pin-reset', {
+        preHandler: async (request, reply) => {
+            if (process.env.DEMO_MODE === 'true') {
+                await (0, middleware_1.requireAuth)(request, reply);
+                if (reply.sent || reply.statusCode >= 400)
+                    return;
+                await (0, middleware_1.requireAdmin)(request, reply);
+            }
+            else {
+                await (0, middleware_1.requireReauthForAdmin)(request, reply);
+            }
+        }
+    }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {

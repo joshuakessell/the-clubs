@@ -6,7 +6,7 @@
  * Screens consume this context instead of receiving props, eliminating
  * prop drilling of sessionPayload/laneId/kioskToken through the tree.
  */
-import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { getApiUrl, useSessionPollingFallback } from '@the-clubs/shared';
 import { useKioskSSE } from './hooks/useKioskSSE';
@@ -22,7 +22,7 @@ export const LANES = [
 
 /** Parse the URL path to extract the lane slug. Returns null if at root. */
 export function parseLaneFromPath(): string | null {
-  const path = window.location.pathname.replace(/^\/+|\/+$/g, ''); // trim slashes
+  const path = globalThis.location.pathname.replaceAll(/(^\/+)|(\/+$)/g, ''); // trim slashes
   if (!path) return null;
   const lane = LANES.find((l) => l.slug === path);
   return lane?.laneId ?? null;
@@ -33,6 +33,7 @@ function flowStepToView(flowStep: string | undefined | null): KioskView {
   switch (flowStep) {
     case 'RENTAL':
     case 'WAITLIST_BACKUP':
+    case 'WAITLIST_DISCLAIMER':
     case 'PAYMENT':
       return 'checkin';
     case 'AGREEMENT':
@@ -73,10 +74,10 @@ export function useKioskSession(): KioskSessionContextValue {
 export function KioskSessionProvider({
   laneId,
   children,
-}: {
+}: Readonly<{
   laneId: string;
   children: React.ReactNode;
-}) {
+}>) {
   const [view, setView] = useState<KioskView>('idle');
   const [sessionPayload, setSessionPayload] = useState<SessionUpdatedPayload | null>(null);
 
@@ -87,7 +88,7 @@ export function KioskSessionProvider({
 
   const onSessionUpdated = useCallback((event: { type?: string; payload?: SessionUpdatedPayload }) => {
     if (import.meta.env.DEV) console.log('[kiosk-sse] SESSION_UPDATED', event);
-    const payload = event?.payload as SessionUpdatedPayload | undefined;
+    const payload = event?.payload;
     if (!payload) return;
 
     setSessionPayload(payload);
@@ -107,6 +108,12 @@ export function KioskSessionProvider({
     }
 
     setView(targetView);
+  }, []);
+
+  const navigate = useCallback((next: KioskView) => setView(next), []);
+  const reset = useCallback(() => {
+    setView('idle');
+    setSessionPayload(null);
   }, []);
 
   const { connected: sseConnected } = useKioskSSE({
@@ -135,6 +142,9 @@ export function KioskSessionProvider({
           if (data.session) {
             if (import.meta.env.DEV) console.log('[kiosk-catchup] snapshot', data.session);
             onSessionUpdated({ type: 'SESSION_UPDATED', payload: data.session });
+          } else {
+            if (import.meta.env.DEV) console.log('[kiosk-catchup] snapshot null, resetting');
+            reset();
           }
         } catch {
           // Non-critical — SSE will deliver future events
@@ -155,19 +165,17 @@ export function KioskSessionProvider({
     laneId,
     authHeaders: kioskToken ? { 'x-kiosk-token': kioskToken } : {},
     onSnapshot: (payload) => {
-      onSessionUpdated({ type: 'SESSION_UPDATED', payload });
+      if (payload) {
+        onSessionUpdated({ type: 'SESSION_UPDATED', payload });
+      } else {
+        reset();
+      }
     },
   });
 
-  const navigate = (next: KioskView) => setView(next);
-  const reset = () => {
-    setView('idle');
-    setSessionPayload(null);
-  };
-
   const customerName = sessionPayload?.customerName ?? 'Customer';
 
-  const value: KioskSessionContextValue = {
+  const value: KioskSessionContextValue = useMemo(() => ({
     view,
     sessionPayload,
     laneId,
@@ -175,7 +183,7 @@ export function KioskSessionProvider({
     customerName,
     navigate,
     reset,
-  };
+  }), [view, sessionPayload, laneId, kioskToken, customerName, navigate, reset]);
 
   return <KioskSessionCtx.Provider value={value}>{children}</KioskSessionCtx.Provider>;
 }
