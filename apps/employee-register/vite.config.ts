@@ -1,14 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  define: {
-    // Force-replace import.meta.env.VITE_API_BASE_URL in ALL code including
-    // pre-compiled dependencies (@the-clubs/shared is compiled by tsc before
-    // Vite sees it, so Vite's default import.meta.env replacement doesn't apply).
-    'import.meta.env.VITE_API_BASE_URL': JSON.stringify(process.env.VITE_API_BASE_URL ?? ''),
+  resolve: {
+    alias: {
+      // Resolve @the-clubs/shared from TypeScript source instead of pre-compiled
+      // dist/. This lets Vite process import.meta.env.VITE_API_BASE_URL directly
+      // and replace it at build time (tsc compilation strips this replacement).
+      '@the-clubs/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+    },
   },
   server: {
     port: 5175,
