@@ -1091,6 +1091,128 @@ async function insertOrder(client: DbClient, p: {
 }
 
 // ---------------------------------------------------------------------------
+// Close out stale active check-ins (scheduled end is in the past)
+// ---------------------------------------------------------------------------
+
+type ActiveBlock = {
+  visit_id: string;
+  block_id: string;
+  customer_id: string;
+  customer_name: string;
+  rental_type: string;
+  scheduled_end: Date;
+  room_id: string | null;
+};
+
+async function checkoutActiveVisits(client: DbClient, p: {
+  now: Date;
+  staff: SimStaff[];
+}): Promise<number> {
+  // Find visits that are still open but whose scheduled end has already passed
+  const res = await client.query<ActiveBlock>(`
+    SELECT
+      v.id            AS visit_id,
+      cb.id           AS block_id,
+      v.customer_id,
+      c.name          AS customer_name,
+      cb.rental_type,
+      cb.ends_at      AS scheduled_end,
+      cb.room_id
+    FROM visits v
+    JOIN checkin_blocks cb
+      ON cb.visit_id = v.id
+     AND cb.ends_at IS NOT NULL
+     AND cb.ends_at <= $1
+    JOIN customers c ON c.id = v.customer_id
+    WHERE v.ended_at IS NULL
+    ORDER BY cb.ends_at
+  `, [p.now]);
+
+  if (res.rows.length === 0) return 0;
+
+  const rng = seededRng(0x4348454b); // 'CHEK'
+  const emp = p.staff[0];
+  const lateCountByNight = new Map<string, number>();
+  let closed = 0;
+
+  for (const row of res.rows) {
+    const scheduledEnd = new Date(row.scheduled_end);
+    const delta = sampleCheckoutDelta(rng);             // +ve = early, -ve = late
+    let actualEnd = new Date(scheduledEnd.getTime() - delta * 60 * 1000);
+    // Never set a future checkout time, and never before scheduledEnd - 2h
+    if (actualEnd > p.now) actualEnd = p.now;
+    if (actualEnd <= scheduledEnd) actualEnd = new Date(scheduledEnd.getTime()); // at-minimum on-time
+
+    const lateMins = Math.max(0, Math.round((actualEnd.getTime() - scheduledEnd.getTime()) / 60_000));
+    const isLate   = lateMins > 15;
+    const lateFee  = isLate ? Math.ceil((lateMins - 15) / 15) * 15 : 0;
+
+    // 1. Close the visit
+    await client.query(
+      `UPDATE visits SET ended_at = $1, updated_at = NOW() WHERE id = $2 AND ended_at IS NULL`,
+      [actualEnd, row.visit_id]
+    );
+    // 2. Snap the checkin block end to actual
+    await client.query(
+      `UPDATE checkin_blocks SET ends_at = $1, updated_at = NOW() WHERE id = $2`,
+      [actualEnd, row.block_id]
+    );
+    // 3. Release any room/locker assignment
+    if (row.room_id) {
+      await client.query(
+        `UPDATE rooms SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = $1, updated_at = $1 WHERE id = $2`,
+        [actualEnd, row.room_id]
+      );
+    }
+    // 4. CHECKOUT_COMPLETED activity event (idempotent)
+    await insertActivityEvent(client, {
+      at: actualEnd,
+      customerId: row.customer_id,
+      action: 'CHECKOUT_COMPLETED',
+      category: 'CHECKOUT',
+      staffId: emp.id,
+      staffName: emp.name,
+      summary: 'Checked out',
+      metadata: { visitId: row.visit_id, blockId: row.block_id, rentalType: row.rental_type },
+      searchBlob: `Checked out ${row.customer_name} ${row.visit_id} ${row.block_id} ${emp.name}`,
+      dedupeKey: `ACT:SIM:CHECKOUT_COMPLETED:${row.visit_id}`,
+    });
+    // 5. Checkout request
+    await insertCheckoutRequest(client, {
+      blockId: row.block_id,
+      customerId: row.customer_id,
+      lateMins,
+      lateFee,
+      at: actualEnd,
+    });
+    // 6. Late checkout events (capped at 2/night to match historical sim)
+    if (isLate && lateFee > 0) {
+      const night = nightKey(actualEnd);
+      const cnt   = lateCountByNight.get(night) ?? 0;
+      if (cnt < 2) {
+        lateCountByNight.set(night, cnt + 1);
+        await insertLateCheckout(client, {
+          blockId:    row.block_id,
+          visitId:    row.visit_id,
+          customerId: row.customer_id,
+          lateMins,
+          feeAmount:  lateFee,
+          banApplied: lateMins >= 60,
+          at:         actualEnd,
+          staff:      p.staff,
+          to:         p.now,
+          rng,
+        });
+      }
+    }
+
+    closed++;
+  }
+
+  return closed;
+}
+
+// ---------------------------------------------------------------------------
 // Main Orchestrator
 // ---------------------------------------------------------------------------
 
@@ -1165,6 +1287,10 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
 
     // Run the simulation inside a transaction
     const created = await transaction(async (client) => {
+      // Close out any active check-ins whose scheduled end has passed
+      const closedOut = await checkoutActiveVisits(client, { now, staff: staffRes.rows });
+      if (closedOut > 0) progress.log(`🔒 Closed out ${closedOut} stale active check-in(s)`);
+
       const visitCount = await simulateVisits({
         client, from, to: now, anchor,
         agreement,
