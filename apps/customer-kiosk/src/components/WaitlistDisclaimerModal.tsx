@@ -23,6 +23,9 @@ export function WaitlistDisclaimerModal() {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          sessionId: sessionPayload?.sessionId ?? '',
+          commandId: window.crypto.randomUUID(),
+          actor: 'CUSTOMER',
           type: 'SET_STEP',
           payload: { step: 'PAYMENT' },
         }),
@@ -31,7 +34,7 @@ export function WaitlistDisclaimerModal() {
       console.error('Failed to accept waitlist disclaimer', err);
       setLoading(false);
     }
-  }, [laneId, kioskToken]);
+  }, [laneId, kioskToken, sessionPayload]);
 
   const flowStep = sessionPayload?.flowStep;
   if (flowStep !== 'WAITLIST_DISCLAIMER') return null;
