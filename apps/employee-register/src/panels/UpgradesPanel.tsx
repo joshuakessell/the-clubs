@@ -65,21 +65,37 @@ function tierIndex(tier: string): number {
   return TIER_COLUMNS.indexOf(tier as (typeof TIER_COLUMNS)[number]);
 }
 
+/**
+ * Normalize desiredTiers from any format the API/DB may return:
+ *  - Already a JS array          → use as-is
+ *  - JSON string '["A","B"]'     → parse → array
+ *  - JSON string '"A"'           → parse → wrap in array
+ *  - PostgreSQL text[] '{A,B}'   → strip braces, split
+ *  - null / undefined / other   → empty array
+ */
+function normalizeDesiredTiers(raw: string[] | string | null | undefined): string[] {
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string' || raw.trim() === '') return [];
+  // PostgreSQL native text-array literal: "{STANDARD,DOUBLE}"
+  if (raw.startsWith('{')) {
+    return raw.replace(/^\{|\}$/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  // JSON-encoded value
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed)) return (parsed as unknown[]).map(String);
+    if (parsed !== null && parsed !== undefined) return [String(parsed)];
+  } catch { /* fall through */ }
+  return [raw];
+}
+
 /** Returns { startCol (0-based), span } for a set of desired tiers. */
 function computeSpan(desiredTiersRaw: string[] | string | null | undefined): { startCol: number; span: number } {
-  // Normalize: API may return a JSON string instead of a parsed array
-  let desiredTiers: string[];
-  if (Array.isArray(desiredTiersRaw)) {
-    desiredTiers = desiredTiersRaw;
-  } else if (typeof desiredTiersRaw === 'string') {
-    try { desiredTiers = JSON.parse(desiredTiersRaw); } catch { desiredTiers = [desiredTiersRaw]; }
-  } else {
-    desiredTiers = [];
-  }
-  const indices = desiredTiers.map(tierIndex).filter((i) => i >= 0).sort();
+  const desiredTiers = normalizeDesiredTiers(desiredTiersRaw);
+  const indices = desiredTiers.map(tierIndex).filter((i) => i >= 0).sort((a, b) => a - b);
   if (indices.length === 0) return { startCol: 0, span: 1 };
   const min = indices[0]!;
-  const max = indices[indices.length - 1]!;
+  const max = indices.at(-1)!;
   return { startCol: min, span: max - min + 1 };
 }
 
@@ -275,8 +291,10 @@ export function UpgradesPanel() {
   /* ── Check if an entry can be offered ── */
   const canOffer = useCallback((entry: WaitlistEntry): boolean => {
     if (entry.status !== 'ACTIVE') return false;
-    // Check if any of their desired room types have availability
-    return entry.desiredTiers.some((t) => (availability[t as keyof RoomAvailability] ?? 0) > 0);
+    // Normalize before .some() — same raw value as desiredTiers field
+    return normalizeDesiredTiers(entry.desiredTiers).some(
+      (t) => (availability[t as keyof RoomAvailability] ?? 0) > 0
+    );
   }, [availability]);
 
   /* ── Render ── */
