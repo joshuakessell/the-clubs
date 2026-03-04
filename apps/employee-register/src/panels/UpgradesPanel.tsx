@@ -66,7 +66,16 @@ function tierIndex(tier: string): number {
 }
 
 /** Returns { startCol (0-based), span } for a set of desired tiers. */
-function computeSpan(desiredTiers: string[]): { startCol: number; span: number } {
+function computeSpan(desiredTiersRaw: string[] | string | null | undefined): { startCol: number; span: number } {
+  // Normalize: API may return a JSON string instead of a parsed array
+  let desiredTiers: string[];
+  if (Array.isArray(desiredTiersRaw)) {
+    desiredTiers = desiredTiersRaw;
+  } else if (typeof desiredTiersRaw === 'string') {
+    try { desiredTiers = JSON.parse(desiredTiersRaw); } catch { desiredTiers = [desiredTiersRaw]; }
+  } else {
+    desiredTiers = [];
+  }
   const indices = desiredTiers.map(tierIndex).filter((i) => i >= 0).sort();
   if (indices.length === 0) return { startCol: 0, span: 1 };
   const min = indices[0]!;
