@@ -5,11 +5,13 @@ import { useKioskSession } from '../KioskSessionContext';
 import { getApiUrl } from '@the-clubs/shared';
 
 /**
- * AgreementScreen — Customer reads and signs the agreement.
- * Signature canvas modal + agreement text + submit flow.
+ * AgreementScreen — Premium legal document signing experience.
+ *
+ * Design: Official printed-document aesthetic with cream-white body,
+ * deep ink typography, and a focused signature ceremony.
  */
 export function AgreementScreen() {
-  const { navigate, reset, laneId, kioskToken, sessionPayload } = useKioskSession();
+  const { reset, laneId, kioskToken, sessionPayload } = useKioskSession();
   const { t } = useI18n();
   const [signed, setSigned] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -17,43 +19,68 @@ export function AgreementScreen() {
   const [showSignModal, setShowSignModal] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
+  const signatureDataRef = useRef<string>('');
 
-  const startDraw = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    drawingRef.current = true;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+  /* ─── Canvas drawing ─────────────────────────────────── */
+  const getCoords = (
+    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>,
+    canvas: HTMLCanvasElement,
+  ) => {
     const rect = canvas.getBoundingClientRect();
-    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.nativeEvent.offsetX;
-    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.nativeEvent.offsetY;
-    ctx.beginPath();
-    ctx.moveTo(x * (canvas.width / rect.width), y * (canvas.height / rect.height));
-  }, []);
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    if ('touches' in e) {
+      return {
+        x: (e.touches[0].clientX - rect.left) * scaleX,
+        y: (e.touches[0].clientY - rect.top) * scaleY,
+      };
+    }
+    return { x: e.nativeEvent.offsetX * scaleX, y: e.nativeEvent.offsetY * scaleY };
+  };
 
-  const draw = useCallback((e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = 'touches' in e ? e.touches[0].clientX - rect.left : e.nativeEvent.offsetX;
-    const y = 'touches' in e ? e.touches[0].clientY - rect.top : e.nativeEvent.offsetY;
-    ctx.strokeStyle = '#00d4ff';
-    ctx.lineWidth = 2.5;
-    ctx.lineCap = 'round';
-    ctx.lineTo(x * (canvas.width / rect.width), y * (canvas.height / rect.height));
-    ctx.stroke();
-  }, []);
+  const startDraw = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+      drawingRef.current = true;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const { x, y } = getCoords(e, canvas);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    },
+    [],
+  );
+
+  const draw = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+      if (!drawingRef.current) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const { x, y } = getCoords(e, canvas);
+      ctx.strokeStyle = '#1a1a2e';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineTo(x, y);
+      ctx.stroke();
+    },
+    [],
+  );
 
   const endDraw = useCallback(() => {
     drawingRef.current = false;
   }, []);
 
-  // Store canvas signature data when user confirms
-  const signatureDataRef = useRef<string>('');
+  const clearCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+  }, []);
 
+  /* ─── Submission ─────────────────────────────────────── */
   async function submitAgreement() {
     if (!signatureDataRef.current || submitting) return;
     setSubmitting(true);
@@ -70,150 +97,280 @@ export function AgreementScreen() {
             signaturePayload: signatureDataRef.current,
             sessionId: sessionPayload?.sessionId,
           }),
-        }
+        },
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({ error: 'Failed to sign' }));
-        setSubmitError(data.error || 'Failed to sign agreement');
+        setSubmitError((data as { error?: string }).error ?? 'Failed to sign agreement');
         setSubmitting(false);
         return;
       }
-      navigate('complete');
+      // SSE will handle UI transition
     } catch {
       setSubmitError('Network error — please try again');
       setSubmitting(false);
     }
   }
 
-  const clearCanvas = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    ctx?.clearRect(0, 0, canvas.width, canvas.height);
-  }, []);
-
   return (
     <ScreenShell>
-      <div className="flex w-full max-w-2xl flex-col gap-5 px-6 py-8">
-        {/* Agreement card */}
-        <div
-          className="flex flex-col rounded-2xl border"
-          style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
-        >
-          <h2
-            className="px-6 pt-6 text-xl font-bold"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+      <div
+        className="flex w-full max-w-xl flex-col gap-5 px-4 py-6"
+        style={{ touchAction: 'manipulation' }}
+      >
+
+        {/* ── Screen heading ── */}
+        <div className="text-center">
+          <p
+            className="text-xs font-semibold uppercase tracking-widest mb-1"
+            style={{ color: 'var(--color-text-muted)', letterSpacing: '0.18em' }}
+          >
+            Step Required
+          </p>
+          <h1
+            className="text-2xl font-bold"
+            style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
           >
             {t('agreement.facilityAgreement')}
-          </h2>
+          </h1>
+        </div>
 
-          {/* Scrollable text */}
-          <div className="mt-3 max-h-[40vh] overflow-y-auto">
+        {/* ── Document card ── */}
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{
+            boxShadow: '0 4px 32px rgba(0,0,0,0.35), 0 1px 4px rgba(0,0,0,0.2)',
+            border: '1px solid rgba(0,0,0,0.15)',
+          }}
+        >
+          {/* Document header bar */}
+          <div
+            className="px-5 py-3 flex items-center justify-between"
+            style={{
+              backgroundColor: '#1a1a1a',
+            }}
+          >
+            <span
+              className="text-xs font-bold uppercase tracking-widest"
+              style={{ color: 'rgba(255,255,255,0.5)', letterSpacing: '0.2em' }}
+            >
+              Club Dallas
+            </span>
+            <span
+              className="text-xs"
+              style={{ color: 'rgba(255,255,255,0.35)', fontFamily: 'Georgia, serif' }}
+            >
+              Official Document
+            </span>
+          </div>
+
+          {/* Scrollable legal body */}
+          <div
+            className="overflow-y-auto"
+            style={{
+              maxHeight: '42vh',
+              backgroundColor: '#fafaf7',
+              overscrollBehavior: 'contain',
+            }}
+          >
             <div
-              className="text-sm leading-relaxed"
               style={{
-                backgroundColor: '#ffffff',
-                color: '#111111',
-                padding: '20px 24px',
+                padding: '24px 28px',
+                color: '#1a1a1a',
               }}
               dangerouslySetInnerHTML={{ __html: t('agreement.legalBodyHtml') }}
             />
           </div>
 
-          {/* Sign button */}
-          <div className="border-t px-6 py-4" style={{ borderColor: 'var(--color-border-subtle)' }}>
-            <button
-              type="button"
-              className={`w-full rounded-lg px-6 py-3 text-base font-semibold transition ${signed ? 'opacity-70' : 'animate-pulse'}`}
-              style={{
-                backgroundColor: signed ? 'rgba(16, 185, 129, 0.15)' : 'var(--color-accent-primary)',
-                color: signed ? 'var(--color-status-success)' : 'var(--color-text-inverse)',
-                border: signed ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid transparent',
-              }}
-              disabled={signed}
-              onClick={() => { clearCanvas(); setShowSignModal(true); }}
-            >
-              {signed ? `✓ ${t('agreement.signed')}` : t('agreement.tapToSign')}
-            </button>
+          {/* Signature section */}
+          <div
+            className="px-5 py-4"
+            style={{
+              backgroundColor: '#f0ede6',
+              borderTop: '1px solid #d4cfc4',
+            }}
+          >
+            {!signed ? (
+              <button
+                type="button"
+                className="w-full rounded-lg py-3.5 text-base font-bold transition-all"
+                style={{
+                  backgroundColor: '#1a1a1a',
+                  color: '#ffffff',
+                  letterSpacing: '0.03em',
+                }}
+                onClick={() => { clearCanvas(); setShowSignModal(true); }}
+              >
+                ✦ {t('agreement.tapToSign')}
+              </button>
+            ) : (
+              <div
+                className="flex items-center gap-3 rounded-lg px-4 py-3"
+                style={{
+                  backgroundColor: 'rgba(22, 163, 74, 0.12)',
+                  border: '1px solid rgba(22, 163, 74, 0.3)',
+                }}
+              >
+                <span style={{ color: '#16a34a', fontSize: '1.25rem' }}>✓</span>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: '#15803d' }}>
+                    {t('agreement.signed')}
+                  </p>
+                  <p className="text-xs" style={{ color: '#4ade80' }}>
+                    Signature captured — review and submit below
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Bottom actions */}
+        {/* ── Action row ── */}
         <div className="flex gap-3">
           <button
             type="button"
-            className="flex-1 rounded-lg border px-6 py-4 text-base font-semibold transition"
-            style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
+            className="rounded-xl border px-5 py-4 text-sm font-semibold transition-colors"
+            style={{
+              borderColor: 'var(--color-border-default)',
+              color: 'var(--color-text-muted)',
+              backgroundColor: 'transparent',
+            }}
             onClick={reset}
           >
             {t('common.cancel')}
           </button>
           <button
             type="button"
-            className={`flex-1 rounded-lg px-6 py-4 text-base font-bold transition disabled:opacity-40 ${signed && !submitting ? 'animate-pulse' : ''}`}
-            style={{
-              backgroundColor: signed ? 'var(--color-status-success)' : 'var(--color-surface-overlay)',
-              color: signed ? 'white' : 'var(--color-text-muted)',
-            }}
             disabled={!signed || submitting}
             onClick={submitAgreement}
+            className="flex-1 rounded-xl py-4 text-base font-bold transition-all disabled:opacity-40"
+            style={{
+              backgroundColor: signed ? '#16a34a' : 'var(--color-surface-overlay)',
+              color: signed ? '#ffffff' : 'var(--color-text-muted)',
+              ...(signed && !submitting ? { animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite' } : {}),
+            }}
           >
             {submitting ? 'Submitting…' : t('agreement.submitAgreement')}
           </button>
         </div>
 
         {submitError && (
-          <p className="text-sm text-center mt-2" style={{ color: 'var(--color-status-error)' }}>
+          <p
+            className="text-sm text-center"
+            style={{ color: 'var(--color-status-error)' }}
+          >
             {submitError}
           </p>
         )}
       </div>
 
-      {/* Signature modal */}
+      {/* ── Signature modal ── */}
       {showSignModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-md"
-          style={{ backgroundColor: 'rgba(10, 10, 15, 0.8)' }}
+          className="fixed inset-0 z-50 flex items-end justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(6px)' }}
           role="dialog"
+          aria-modal="true"
           aria-label={t('a11y.signatureDialog')}
         >
           <div
-            className="flex flex-col gap-4 rounded-2xl border p-6 shadow-2xl"
-            style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)', width: '90vw', maxWidth: '600px' }}
-            onClick={(e) => e.stopPropagation()}
+            className="w-full rounded-t-3xl flex flex-col gap-0 overflow-hidden"
+            style={{
+              backgroundColor: '#fafaf7',
+              maxWidth: '600px',
+              boxShadow: '0 -8px 48px rgba(0,0,0,0.5)',
+            }}
           >
-            <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-              {t('agreement.signBelow')}
-            </h3>
+            {/* Sheet handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div
+                className="rounded-full"
+                style={{ width: 40, height: 4, backgroundColor: '#cccccc' }}
+              />
+            </div>
 
-            <canvas
-              ref={canvasRef}
-              width={800}
-              height={280}
-              className="w-full rounded-lg border"
-              style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'rgba(10, 10, 15, 0.5)', touchAction: 'none' }}
-              onMouseDown={startDraw}
-              onMouseMove={draw}
-              onMouseUp={endDraw}
-              onMouseLeave={endDraw}
-              onTouchStart={startDraw}
-              onTouchMove={draw}
-              onTouchEnd={endDraw}
-            />
+            {/* Sheet header */}
+            <div
+              className="px-6 py-4"
+              style={{ borderBottom: '1px solid #e0ddd6' }}
+            >
+              <h3
+                className="text-lg font-bold"
+                style={{
+                  fontFamily: 'Georgia, serif',
+                  color: '#1a1a1a',
+                  textAlign: 'center',
+                }}
+              >
+                {t('agreement.signBelow')}
+              </h3>
+              <p className="text-xs text-center mt-1" style={{ color: '#888888' }}>
+                Draw your signature in the area below
+              </p>
+            </div>
 
-            <div className="flex gap-3">
+            {/* Canvas */}
+            <div className="px-6 py-4" style={{ position: 'relative' }}>
+              <canvas
+                ref={canvasRef}
+                width={800}
+                height={200}
+                className="w-full rounded-lg"
+                style={{
+                  backgroundColor: '#ffffff',
+                  border: '1px solid #d1cec7',
+                  cursor: 'crosshair',
+                  touchAction: 'none',
+                  display: 'block',
+                }}
+                onMouseDown={startDraw}
+                onMouseMove={draw}
+                onMouseUp={endDraw}
+                onMouseLeave={endDraw}
+                onTouchStart={startDraw}
+                onTouchMove={draw}
+                onTouchEnd={endDraw}
+              />
+              {/* Signature baseline */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 40,
+                  right: 40,
+                  bottom: 52,
+                  borderBottom: '1px dashed #cccccc',
+                  pointerEvents: 'none',
+                }}
+              />
+              <p
+                className="text-xs text-center mt-2"
+                style={{ color: '#aaaaaa', fontFamily: 'Georgia, serif', fontStyle: 'italic' }}
+              >
+                × Sign here
+              </p>
+            </div>
+
+            {/* Sheet actions */}
+            <div
+              className="flex gap-3 px-6 pb-8 pt-2"
+              style={{ borderTop: '1px solid #e0ddd6' }}
+            >
               <button
                 type="button"
-                className="flex-1 rounded-lg border px-4 py-3 font-semibold transition"
-                style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)' }}
+                className="flex-1 rounded-xl border py-3.5 text-sm font-semibold transition-colors"
+                style={{
+                  borderColor: '#cccccc',
+                  color: '#555555',
+                  backgroundColor: 'transparent',
+                }}
                 onClick={() => { clearCanvas(); setShowSignModal(false); }}
               >
                 {t('common.cancel')}
               </button>
               <button
                 type="button"
-                className="flex-1 rounded-lg px-4 py-3 font-bold transition"
-                style={{ backgroundColor: 'var(--color-accent-primary)', color: 'var(--color-text-inverse)' }}
+                className="flex-1 rounded-xl py-3.5 text-sm font-bold transition-all"
+                style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}
                 onClick={() => {
                   const canvas = canvasRef.current;
                   if (canvas) signatureDataRef.current = canvas.toDataURL('image/png');

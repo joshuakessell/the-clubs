@@ -9,37 +9,31 @@ export type AgreementLanguage = 'EN' | 'ES';
  *   shows a built-in Spanish agreement, the PDF generator must use the exact same wording.
  */
 
-const AGREEMENT_HTML = `<div style="font-family: Georgia, 'Times New Roman', serif; font-size: 0.9rem; line-height: 1.7; color: #111111;">
-  <h3 style="text-align: center; font-weight: 700; margin: 0 0 1.25rem 0; text-transform: uppercase; letter-spacing: 0.05em; font-size: 1rem;">
-    Assumption of Risk and Release of Liability
+const AGREEMENT_PARAGRAPHS = [
+  'Club Dallas is a gay-oriented adult establishment. Entry and participation are voluntary. If you are uncomfortable with the nature of a gay facility or the conduct of gay patrons, you are advised not to enter.',
+  'Use of the premises and facilities involves inherent risks, including possible injury, illness, or loss, theft, or damage to personal property. You confirm that you are in good health and voluntarily assume all risks associated with entering and using the facilities.',
+  'To the fullest extent permitted by Texas law, you release and waive any claims against Club Dallas, its owners, employees, and agents for injury, illness, death, or property loss arising from your presence on the premises or use of the facilities, except where prohibited by law, including gross negligence or willful misconduct.',
+  'You agree to follow all posted rules, including checkout times. Late checkout may result in additional fees or suspension of privileges. Club Dallas is not responsible for lost or stolen property.',
+  'By providing your digital signature, you confirm you are at least 18 years old and agree that your electronic signature is legally binding and equivalent to a handwritten signature.',
+];
+
+const paragraphsHtml = AGREEMENT_PARAGRAPHS.map(
+  (text) => `<p style="margin: 0 0 0.9rem 0; text-align: justify; hyphens: auto;">${text}</p>`
+).join('\n');
+
+const AGREEMENT_HTML = `<div style="font-family: Georgia, 'Times New Roman', serif; font-size: 0.9rem; line-height: 1.75; color: #1a1a1a;">
+  <h3 style="text-align: center; font-weight: 700; font-size: 0.95rem; margin: 0 0 0.75rem 0; text-transform: uppercase; letter-spacing: 0.08em; color: #111111;">
+    Assumption of Risk and Liability Release
   </h3>
-
-  <p style="margin: 0 0 1rem 0; text-align: left;">
-    By signing below, you acknowledge and agree to the following terms and conditions:
+  <div style="border-top: 2px solid #1a1a1a; border-bottom: 1px solid #cccccc; padding: 0.5rem 0; margin-bottom: 1rem;">
+    <p style="margin: 0; text-align: center; font-size: 0.8rem; letter-spacing: 0.04em; color: #444444; text-transform: uppercase;">
+      Please read carefully before signing
+    </p>
+  </div>
+  <p style="margin: 0 0 1rem 0; font-style: italic; color: #333333;">
+    By signing below, you acknowledge and agree to the following:
   </p>
-
-  <ol style="padding-left: 1.5rem; margin: 0; list-style-type: decimal;">
-    <li style="margin-bottom: 1rem; padding-left: 0.25rem;">
-      <strong>Nature of Establishment.</strong>&nbsp;
-      Club Dallas is a gay oriented business. Entry and participation are voluntary.
-    </li>
-    <li style="margin-bottom: 1rem; padding-left: 0.25rem;">
-      <strong>Assumption of Risk.</strong>&nbsp;
-      Use of the premises and facilities involves inherent risks, including bodily injury, illness, loss, theft, or damage to personal property. You confirm you are in good health and voluntarily assume all risks associated with entering and using the facilities.
-    </li>
-    <li style="margin-bottom: 1rem; padding-left: 0.25rem;">
-      <strong>Release of Liability.</strong>&nbsp;
-      To the fullest extent permitted by Texas law, you release and waive any claims against Club Dallas, its owners, employees, and agents for personal injury, illness, death, or property loss or damage arising from your presence on the premises or use of facilities, except where prohibited by law, including gross negligence or willful misconduct.
-    </li>
-    <li style="margin-bottom: 1rem; padding-left: 0.25rem;">
-      <strong>Personal Responsibility.</strong>&nbsp;
-      You are responsible for complying with all posted rules, including checkout times. Late checkout may result in additional fees and possible suspension of privileges. Club Dallas is not responsible for lost or stolen property.
-    </li>
-    <li style="margin-bottom: 0; padding-left: 0.25rem;">
-      <strong>Electronic Signature.</strong>&nbsp;
-      By providing your digital signature, you agree that your electronic signature is legally binding and has the same effect as a handwritten signature. You confirm you are at least 18 years old.
-    </li>
-  </ol>
+${paragraphsHtml}
 </div>`;
 
 export const AGREEMENT_LEGAL_BODY_HTML_BY_LANG: Record<AgreementLanguage, string> = {
