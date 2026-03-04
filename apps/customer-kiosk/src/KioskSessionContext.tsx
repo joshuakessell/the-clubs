@@ -100,10 +100,11 @@ export function KioskSessionProvider({
       return;
     }
 
-    // When the session is COMPLETED, show the complete screen.
-    // The CompleteScreen component handles its own timeout back to idle.
+    // When the session is COMPLETED, return to idle immediately.
+    // The employee has finalized the transaction; the kiosk resets.
     if (payload.status === 'COMPLETED') {
-      setView('complete');
+      setView('idle');
+      setSessionPayload(null);
       return;
     }
 

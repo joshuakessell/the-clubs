@@ -1,48 +1,28 @@
-import { useEffect, useState } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { useI18n } from '../i18n';
 import { useKioskSession } from '../KioskSessionContext';
 
-const COUNTDOWN_SECONDS = 5;
-
 /**
  * CompleteScreen — Room/locker assignment display.
  *
- * Phase 1 (ASSIGNMENT): Shows room number + checkout time.
- *   Updates in real-time if the employee changes the room assignment.
- *
- * Phase 2 (COMPLETED): Employee clicked "Complete Checkin".
- *   A visible 5-second countdown appears, then the kiosk resets to idle.
+ * Shows the assigned room/locker number and checkout time.
+ * Stays on screen until the employee clicks "Complete Transaction"
+ * on the register, which transitions the session to COMPLETED
+ * and the kiosk returns to idle.
  */
 export function CompleteScreen() {
-  const { sessionPayload, customerName, reset } = useKioskSession();
+  const { sessionPayload, customerName } = useKioskSession();
   const assignedResourceType = sessionPayload?.assignedResourceType;
   const assignedResourceNumber = sessionPayload?.assignedResourceNumber;
+  const checkoutAt = sessionPayload?.checkoutAt;
   const { t } = useI18n();
 
-  const isCompleted = sessionPayload?.status === 'COMPLETED';
-  const [countdown, setCountdown] = useState<number | null>(null);
-
-  // When session transitions to COMPLETED, start the countdown via a timer
-  useEffect(() => {
-    if (!isCompleted) return;
-    // Use a micro-delay so setState happens in the timer callback, not synchronously in the effect body
-    const id = setTimeout(() => setCountdown(COUNTDOWN_SECONDS), 0);
-    return () => clearTimeout(id);
-  }, [isCompleted]);
-
-  // Tick the countdown each second
-  useEffect(() => {
-    if (countdown === null) return;
-    if (countdown <= 0) {
-      reset();
-      return;
-    }
-    const timer = setTimeout(() => setCountdown((c) => (c ?? 1) - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [countdown, reset]);
-
   const isLocker = assignedResourceType === 'locker';
+
+  // Format checkout time from session payload
+  const checkoutTimeDisplay = checkoutAt
+    ? new Date(checkoutAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    : '—';
 
   return (
     <ScreenShell showWatermark>
@@ -91,7 +71,7 @@ export function CompleteScreen() {
                 {t('complete.checkoutBy')}
               </p>
               <p className="mt-1 text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
-                11:00 PM
+                {checkoutTimeDisplay}
               </p>
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
                 {t('complete.today')}
@@ -100,29 +80,10 @@ export function CompleteScreen() {
           </div>
         </div>
 
-        {/* Countdown or status message */}
-        {countdown !== null ? (
-          <div className="flex flex-col items-center gap-2">
-            <p className="text-sm font-semibold" style={{ color: 'var(--color-text-secondary)' }}>
-              Returning to home in
-            </p>
-            <div
-              className="flex h-14 w-14 items-center justify-center rounded-full text-2xl font-extrabold tabular-nums"
-              style={{
-                backgroundColor: 'rgba(0, 212, 255, 0.08)',
-                border: '2px solid var(--color-border-accent)',
-                color: 'var(--color-accent-primary)',
-                fontFamily: 'var(--font-display)',
-              }}
-            >
-              {countdown}
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            Please enjoy your visit!
-          </p>
-        )}
+        {/* Static status message */}
+        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          Please enjoy your visit!
+        </p>
       </div>
     </ScreenShell>
   );
