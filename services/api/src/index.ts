@@ -100,11 +100,17 @@ async function main() {
     console.error('FATAL: ALLOWED_ORIGINS must be set in production. Refusing to start with open CORS.');
     process.exit(1);
   }
-  const allowedOrigins = process.env.ALLOWED_ORIGINS
+  const rawOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-    : true;
+    : null;
+  // @fastify/cors treats an array as exact-match origins. A single '*' entry means "allow all",
+  // which requires `origin: true` (reflect any origin), not the literal string '*' in an array.
+  const allowedOrigins: true | string[] =
+    !rawOrigins ? true :                          // env unset → allow all in dev
+    rawOrigins.length === 1 && rawOrigins[0] === '*' ? true :  // explicit wildcard
+    rawOrigins;                                    // explicit list
   if (allowedOrigins === true) {
-    fastify.log.warn('ALLOWED_ORIGINS is not set — CORS allows all origins. Set ALLOWED_ORIGINS in production.');
+    fastify.log.warn('ALLOWED_ORIGINS is not set or is "*" — CORS allows all origins. Set ALLOWED_ORIGINS in production.');
   }
   await fastify.register(cors, {
     origin: allowedOrigins,
