@@ -108,10 +108,14 @@ export function AgreementScreen() {
           </h2>
 
           {/* Scrollable text */}
-          <div className="mt-3 max-h-[40vh] overflow-y-auto px-6 pb-4">
+          <div className="mt-3 max-h-[40vh] overflow-y-auto">
             <div
-              className="prose prose-sm prose-invert max-w-none text-sm leading-relaxed"
-              style={{ color: 'var(--color-text-secondary)' }}
+              className="text-sm leading-relaxed"
+              style={{
+                backgroundColor: '#ffffff',
+                color: '#111111',
+                padding: '20px 24px',
+              }}
               dangerouslySetInnerHTML={{ __html: t('agreement.legalBodyHtml') }}
             />
           </div>

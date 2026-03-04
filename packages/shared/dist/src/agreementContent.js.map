@@ -1,1 +1,1 @@
-{"version":3,"file":"agreementContent.js","sourceRoot":"","sources":["../../src/agreementContent.ts"],"names":[],"mappings":"AAEA;;;;;;;GAOG;AACH,MAAM,CAAC,MAAM,iCAAiC,GAAsC;IAClF,EAAE,EAAE;;;;;;;;;;OAUC;IACL,EAAE,EAAE;;;;;;;;;;OAUC;CACN,CAAC"}
+{"version":3,"file":"agreementContent.js","sourceRoot":"","sources":["../../src/agreementContent.ts"],"names":[],"mappings":"AAEA;;;;;;;GAOG;AAEH,MAAM,cAAc,GAAG;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;OA+BhB,CAAC;AAER,MAAM,CAAC,MAAM,iCAAiC,GAAsC;IAClF,EAAE,EAAE,cAAc;IAClB,EAAE,EAAE,cAAc;CACnB,CAAC"}
