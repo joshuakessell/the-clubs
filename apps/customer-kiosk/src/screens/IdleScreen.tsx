@@ -47,14 +47,8 @@ export function IdleScreen() {
     return new Date(validUntil + 'T23:59:59') >= new Date();
   })();
 
-  // Card visibility — fades in after logo animation
-  const [showCard, setShowCard] = useState(false);
-  useEffect(() => {
-    if (isCheckinActive) {
-      const id = setTimeout(() => setShowCard(true), 2400);
-      return () => { clearTimeout(id); setShowCard(false); };
-    }
-  }, [isCheckinActive]);
+  // Card visibility — show immediately when check-in starts (no initial delay)
+  const showCard = isCheckinActive;
 
   const transition = 'all 2.4s cubic-bezier(0.4, 0, 0.2, 1)';
 
@@ -124,7 +118,7 @@ export function IdleScreen() {
                 top: '55%',
                 left: '50%',
                 transform: 'translate(-50%, -50%)',
-                transition: 'opacity 1s ease, transform 1s ease',
+                transition: 'opacity 0.4s ease, transform 0.4s ease',
                 opacity: showCard ? 1 : 0,
                 width: '100%',
                 maxWidth: 520,

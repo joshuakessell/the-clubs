@@ -14,6 +14,7 @@ import { CheckinFlowProvider, useCheckinFlow } from './CheckinFlowContext';
 import { FlowIndicator } from './steps/FlowIndicator';
 import { RentalStep } from './steps/RentalStep';
 import { BackupSelectionStep } from './steps/BackupSelectionStep';
+import { WaitlistDisclaimerStep } from './steps/WaitlistDisclaimerStep';
 import { PaymentStep } from './steps/PaymentStep';
 import { AgreementStep } from './steps/AgreementStep';
 import { AssignmentStep } from './steps/AssignmentStep';
@@ -95,6 +96,7 @@ function CheckinFlowContent() {
 
       {(flowStep === 'LANGUAGE' || flowStep === 'RENTAL') && <RentalStep />}
       {flowStep === 'WAITLIST_BACKUP' && <BackupSelectionStep />}
+      {flowStep === 'WAITLIST_DISCLAIMER' && <WaitlistDisclaimerStep />}
       {flowStep === 'PAYMENT' && <PaymentStep />}
       {flowStep === 'AGREEMENT' && <AgreementStep />}
       {flowStep === 'ASSIGNMENT' && <AssignmentStep />}

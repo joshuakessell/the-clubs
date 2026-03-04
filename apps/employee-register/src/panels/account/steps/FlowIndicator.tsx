@@ -8,7 +8,7 @@ export function FlowIndicator() {
   const step = state.flowStep;
 
   // Map WAITLIST_BACKUP to the same position as RENTAL
-  const effectiveStep = step === 'WAITLIST_BACKUP' ? 'RENTAL' : step;
+  const effectiveStep = (step === 'WAITLIST_BACKUP' || step === 'WAITLIST_DISCLAIMER') ? 'RENTAL' : step;
   const idx = STEPS.indexOf(effectiveStep as any);
 
   return (
