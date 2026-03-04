@@ -33,6 +33,7 @@ export function BrandingHeader({ isActive, isLightTheme, brandName, transition }
               height: 240,
               objectFit: 'contain',
               filter: 'drop-shadow(0 0 20px var(--color-accent-glow))',
+              transform: 'translateY(-4px)',
             }}
           />
         </div>
