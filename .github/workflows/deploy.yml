@@ -255,6 +255,7 @@ jobs:
               'DB_NAME=club_operations' \
               'DB_USER=clubops' \
               'ALLOWED_ORIGINS=*' \
+              'FLOW_COMMANDS=true' \
               "DEMO_MODE=${DEMO_MODE}" \
               "SEED_ON_STARTUP=${SEED_ON_STARTUP}" \
               "DB_PASSWORD=${DB_PASSWORD}" \

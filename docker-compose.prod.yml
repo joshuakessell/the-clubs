@@ -32,6 +32,7 @@ services:
       DATABASE_URL: postgresql://${DB_USER:-clubops}:${DB_PASSWORD}@db:5432/${DB_NAME:-club_operations}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
       KIOSK_TOKEN: ${KIOSK_TOKEN}
+      FLOW_COMMANDS: ${FLOW_COMMANDS:-true}
       DEMO_MODE: ${DEMO_MODE:-false}
       SEED_ON_STARTUP: ${SEED_ON_STARTUP:-false}
     ports:
