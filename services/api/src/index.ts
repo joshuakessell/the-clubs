@@ -313,6 +313,36 @@ async function main() {
           );
         }
 
+        // Startup health check: log critical table row counts
+        try {
+          const { query: healthQuery } = await import('./db');
+          const healthRes = await healthQuery<{ tbl: string; cnt: string }>(`
+            SELECT 'staff' as tbl, COUNT(*)::text as cnt FROM staff
+            UNION ALL SELECT 'rooms', COUNT(*)::text FROM rooms
+            UNION ALL SELECT 'lockers', COUNT(*)::text FROM lockers
+            UNION ALL SELECT 'customers', COUNT(*)::text FROM customers
+            UNION ALL SELECT 'agreements', COUNT(*)::text FROM agreements WHERE active = true
+            UNION ALL SELECT 'devices', COUNT(*)::text FROM devices
+            UNION ALL SELECT 'staff_sessions', COUNT(*)::text FROM staff_sessions WHERE revoked_at IS NULL AND expires_at > NOW()
+          `);
+          const counts = Object.fromEntries(healthRes.rows.map(r => [r.tbl, parseInt(r.cnt, 10)]));
+          const critical = ['staff', 'rooms', 'lockers', 'agreements', 'devices'];
+          const missing = critical.filter(t => (counts[t] ?? 0) === 0);
+
+          if (missing.length > 0) {
+            fastify.log.warn(
+              `⚠️  DB HEALTH: Empty critical tables: [${missing.join(', ')}] — seed may have failed! Run 'pnpm demo:seed' or 'pnpm demo:dev:fresh'.`
+            );
+          }
+          fastify.log.info(
+            `📊 DB health: ${counts.staff ?? 0} staff, ${counts.rooms ?? 0} rooms, ${counts.lockers ?? 0} lockers, ` +
+            `${counts.customers ?? 0} customers, ${counts.agreements ?? 0} agreements, ${counts.devices ?? 0} devices, ` +
+            `${counts.staff_sessions ?? 0} active sessions`
+          );
+        } catch (healthErr) {
+          fastify.log.warn(healthErr, 'Failed to run startup health check (non-fatal)');
+        }
+
         // Start auto-replay for edge stack
         if (process.env.EDGE_STACK === 'true' && process.env.CLOUD_API_BASE_URL) {
           startAutoReplayOutbox({
