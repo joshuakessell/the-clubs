@@ -91,7 +91,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     assignedResourceType: z.ZodOptional<z.ZodEnum<["room", "locker"]>>;
     assignedResourceNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
+    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "ASSIGNMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "ASSIGNMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
     flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
@@ -164,7 +164,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     assignedResourceType: z.ZodOptional<z.ZodEnum<["room", "locker"]>>;
     assignedResourceNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
+    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "ASSIGNMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "ASSIGNMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
     flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
@@ -237,7 +237,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     assignedResourceType: z.ZodOptional<z.ZodEnum<["room", "locker"]>>;
     assignedResourceNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "COMPLETE" | undefined, unknown>;
+    flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "ASSIGNMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "ASSIGNMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
     flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;

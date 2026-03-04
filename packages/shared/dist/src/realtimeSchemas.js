@@ -14,6 +14,7 @@ const CheckinFlowStepSchema = z.enum([
     'WAITLIST_DISCLAIMER',
     'PAYMENT',
     'AGREEMENT',
+    'ASSIGNMENT',
     'COMPLETE',
 ]);
 const CheckinFlowActorSchema = z.enum(['CUSTOMER', 'EMPLOYEE', 'SYSTEM']);
@@ -116,6 +117,7 @@ export const SessionUpdatedPayloadSchema = z
         'WAITLIST_DISCLAIMER',
         'PAYMENT',
         'AGREEMENT',
+        'ASSIGNMENT',
         'COMPLETE',
     ])
         .optional()),

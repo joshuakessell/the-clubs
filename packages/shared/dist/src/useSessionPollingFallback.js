@@ -20,12 +20,28 @@ export function useSessionPollingFallback({ sseConnected, hasActiveSession, lane
         if (sseConnected || !hasActiveSession || !laneId)
             return;
         let cancelled = false;
+        let intervalId;
+        const stopPolling = () => {
+            cancelled = true;
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = undefined;
+            }
+        };
         const poll = async () => {
             if (cancelled)
                 return;
             try {
                 const res = await fetch(getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`), { headers: authHeadersRef.current });
-                if (!res.ok || cancelled)
+                if (cancelled)
+                    return;
+                if (res.status === 401) {
+                    // Auth token is dead — stop polling to prevent 401 flood.
+                    // useSessionGuard's fetch interceptor will handle session clearance.
+                    stopPolling();
+                    return;
+                }
+                if (!res.ok)
                     return;
                 const data = await res.json();
                 if (!cancelled) {
@@ -38,10 +54,9 @@ export function useSessionPollingFallback({ sseConnected, hasActiveSession, lane
         };
         // Poll immediately on activation, then at interval
         void poll();
-        const id = setInterval(() => void poll(), intervalMs);
+        intervalId = setInterval(() => void poll(), intervalMs);
         return () => {
-            cancelled = true;
-            clearInterval(id);
+            stopPolling();
         };
     }, [sseConnected, hasActiveSession, laneId, intervalMs]);
 }
