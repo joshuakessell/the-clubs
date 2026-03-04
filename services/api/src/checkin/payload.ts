@@ -344,6 +344,7 @@ export async function buildFullSessionUpdatedPayload(
       session.flow_step === 'RENTAL' ||
       session.flow_step === 'WAITLIST_PREFERENCES' ||
       session.flow_step === 'WAITLIST_BACKUP' ||
+      session.flow_step === 'WAITLIST_DISCLAIMER' ||
       session.flow_step === 'PAYMENT' ||
       session.flow_step === 'AGREEMENT' ||
       session.flow_step === 'COMPLETE'
