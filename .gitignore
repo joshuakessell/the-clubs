@@ -4,6 +4,8 @@ node_modules
 .pnpm-lock.yaml
 .pnpm-workspace.yaml
 .env
+*.env.*
+!*.env*.example
 
 # Terraform
 *.tfstate
