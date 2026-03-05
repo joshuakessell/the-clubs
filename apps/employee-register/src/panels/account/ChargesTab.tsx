@@ -250,8 +250,8 @@ export function ChargesTab() {
           </div>
         )}
 
-        {/* 6-Month Membership Upgrade — only for non-members with daily fee */}
-        {!isMember && membershipChoice !== 'SIX_MONTH' && !isPaid && lineItems.some(isMembershipItem) && (
+        {/* 6-Month Membership Upgrade — only for non-members with daily fee, before payment */}
+        {!isMember && membershipChoice !== 'SIX_MONTH' && !isPaid && lineItems.some(isMembershipItem) && sp.flowStep !== 'PAYMENT' && sp.flowStep !== 'AGREEMENT' && (
           <button
             onClick={() => setMembershipChoice('SIX_MONTH')}
             className="flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
