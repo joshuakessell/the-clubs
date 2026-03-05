@@ -1345,14 +1345,64 @@ async function seedActiveWaitlist(client: DbClient, p: {
   const WAITLIST_SIZE = 6;
   const rng = seededRng(0x57414954); // 'WAIT'
 
-  // Assign all rooms to customers first (fill them up)
+  // Assign all rooms to customers first (fill them up), and create open visit+block for each
+  const agreementRes = await client.query<{ id: string; version: string; title: string; body_text: string }>(
+    `SELECT id, version, title, body_text FROM agreements ORDER BY created_at DESC LIMIT 1`
+  );
+  const agreement = agreementRes.rows[0];
+  const reg = p.registerSessions[0]!;
+
   for (const room of p.rooms) {
-    const customer = p.customers[Math.floor(rng() * p.customers.length)];
-    await client.query(
+    const customer = p.customers[Math.floor(rng() * p.customers.length)]!;
+    const updated = await client.query<{ id: string }>(
       `UPDATE rooms SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = $2, updated_at = $2
-       WHERE id = $3 AND assigned_to_customer_id IS NULL`,
+       WHERE id = $3 AND assigned_to_customer_id IS NULL
+       RETURNING id`,
       [customer.id, p.now, room.id]
     );
+    if (updated.rows.length === 0) continue; // already occupied — skip
+
+    // Create an open visit + checkin_block so the inventory LATERAL join returns checkout_at
+    const visitId = randomUUID();
+    const blockId = randomUUID();
+    const minIn = 30 + Math.floor(rng() * 90); // checked in 30–120 min ago
+    const start = new Date(p.now.getTime() - minIn * 60 * 1000);
+    const hoursTotal = 2 + Math.floor(rng() * 2); // 2 or 3 hour rental
+    const scheduledEnd = ceilTo15Min(new Date(start.getTime() + hoursTotal * 60 * 60 * 1000));
+    const signedAt = new Date(start.getTime() + 3 * 60 * 1000);
+    const rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.type) ? room.type : 'STANDARD';
+
+    await client.query(
+      `INSERT INTO visits (id, started_at, ended_at, customer_id, created_at, updated_at)
+       VALUES ($1, $2, NULL, $3, NOW(), NOW())`,
+      [visitId, start, customer.id]
+    );
+    await client.query(
+      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type)
+       VALUES ($1, $2, 'INITIAL', $3, $4, NULL, $5, true, $6, $7)`,
+      [blockId, visitId, start, scheduledEnd, room.id, signedAt, rentalType]
+    );
+    if (agreement) {
+      await client.query(
+        `INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, agreement_text_snapshot, agreement_version, checkin_block_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [randomUUID(), agreement.id, customer.name, customer.membership_number, signedAt, agreement.body_text, agreement.version, blockId]
+      );
+    }
+    if (reg) {
+      await client.query(
+        `INSERT INTO customer_activity_events (id, customer_id, staff_id, action, category, summary, metadata, search_blob, dedupe_key, created_at)
+         VALUES ($1, $2, $3, 'CHECKIN_COMPLETED', 'CHECKIN', 'Checked in', $4, $5, $6, $7)
+         ON CONFLICT (dedupe_key) DO NOTHING`,
+        [
+          randomUUID(), customer.id, p.staff[0]?.id ?? null,
+          JSON.stringify({ visitId, blockId, rentalType, registerNumber: reg.register_number }),
+          `Checked in ${customer.name} ${rentalType} ${visitId}`,
+          `ACT:SIM:ACTIVE_ROOM_CHECKIN:${blockId}`,
+          signedAt,
+        ]
+      );
+    }
   }
 
   // Create pending waitlist entries
