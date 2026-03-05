@@ -21,16 +21,16 @@ const paragraphsHtml = AGREEMENT_PARAGRAPHS.map(
   (text) => `<p style="margin: 0 0 0.9rem 0; text-align: justify; hyphens: auto;">${text}</p>`
 ).join('\n');
 
-const AGREEMENT_HTML = `<div style="font-family: Georgia, 'Times New Roman', serif; font-size: 0.9rem; line-height: 1.75; color: #1a1a1a;">
-  <h3 style="text-align: center; font-weight: 700; font-size: 0.95rem; margin: 0 0 0.75rem 0; text-transform: uppercase; letter-spacing: 0.08em; color: #111111;">
+const AGREEMENT_HTML = `<div style="font-family: Georgia, 'Times New Roman', serif; font-size: 0.9rem; line-height: 1.75; color: inherit;">
+  <h3 style="text-align: center; font-weight: 700; font-size: 0.95rem; margin: 0 0 0.75rem 0; text-transform: uppercase; letter-spacing: 0.08em; color: inherit;">
     Assumption of Risk and Liability Release
   </h3>
-  <div style="border-top: 2px solid #1a1a1a; border-bottom: 1px solid #cccccc; padding: 0.5rem 0; margin-bottom: 1rem;">
-    <p style="margin: 0; text-align: center; font-size: 0.8rem; letter-spacing: 0.04em; color: #444444; text-transform: uppercase;">
+  <div style="border-top: 2px solid currentColor; border-bottom: 1px solid currentColor; padding: 0.5rem 0; margin-bottom: 1rem; opacity: 0.4;">
+    <p style="margin: 0; text-align: center; font-size: 0.8rem; letter-spacing: 0.04em; color: inherit; opacity: 0.7; text-transform: uppercase;">
       Please read carefully before signing
     </p>
   </div>
-  <p style="margin: 0 0 1rem 0; font-style: italic; color: #333333;">
+  <p style="margin: 0 0 1rem 0; font-style: italic; color: inherit; opacity: 0.8;">
     By signing below, you acknowledge and agree to the following:
   </p>
 ${paragraphsHtml}

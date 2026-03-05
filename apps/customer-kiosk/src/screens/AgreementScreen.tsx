@@ -195,8 +195,8 @@ export function AgreementScreen() {
                 type="button"
                 className="w-full rounded-lg py-3.5 text-base font-bold transition-all"
                 style={{
-                  backgroundColor: '#ffffff',
-                  color: '#000000',
+                  backgroundColor: 'var(--color-accent-primary)',
+                  color: '#ffffff',
                   letterSpacing: '0.03em',
                 }}
                 onClick={() => { clearCanvas(); setShowSignModal(true); }}
@@ -370,7 +370,7 @@ export function AgreementScreen() {
               <button
                 type="button"
                 className="flex-1 rounded-xl py-3.5 text-sm font-bold transition-all"
-                style={{ backgroundColor: '#ffffff', color: '#000000' }}
+                style={{ backgroundColor: 'var(--color-accent-primary)', color: '#ffffff' }}
                 onClick={() => {
                   const canvas = canvasRef.current;
                   if (canvas) signatureDataRef.current = canvas.toDataURL('image/png');
