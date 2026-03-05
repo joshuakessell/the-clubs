@@ -104,6 +104,10 @@ interface RegisterState {
   selectNavTab: (tab: string) => void;
   returnTab: string | null;
 
+  /* ── Account Drawer ─────────────────────────── */
+  accountDrawerOpen: boolean;
+  setAccountDrawerOpen: (v: boolean) => void;
+
   /* ── Toast ─────────────────────────────────── */
   successToastMessage: string | null;
   setSuccessToastMessage: (v: string | null) => void;
@@ -219,8 +223,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     const { laneId } = get();
 
     // Always set customer info for UI immediately
-    set({ customerId: id, customerName: label, activeCheckinInfo: opts?.activeCheckin ?? null, returnTab: opts?.returnTab ?? null, isSubmitting: true });
-    get().selectNavTab('account');
+    set({ customerId: id, customerName: label, activeCheckinInfo: opts?.activeCheckin ?? null, returnTab: opts?.returnTab ?? null, isSubmitting: true, accountDrawerOpen: true });
 
     // If no activeCheckin was provided (e.g. opened from top search bar),
     // auto-detect whether this customer is currently checked in to a room/locker.
@@ -648,6 +651,10 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
 
   /* Navigation — will be wired to AppLayout's setActiveTab */
   selectNavTab: () => { },
+
+  /* Account Drawer */
+  accountDrawerOpen: false,
+  setAccountDrawerOpen: (v) => set({ accountDrawerOpen: v }),
 
   /* Toast */
   successToastMessage: null,

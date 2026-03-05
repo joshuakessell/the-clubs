@@ -6,7 +6,6 @@ import { InventoryPanel } from '../panels/InventoryPanel';
 import { UpgradesPanel } from '../panels/UpgradesPanel';
 import { RetailPanel } from '../panels/RetailPanel';
 import { CheckoutPanel } from '../panels/CheckoutPanel';
-import { AccountPanel } from '../panels/AccountPanel';
 import { ClubLogPanel } from '../panels/ClubLogPanel';
 import { ManualEntryPanel } from '../panels/ManualEntryPanel';
 import { RoomCleaningPanel } from '../panels/RoomCleaningPanel';
@@ -20,7 +19,6 @@ export type NavTab =
   | 'upgrades'
   | 'retail'
   | 'checkout'
-  | 'account'
   | 'clubLog'
   | 'firstTime'
   | 'roomCleaning';
@@ -31,7 +29,6 @@ const PANELS: Record<NavTab, React.FC> = {
   upgrades: UpgradesPanel,
   retail: RetailPanel,
   checkout: CheckoutPanel,
-  account: AccountPanel,
   clubLog: ClubLogPanel,
   firstTime: ManualEntryPanel,
   roomCleaning: RoomCleaningPanel,

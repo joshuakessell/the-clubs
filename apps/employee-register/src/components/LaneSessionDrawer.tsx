@@ -7,7 +7,7 @@
  * - Shows active session info and opens the full AccountPanel
  * - Available on every tab
  */
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRegisterStore } from '../stores/useRegisterStore';
 import { AccountPanel } from '../panels/AccountPanel';
 
@@ -15,8 +15,7 @@ const NAVBAR_HEIGHT = 90; // px — approx combined height of top toolbar + tab 
 const TAB_HEIGHT = 48;    // px — height of the exposed pull tab
 
 export function LaneSessionDrawer() {
-  const { currentSessionId, customerName, customerId, activeCheckinInfo } = useRegisterStore();
-  const [open, setOpen] = useState(false);
+  const { currentSessionId, customerName, customerId, accountDrawerOpen: open, setAccountDrawerOpen: setOpen } = useRegisterStore();
   const drawerRef = useRef<HTMLDivElement>(null);
 
   // NOTE: Intentionally do NOT auto-close on session changes.
@@ -114,7 +113,7 @@ export function LaneSessionDrawer() {
       {/* Only render pull tab if there's an active profile */}
       {hasActiveProfile && (
         <button
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => setOpen(!open)}
           aria-label={open ? 'Close account panel' : 'Open account panel'}
           style={{
             position: 'relative',
@@ -148,10 +147,10 @@ export function LaneSessionDrawer() {
               width: 10,
               height: 10,
               borderRadius: '50%',
-              background: activeCheckinInfo ? 'var(--color-status-success)' : 'transparent',
-              border: activeCheckinInfo ? 'none' : '2px solid rgba(255,255,255,0.15)',
+              background: currentSessionId ? 'var(--color-status-success)' : 'transparent',
+              border: currentSessionId ? 'none' : '2px solid rgba(255,255,255,0.15)',
               flexShrink: 0,
-              boxShadow: activeCheckinInfo ? '0 0 6px var(--color-status-success)' : 'none',
+              boxShadow: currentSessionId ? '0 0 6px var(--color-status-success)' : 'none',
               transition: 'background 0.2s, box-shadow 0.2s, border 0.2s',
             }}
           />
