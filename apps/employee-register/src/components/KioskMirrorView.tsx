@@ -10,7 +10,7 @@
  */
 import type { SessionUpdatedPayload } from '@the-clubs/shared';
 
-type KioskView = 'idle' | 'checkin' | 'agreement' | 'complete';
+type KioskView = 'idle' | 'checkin' | 'waitlist' | 'agreement' | 'complete';
 
 function flowStepToView(flowStep: string | undefined | null, status?: string): KioskView {
   if (status === 'COMPLETED') return 'complete';
@@ -19,6 +19,8 @@ function flowStepToView(flowStep: string | undefined | null, status?: string): K
     case 'WAITLIST_BACKUP':
     case 'PAYMENT':
       return 'checkin';
+    case 'WAITLIST_DISCLAIMER':
+      return 'waitlist';
     case 'AGREEMENT':
       return 'agreement';
     case 'ASSIGNMENT':
@@ -382,6 +384,108 @@ export function KioskMirrorView({ sessionPayload }: KioskMirrorViewProps) {
             </div>
           </div>
         </>
+      )}
+
+      {/* ── Waitlist Disclaimer state ── */}
+      {view === 'waitlist' && (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            padding: '24px 20px',
+            gap: 16,
+            textAlign: 'center',
+          }}
+        >
+          {/* Shrunk logo */}
+          <div style={{ transform: 'scale(0.4)', transformOrigin: 'top center', marginTop: -8, marginBottom: -30 }}>
+            <div style={{ position: 'relative' }}>
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 12,
+                  borderRadius: '50%',
+                  boxShadow: '0 0 70px 28px rgba(96,165,250,0.4)',
+                  opacity: 0.4,
+                }}
+              />
+              <img
+                src="/club-dallas-logo.svg"
+                alt="Club Dallas"
+                width="160"
+                height="160"
+                style={{ width: 160, height: 160, filter: 'drop-shadow(0 0 14px rgba(96,165,250,0.5))', position: 'relative' }}
+              />
+            </div>
+          </div>
+
+          {/* Title */}
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#f59e0b' }}>Waitlist Procedures</div>
+          <div style={{ fontSize: 10, color: '#9ca3af', marginTop: -8 }}>Customer is reviewing</div>
+
+          {/* Procedure steps */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', textAlign: 'left' }}>
+            {[
+              'Given backup rental while waiting',
+              'Notified when desired room is available',
+              'Upgrade by paying the difference',
+            ].map((text, i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    backgroundColor: 'rgba(245,158,11,0.1)',
+                    border: '1px solid rgba(245,158,11,0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: '#f59e0b',
+                    flexShrink: 0,
+                    marginTop: 1,
+                  }}
+                >
+                  {i + 1}
+                </div>
+                <span style={{ fontSize: 11, color: '#d1d5db', lineHeight: 1.4 }}>{text}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Awaiting acknowledgment */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              borderRadius: 12,
+              padding: '6px 14px',
+              fontSize: 11,
+              fontWeight: 500,
+              backgroundColor: 'rgba(245,158,11,0.08)',
+              color: '#f59e0b',
+              border: '1px solid rgba(245,158,11,0.25)',
+              marginTop: 8,
+            }}
+          >
+            <div
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: '50%',
+                border: '2px solid rgba(245,158,11,0.3)',
+                borderTopColor: '#f59e0b',
+                animation: 'kioskMirrorSpin 1s linear infinite',
+              }}
+            />
+            Awaiting Customer
+          </div>
+        </div>
       )}
 
       {/* ── Agreement state ── */}
