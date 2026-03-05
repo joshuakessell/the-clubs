@@ -210,6 +210,7 @@ export function IdleScreen() {
                   />
                   Refresh
                 </button>
+              ) : (
                 <div
                   className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
                   style={{
@@ -224,6 +225,7 @@ export function IdleScreen() {
                   />
                   {isCheckinActive ? 'Check-in Active' : 'Ready for Check-in'}
                 </div>
+              )}
             </div>
           </>
         )}

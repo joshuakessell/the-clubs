@@ -60,7 +60,7 @@ export function AgreementScreen() {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
       const { x, y } = getCoords(e, canvas);
-      ctx.strokeStyle = '#1a1a2e';
+      ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2.5;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -140,14 +140,14 @@ export function AgreementScreen() {
           className="rounded-xl overflow-hidden"
           style={{
             boxShadow: '0 4px 32px rgba(0,0,0,0.35), 0 1px 4px rgba(0,0,0,0.2)',
-            border: '1px solid rgba(0,0,0,0.15)',
+            border: '1px solid var(--color-border-default)',
           }}
         >
           {/* Document header bar */}
           <div
             className="px-5 py-3 flex items-center justify-between"
             style={{
-              backgroundColor: '#1a1a1a',
+              backgroundColor: 'var(--color-surface-raised)',
             }}
           >
             <span
@@ -169,14 +169,14 @@ export function AgreementScreen() {
             className="overflow-y-auto"
             style={{
               maxHeight: '42vh',
-              backgroundColor: '#fafaf7',
+              backgroundColor: 'var(--color-surface-base)',
               overscrollBehavior: 'contain',
             }}
           >
             <div
               style={{
                 padding: '24px 28px',
-                color: '#1a1a1a',
+                color: 'var(--color-text-primary)',
               }}
               dangerouslySetInnerHTML={{ __html: t('agreement.legalBodyHtml') }}
             />
@@ -186,8 +186,8 @@ export function AgreementScreen() {
           <div
             className="px-5 py-4"
             style={{
-              backgroundColor: '#f0ede6',
-              borderTop: '1px solid #d4cfc4',
+              backgroundColor: 'var(--color-surface-raised)',
+              borderTop: '1px solid var(--color-border-default)',
             }}
           >
             {!signed ? (
@@ -195,8 +195,8 @@ export function AgreementScreen() {
                 type="button"
                 className="w-full rounded-lg py-3.5 text-base font-bold transition-all"
                 style={{
-                  backgroundColor: '#1a1a1a',
-                  color: '#ffffff',
+                  backgroundColor: '#ffffff',
+                  color: '#000000',
                   letterSpacing: '0.03em',
                 }}
                 onClick={() => { clearCanvas(); setShowSignModal(true); }}
@@ -276,7 +276,7 @@ export function AgreementScreen() {
           <div
             className="w-full rounded-t-3xl flex flex-col gap-0 overflow-hidden"
             style={{
-              backgroundColor: '#fafaf7',
+              backgroundColor: 'var(--color-surface-raised)',
               maxWidth: '600px',
               boxShadow: '0 -8px 48px rgba(0,0,0,0.5)',
             }}
@@ -285,20 +285,20 @@ export function AgreementScreen() {
             <div className="flex justify-center pt-3 pb-1">
               <div
                 className="rounded-full"
-                style={{ width: 40, height: 4, backgroundColor: '#cccccc' }}
+                style={{ width: 40, height: 4, backgroundColor: 'var(--color-border-strong)' }}
               />
             </div>
 
             {/* Sheet header */}
             <div
               className="px-6 py-4"
-              style={{ borderBottom: '1px solid #e0ddd6' }}
+              style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
             >
               <h3
                 className="text-lg font-bold"
                 style={{
                   fontFamily: 'Georgia, serif',
-                  color: '#1a1a1a',
+                  color: 'var(--color-text-primary)',
                   textAlign: 'center',
                 }}
               >
@@ -317,8 +317,8 @@ export function AgreementScreen() {
                 height={200}
                 className="w-full rounded-lg"
                 style={{
-                  backgroundColor: '#ffffff',
-                  border: '1px solid #d1cec7',
+                  backgroundColor: 'var(--color-surface-base)',
+                  border: '1px solid var(--color-border-default)',
                   cursor: 'crosshair',
                   touchAction: 'none',
                   display: 'block',
@@ -338,13 +338,13 @@ export function AgreementScreen() {
                   left: 40,
                   right: 40,
                   bottom: 52,
-                  borderBottom: '1px dashed #cccccc',
+                  borderBottom: '1px dashed var(--color-border-strong)',
                   pointerEvents: 'none',
                 }}
               />
               <p
                 className="text-xs text-center mt-2"
-                style={{ color: '#aaaaaa', fontFamily: 'Georgia, serif', fontStyle: 'italic' }}
+                style={{ color: 'var(--color-text-muted)', fontFamily: 'Georgia, serif', fontStyle: 'italic' }}
               >
                 × Sign here
               </p>
@@ -353,14 +353,14 @@ export function AgreementScreen() {
             {/* Sheet actions */}
             <div
               className="flex gap-3 px-6 pb-8 pt-2"
-              style={{ borderTop: '1px solid #e0ddd6' }}
+              style={{ borderTop: '1px solid var(--color-border-subtle)' }}
             >
               <button
                 type="button"
                 className="flex-1 rounded-xl border py-3.5 text-sm font-semibold transition-colors"
                 style={{
-                  borderColor: '#cccccc',
-                  color: '#555555',
+                  borderColor: 'var(--color-border-default)',
+                  color: 'var(--color-text-secondary)',
                   backgroundColor: 'transparent',
                 }}
                 onClick={() => { clearCanvas(); setShowSignModal(false); }}
@@ -370,7 +370,7 @@ export function AgreementScreen() {
               <button
                 type="button"
                 className="flex-1 rounded-xl py-3.5 text-sm font-bold transition-all"
-                style={{ backgroundColor: '#1a1a1a', color: '#ffffff' }}
+                style={{ backgroundColor: '#ffffff', color: '#000000' }}
                 onClick={() => {
                   const canvas = canvasRef.current;
                   if (canvas) signatureDataRef.current = canvas.toDataURL('image/png');
