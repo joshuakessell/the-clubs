@@ -11,6 +11,7 @@ interface CatalogItem {
   name: string;
   price: number;
   category: string;
+  imageUrl?: string;
 }
 
 interface ActiveGuest {
@@ -61,11 +62,12 @@ export function RetailPanel() {
         const data = await res.json();
         const items: CatalogItem[] = (data.products ?? [])
           .filter((p: { isActive?: boolean }) => p.isActive !== false)
-          .map((p: { id: string; name: string; price: number; category?: string }) => ({
+          .map((p: { id: string; name: string; price: number; category?: string; imageUrl?: string }) => ({
             id: p.id,
             name: p.name,
             price: p.price / 100, // DB stores price_cents but returns as 'price'
             category: (p.category ?? 'RETAIL').toLowerCase(),
+            imageUrl: p.imageUrl ?? undefined,
           }));
         setCatalog(items);
       }
@@ -253,7 +255,7 @@ export function RetailPanel() {
                     return (
                       <button
                         key={item.id}
-                        className="group relative flex flex-col rounded-lg border p-3 text-left transition-all"
+                        className="group relative flex flex-col rounded-lg border p-2 text-left transition-all"
                         style={{
                           backgroundColor: 'var(--color-surface-input)',
                           borderColor: qty > 0 ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
@@ -267,7 +269,22 @@ export function RetailPanel() {
                         onClick={() => addItem(item.id)}
                         aria-label={`Add ${item.name} to cart`}
                       >
-                        <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                        {item.imageUrl ? (
+                          <img
+                            src={item.imageUrl}
+                            alt={item.name}
+                            className="mb-2 h-16 w-full rounded object-contain"
+                            style={{ backgroundColor: 'var(--color-surface-overlay)' }}
+                          />
+                        ) : (
+                          <div
+                            className="mb-2 flex h-16 w-full items-center justify-center rounded text-2xl"
+                            style={{ backgroundColor: 'var(--color-surface-overlay)' }}
+                          >
+                            🛍
+                          </div>
+                        )}
+                        <span className="text-xs font-semibold leading-snug" style={{ color: 'var(--color-text-primary)' }}>
                           {item.name}
                         </span>
                         <span className="text-xs tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>

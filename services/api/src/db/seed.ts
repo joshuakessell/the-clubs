@@ -306,7 +306,40 @@ async function seed() {
       console.log('✓ Seeded active agreement: demo-v1');
       console.log('✅ Agreement seeded successfully');
     }
+    // Seed retail products
+    console.log('\nSeeding retail products...');
+
+    const retailProducts = [
+      { sku: 'body-wash',     name: 'Body Wash',          price: 1500, sortOrder: 1,  imageUrl: '/images/products/body-wash.png' },
+      { sku: 'body-lotion',   name: 'Body Lotion',         price: 1200, sortOrder: 2,  imageUrl: '/images/products/body-lotion.png' },
+      { sku: 'charcoal-mask', name: 'Charcoal Face Mask',  price: 2000, sortOrder: 3,  imageUrl: '/images/products/charcoal-mask.png' },
+      { sku: 'aroma-roll-on', name: 'Aroma Roll-On',       price: 1200, sortOrder: 4,  imageUrl: '/images/products/aroma-roll-on.png' },
+      { sku: 'body-scrub',    name: 'Exfoliating Scrub',   price: 1800, sortOrder: 5,  imageUrl: '/images/products/body-scrub.png' },
+      { sku: 'shampoo',       name: 'Shampoo',             price: 1400, sortOrder: 6,  imageUrl: '/images/products/shampoo.png' },
+      { sku: 'conditioner',   name: 'Conditioner',         price: 1400, sortOrder: 7,  imageUrl: '/images/products/conditioner.png' },
+      { sku: 'lip-balm',      name: 'Lip Balm',            price:  700, sortOrder: 8,  imageUrl: '/images/products/lip-balm.png' },
+      { sku: 'aloe-gel',      name: 'Aloe Vera Gel',       price: 1000, sortOrder: 9,  imageUrl: '/images/products/aloe-gel.png' },
+      { sku: 'facial-toner',  name: 'Facial Toner',        price: 1600, sortOrder: 10, imageUrl: '/images/products/facial-toner.png' },
+    ];
+
+    for (const product of retailProducts) {
+      await query(
+        `INSERT INTO products (sku, name, price, category, sort_order, image_url, is_active)
+         VALUES ($1, $2, $3, 'RETAIL', $4, $5, true)
+         ON CONFLICT (sku) DO UPDATE SET
+           name       = EXCLUDED.name,
+           price      = EXCLUDED.price,
+           sort_order = EXCLUDED.sort_order,
+           image_url  = EXCLUDED.image_url,
+           is_active  = true,
+           updated_at = NOW()`,
+        [product.sku, product.name, product.price, product.sortOrder, product.imageUrl]
+      );
+    }
+    console.log(`✅ Retail products seeded (${retailProducts.length} items)`);
+
   } catch (error) {
+
     console.error('❌ Seed failed:', error);
     throw error;
   } finally {

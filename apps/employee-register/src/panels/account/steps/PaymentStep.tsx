@@ -9,7 +9,7 @@ export function PaymentStep() {
   const isPaid = sp.paymentStatus === 'PAID';
   const [loading, setLoading] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
-  const totalDollars = sp.paymentTotal ?? 0;
+  const totalDollars = Math.round(sp.paymentTotal ?? 0);
   const [splitCashDollars, setSplitCashDollars] = useState(0);
   const splitCreditDollars = totalDollars - splitCashDollars;
 
@@ -119,9 +119,9 @@ export function PaymentStep() {
                 type="number"
                 min={0}
                 max={totalDollars}
-                step={0.01}
-                value={splitCashDollars.toFixed(2)}
-                onChange={(e) => setSplitCashDollars(parseFloat(e.target.value || '0'))}
+                step={1}
+                value={splitCashDollars}
+                onChange={(e) => setSplitCashDollars(Math.round(parseFloat(e.target.value || '0')))}
                 className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-semibold"
                 style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: '#1f2937' }}
               />
@@ -132,7 +132,7 @@ export function PaymentStep() {
                 className="mt-1 flex h-10 items-center rounded-lg border px-3 text-sm font-semibold"
                 style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               >
-                ${splitCreditDollars.toFixed(2)}
+                ${splitCreditDollars}
               </div>
             </div>
           </div>
