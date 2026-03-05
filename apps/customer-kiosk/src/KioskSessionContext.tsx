@@ -164,7 +164,7 @@ export function KioskSessionProvider({
     prevConnected.current = sseConnected;
     // Reset on cleanup so StrictMode double-mount re-triggers the catchup
     return () => { prevConnected.current = false; };
-  }, [sseConnected, laneId, kioskToken, onSessionUpdated]);
+  }, [sseConnected, laneId, kioskToken, onSessionUpdated, reset]);
 
   // ── Polling fallback ──────────────────────────────────────────
   // When SSE disconnects mid-checkin, poll /session-snapshot every 5s

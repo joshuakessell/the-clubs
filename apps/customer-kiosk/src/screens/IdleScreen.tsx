@@ -31,6 +31,7 @@ export function IdleScreen() {
       // Back online — clear any pending stale timer and reset flag
       if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
       staleTimerRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsStale(false);
     } else {
       // Start stale countdown only if not already counting
