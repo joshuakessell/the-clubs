@@ -1390,18 +1390,18 @@ async function seedActiveWaitlist(client: DbClient, p: {
       );
     }
     if (reg) {
-      await client.query(
-        `INSERT INTO customer_activity_events (id, customer_id, staff_id, action, category, summary, metadata, search_blob, dedupe_key, created_at)
-         VALUES ($1, $2, $3, 'CHECKIN_COMPLETED', 'CHECKIN', 'Checked in', $4, $5, $6, $7)
-         ON CONFLICT (dedupe_key) DO NOTHING`,
-        [
-          randomUUID(), customer.id, p.staff[0]?.id ?? null,
-          JSON.stringify({ visitId, blockId, rentalType, registerNumber: reg.register_number }),
-          `Checked in ${customer.name} ${rentalType} ${visitId}`,
-          `ACT:SIM:ACTIVE_ROOM_CHECKIN:${blockId}`,
-          signedAt,
-        ]
-      );
+      await insertActivityEvent(client, {
+        at: signedAt,
+        customerId: customer.id,
+        action: 'CHECKIN_COMPLETED',
+        category: 'CHECKIN',
+        staffId: p.staff[0]?.id,
+        staffName: p.staff[0]?.name,
+        summary: 'Checked in',
+        metadata: { visitId, blockId, rentalType, registerNumber: reg.register_number },
+        searchBlob: `Checked in ${customer.name} ${rentalType} ${visitId}`,
+        dedupeKey: `ACT:SIM:ACTIVE_ROOM_CHECKIN:${blockId}`,
+      });
     }
   }
 
