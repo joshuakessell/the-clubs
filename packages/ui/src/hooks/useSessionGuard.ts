@@ -41,7 +41,7 @@ export function useSessionGuard() {
             // but schedule a deferred check after 1 second. This catches stale
             // tokens returned from the server (e.g. server restarted mid-login)
             // without causing a visible validating screen flicker.
-            const t = setTimeout(() => void validateSession(), 1_000);
+            const t = setTimeout(() => void validateSession({ silent: true }), 1_000);
             return () => clearTimeout(t);
         }
 
@@ -56,8 +56,8 @@ export function useSessionGuard() {
     useEffect(() => {
         if (!session) return;
         const HEARTBEAT_MS = 90 * 1_000; // 90 seconds
-        void validateSession(); // fire immediately
-        const id = setInterval(() => void validateSession(), HEARTBEAT_MS);
+        void validateSession({ silent: true }); // fire immediately (silent to avoid UI flash)
+        const id = setInterval(() => void validateSession({ silent: true }), HEARTBEAT_MS);
         return () => clearInterval(id);
     }, [session?.sessionToken]); // eslint-disable-line react-hooks/exhaustive-deps
 

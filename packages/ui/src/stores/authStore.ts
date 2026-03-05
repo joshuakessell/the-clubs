@@ -17,8 +17,9 @@ interface AuthState {
   setSession: (session: StaffSession | null) => void;
   clearSession: () => void;
   setValidating: (v: boolean) => void;
-  /** Validate stored session against the API. Clears session if invalid/expired. */
-  validateSession: () => Promise<void>;
+  /** Validate stored session against the API. Clears session if invalid/expired.
+   *  When `silent` is true, skip setting isValidating (avoids unmounting the UI). */
+  validateSession: (opts?: { silent?: boolean }) => Promise<void>;
 }
 
 const STORAGE_KEY = 'the-clubs:staff-session';
@@ -67,7 +68,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setValidating: (isValidating) => set({ isValidating }),
 
-  validateSession: async () => {
+  validateSession: async (opts) => {
     const { session } = get();
     if (!session?.sessionToken) return;
 
@@ -76,7 +77,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // localStorage token from a previous demo:dev run).
     const tokenAtStart = session.sessionToken;
 
-    set({ isValidating: true });
+    // When silent=true (periodic heartbeat), don't set isValidating to avoid
+    // unmounting the AppLayout and resetting drawer/panel states.
+    if (!opts?.silent) set({ isValidating: true });
     try {
       const res = await fetch(getApiUrl('/api/v1/auth/me'), {
         headers: { Authorization: `Bearer ${tokenAtStart}` },

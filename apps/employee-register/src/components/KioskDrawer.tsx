@@ -11,6 +11,7 @@ const TAB_WIDTH = 48; // px — width of the exposed pull tab
  */
 export function KioskDrawer() {
   const sessionPayload = useRegisterStore((s) => s.sessionPayload);
+  const laneId = useRegisterStore((s) => s.laneId);
   const [open, setOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
@@ -115,7 +116,7 @@ export function KioskDrawer() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 0 24px' }}>
           {/* Mirror view — centered */}
           <div style={{ transform: 'scale(0.8)', transformOrigin: 'center center', flexShrink: 0 }}>
-            <KioskMirrorView sessionPayload={sessionPayload ?? null} />
+            <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId} />
           </div>
         </div>
       </div>

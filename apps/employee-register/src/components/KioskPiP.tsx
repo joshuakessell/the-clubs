@@ -11,6 +11,7 @@ import { useRegisterStore } from '../stores/useRegisterStore';
 
 export function KioskPiP() {
   const sessionPayload = useRegisterStore((s) => s.sessionPayload);
+  const laneId = useRegisterStore((s) => s.laneId);
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -95,7 +96,7 @@ export function KioskPiP() {
               animation: 'kioskModalFadeIn 0.2s ease-out',
             }}
           >
-            <KioskMirrorView sessionPayload={sessionPayload ?? null} />
+            <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId} />
           </div>
 
           {/* Close hint */}
