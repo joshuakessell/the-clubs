@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { PaymentStatusPill, derivePaymentPillStatus } from './PaymentStatusPill';
 
 interface ChargeItem {
   description: string;
@@ -16,6 +17,8 @@ interface ChargeItemsListProps {
   showPaymentReceived: boolean;
   isMember: boolean;
   customerName: string;
+  paymentStatus?: string;
+  paymentFailureReason?: string;
 }
 
 /**
@@ -34,7 +37,10 @@ export function ChargeItemsList({
   showPaymentReceived,
   isMember,
   customerName,
+  paymentStatus,
+  paymentFailureReason,
 }: ChargeItemsListProps) {
+  const pillStatus = derivePaymentPillStatus(paymentStatus, paymentFailureReason);
   // ── Animation state machine ──
   const [chargeItems, setChargeItems] = useState<ChargeItem[]>([]);
   const prevKeyRef = useRef('');
@@ -277,19 +283,12 @@ export function ChargeItemsList({
           </div>
         )}
 
-        {/* Payment instruction */}
+        {/* Payment status pill */}
         {showPaymentInstructions && total != null && total > 0 && (
-          <p
-            className="text-sm font-medium"
-            style={{
-              color: 'var(--color-text-muted)',
-              animation: 'fadeSlideIn 0.5s ease 0.5s both',
-              textAlign: 'center',
-              marginTop: 8,
-            }}
-          >
-            Please provide cash or card to the attendant.
-          </p>
+          <PaymentStatusPill
+            status={pillStatus}
+            declineReason={paymentFailureReason}
+          />
         )}
 
         {/* Payment received */}

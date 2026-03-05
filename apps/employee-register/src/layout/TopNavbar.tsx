@@ -16,10 +16,9 @@ const NAV_ITEMS: NavItem[] = [
   { tab: 'upgrades', label: 'Upgrades', fKey: 'F3', icon: <UpgradeIcon /> },
   { tab: 'retail', label: 'Retail', fKey: 'F4', icon: <CartIcon /> },
   { tab: 'checkout', label: 'Checkout', fKey: 'F5', icon: <CheckIcon /> },
-  { tab: 'account', label: 'Account', fKey: 'F6', icon: <UserIcon /> },
-  { tab: 'clubLog', label: 'Log', fKey: 'F7', icon: <LogIcon /> },
-  { tab: 'firstTime', label: 'Manual', fKey: 'F8', icon: <PenIcon /> },
-  { tab: 'roomCleaning', label: 'Cleaning', fKey: 'F9', icon: <CleanIcon /> },
+  { tab: 'clubLog', label: 'Log', fKey: 'F6', icon: <LogIcon /> },
+  { tab: 'firstTime', label: 'Manual', fKey: 'F7', icon: <PenIcon /> },
+  { tab: 'roomCleaning', label: 'Cleaning', fKey: 'F8', icon: <CleanIcon /> },
 ];
 
 interface TopNavbarProps {

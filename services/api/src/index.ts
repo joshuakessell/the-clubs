@@ -92,6 +92,27 @@ async function main() {
     },
   });
 
+  // Global Request Logging
+  fastify.addHook('onRequest', (request, reply, done) => {
+    // Skip health checks to avoid log spam
+    if (request.url !== '/health') {
+      fastify.log.info({ method: request.method, url: request.url }, 'Incoming Request');
+    }
+    done();
+  });
+
+  fastify.addHook('onResponse', (request, reply, done) => {
+    if (request.url !== '/health') {
+      fastify.log.info({
+        method: request.method,
+        url: request.url,
+        statusCode: reply.statusCode,
+        responseTime: Math.round(reply.elapsedTime) + 'ms'
+      }, 'Request Completed');
+    }
+    done();
+  });
+
   // Register CORS — lock origins to an explicit allow-list in production.
   // ALLOWED_ORIGINS can be a comma-separated list (e.g. "https://a.com,https://b.com").
   // Fail-fast in production if ALLOWED_ORIGINS is unset to prevent open CORS.

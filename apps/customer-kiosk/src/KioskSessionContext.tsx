@@ -55,6 +55,8 @@ interface KioskSessionContextValue {
   laneId: string;
   kioskToken: string | null;
   customerName: string;
+  /** True when the SSE stream is actively connected to the server. */
+  sseConnected: boolean;
   navigate: (next: KioskView) => void;
   reset: () => void;
 }
@@ -189,9 +191,10 @@ export function KioskSessionProvider({
     laneId,
     kioskToken,
     customerName,
+    sseConnected,
     navigate,
     reset,
-  }), [view, sessionPayload, laneId, kioskToken, customerName, navigate, reset]);
+  }), [view, sessionPayload, laneId, kioskToken, customerName, sseConnected, navigate, reset]);
 
   return <KioskSessionCtx.Provider value={value}>{children}</KioskSessionCtx.Provider>;
 }

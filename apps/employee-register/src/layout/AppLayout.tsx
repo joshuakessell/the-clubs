@@ -11,7 +11,8 @@ import { ClubLogPanel } from '../panels/ClubLogPanel';
 import { ManualEntryPanel } from '../panels/ManualEntryPanel';
 import { RoomCleaningPanel } from '../panels/RoomCleaningPanel';
 import { useRegisterStore } from '../stores/useRegisterStore';
-import { KioskPiP } from '../components/KioskPiP';
+import { KioskDrawer } from '../components/KioskDrawer';
+import { LaneSessionDrawer } from '../components/LaneSessionDrawer';
 
 export type NavTab =
   | 'scan'
@@ -57,9 +58,10 @@ export function AppLayout() {
 
   // F-key shortcuts (F1–F9)
   useEffect(() => {
-    const tabs: NavTab[] = ['scan', 'inventory', 'upgrades', 'retail', 'checkout', 'account', 'clubLog', 'firstTime', 'roomCleaning'];
+    // Account tab removed from nav bar — accessible only via LaneSessionDrawer
+    const tabs: NavTab[] = ['scan', 'inventory', 'upgrades', 'retail', 'checkout', 'clubLog', 'firstTime', 'roomCleaning'];
     const fKeyMap: Record<string, number> = {
-      F1: 0, F2: 1, F3: 2, F4: 3, F5: 4, F6: 5, F7: 6, F8: 7, F9: 8,
+      F1: 0, F2: 1, F3: 2, F4: 3, F5: 4, F6: 5, F7: 6, F8: 7,
     };
 
     const handler = (e: KeyboardEvent) => {
@@ -113,8 +115,9 @@ export function AppLayout() {
         onSignOut={clearSession}
       />
 
-      {/* Kiosk PiP — floating thumbnail of customer kiosk */}
-      <KioskPiP />
+      {/* Right-side kiosk drawer and bottom session drawer */}
+      <KioskDrawer />
+      <LaneSessionDrawer />
 
       <main className="flex flex-col flex-1 min-h-0 overflow-hidden p-4" data-main-content>
         <ActivePanel />

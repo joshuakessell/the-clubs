@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Badge, Button, Spinner } from '@the-clubs/ui';
+import { Badge, Spinner } from '@the-clubs/ui';
 import { useAuthStore } from '@the-clubs/ui';
 import { getApiUrl } from '@the-clubs/shared';
 import { useRegisterStore } from '../stores/useRegisterStore';
@@ -31,22 +31,20 @@ export function ScanPanel() {
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
-    currentSessionId,
-    customerName,
-    selectNavTab,
+    laneId,
     scanReady,
     scanBlockedReason,
     scanInputEnabled,
     scanCaptureSubmitting,
     setScanCaptureSubmitting,
     openCustomerAccount,
-    laneId,
     setManualFirstName,
     setManualLastName,
     setManualDobDigits,
     setManualIdType,
     setManualIdNumber,
     setManualIdExpirationDigits,
+    selectNavTab,
   } = useRegisterStore();
 
   const token = useAuthStore((s) => s.session?.sessionToken);
@@ -267,18 +265,7 @@ export function ScanPanel() {
             : `Scanner paused: ${scanBlockedReason || 'Unavailable'}`}
         </p>
 
-        {/* Active session CTA */}
-        {currentSessionId && customerName ? (
-          <div className="mt-6 flex flex-col gap-2 w-full">
-            <p className="text-sm font-semibold" style={{ color: 'var(--color-text-muted)' }}>
-              Active lane session:{' '}
-              <span style={{ color: 'var(--color-text-primary)' }}>{customerName}</span>
-            </p>
-            <Button fullWidth onClick={() => selectNavTab('account')}>
-              Open Customer Account
-            </Button>
-          </div>
-        ) : null}
+
       </div>
 
       {/* ── Processing overlay (full screen, doesn't steal focus) ── */}

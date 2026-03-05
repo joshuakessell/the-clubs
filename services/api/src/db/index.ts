@@ -271,7 +271,16 @@ let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 export function getDb() {
   if (!_db) {
-    _db = drizzle(getPool(), { schema });
+    _db = drizzle(getPool(), { 
+      schema, 
+      logger: {
+        logQuery(query: string, params: unknown[]) {
+          if (process.env.DB_LOG_QUERIES !== 'false') {
+             console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
+          }
+        }
+      }
+    });
   }
   return _db;
 }

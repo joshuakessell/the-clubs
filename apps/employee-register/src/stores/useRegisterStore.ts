@@ -600,12 +600,26 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   },
 
   completeTransaction: async () => {
-    const { laneId, customerId, customerName } = get();
+    const { laneId, customerId, customerName, sessionPayload } = get();
+
+    let optimisticCheckin;
+    if (sessionPayload?.status === 'COMPLETED' && sessionPayload.assignedResourceNumber) {
+      optimisticCheckin = {
+        visitId: sessionPayload.sessionId,
+        occupancyId: sessionPayload.sessionId,
+        resourceType: sessionPayload.assignedResourceType as 'room' | 'locker',
+        resourceNumber: sessionPayload.assignedResourceNumber,
+        checkinAt: new Date().toISOString(),
+        checkoutAt: null,
+        overdue: false,
+      };
+    }
+
     // Clear session state but keep customerId/customerName so the profile
     // tab re-renders and shows the now-checked-in customer.
     set({
       currentSessionId: null,
-      activeCheckinInfo: null,
+      activeCheckinInfo: optimisticCheckin ?? null,
       sessionPayload: null,
       successToastMessage: `${customerName ?? 'Customer'} checked in successfully`,
     });
@@ -622,7 +636,10 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       // Re-open the customer's profile to refresh and show the active visit
       if (customerId) {
         const { openCustomerAccount } = get();
-        openCustomerAccount(customerId, customerName ?? '', { authToken: token });
+        // Passing activeCheckin skips the slow /inventory/detailed fetch for immediate feedback
+        const opts: any = { authToken: token };
+        if (optimisticCheckin) opts.activeCheckin = optimisticCheckin;
+        openCustomerAccount(customerId, customerName ?? '', opts);
       }
     } catch {
       // Best-effort — local state already cleared

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ScreenShell } from '../components/ScreenShell';
 import { BrandingHeader } from '../components/BrandingHeader';
 import { ChargeItemsList } from '../components/ChargeItemsList';
@@ -14,9 +14,37 @@ import { WaitlistDisclaimerModal } from '../components/WaitlistDisclaimerModal';
  * check-in card appears with animated charge items.
  */
 export function IdleScreen() {
-  const { view, sessionPayload, customerName } = useKioskSession();
+  const { view, sessionPayload, customerName, sseConnected } = useKioskSession();
   const isCheckinActive = view === 'checkin';
   const { t } = useI18n();
+
+  // ── Stale-SSE detection ───────────────────────────────────────
+  // If the SSE disconnects for more than 30 seconds, show a yellow
+  // "Refresh" pill so the customer (or employee mirror) can tap to
+  // reload and re-establish the SSE connection.
+  const STALE_THRESHOLD_MS = 30_000;
+  const [isStale, setIsStale] = useState(false);
+  const staleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (sseConnected) {
+      // Back online — clear any pending stale timer and reset flag
+      if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
+      staleTimerRef.current = null;
+      setIsStale(false);
+    } else {
+      // Start stale countdown only if not already counting
+      if (!staleTimerRef.current) {
+        staleTimerRef.current = setTimeout(() => {
+          setIsStale(true);
+          staleTimerRef.current = null;
+        }, STALE_THRESHOLD_MS);
+      }
+    }
+    return () => {
+      if (staleTimerRef.current) clearTimeout(staleTimerRef.current);
+    };
+  }, [sseConnected]);
 
   // Theme detection for logo variant
   const [activeTheme, setActiveTheme] = useState(() =>
@@ -36,6 +64,7 @@ export function IdleScreen() {
   const total = sessionPayload?.ledgerTotal ?? sessionPayload?.paymentTotal;
   const flowStep = sessionPayload?.flowStep;
   const paymentStatus = sessionPayload?.paymentStatus;
+  const paymentFailureReason = sessionPayload?.paymentFailureReason;
 
   const showPaymentInstructions = flowStep === 'PAYMENT' && paymentStatus !== 'PAID';
   const showPaymentReceived = paymentStatus === 'PAID';
@@ -86,14 +115,15 @@ export function IdleScreen() {
             <div
               className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
               style={{
-                backgroundColor: 'var(--color-surface-overlay)',
-                color: 'var(--color-text-muted)',
-                border: '1px solid var(--color-border-subtle)',
+                color: isStale ? '#ca8a04' : 'var(--color-text-muted)',
+                border: `1px solid ${isStale ? 'rgba(202,138,4,0.35)' : 'var(--color-border-subtle)'}`,
+                backgroundColor: isStale ? 'rgba(202,138,4,0.08)' : 'var(--color-surface-overlay)',
+                transition: 'color 0.4s, border-color 0.4s, background-color 0.4s',
               }}
             >
               <div
                 className="h-2 w-2 rounded-full animate-pulse"
-                style={{ backgroundColor: 'var(--color-status-success)' }}
+                style={{ backgroundColor: isStale ? '#ca8a04' : 'var(--color-status-success)' }}
               />
               {t('idle.readyForCheckin')}
             </div>
@@ -144,11 +174,13 @@ export function IdleScreen() {
                   showPaymentReceived={showPaymentReceived}
                   isMember={isMember}
                   customerName={customerName}
+                  paymentStatus={paymentStatus}
+                  paymentFailureReason={paymentFailureReason}
                 />
               </div>
             </div>
 
-            {/* Status indicator — fixed at bottom */}
+            {/* Status indicator — fixed at bottom; turns yellow + tappable when SSE is stale */}
             <div
               style={{
                 position: 'fixed',
@@ -158,20 +190,40 @@ export function IdleScreen() {
                 zIndex: 10,
               }}
             >
-              <div
-                className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
-                style={{
-                  backgroundColor: 'rgba(34,197,94,0.08)',
-                  color: 'var(--color-status-success)',
-                  border: '1px solid rgba(34,197,94,0.3)',
-                }}
-              >
+              {isStale ? (
+                <button
+                  type="button"
+                  onClick={() => globalThis.location.reload()}
+                  className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
+                  style={{
+                    backgroundColor: 'rgba(202,138,4,0.12)',
+                    color: '#ca8a04',
+                    border: '1px solid rgba(202,138,4,0.4)',
+                    cursor: 'pointer',
+                    transition: 'opacity 0.15s',
+                  }}
+                  aria-label="Connection lost — tap to refresh and reconnect"
+                >
+                  <div
+                    className="h-2 w-2 rounded-full animate-pulse"
+                    style={{ backgroundColor: '#ca8a04' }}
+                  />
+                  Refresh
+                </button>
                 <div
-                  className="h-2 w-2 rounded-full animate-pulse"
-                  style={{ backgroundColor: 'var(--color-status-success)' }}
-                />
-                Check-in Active
-              </div>
+                  className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
+                  style={{
+                    backgroundColor: 'rgba(34,197,94,0.08)',
+                    color: 'var(--color-status-success)',
+                    border: '1px solid rgba(34,197,94,0.3)',
+                  }}
+                >
+                  <div
+                    className="h-2 w-2 rounded-full animate-pulse"
+                    style={{ backgroundColor: 'var(--color-status-success)' }}
+                  />
+                  {isCheckinActive ? 'Check-in Active' : 'Ready for Check-in'}
+                </div>
             </div>
           </>
         )}

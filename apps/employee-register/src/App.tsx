@@ -5,6 +5,7 @@ import { getApiUrl, useSessionPollingFallback } from '@the-clubs/shared';
 import { AppLayout } from './layout/AppLayout';
 import { useRegisterSSE } from './hooks/useRegisterSSE';
 import { useRegisterStore } from './stores/useRegisterStore';
+import { RouteLogger } from './components/RouteLogger';
 
 const kioskToken = (import.meta.env.VITE_KIOSK_TOKEN as string) || null;
 
@@ -113,6 +114,7 @@ export default function App() {
   return (
     <ErrorBoundary>
     <BrowserRouter>
+      <RouteLogger />
     {
       isValidating?(
           <ValidatingScreen />

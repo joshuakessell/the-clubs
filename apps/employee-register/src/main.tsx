@@ -1,3 +1,6 @@
+import { setupFetchInterceptor } from './utils/fetchInterceptor';
+setupFetchInterceptor();
+
 import "preline";
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
