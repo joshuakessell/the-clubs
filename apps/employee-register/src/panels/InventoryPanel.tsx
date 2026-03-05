@@ -142,8 +142,8 @@ export function InventoryPanel() {
   </p>
       )}
 
-{/* 4-column grid */ }
-<div className="mt-3 grid grid-cols-4 gap-3" style = {{ height: 'calc(100% - 60px)', overflow: 'hidden' }}>
+        {/* 4-column grid */}
+        <div className="mt-3 grid grid-cols-4 gap-3 flex-1 min-h-0 overflow-hidden">
 {
   COLUMNS.map((col) => {
     const items = grouped[col.key] ?? [];

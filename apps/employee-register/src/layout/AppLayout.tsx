@@ -116,7 +116,7 @@ export function AppLayout() {
       {/* Kiosk PiP — floating thumbnail of customer kiosk */}
       <KioskPiP />
 
-      <main className="flex-1 min-h-0 overflow-auto p-4" data-main-content>
+      <main className="flex-1 min-h-0 overflow-hidden p-4" data-main-content>
         <ActivePanel />
       </main>
 

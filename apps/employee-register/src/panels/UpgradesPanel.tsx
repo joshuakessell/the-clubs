@@ -309,8 +309,8 @@ export function UpgradesPanel() {
 
 
   return (
-    <PanelShell align="top" card={false}>
-      <div className="rounded-xl border p-5 w-full" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
+    <PanelShell align="top" card={false} scroll="hidden">
+      <div className="flex flex-col flex-1 min-h-0 rounded-xl border p-5 w-full" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <PanelHeader
           title="Upgrades"
           subtitle="Waitlist queue — rooms offered first-come-first-served"
@@ -334,7 +334,7 @@ export function UpgradesPanel() {
             <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No active upgrade requests</p>
           </div>
         ) : (
-          <div className="mt-4">
+          <div className="mt-4 flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
             {/* Column headers */}
             <div
               style={{
