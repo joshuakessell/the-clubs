@@ -26,7 +26,7 @@ export function useSessionGuard() {
     // flash of the ValidatingScreen on every login.
     const prevTokenRef = useRef<string | undefined>(session?.sessionToken);
 
-    // Validate on mount (and when session changes from null → valid, e.g. after login)
+    // Validate on mount (and when session token changes, e.g. after login)
     useEffect(() => {
         if (!session) {
             prevTokenRef.current = undefined;
@@ -37,24 +37,27 @@ export function useSessionGuard() {
         prevTokenRef.current = session.sessionToken;
 
         if (tokenChanged) {
-            // Session token just changed — this is a fresh login.
-            // Skip validation; the token is brand-new.
-            return;
+            // Fresh login — skip the immediate validation to avoid a flash,
+            // but schedule a deferred check after 1 second. This catches stale
+            // tokens returned from the server (e.g. server restarted mid-login)
+            // without causing a visible validating screen flicker.
+            const t = setTimeout(() => void validateSession(), 1_000);
+            return () => clearTimeout(t);
         }
 
-        // Token didn't change (e.g. component re-mounted or page refresh with
-        // restored localStorage token) — validate to ensure it's still valid.
+        // Token didn't change (e.g. re-mount or page refresh with stored token) —
+        // validate immediately to ensure the token is still valid.
         void validateSession();
     }, [session?.sessionToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Heartbeat: ping /auth/me every 10 minutes to keep session alive
-    // and detect expiry proactively before the user tries an action.
+    // Heartbeat: ping /auth/me every 90 seconds so a server restart is detected
+    // quickly and the user is sent back to the lock screen automatically.
+    // Also fires immediately on mount to catch stale tokens right away.
     useEffect(() => {
         if (!session) return;
-        const HEARTBEAT_MS = 10 * 60 * 1000; // 10 minutes
-        const id = setInterval(() => {
-            void validateSession();
-        }, HEARTBEAT_MS);
+        const HEARTBEAT_MS = 90 * 1_000; // 90 seconds
+        void validateSession(); // fire immediately
+        const id = setInterval(() => void validateSession(), HEARTBEAT_MS);
         return () => clearInterval(id);
     }, [session?.sessionToken]); // eslint-disable-line react-hooks/exhaustive-deps
 

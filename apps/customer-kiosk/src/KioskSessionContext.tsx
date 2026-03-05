@@ -123,8 +123,15 @@ export function KioskSessionProvider({
     onSessionUpdated,
   });
 
-  // Heartbeat — tell the server this kiosk is alive
-  useKioskHeartbeat(laneId, kioskToken);
+  // Heartbeat — tell the server this kiosk is alive.
+  // If the token is rejected (e.g. server restarted), reset to idle so the
+  // kiosk doesn't silently operate with a stale/invalid token.
+  const handleHeartbeatAuthError = useCallback(() => {
+    console.warn('[kiosk-heartbeat] Token rejected by server (401/403) — resetting to idle');
+    setView('idle');
+    setSessionPayload(null);
+  }, []);
+  useKioskHeartbeat(laneId, kioskToken, handleHeartbeatAuthError);
 
   // Session snapshot catchup
   const prevConnected = useRef(false);
