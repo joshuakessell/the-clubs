@@ -142,8 +142,8 @@ export function InventoryPanel() {
   </p>
       )}
 
-        {/* 4-column grid */}
-        <div className="mt-3 grid grid-cols-4 gap-3 flex-1 min-h-0 overflow-hidden">
+        {/* 4-column flex row — each card scrolls independently */}
+        <div className="mt-3 flex gap-3 flex-1 min-h-0">
 {
   COLUMNS.map((col) => {
     const items = grouped[col.key] ?? [];
@@ -152,8 +152,8 @@ export function InventoryPanel() {
 
     return (
       <div
-              key= { col.key }
-    className = "flex flex-col rounded-lg border"
+              key={ col.key }
+    className = "flex flex-1 flex-col min-h-0 rounded-lg border"
     style = {{
       backgroundColor: 'var(--color-surface-overlay)',
         borderColor: 'var(--color-border-subtle)',
@@ -183,7 +183,7 @@ style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)'
           </div>
 
 {/* Scrollable item list */ }
-<div className="flex-1 overflow-y-auto" >
+<div className="flex-1 min-h-0 overflow-y-auto" >
 {
   items.length === 0 && (
     <p className="px-3 py-4 text-center text-xs" style = {{ color: 'var(--color-text-muted)' }}>
