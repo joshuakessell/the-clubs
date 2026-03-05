@@ -81,6 +81,25 @@ async function main() {
                 }),
         },
     });
+    // Global Request Logging
+    fastify.addHook('onRequest', (request, reply, done) => {
+        // Skip health checks to avoid log spam
+        if (request.url !== '/health') {
+            fastify.log.info({ method: request.method, url: request.url }, 'Incoming Request');
+        }
+        done();
+    });
+    fastify.addHook('onResponse', (request, reply, done) => {
+        if (request.url !== '/health') {
+            fastify.log.info({
+                method: request.method,
+                url: request.url,
+                statusCode: reply.statusCode,
+                responseTime: Math.round(reply.elapsedTime) + 'ms'
+            }, 'Request Completed');
+        }
+        done();
+    });
     // Register CORS — lock origins to an explicit allow-list in production.
     // ALLOWED_ORIGINS can be a comma-separated list (e.g. "https://a.com,https://b.com").
     // Fail-fast in production if ALLOWED_ORIGINS is unset to prevent open CORS.
@@ -89,11 +108,16 @@ async function main() {
         console.error('FATAL: ALLOWED_ORIGINS must be set in production. Refusing to start with open CORS.');
         process.exit(1);
     }
-    const allowedOrigins = process.env.ALLOWED_ORIGINS
+    const rawOrigins = process.env.ALLOWED_ORIGINS
         ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-        : true;
+        : null;
+    // @fastify/cors treats an array as exact-match origins. A single '*' entry means "allow all",
+    // which requires `origin: true` (reflect any origin), not the literal string '*' in an array.
+    const allowedOrigins = !rawOrigins ? true : // env unset → allow all in dev
+        rawOrigins.length === 1 && rawOrigins[0] === '*' ? true : // explicit wildcard
+            rawOrigins; // explicit list
     if (allowedOrigins === true) {
-        fastify.log.warn('ALLOWED_ORIGINS is not set — CORS allows all origins. Set ALLOWED_ORIGINS in production.');
+        fastify.log.warn('ALLOWED_ORIGINS is not set or is "*" — CORS allows all origins. Set ALLOWED_ORIGINS in production.');
     }
     await fastify.register(cors_1.default, {
         origin: allowedOrigins,
@@ -283,6 +307,31 @@ async function main() {
                 }
                 catch (migrationErr) {
                     fastify.log.error(migrationErr, '❌ Schema migration failed (non-fatal) — some features may not work correctly.');
+                }
+                // Startup health check: log critical table row counts
+                try {
+                    const { query: healthQuery } = await Promise.resolve().then(() => __importStar(require('./db')));
+                    const healthRes = await healthQuery(`
+            SELECT 'staff' as tbl, COUNT(*)::text as cnt FROM staff
+            UNION ALL SELECT 'rooms', COUNT(*)::text FROM rooms
+            UNION ALL SELECT 'lockers', COUNT(*)::text FROM lockers
+            UNION ALL SELECT 'customers', COUNT(*)::text FROM customers
+            UNION ALL SELECT 'agreements', COUNT(*)::text FROM agreements WHERE active = true
+            UNION ALL SELECT 'devices', COUNT(*)::text FROM devices
+            UNION ALL SELECT 'staff_sessions', COUNT(*)::text FROM staff_sessions WHERE revoked_at IS NULL AND expires_at > NOW()
+          `);
+                    const counts = Object.fromEntries(healthRes.rows.map(r => [r.tbl, parseInt(r.cnt, 10)]));
+                    const critical = ['staff', 'rooms', 'lockers', 'agreements', 'devices'];
+                    const missing = critical.filter(t => (counts[t] ?? 0) === 0);
+                    if (missing.length > 0) {
+                        fastify.log.warn(`⚠️  DB HEALTH: Empty critical tables: [${missing.join(', ')}] — seed may have failed! Run 'pnpm demo:seed' or 'pnpm demo:dev:fresh'.`);
+                    }
+                    fastify.log.info(`📊 DB health: ${counts.staff ?? 0} staff, ${counts.rooms ?? 0} rooms, ${counts.lockers ?? 0} lockers, ` +
+                        `${counts.customers ?? 0} customers, ${counts.agreements ?? 0} agreements, ${counts.devices ?? 0} devices, ` +
+                        `${counts.staff_sessions ?? 0} active sessions`);
+                }
+                catch (healthErr) {
+                    fastify.log.warn(healthErr, 'Failed to run startup health check (non-fatal)');
                 }
                 // Start auto-replay for edge stack
                 if (process.env.EDGE_STACK === 'true' && process.env.CLOUD_API_BASE_URL) {

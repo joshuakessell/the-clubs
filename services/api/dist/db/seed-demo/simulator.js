@@ -604,7 +604,7 @@ async function simulateVisits(params) {
                     const cnt = lateCountByNight.get(night) ?? 0;
                     if (cnt < 2) {
                         lateCountByNight.set(night, cnt + 1);
-                        await insertLateCheckout(client, { blockId, customerId: customer.id, lateMins, feeAmount: lateFee, banApplied: lateMins >= 60, at: end, staff, to, rng });
+                        await insertLateCheckout(client, { blockId, visitId, customerId: customer.id, lateMins, feeAmount: lateFee, banApplied: lateMins >= 60, at: end, staff, to, rng });
                     }
                 }
             }
@@ -622,11 +622,11 @@ async function simulateVisits(params) {
             // --- Retail Orders (~24% customer-linked, ~55% anonymous) ---
             if (rng() < 0.24) {
                 orderSeed++;
-                await insertOrder(client, { at: new Date(start.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: customer.id, seed: orderSeed, rng, to });
+                await insertOrder(client, { at: new Date(start.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: customer.id, visitId, seed: orderSeed, rng, to });
             }
             if (rng() < 0.55) {
                 orderSeed++;
-                await insertOrder(client, { at: new Date(start.getTime() + (45 + Math.floor(rng() * 120)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: null, seed: orderSeed, rng, to });
+                await insertOrder(client, { at: new Date(start.getTime() + (45 + Math.floor(rng() * 120)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: null, visitId: null, seed: orderSeed, rng, to });
             }
             created++;
         }
@@ -754,7 +754,7 @@ async function insertLateCheckout(client, p) {
             dedupeKey: `ACT:SIM:CHECKOUT_FEE_PAID:${p.blockId}`,
         });
         await insertLedgerEntry(client, {
-            at: p.at, customerId: p.customerId, visitId: '(SELECT visit_id FROM checkin_blocks WHERE id = \'' + p.blockId + '\')',
+            at: p.at, customerId: p.customerId, visitId: p.visitId,
             type: 'LATE_FEE', amount: Math.round(p.feeAmount), staffId: lateStaff.id, staffName: lateStaff.name,
             summary: 'Late checkout fee',
             metadata: { paymentIntentId: piId, lateMinutes: p.lateMins, feeAmount: p.feeAmount },
@@ -813,7 +813,7 @@ async function insertOrder(client, p) {
         }]);
     if (p.customerId) {
         await insertLedgerEntry(client, {
-            at: p.at, customerId: p.customerId, visitId: orderId, type: 'ORDER_PAID', amount: total,
+            at: p.at, customerId: p.customerId, visitId: p.visitId ?? orderId, type: 'ORDER_PAID', amount: total,
             staffId: p.staffId, staffName: '', summary: 'Order paid',
             metadata: { orderId, total, currency: 'USD' }, dedupeKey: `LEDGER:SIM:ORDER_PAID:${orderId}`,
         });
@@ -824,6 +824,97 @@ async function insertOrder(client, p) {
             searchBlob: `Order paid ${orderId} ${total}`, dedupeKey: `ACT:SIM:ORDER_PAID:${orderId}`,
         });
     }
+}
+async function checkoutActiveVisits(client, p) {
+    // Find visits that are still open but whose scheduled end has already passed
+    const res = await client.query(`
+    SELECT
+      v.id            AS visit_id,
+      cb.id           AS block_id,
+      v.customer_id,
+      c.name          AS customer_name,
+      cb.rental_type,
+      cb.ends_at      AS scheduled_end,
+      cb.room_id
+    FROM visits v
+    JOIN checkin_blocks cb
+      ON cb.visit_id = v.id
+     AND cb.ends_at IS NOT NULL
+     AND cb.ends_at <= $1
+    JOIN customers c ON c.id = v.customer_id
+    WHERE v.ended_at IS NULL
+    ORDER BY cb.ends_at
+  `, [p.now]);
+    if (res.rows.length === 0)
+        return 0;
+    const rng = seededRng(0x4348454b); // 'CHEK'
+    const emp = p.staff[0];
+    const lateCountByNight = new Map();
+    let closed = 0;
+    for (const row of res.rows) {
+        const scheduledEnd = new Date(row.scheduled_end);
+        const delta = sampleCheckoutDelta(rng); // +ve = early, -ve = late
+        let actualEnd = new Date(scheduledEnd.getTime() - delta * 60 * 1000);
+        // Never set a future checkout time, and never before scheduledEnd - 2h
+        if (actualEnd > p.now)
+            actualEnd = p.now;
+        if (actualEnd <= scheduledEnd)
+            actualEnd = new Date(scheduledEnd.getTime()); // at-minimum on-time
+        const lateMins = Math.max(0, Math.round((actualEnd.getTime() - scheduledEnd.getTime()) / 60_000));
+        const isLate = lateMins > 15;
+        const lateFee = isLate ? Math.ceil((lateMins - 15) / 15) * 15 : 0;
+        // 1. Close the visit
+        await client.query(`UPDATE visits SET ended_at = $1, updated_at = NOW() WHERE id = $2 AND ended_at IS NULL`, [actualEnd, row.visit_id]);
+        // 2. Snap the checkin block end to actual
+        await client.query(`UPDATE checkin_blocks SET ends_at = $1, updated_at = NOW() WHERE id = $2`, [actualEnd, row.block_id]);
+        // 3. Release any room/locker assignment
+        if (row.room_id) {
+            await client.query(`UPDATE rooms SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = $1, updated_at = $1 WHERE id = $2`, [actualEnd, row.room_id]);
+        }
+        // 4. CHECKOUT_COMPLETED activity event (idempotent)
+        await insertActivityEvent(client, {
+            at: actualEnd,
+            customerId: row.customer_id,
+            action: 'CHECKOUT_COMPLETED',
+            category: 'CHECKOUT',
+            staffId: emp.id,
+            staffName: emp.name,
+            summary: 'Checked out',
+            metadata: { visitId: row.visit_id, blockId: row.block_id, rentalType: row.rental_type },
+            searchBlob: `Checked out ${row.customer_name} ${row.visit_id} ${row.block_id} ${emp.name}`,
+            dedupeKey: `ACT:SIM:CHECKOUT_COMPLETED:${row.visit_id}`,
+        });
+        // 5. Checkout request
+        await insertCheckoutRequest(client, {
+            blockId: row.block_id,
+            customerId: row.customer_id,
+            lateMins,
+            lateFee,
+            at: actualEnd,
+        });
+        // 6. Late checkout events (capped at 2/night to match historical sim)
+        if (isLate && lateFee > 0) {
+            const night = nightKey(actualEnd);
+            const cnt = lateCountByNight.get(night) ?? 0;
+            if (cnt < 2) {
+                lateCountByNight.set(night, cnt + 1);
+                await insertLateCheckout(client, {
+                    blockId: row.block_id,
+                    visitId: row.visit_id,
+                    customerId: row.customer_id,
+                    lateMins,
+                    feeAmount: lateFee,
+                    banApplied: lateMins >= 60,
+                    at: actualEnd,
+                    staff: p.staff,
+                    to: p.now,
+                    rng,
+                });
+            }
+        }
+        closed++;
+    }
+    return closed;
 }
 // ---------------------------------------------------------------------------
 // Main Orchestrator
@@ -895,6 +986,10 @@ async function runSimulator(options = {}) {
         }
         // Run the simulation inside a transaction
         const created = await (0, index_1.transaction)(async (client) => {
+            // Close out any active check-ins whose scheduled end has passed
+            const closedOut = await checkoutActiveVisits(client, { now, staff: staffRes.rows });
+            if (closedOut > 0)
+                progress.log(`🔒 Closed out ${closedOut} stale active check-in(s)`);
             const visitCount = await simulateVisits({
                 client, from, to: now, anchor,
                 agreement,
@@ -937,16 +1032,50 @@ async function runSimulator(options = {}) {
 // ---------------------------------------------------------------------------
 async function seedActiveWaitlist(client, p) {
     // Check if active waitlist entries already exist
-    const existing = await client.query(`SELECT COUNT(*) as count FROM waitlist WHERE status IN ('PENDING', 'OFFERED')`);
+    const existing = await client.query(`SELECT COUNT(*) as count FROM waitlist WHERE status IN ('ACTIVE', 'OFFERED')`);
     if (Number.parseInt(existing.rows[0]?.count || '0', 10) > 0)
         return;
     const WAITLIST_SIZE = 6;
     const rng = seededRng(0x57414954); // 'WAIT'
-    // Assign all rooms to customers first (fill them up)
+    // Assign all rooms to customers first (fill them up), and create open visit+block for each
+    const agreementRes = await client.query(`SELECT id, version, title, body_text FROM agreements ORDER BY created_at DESC LIMIT 1`);
+    const agreement = agreementRes.rows[0];
+    const reg = p.registerSessions[0];
     for (const room of p.rooms) {
         const customer = p.customers[Math.floor(rng() * p.customers.length)];
-        await client.query(`UPDATE rooms SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = $2, updated_at = $2
-       WHERE id = $3 AND assigned_to_customer_id IS NULL`, [customer.id, p.now, room.id]);
+        const updated = await client.query(`UPDATE rooms SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = $2, updated_at = $2
+       WHERE id = $3 AND assigned_to_customer_id IS NULL
+       RETURNING id`, [customer.id, p.now, room.id]);
+        if (updated.rows.length === 0)
+            continue; // already occupied — skip
+        // Create an open visit + checkin_block so the inventory LATERAL join returns checkout_at
+        const visitId = (0, node_crypto_1.randomUUID)();
+        const blockId = (0, node_crypto_1.randomUUID)();
+        const minIn = 30 + Math.floor(rng() * 90); // checked in 30–120 min ago
+        const start = new Date(p.now.getTime() - minIn * 60 * 1000);
+        const hoursTotal = 2 + Math.floor(rng() * 2); // 2 or 3 hour rental
+        const scheduledEnd = ceilTo15Min(new Date(start.getTime() + hoursTotal * 60 * 60 * 1000));
+        const signedAt = new Date(start.getTime() + 3 * 60 * 1000);
+        const rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.type) ? room.type : 'STANDARD';
+        await client.query(`INSERT INTO visits (id, started_at, ended_at, customer_id, created_at, updated_at)
+       VALUES ($1, $2, NULL, $3, NOW(), NOW())`, [visitId, start, customer.id]);
+        await client.query(`INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type)
+       VALUES ($1, $2, 'INITIAL', $3, $4, NULL, $5, true, $6, $7)`, [blockId, visitId, start, scheduledEnd, room.id, signedAt, rentalType]);
+        if (agreement) {
+            await client.query(`INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, agreement_text_snapshot, agreement_version, checkin_block_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [(0, node_crypto_1.randomUUID)(), agreement.id, customer.name, customer.membership_number, signedAt, agreement.body_text, agreement.version, blockId]);
+        }
+        if (reg) {
+            await client.query(`INSERT INTO customer_activity_events (id, customer_id, staff_id, action, category, summary, metadata, search_blob, dedupe_key, created_at)
+         VALUES ($1, $2, $3, 'CHECKIN_COMPLETED', 'CHECKIN', 'Checked in', $4, $5, $6, $7)
+         ON CONFLICT (dedupe_key) DO NOTHING`, [
+                (0, node_crypto_1.randomUUID)(), customer.id, p.staff[0]?.id ?? null,
+                JSON.stringify({ visitId, blockId, rentalType, registerNumber: reg.register_number }),
+                `Checked in ${customer.name} ${rentalType} ${visitId}`,
+                `ACT:SIM:ACTIVE_ROOM_CHECKIN:${blockId}`,
+                signedAt,
+            ]);
+        }
     }
     // Create pending waitlist entries
     for (let i = 0; i < WAITLIST_SIZE; i++) {
@@ -970,7 +1099,7 @@ async function seedActiveWaitlist(client, p) {
         await client.query(`UPDATE lockers SET assigned_to_customer_id = $1, status = 'OCCUPIED', updated_at = NOW() WHERE id = $2`, [customer.id, lockerId]);
         // Create the pending waitlist entry
         const wlId = (0, node_crypto_1.randomUUID)();
-        const status = i < 2 ? 'OFFERED' : 'PENDING';
+        const status = i < 2 ? 'OFFERED' : 'ACTIVE';
         const offeredAt = status === 'OFFERED' ? new Date(createdAt.getTime() + Math.floor(rng() * 5) * 60 * 1000) : null;
         const expiresAt = offeredAt ? new Date(offeredAt.getTime() + 10 * 60 * 1000) : null;
         await client.query(`INSERT INTO waitlist

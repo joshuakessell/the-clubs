@@ -1297,6 +1297,7 @@ exports.products = (0, pg_core_1.pgTable)("products", {
     category: (0, pg_core_1.text)().default('RETAIL').notNull(),
     isActive: (0, pg_core_1.boolean)("is_active").default(true).notNull(),
     sortOrder: (0, pg_core_1.integer)("sort_order").default(0).notNull(),
+    imageUrl: (0, pg_core_1.text)("image_url"),
     createdAt: (0, pg_core_1.timestamp)("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
     updatedAt: (0, pg_core_1.timestamp)("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [

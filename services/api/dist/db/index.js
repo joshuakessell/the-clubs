@@ -269,7 +269,16 @@ async function serializableTransaction(callback) {
 let _db = null;
 function getDb() {
     if (!_db) {
-        _db = (0, node_postgres_1.drizzle)(getPool(), { schema });
+        _db = (0, node_postgres_1.drizzle)(getPool(), {
+            schema,
+            logger: {
+                logQuery(query, params) {
+                    if (process.env.DB_LOG_QUERIES !== 'false') {
+                        console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
+                    }
+                }
+            }
+        });
     }
     return _db;
 }
