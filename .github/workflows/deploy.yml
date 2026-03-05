@@ -230,11 +230,12 @@ jobs:
           SEED_ON_STARTUP: ${{ needs.resolve-env.outputs.seed_on_startup }}
           HOST_PORT: ${{ needs.resolve-env.outputs.host_port }}
           PROJECT_NAME: ${{ needs.resolve-env.outputs.project_name }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP,HOST_PORT,PROJECT_NAME
+          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP,HOST_PORT,PROJECT_NAME,ALLOWED_ORIGINS
           command_timeout: 10m
           script: |
             set -e
@@ -254,7 +255,7 @@ jobs:
             printf '%s\n' \
               'DB_NAME=club_operations' \
               'DB_USER=clubops' \
-              'ALLOWED_ORIGINS=*' \
+              "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}" \
               'FLOW_COMMANDS=true' \
               "DEMO_MODE=${DEMO_MODE}" \
               "SEED_ON_STARTUP=${SEED_ON_STARTUP}" \
