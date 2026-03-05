@@ -9,7 +9,7 @@ interface BrandingHeaderProps {
   transition: string;
 }
 
-export function BrandingHeader({ isActive, isLightTheme, brandName, transition }: BrandingHeaderProps) {
+export function BrandingHeader({ isActive, isLightTheme, brandName, transition }: Readonly<BrandingHeaderProps>) {
   const logoSrc = isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg';
 
   if (!isActive) {

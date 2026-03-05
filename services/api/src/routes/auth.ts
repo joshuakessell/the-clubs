@@ -35,6 +35,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
    * GET /v1/auth/staff - Get list of active staff for login selection
    *
    * Public endpoint that returns active staff members (name, id, role only).
+   */
   fastify.get('/v1/auth/staff', async (request, reply) => {
     try {
       const isDemoMode = process.env.DEMO_MODE === 'true';
