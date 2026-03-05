@@ -64,27 +64,15 @@ async function ensureTrackingTable(): Promise<void> {
       return; // Table is now compatible
     }
 
-    if (hasFilename && !hasName) {
-      // Fresh schema — add `name` column for compatibility with the INSERT that provides both
-      await pool.query(`ALTER TABLE schema_migrations ADD COLUMN IF NOT EXISTS name TEXT`);
-      await pool.query(`
-        UPDATE schema_migrations
-        SET name = regexp_replace(filename, '\\.sql$', '')
-        WHERE name IS NULL AND filename IS NOT NULL
-      `);
-      return;
-    }
-
     if (hasFilename) {
-      return; // Already has both columns
+      return; // Already has the expected schema
     }
   }
 
   // Create fresh table
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
-      filename   TEXT PRIMARY KEY,
-      name       TEXT,
+      filename  TEXT PRIMARY KEY,
       applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
@@ -162,8 +150,8 @@ export async function runPendingMigrations(): Promise<number> {
       await client.query('BEGIN');
       await client.query(upSql);
       await client.query(
-        `INSERT INTO schema_migrations (filename, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [filename, filename.replace(/\.sql$/, '')]
+        `INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING`,
+        [filename]
       );
       await client.query('COMMIT');
       console.log(`[migrate] ✅ Applied: ${filename}`);
