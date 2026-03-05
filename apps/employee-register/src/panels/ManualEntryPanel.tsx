@@ -7,7 +7,7 @@ import { PanelShell } from '../views/PanelShell';
 const inputStyle: React.CSSProperties = {
   backgroundColor: 'var(--color-surface-input)',
   borderColor: 'var(--color-border-default)',
-  color: '#1f2937',
+  color: 'var(--color-text-primary)',
 };
 
 const labelClass = 'mb-1.5 block text-sm font-medium';
