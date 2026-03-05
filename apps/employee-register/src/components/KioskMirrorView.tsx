@@ -519,8 +519,10 @@ function WaitlistDisclaimerOverlay({ sessionId, laneId }: Readonly<{ sessionId: 
     setLoading(true);
     try {
       const kioskToken = (import.meta.env.VITE_KIOSK_TOKEN as string) || '';
+      const authToken = (globalThis as any).__authToken as string | null;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (kioskToken) headers['x-kiosk-token'] = kioskToken;
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
       const res = await fetch(
         getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/flow-command`),
@@ -530,7 +532,7 @@ function WaitlistDisclaimerOverlay({ sessionId, laneId }: Readonly<{ sessionId: 
           body: JSON.stringify({
             sessionId,
             commandId: globalThis.crypto.randomUUID(),
-            actor: 'STAFF',
+            actor: 'EMPLOYEE',
             type: 'SET_STEP',
             payload: { step: 'PAYMENT' },
           }),
