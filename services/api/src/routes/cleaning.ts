@@ -4,6 +4,7 @@ import { RoomStatusSchema } from '@the-clubs/shared';
 import type { Broadcaster } from '../realtime/broadcaster';
 import { broadcastInventoryUpdate } from '../inventory/broadcast';
 import { requireAuth } from '../auth/middleware';
+import { idempotencyKey } from '../middleware/idempotency';
 import { processCleaningBatch, listCleaningBatches } from '../services/cleaningService';
 
 const CleaningBatchSchema = z.object({
@@ -29,7 +30,7 @@ export async function cleaningRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.post(
     '/v1/cleaning/batch',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request: FastifyRequest, reply: FastifyReply) => {
       let body: z.infer<typeof CleaningBatchSchema>;
 

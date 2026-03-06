@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
+import { idempotencyKey } from '../../middleware/idempotency';
 import { MarkFeePaidSchema, type MarkFeePaidInput } from '../../checkout/schemas';
 import type {
   CheckoutClaimedPayload,
@@ -22,7 +23,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { requestId: string } }>(
     '/v1/checkout/:requestId/claim',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -61,7 +62,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { requestId: string }; Body: MarkFeePaidInput }>(
     '/v1/checkout/:requestId/mark-fee-paid',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -111,7 +112,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { requestId: string } }>(
     '/v1/checkout/:requestId/confirm-items',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -151,7 +152,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { requestId: string } }>(
     '/v1/checkout/:requestId/complete',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 

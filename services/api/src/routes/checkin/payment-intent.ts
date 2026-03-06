@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
+import { idempotencyKey } from '../../middleware/idempotency';
 import { getHttpError } from '../../checkin/utils';
 import {
   createPaymentIntent,
@@ -11,7 +12,7 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
   // POST /v1/checkin/lane/:laneId/create-payment-intent
   fastify.post<{ Params: { laneId: string } }>(
     '/v1/checkin/lane/:laneId/create-payment-intent',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -33,7 +34,7 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
   fastify.post<{
     Params: { id: string };
     Body: { squareTransactionId?: string; paymentMethod?: 'CASH' | 'CREDIT'; registerNumber?: number; tip?: number };
-  }>('/v1/payments/:id/mark-paid', { preHandler: [requireAuth] }, async (request, reply) => {
+  }>('/v1/payments/:id/mark-paid', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
     try {

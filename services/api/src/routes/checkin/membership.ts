@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { optionalAuth, requireAuth } from '../../auth/middleware';
+import { idempotencyKey } from '../../middleware/idempotency';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import {
   CompleteMembershipPurchaseSchema,
@@ -18,7 +19,7 @@ export function registerCheckinMembershipRoutes(fastify: FastifyInstance): void 
   // POST /v1/checkin/lane/:laneId/membership-purchase-intent
   fastify.post<{ Params: { laneId: string }; Body: { intent: 'PURCHASE' | 'RENEW' | 'NONE'; sessionId?: string } }>(
     '/v1/checkin/lane/:laneId/membership-purchase-intent',
-    { preHandler: [optionalAuth, requireKioskTokenOrStaff] },
+    { preHandler: [optionalAuth, requireKioskTokenOrStaff, idempotencyKey] },
     async (request, reply) => {
       const { laneId } = request.params;
       const parsed = MembershipPurchaseIntentSchema.safeParse(request.body);
@@ -41,7 +42,7 @@ export function registerCheckinMembershipRoutes(fastify: FastifyInstance): void 
   // POST /v1/checkin/lane/:laneId/membership-choice
   fastify.post<{ Params: { laneId: string }; Body: { choice: 'ONE_TIME' | 'NONE' | 'SIX_MONTH'; sessionId?: string } }>(
     '/v1/checkin/lane/:laneId/membership-choice',
-    { preHandler: [optionalAuth, requireKioskTokenOrStaff] },
+    { preHandler: [optionalAuth, requireKioskTokenOrStaff, idempotencyKey] },
     async (request, reply) => {
       const { laneId } = request.params;
       const parsed = MembershipChoiceSchema.safeParse(request.body);
@@ -64,7 +65,7 @@ export function registerCheckinMembershipRoutes(fastify: FastifyInstance): void 
   // POST /v1/checkin/lane/:laneId/complete-membership-purchase
   fastify.post<{ Params: { laneId: string }; Body: { sessionId?: string; membershipNumber: string } }>(
     '/v1/checkin/lane/:laneId/complete-membership-purchase',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const { laneId } = request.params;

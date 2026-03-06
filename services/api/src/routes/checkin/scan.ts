@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { IdScanPayload } from '@the-clubs/shared';
 import { IdScanPayloadSchema } from '@the-clubs/shared';
 import { requireAuth } from '../../auth/middleware';
+import { idempotencyKey } from '../../middleware/idempotency';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { CheckinScanBodySchema } from '../../checkin/schemas';
 import { getHttpError } from '../../checkin/utils';
@@ -14,7 +15,7 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
   /**
    * POST /v1/checkin/scan — Server-side scan normalization and customer matching.
    */
-  fastify.post('/v1/checkin/scan', { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post('/v1/checkin/scan', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
     let body: z.infer<typeof CheckinScanBodySchema>;
@@ -48,7 +49,7 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { laneId: string }; Body: IdScanPayload }>(
     '/v1/checkin/lane/:laneId/scan-id',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 

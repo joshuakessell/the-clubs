@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { RoomStatus } from '@the-clubs/shared';
 import { requireAuth } from '../../auth/middleware';
+import { idempotencyKey } from '../../middleware/idempotency';
 import { broadcastInventoryUpdate } from '../../inventory/broadcast';
 import {
   listManualCandidates,
@@ -43,7 +44,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof ManualResolveSchema> }>(
     '/v1/checkout/manual-resolve',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -79,7 +80,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof ManualCompleteSchema> }>(
     '/v1/checkout/manual-complete',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const staffId = request.staff.staffId;
