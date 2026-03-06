@@ -500,6 +500,7 @@ async function buildLedgerLineItems(
     }
 
     // Retail items added to ledger via orders linked to this session
+    // Note: order_line_items stores amounts in cents; ledger uses dollars
     const retailItems = await client.query<{ name: string; total: number | string }>(
       `SELECT oli.name, oli.total
        FROM order_line_items oli
@@ -509,8 +510,9 @@ async function buildLedgerLineItems(
       [session.id]
     );
     for (const item of retailItems.rows) {
-      const amount = toNumber(item.total);
-      if (amount === undefined) continue;
+      const amountCents = toNumber(item.total);
+      if (amountCents === undefined) continue;
+      const amount = amountCents / 100;
       ledgerItems.push({ description: item.name, amount });
       total += amount;
     }
