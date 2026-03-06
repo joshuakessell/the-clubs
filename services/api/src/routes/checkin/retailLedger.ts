@@ -11,7 +11,7 @@ const AddRetailItemsSchema = z.object({
     sku: z.string().optional().nullable(),
     name: z.string().min(1),
     quantity: z.number().int().positive(),
-    unitPrice: z.number().int().nonnegative(),
+    unitPrice: z.number().nonnegative(),
   })).min(1),
 });
 
