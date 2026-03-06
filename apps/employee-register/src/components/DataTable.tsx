@@ -30,6 +30,12 @@ export interface DataTableProps<T> {
   selectedKeys?: Set<string>;
   /** Called when selection toggles */
   onSelectionChange?: (keys: Set<string>) => void;
+  /** Single active row key (highlight without checkbox — for detail panel pattern) */
+  activeKey?: string | null;
+  /** Sticky header for scrollable containers */
+  stickyHeader?: boolean;
+  /** Skip outer border wrapper (for embedding in split layouts) */
+  bare?: boolean;
   /** Empty state message */
   emptyMessage?: string;
   /** Empty state icon */
@@ -104,6 +110,9 @@ export function DataTable<T>({
   onRowClick,
   selectedKeys,
   onSelectionChange,
+  activeKey,
+  stickyHeader = false,
+  bare = false,
   emptyMessage = 'No data',
   emptyIcon = '📋',
 }: DataTableProps<T>) {
@@ -145,17 +154,23 @@ export function DataTable<T>({
     );
   }
 
+
   return (
     <div
-      className="overflow-hidden rounded-xl border"
-      style={{
+      className={bare ? '' : 'overflow-hidden rounded-xl border'}
+      style={bare ? undefined : {
         borderColor: 'var(--color-border-default)',
         boxShadow: '0 1px 3px 0 rgba(0,0,0,0.06)',
       }}
     >
       <table className="w-full text-left text-sm" style={{ borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ backgroundColor: 'var(--color-surface-overlay)' }}>
+          <tr
+            style={{
+              backgroundColor: 'var(--color-surface-overlay)',
+              ...(stickyHeader ? { position: 'sticky' as const, top: 0, zIndex: 1 } : {}),
+            }}
+          >
             {hasSelection ? (
               <th className="w-12 px-3 py-3 text-center" style={thStyle}>
                 <SelectAllCheckbox
@@ -183,7 +198,9 @@ export function DataTable<T>({
         <tbody>
           {data.map((row, idx) => {
             const key = rowKey(row);
-            const isSelected = selectedKeys?.has(key) ?? false;
+            const isChecked = selectedKeys?.has(key) ?? false;
+            const isActive = activeKey === key;
+            const isHighlighted = isChecked || isActive;
             const isOdd = idx % 2 === 1;
             const clickable = onRowClick || hasSelection;
 
@@ -196,18 +213,21 @@ export function DataTable<T>({
                 }}
                 style={{
                   cursor: clickable ? 'pointer' : undefined,
-                  backgroundColor: isSelected
+                  backgroundColor: isHighlighted
                     ? 'color-mix(in oklch, var(--color-accent-primary) 10%, transparent)'
                     : isOdd
                       ? 'var(--color-surface-overlay)'
                       : 'var(--color-surface-card, var(--color-surface-raised))',
                   borderBottom: '1px solid var(--color-border-default)',
+                  borderLeft: isActive
+                    ? '2px solid var(--color-accent-primary)'
+                    : '2px solid transparent',
                   transition: 'background-color 0.12s ease',
                 }}
                 onMouseEnter={
                   clickable
                     ? (e) => {
-                        if (!isSelected) {
+                        if (!isHighlighted) {
                           e.currentTarget.style.backgroundColor =
                             'color-mix(in oklch, var(--color-accent-primary) 5%, transparent)';
                         }
@@ -217,7 +237,7 @@ export function DataTable<T>({
                 onMouseLeave={
                   clickable
                     ? (e) => {
-                        if (!isSelected) {
+                        if (!isHighlighted) {
                           e.currentTarget.style.backgroundColor = isOdd
                             ? 'var(--color-surface-overlay)'
                             : 'var(--color-surface-card, var(--color-surface-raised))';
@@ -230,7 +250,7 @@ export function DataTable<T>({
                   <td className="px-3 py-3 text-center">
                     <input
                       type="checkbox"
-                      checked={isSelected}
+                      checked={isChecked}
                       onChange={() => toggleRow(key)}
                       onClick={(e) => e.stopPropagation()}
                       aria-label={`Select row ${key}`}
