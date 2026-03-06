@@ -30,6 +30,61 @@ function formatPrice(dollars: number) {
   return `$${dollars.toFixed(2)}`;
 }
 
+/* ─── Sub-components ────────────────────────────────── */
+
+function GuestSection({
+  title,
+  titleColor,
+  guests,
+  badgeLabel,
+  badgeBg,
+  onSelect,
+}: Readonly<{
+  title: string;
+  titleColor: string;
+  guests: ActiveGuest[];
+  badgeLabel?: string;
+  badgeBg?: string;
+  onSelect: (g: ActiveGuest) => void;
+}>) {
+  if (guests.length === 0) return null;
+  return (
+    <>
+      <div
+        className="sticky top-0 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest"
+        style={{ color: titleColor, backgroundColor: 'var(--color-surface-raised)' }}
+      >
+        {title}
+      </div>
+      {guests.map((g) => (
+        <button
+          key={`${title}-${g.customerId}`}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
+          style={{ color: 'var(--color-text-primary)' }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+          onClick={() => onSelect(g)}
+        >
+          {badgeLabel ? (
+            <span
+              className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase"
+              style={{ backgroundColor: badgeBg ?? titleColor, color: '#fff' }}
+            >
+              {badgeLabel}
+            </span>
+          ) : (
+            <span className="font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+              {g.number}
+            </span>
+          )}
+          {!badgeLabel && <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+          <span className="truncate">{g.customerName}</span>
+        </button>
+      ))}
+    </>
+  );
+}
+
 /* ─── Component ─────────────────────────────────────── */
 
 export function RetailPanel() {
@@ -264,15 +319,17 @@ export function RetailPanel() {
       <div className="mt-3 flex flex-1 min-h-0 gap-4 w-full">
         {/* ── Left: Product Grid ──────────────────────── */}
         <div className="flex-[3] min-w-0 overflow-y-auto overflow-x-hidden pr-1">
-          {catalogLoading ? (
+          {catalogLoading && (
             <div className="flex h-full items-center justify-center">
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading products…</p>
             </div>
-          ) : catalog.length === 0 ? (
+          )}
+          {!catalogLoading && catalog.length === 0 && (
             <div className="flex h-full items-center justify-center">
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No products available. Add products in the Office Dashboard.</p>
             </div>
-          ) : categories.map((cat) => {
+          )}
+          {!catalogLoading && catalog.length > 0 && categories.map((cat) => {
             const items = catalog.filter((i) => i.category === cat.key);
             return (
               <div key={cat.key} className="mb-4">
@@ -358,7 +415,7 @@ export function RetailPanel() {
               style={{ color: 'var(--color-text-muted)' }}
               htmlFor="guest-lookup"
             >
-              Attribute to Guest
+              Attribute to Guest{' '}
               <span className="ml-1 font-normal normal-case tracking-normal">(optional)</span>
             </label>
 
@@ -417,85 +474,26 @@ export function RetailPanel() {
                     borderColor: 'var(--color-border-default)',
                   }}
                 >
-                  {checkingInGuests.length > 0 ? (
-                    <>
-                      <div className="sticky top-0 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest"
-                        style={{ color: 'var(--color-status-warning)', backgroundColor: 'var(--color-surface-raised)' }}
-                      >
-                        Checking In
-                      </div>
-                      {checkingInGuests.map((g) => (
-                        <button
-                          key={`checkingin-${g.customerId}`}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
-                          style={{ color: 'var(--color-text-primary)' }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                          onClick={() => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
-                        >
-                          <span
-                            className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase"
-                            style={{ backgroundColor: 'var(--color-status-warning)', color: '#fff' }}
-                          >
-                            Ledger
-                          </span>
-                          <span className="truncate">{g.customerName}</span>
-                        </button>
-                      ))}
-                    </>
-                  ) : null}
-
-                  {roomGuests.length > 0 ? (
-                    <>
-                      <div className="sticky top-0 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest"
-                        style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-raised)' }}
-                      >
-                        Rooms
-                      </div>
-                      {roomGuests.map((g) => (
-                        <button
-                          key={`room-${g.number}`}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
-                          style={{ color: 'var(--color-text-primary)' }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                          onClick={() => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
-                        >
-                          <span className="font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
-                            {g.number}
-                          </span>
-                          <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                          <span className="truncate">{g.customerName}</span>
-                        </button>
-                      ))}
-                    </>
-                  ) : null}
-
-                  {lockerGuests.length > 0 ? (
-                    <>
-                      <div className="sticky top-0 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest"
-                        style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-surface-raised)' }}
-                      >
-                        Lockers
-                      </div>
-                      {lockerGuests.map((g) => (
-                        <button
-                          key={`locker-${g.number}`}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
-                          style={{ color: 'var(--color-text-primary)' }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                          onClick={() => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
-                        >
-                          <span className="font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
-                            {g.number}
-                          </span>
-                          <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                          <span className="truncate">{g.customerName}</span>
-                        </button>
-                      ))}
-                    </>
-                  ) : null}
+                  <GuestSection
+                    title="Checking In"
+                    titleColor="var(--color-status-warning)"
+                    guests={checkingInGuests}
+                    badgeLabel="Ledger"
+                    badgeBg="var(--color-status-warning)"
+                    onSelect={(g) => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
+                  />
+                  <GuestSection
+                    title="Rooms"
+                    titleColor="var(--color-text-muted)"
+                    guests={roomGuests}
+                    onSelect={(g) => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
+                  />
+                  <GuestSection
+                    title="Lockers"
+                    titleColor="var(--color-text-muted)"
+                    guests={lockerGuests}
+                    onSelect={(g) => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
+                  />
                 </div>
               ) : null}
 
@@ -622,7 +620,8 @@ export function RetailPanel() {
                 ? 'Processing…'
                 : selectedGuest?.laneSessionId
                   ? '📋 Add to Ledger'
-                  : 'Complete Sale'}
+                  : 'Complete Sale'
+              }
             </Button>
 
             {cartLines.length > 0 ? (

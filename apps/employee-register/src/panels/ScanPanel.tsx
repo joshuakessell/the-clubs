@@ -83,6 +83,61 @@ export function ScanPanel() {
     selectNavTab('firstTime');
   }, [setManualFirstName, setManualLastName, setManualDobDigits, setManualIdType, setManualIdNumber, setManualIdExpirationDigits, selectNavTab]);
 
+  /** Dispatch scan result — flat early-return style to avoid nested if/else */
+  const processScanResult = useCallback((data: Record<string, unknown>) => {
+    if (data.result === 'MATCHED' && data.customer) {
+      if (hiddenInputRef.current) hiddenInputRef.current.value = '';
+      const cust = data.customer as { id: string; name: string };
+      openCustomerAccount(cust.id, cust.name, { autoStart: true, authToken: token });
+      return;
+    }
+
+    if (data.result === 'CANDIDATES' && (data.candidates as unknown[] | undefined)?.length) {
+      setCandidates(data.candidates as Candidate[]);
+      setPendingScanData(data as { extracted?: Record<string, string> });
+      return;
+    }
+
+    if (data.result === 'NO_MATCH') {
+      const scanType = data.scanType as string | undefined;
+      const extracted = data.extracted as Record<string, string> | undefined;
+
+      if (scanType === 'STATE_ID' && extracted) {
+        setScanError('No exact match found. Prefilling Manual Entry with scanned ID info.');
+        setTimeout(() => prefillAndNavigate({
+          firstName: extracted.firstName,
+          lastName: extracted.lastName,
+          dob: extracted.dob,
+          idType: extracted.idType ?? 'DRIVERS_LICENSE',
+          idNumber: extracted.idNumber,
+          idExpiration: extracted.idExpirationDate,
+        }), 1200);
+        return;
+      }
+
+      if (scanType === 'PASSPORT' && data.passportNumber) {
+        setScanError('No passport match found. Prefilling Manual Entry.');
+        setTimeout(() => prefillAndNavigate({
+          idType: 'PASSPORT',
+          idNumber: data.passportNumber as string,
+        }), 1200);
+        return;
+      }
+
+      setScanError('No matching customer found. Try Manual Entry.');
+      setTimeout(() => selectNavTab('firstTime'), 1500);
+      return;
+    }
+
+    if (data.result === 'ERROR') {
+      const err = data.error as { message?: string } | undefined;
+      setScanError(err?.message ?? 'Scan error');
+      return;
+    }
+
+    setScanError('Unexpected response from scan');
+  }, [token, openCustomerAccount, prefillAndNavigate, selectNavTab]);
+
   const handleScanSubmit = useCallback(async () => {
     const rawText = hiddenInputRef.current?.value?.trim();
     if (!rawText) return;
@@ -103,47 +158,7 @@ export function ScanPanel() {
       });
 
       const data = await res.json();
-
-      if (data.result === 'MATCHED' && data.customer) {
-        if (hiddenInputRef.current) hiddenInputRef.current.value = '';
-        openCustomerAccount(data.customer.id, data.customer.name, {
-          autoStart: true,
-          authToken: token,
-        });
-      } else if (data.result === 'CANDIDATES' && data.candidates?.length > 0) {
-        setCandidates(data.candidates);
-        setPendingScanData(data);
-      } else if (data.result === 'NO_MATCH') {
-        if (data.scanType === 'STATE_ID' && data.extracted) {
-          const ext = data.extracted;
-          setScanError('No exact match found. Prefilling Manual Entry with scanned ID info.');
-          setTimeout(() => {
-            prefillAndNavigate({
-              firstName: ext.firstName,
-              lastName: ext.lastName,
-              dob: ext.dob,
-              idType: ext.idType ?? 'DRIVERS_LICENSE',
-              idNumber: ext.idNumber,
-              idExpiration: ext.idExpirationDate,
-            });
-          }, 1200);
-        } else if (data.scanType === 'PASSPORT' && data.passportNumber) {
-          setScanError('No passport match found. Prefilling Manual Entry.');
-          setTimeout(() => {
-            prefillAndNavigate({
-              idType: 'PASSPORT',
-              idNumber: data.passportNumber,
-            });
-          }, 1200);
-        } else {
-          setScanError('No matching customer found. Try Manual Entry.');
-          setTimeout(() => selectNavTab('firstTime'), 1500);
-        }
-      } else if (data.result === 'ERROR') {
-        setScanError(data.error?.message ?? 'Scan error');
-      } else {
-        setScanError('Unexpected response from scan');
-      }
+      processScanResult(data);
     } catch {
       setScanError('Network error processing scan');
     } finally {
@@ -152,7 +167,7 @@ export function ScanPanel() {
       // Re-focus after processing
       setTimeout(() => hiddenInputRef.current?.focus(), 100);
     }
-  }, [token, laneId, openCustomerAccount, setScanCaptureSubmitting, prefillAndNavigate, selectNavTab]);
+  }, [token, laneId, setScanCaptureSubmitting, processScanResult]);
 
   /* ── Keystroke handler with debounce ── */
   const handleInput = useCallback(() => {
