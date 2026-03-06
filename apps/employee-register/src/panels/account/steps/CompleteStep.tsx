@@ -41,11 +41,11 @@ function renderRoomContent(
         <button
           disabled={!selectedRoom || overrideLoading}
           onClick={() => void handleRoomOverride()}
-          className="flex-1 rounded-lg border px-4 py-2 text-sm font-bold transition"
+          className="flex-1 rounded-lg border px-4 py-2 text-sm font-bold transition-colors"
           style={{
             borderColor: 'var(--color-accent-primary)',
             color: 'var(--color-accent-primary)',
-            backgroundColor: 'rgba(0,212,255,0.05)',
+            backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 5%, transparent)',
             opacity: !selectedRoom || overrideLoading ? 0.5 : 1,
           }}
         >
@@ -230,7 +230,7 @@ export function CompleteStep() {
       {needsMembershipEntry && (
         <div className="w-full rounded-xl border-2 border-dashed p-4" style={{
           borderColor: 'var(--color-accent-secondary, #a78bfa)',
-          backgroundColor: 'rgba(167, 139, 250, 0.05)',
+          backgroundColor: 'color-mix(in oklch, var(--color-accent-secondary, purple) 5%, transparent)',
         }}>
           <label htmlFor="membership-card-input" className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
             Enter Membership Card Number
@@ -262,7 +262,7 @@ export function CompleteStep() {
             <button
               disabled={membershipSaving || !membershipCardNumber.trim()}
               onClick={() => void handleSaveMembership()}
-              className="rounded-lg px-4 py-2 text-sm font-bold transition"
+              className="rounded-lg px-4 py-2 text-sm font-bold transition-colors"
               style={{
                 backgroundColor: membershipCardNumber.trim()
                   ? 'var(--color-accent-secondary, #a78bfa)'
@@ -286,7 +286,7 @@ export function CompleteStep() {
 
       {/* Membership saved confirmation */}
       {membershipSaved && (
-        <div className="w-full rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(34,197,94,0.05)', borderColor: 'rgba(34,197,94,0.2)' }}>
+        <div className="w-full rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
             ✓ 6-Month Membership activated — Card #{membershipCardNumber}
           </span>
@@ -297,7 +297,7 @@ export function CompleteStep() {
       <button
         disabled={completing}
         onClick={() => void handleCompleteTransaction()}
-        className="w-full rounded-lg px-6 py-3 text-sm font-bold transition"
+        className="w-full rounded-lg px-6 py-3 text-sm font-bold transition-colors"
         style={{
           backgroundColor: 'var(--color-accent-primary)',
           color: 'var(--color-text-inverse)',

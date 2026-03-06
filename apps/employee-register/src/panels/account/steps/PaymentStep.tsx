@@ -94,7 +94,7 @@ export function PaymentStep() {
 
       {/* Payment failure notice */}
       {sp.paymentFailureReason && !isPaid && (
-        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'rgba(239,68,68,0.3)' }}>
+        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 30%, transparent)' }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--color-status-error)' }}>
             ✗ {sp.paymentFailureReason}
           </span>
@@ -103,7 +103,7 @@ export function PaymentStep() {
 
       {/* Payment status / actions */}
       {isPaid ? (
-        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(34,197,94,0.05)', borderColor: 'rgba(34,197,94,0.2)' }}>
+        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
           <span className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
             ✓ Paid via {sp.paymentMethod ?? 'N/A'}
           </span>
@@ -145,14 +145,14 @@ export function PaymentStep() {
             <button
               disabled={loading || splitCreditDollars < 0}
               onClick={() => void handleSplitPaid()}
-              className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition"
-              style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'rgba(34,197,94,0.05)', opacity: loading || splitCreditDollars < 0 ? 0.5 : 1 }}
+              className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition-colors"
+              style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', opacity: loading || splitCreditDollars < 0 ? 0.5 : 1 }}
             >
               {loading ? '…' : '✓ Confirm Split'}
             </button>
             <button
               onClick={() => setShowSplit(false)}
-              className="rounded-lg border px-4 py-3 text-sm font-medium transition"
+              className="rounded-lg border px-4 py-3 text-sm font-medium transition-colors"
               style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
             >
               Cancel
@@ -166,16 +166,16 @@ export function PaymentStep() {
             <button
               disabled={loading}
               onClick={() => void handleMarkPaid('CASH')}
-              className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition"
-              style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'rgba(34,197,94,0.05)' }}
+              className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition-colors"
+              style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)' }}
             >
               {loading ? '…' : 'Cash'}
             </button>
             <button
               disabled={loading}
               onClick={() => void handleMarkPaid('CREDIT')}
-              className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition"
-              style={{ borderColor: 'var(--color-accent-primary)', color: 'var(--color-accent-primary)', backgroundColor: 'rgba(0,212,255,0.05)' }}
+              className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition-colors"
+              style={{ borderColor: 'var(--color-accent-primary)', color: 'var(--color-accent-primary)', backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 5%, transparent)' }}
             >
               {loading ? '…' : 'Credit'}
             </button>
@@ -183,7 +183,7 @@ export function PaymentStep() {
           <button
             disabled={loading}
             onClick={() => setShowSplit(true)}
-            className="w-full rounded-lg border px-4 py-2.5 text-sm font-medium transition"
+            className="w-full rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors"
             style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-secondary)', backgroundColor: 'var(--color-surface-overlay)' }}
           >
             ✂️ Split Payment (Cash + Credit)
@@ -191,8 +191,8 @@ export function PaymentStep() {
           <button
             disabled={loading}
             onClick={() => void handleCreditFailure()}
-            className="w-full rounded-lg border px-4 py-2 text-xs font-medium transition"
-            style={{ borderColor: 'rgba(239,68,68,0.2)', color: 'var(--color-status-error)', backgroundColor: 'rgba(239,68,68,0.05)' }}
+            className="w-full rounded-lg border px-4 py-2 text-xs font-medium transition-colors"
+            style={{ borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)', backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)' }}
           >
             {loading ? '…' : '⚠️ Simulate Credit Failure (Demo)'}
           </button>

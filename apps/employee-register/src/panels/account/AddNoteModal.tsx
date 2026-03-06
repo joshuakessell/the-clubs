@@ -65,7 +65,7 @@ export function AddNoteModal({ isOpen, onClose, onSubmit }: AddNoteModalProps) {
           onChange={(e) => setText(e.target.value)}
           placeholder="Type a note about this customer…"
           rows={4}
-          className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none transition"
+          className="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none transition-colors"
           style={{
             backgroundColor: 'var(--color-surface-input)',
             borderColor: 'var(--color-border-subtle)',
@@ -84,7 +84,7 @@ export function AddNoteModal({ isOpen, onClose, onSubmit }: AddNoteModalProps) {
           <button
             onClick={onClose}
             disabled={submitting}
-            className="rounded-lg border px-4 py-2 text-sm font-semibold transition"
+            className="rounded-lg border px-4 py-2 text-sm font-semibold transition-colors"
             style={{
               borderColor: 'var(--color-border-subtle)',
               color: 'var(--color-text-secondary)',
@@ -96,7 +96,7 @@ export function AddNoteModal({ isOpen, onClose, onSubmit }: AddNoteModalProps) {
           <button
             onClick={() => void handleSubmit()}
             disabled={!text.trim() || submitting}
-            className="rounded-lg px-4 py-2 text-sm font-bold transition"
+            className="rounded-lg px-4 py-2 text-sm font-bold transition-colors"
             style={{
               backgroundColor: text.trim() && !submitting ? 'var(--color-accent-primary)' : 'var(--color-surface-overlay)',
               color: text.trim() && !submitting ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',

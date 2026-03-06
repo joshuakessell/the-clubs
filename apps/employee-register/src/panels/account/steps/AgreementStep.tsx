@@ -18,8 +18,8 @@ export function AgreementStep() {
 
       <div className="flex flex-col items-center gap-3 rounded-lg border p-6 text-center"
         style={{
-          backgroundColor: signed ? 'rgba(34,197,94,0.05)' : 'var(--color-surface-overlay)',
-          borderColor: signed ? 'rgba(34,197,94,0.2)' : 'var(--color-border-subtle)',
+          backgroundColor: signed ? 'color-mix(in oklch, var(--color-status-success) 5%, transparent)' : 'var(--color-surface-overlay)',
+          borderColor: signed ? 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' : 'var(--color-border-subtle)',
         }}
       >
         <span className="text-sm font-bold" style={{ color: signed ? 'var(--color-status-success)' : 'var(--color-text-muted)' }}>
@@ -33,7 +33,7 @@ export function AgreementStep() {
       </div>
 
       {signed && (
-        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(34,197,94,0.05)', borderColor: 'rgba(34,197,94,0.2)' }}>
+        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
           <p className="text-xs font-medium" style={{ color: 'var(--color-status-success)' }}>
             Agreement signed. Proceeding to room assignment…
           </p>

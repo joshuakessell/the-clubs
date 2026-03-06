@@ -108,7 +108,7 @@ export function AssignmentStep() {
           </select>
         </div>
       ) : (
-        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'rgba(34,197,94,0.05)', borderColor: 'rgba(34,197,94,0.2)' }}>
+        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
           <p className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
             Locker will be auto-assigned
           </p>
@@ -117,7 +117,7 @@ export function AssignmentStep() {
 
       {/* Error */}
       {error && (
-        <div className="rounded-lg border px-3 py-2 text-xs font-medium" style={{ backgroundColor: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.2)', color: 'var(--color-status-error)' }}>
+        <div className="rounded-lg border px-3 py-2 text-xs font-medium" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 8%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       )}
@@ -126,7 +126,7 @@ export function AssignmentStep() {
       <button
         disabled={loading}
         onClick={() => void handleCompleteCheckin()}
-        className="mt-2 w-full rounded-lg px-4 py-3 text-sm font-bold transition"
+        className="mt-2 w-full rounded-lg px-4 py-3 text-sm font-bold transition-colors"
         style={{
           backgroundColor: 'var(--color-status-success)',
           color: '#fff',

@@ -52,7 +52,7 @@ export function ChargesTab() {
         const data = await res.json();
         if (cancelled) return;
 
-        const entries: LedgerEntry[] = (data.entries ?? []).map((e: any) => ({
+        const entries: LedgerEntry[] = (data.entries ?? []).map((e: Record<string, unknown>) => ({
           description: e.summary ?? e.entryType ?? 'Charge',
           amount: typeof e.amount === 'number' ? e.amount : (typeof e.amount === 'string' ? parseInt(e.amount, 10) : 0),
         }));
@@ -131,7 +131,7 @@ export function ChargesTab() {
         {(sp.pastDueBalance ?? 0) > 0 && (
           <div
             className="flex items-center justify-between rounded-lg border px-4 py-3"
-            style={{ backgroundColor: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+            style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)' }}
           >
             <span
               className="text-xs font-bold uppercase tracking-wider"
@@ -176,9 +176,9 @@ export function ChargesTab() {
                         onClick={() => setMembershipChoice('ONE_TIME')}
                         className="flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold transition-colors"
                         style={{
-                          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                          backgroundColor: 'color-mix(in oklch, var(--color-status-error) 10%, transparent)',
                           color: 'var(--color-status-error)',
-                          border: '1px solid rgba(239, 68, 68, 0.2)',
+                          border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, transparent)',
                         }}
                         title="Remove 6-month membership, revert to daily fee"
                       >
@@ -220,7 +220,7 @@ export function ChargesTab() {
               <span
                 className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-bold"
                 style={{
-                  backgroundColor: isPaid ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+                  backgroundColor: isPaid ? 'color-mix(in oklch, var(--color-status-success) 10%, transparent)' : 'color-mix(in oklch, var(--color-status-warning) 10%, transparent)',
                   color: isPaid ? 'var(--color-status-success)' : 'var(--color-status-warning)',
                 }}
               >
@@ -256,8 +256,8 @@ export function ChargesTab() {
             onClick={() => setMembershipChoice('SIX_MONTH')}
             className="flex items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
             style={{
-              backgroundColor: 'rgba(99, 102, 241, 0.06)',
-              borderColor: 'rgba(99, 102, 241, 0.2)',
+              backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 6%, transparent)',
+              borderColor: 'color-mix(in oklch, var(--color-accent-primary) 20%, transparent)',
               color: 'var(--color-accent-primary)',
             }}
           >

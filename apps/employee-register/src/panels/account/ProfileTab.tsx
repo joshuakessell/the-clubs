@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
-import { useRegisterStore } from '../../stores/useRegisterStore';
+import { useRegisterStore, type ActiveCheckinInfo } from '../../stores/useRegisterStore';
 
 /**
  * Fetched customer profile from the API (used as fallback when no sessionPayload from SSE).
@@ -168,9 +168,9 @@ export function ProfileTab() {
     setCheckingOut(true);
     try {
       await performCheckout(activeCheckinInfo.occupancyId, token, customerName, returnTab, selectNavTab);
-    } catch (err: any) {
+    } catch (err: unknown) {
       useRegisterStore.setState({
-        successToastMessage: err.message ?? 'Checkout failed',
+        successToastMessage: err instanceof Error ? err.message : 'Checkout failed',
       });
     } finally {
       setCheckingOut(false);
@@ -291,7 +291,7 @@ function formatIdType(idType?: string | null): string | undefined {
 }
 
 function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymentStatus, checkingOut, onCheckout, onStartCheckin, onCancel }: Readonly<{
-  activeCheckinInfo: any;
+  activeCheckinInfo: ActiveCheckinInfo | null | undefined;
   currentSessionId: string | null;
   customerId: string | null | undefined;
   paymentStatus: string | undefined;
@@ -306,11 +306,11 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
         <button
           onClick={onCheckout}
           disabled={checkingOut}
-           className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition"
+           className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition-colors"
           style={{
             backgroundColor: checkingOut ? 'var(--color-surface-overlay)' : 'var(--color-status-warning)',
             color: 'var(--color-text-inverse)',
-            boxShadow: checkingOut ? 'none' : '0 0 20px rgba(245, 158, 11, 0.3)',
+            boxShadow: checkingOut ? 'none' : '0 0 20px color-mix(in oklch, var(--color-status-warning) 30%, transparent)',
             opacity: checkingOut ? 0.6 : 1,
           }}
         >
@@ -320,7 +320,7 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
       {!currentSessionId && !activeCheckinInfo && customerId && (
         <button
           onClick={onStartCheckin}
-          className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition"
+          className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition-colors"
           style={{
             backgroundColor: 'var(--color-accent-primary)',
             color: 'var(--color-text-inverse)',
@@ -333,11 +333,11 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
       {currentSessionId && paymentStatus !== 'PAID' && (
         <button
           onClick={onCancel}
-          className="flex-1 rounded-lg border px-4 py-1.5 text-sm font-semibold transition"
+          className="flex-1 rounded-lg border px-4 py-1.5 text-sm font-semibold transition-colors"
           style={{
             borderColor: 'var(--color-status-error)',
             color: 'var(--color-status-error)',
-            backgroundColor: 'rgba(239, 68, 68, 0.05)',
+            backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)',
           }}
         >
           Cancel Check-In

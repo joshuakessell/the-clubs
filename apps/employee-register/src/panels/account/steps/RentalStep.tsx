@@ -84,7 +84,7 @@ export function RentalStep() {
           <span
             className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold"
             style={{
-              backgroundColor: hasMembership ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)',
+              backgroundColor: hasMembership ? 'color-mix(in oklch, var(--color-status-success) 10%, transparent)' : 'color-mix(in oklch, var(--color-status-warning) 10%, transparent)',
               color: hasMembership ? 'var(--color-status-success)' : 'var(--color-status-warning)',
             }}
           >
@@ -114,11 +114,11 @@ export function RentalStep() {
               className="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
               style={{
                 backgroundColor: isSelected
-                  ? 'rgba(147, 197, 253, 0.15)'
-                  : 'rgba(99, 102, 241, 0.06)',
+                  ? 'color-mix(in oklch, var(--color-accent-primary) 15%, transparent)'
+                  : 'color-mix(in oklch, var(--color-accent-primary) 6%, transparent)',
                 borderColor: isSelected
                   ? 'rgb(147, 197, 253)'
-                  : 'rgba(99, 102, 241, 0.2)',
+                  : 'color-mix(in oklch, var(--color-accent-primary) 20%, transparent)',
                 borderWidth: isSelected ? 2 : 1,
                 opacity: !allowed ? 0.4 : 1,
                 cursor: !allowed ? 'not-allowed' : 'pointer',
@@ -153,7 +153,7 @@ export function RentalStep() {
         <button
           disabled={loading}
           onClick={() => void handleNext()}
-          className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition"
+          className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
           style={{
             backgroundColor: 'var(--color-accent-primary)',
             color: 'var(--color-text-inverse)',

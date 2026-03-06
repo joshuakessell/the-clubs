@@ -16,7 +16,7 @@ const requiredStyle: React.CSSProperties = { color: 'var(--color-status-error)' 
 
 /* DOB helpers (from original utils) */
 function extractDobDigits(raw: string): string {
-  return raw.replace(/\D/g, '').slice(0, 8);
+  return raw.replaceAll(/\D/g, '').slice(0, 8);
 }
 
 function formatDobMmDdYyyy(digits: string): string {

@@ -147,7 +147,7 @@ export function CustomerNotesBar({ customerId }: CustomerNotesBarProps) {
         {/* Right: + button */}
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-sm font-bold flex-shrink-0 transition"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-sm font-bold flex-shrink-0 transition-colors"
           style={{
             backgroundColor: 'var(--color-accent-primary)',
             color: 'var(--color-text-inverse)',

@@ -103,12 +103,13 @@ export function AccountPanel() {
               type="button"
               disabled={resuming}
               onClick={() => void handleResumeSession()}
-              className="mt-4 rounded-lg border px-5 py-2.5 text-sm font-semibold transition"
+              className="mt-4 rounded-lg border px-5 py-2.5 text-sm font-semibold"
               style={{
                 borderColor: 'var(--color-accent-primary)',
                 color: 'var(--color-accent-primary)',
-                backgroundColor: 'rgba(99, 102, 241, 0.06)',
+                backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 6%, transparent)',
                 opacity: resuming ? 0.6 : 1,
+                transition: 'opacity 0.15s ease',
               }}
             >
               {resuming ? 'Checking…' : '🔄 Resume Active Session'}

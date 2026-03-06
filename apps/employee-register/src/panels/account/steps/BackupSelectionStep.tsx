@@ -81,7 +81,7 @@ export function BackupSelectionStep() {
       </h3>
 
       {/* Info banner */}
-      <div className="rounded-lg border p-3" style={{ backgroundColor: 'rgba(245,158,11,0.05)', borderColor: 'rgba(245,158,11,0.2)' }}>
+      <div className="rounded-lg border p-3" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-warning) 20%, transparent)' }}>
         <p className="text-xs font-medium" style={{ color: 'var(--color-status-warning)' }}>
           {desiredType ? `${desiredType} is unavailable.` : 'Selected room is unavailable.'} Choose a backup rental for the customer while they wait.
         </p>
@@ -103,11 +103,11 @@ export function BackupSelectionStep() {
               className="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
               style={{
                 backgroundColor: isSelected
-                  ? 'rgba(147, 197, 253, 0.15)'
-                  : 'rgba(99, 102, 241, 0.06)',
+                  ? 'color-mix(in oklch, var(--color-accent-primary) 15%, transparent)'
+                  : 'color-mix(in oklch, var(--color-accent-primary) 6%, transparent)',
                 borderColor: isSelected
                   ? 'rgb(147, 197, 253)'
-                  : 'rgba(99, 102, 241, 0.2)',
+                  : 'color-mix(in oklch, var(--color-accent-primary) 20%, transparent)',
                 borderWidth: isSelected ? 2 : 1,
                 opacity: isUnavailable ? 0.4 : 1,
                 cursor: isUnavailable ? 'not-allowed' : 'pointer',
@@ -142,7 +142,7 @@ export function BackupSelectionStep() {
         <button
           disabled={loading}
           onClick={() => void handleSendDisclaimer()}
-          className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition"
+          className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
           style={{
             backgroundColor: 'var(--color-accent-primary)',
             color: 'var(--color-text-inverse)',

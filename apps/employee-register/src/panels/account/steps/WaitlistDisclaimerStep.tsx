@@ -37,13 +37,13 @@ export function WaitlistDisclaimerStep() {
       <div
         className="flex flex-col items-center gap-4 rounded-lg border p-6"
         style={{
-          backgroundColor: 'rgba(99,102,241,0.04)',
+          backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 4%, transparent)',
           borderColor: 'var(--color-border-subtle)',
         }}
       >
         <div
           className="h-10 w-10 rounded-full animate-pulse flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(245,158,11,0.15)' }}
+          style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 15%, transparent)' }}
         >
           <span className="text-xl" aria-hidden="true">📋</span>
         </div>
@@ -62,8 +62,8 @@ export function WaitlistDisclaimerStep() {
       <div
         className="rounded-lg border p-3"
         style={{
-          backgroundColor: 'rgba(245,158,11,0.04)',
-          borderColor: 'rgba(245,158,11,0.15)',
+          backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 4%, transparent)',
+          borderColor: 'color-mix(in oklch, var(--color-status-warning) 15%, transparent)',
         }}
       >
         <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-status-warning)' }}>
