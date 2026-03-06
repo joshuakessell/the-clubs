@@ -22,6 +22,7 @@ import { generateAgreementPdf } from '../utils/pdf-generator';
 import { roundUpToQuarterHour } from '../time/rounding';
 import { insertAuditLog } from '../audit/auditLog';
 import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
+import { insertClubEvent } from '../activity/clubEventLog';
 import { AGREEMENT_LEGAL_BODY_HTML_BY_LANG } from '@the-clubs/shared';
 
 // ── Types ──
@@ -697,6 +698,13 @@ export async function processAgreementSigning(
 
   // Activity events (separate transaction — after main commit)
   await transaction(async (client) => {
+    // Look up customer name for event summaries
+    const custRow = await client.query<{ name: string }>(
+      `SELECT name FROM customers WHERE id = $1`,
+      [coreResult.customerId]
+    );
+    const customerName = custRow.rows[0]?.name ?? 'Customer';
+
     await insertCustomerActivityEvent(client, {
       customerId: coreResult.customerId,
       actionType: 'AGREEMENT_SIGNED',
@@ -736,6 +744,26 @@ export async function processAgreementSigning(
       },
       dedupeKey: coreResult.visitId ? `ACT:CHECKIN_COMPLETED:${coreResult.visitId}` : null,
       searchParts: [coreResult.visitId ?? '', coreResult.checkinBlockId ?? ''],
+    });
+
+    await insertClubEvent(client, {
+      eventType: 'CHECKIN_COMPLETED',
+      eventDomain: 'CHECKIN',
+      sourceApp: input.ctx.sourceApp === 'CUSTOMER_KIOSK' ? 'CUSTOMER_KIOSK' : 'EMPLOYEE_REGISTER',
+      staffId: input.ctx.staffId ?? null,
+      staffName: input.ctx.staffName ?? null,
+      customerId: coreResult.customerId,
+      customerName,
+      visitId: coreResult.visitId ?? null,
+      summary: `Check-in completed for ${customerName}`,
+      metadata: {
+        laneId: input.laneId,
+        laneSessionId: coreResult.sessionId,
+        checkinBlockId: coreResult.checkinBlockId,
+        assignedResourceType: coreResult.assignedResourceType,
+        assignedResourceNumber: coreResult.assignedResourceNumber,
+      },
+      dedupeKey: coreResult.visitId ? `CLUB:CHECKIN_COMPLETED:${coreResult.visitId}` : null,
     });
   });
 

@@ -17,6 +17,7 @@ const DOMAIN_COLOR: Record<string, 'primary' | 'warning' | 'gray' | 'success'> =
   CHECKIN: 'primary',
   CHECKOUT: 'success',
   SALE: 'warning',
+  NOTE: 'gray',
   ADMIN: 'gray',
   SYSTEM: 'gray',
 };

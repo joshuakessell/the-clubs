@@ -5,6 +5,7 @@ import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { transaction } from '../../db';
+import { insertClubEvent } from '../../activity/clubEventLog';
 
 export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
   /**
@@ -80,6 +81,22 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
            WHERE id = $1`,
             [session.id, newStatus]
           );
+
+          // Log CHECKIN_CANCELLED club event
+          if (isCancelled && session.customer_id) {
+            await insertClubEvent(client, {
+              eventType: 'CHECKIN_CANCELLED',
+              eventDomain: 'CHECKIN',
+              sourceApp: 'EMPLOYEE_REGISTER',
+              staffId: request.staff!.staffId,
+              staffName: request.staff!.name ?? null,
+              customerId: session.customer_id,
+              customerName: session.customer_display_name ?? null,
+              summary: `Check-in cancelled for ${session.customer_display_name ?? 'customer'}`,
+              metadata: { laneId, laneSessionId: session.id },
+              dedupeKey: `CLUB:CHECKIN_CANCELLED:${session.id}`,
+            });
+          }
 
           return { success: true, sessionId: session.id };
         });

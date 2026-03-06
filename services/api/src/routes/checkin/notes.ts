@@ -91,7 +91,7 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
           // Emit unified club event for analytics
           await insertClubEvent(client, {
             eventType: 'NOTE_ADDED',
-            eventDomain: 'ADMIN',
+            eventDomain: 'NOTE',
             sourceApp: 'EMPLOYEE_REGISTER',
             staffId: staff.staffId,
             staffName: staff.name,

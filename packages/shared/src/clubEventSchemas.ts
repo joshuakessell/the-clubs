@@ -9,7 +9,8 @@ export const ClubEventDomainSchema = z.enum([
   'CHECKIN',   // Customer check-in flow (start → complete)
   'CHECKOUT',  // Customer checkout (request → complete)
   'INVENTORY', // Room/locker status changes, assignments
-  'ADMIN',     // Notes, overrides, past-due waivers
+  'NOTE',      // Customer notes
+  'ADMIN',     // Overrides, past-due waivers
 ]);
 export type ClubEventDomain = z.infer<typeof ClubEventDomainSchema>;
 
@@ -35,6 +36,7 @@ export const ClubEventTypeSchema = z.enum([
   // CHECKIN domain
   'CHECKIN_STARTED',
   'CHECKIN_COMPLETED',
+  'CHECKIN_CANCELLED',
   'MEMBERSHIP_SELECTED',
 
   // CHECKOUT domain
