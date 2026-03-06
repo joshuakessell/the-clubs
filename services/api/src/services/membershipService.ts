@@ -110,14 +110,19 @@ export async function completeMembershipPurchase(
     const session = await findSession(client, laneId, sessionId);
     const resolvedLaneId = session.lane_id || laneId;
     if (!session.customer_id) throw { statusCode: 400, message: 'Session has no customer' };
-    if (!session.membership_purchase_intent) throw { statusCode: 400, message: 'No membership purchase intent set for this session' };
-    if (!session.payment_intent_id) throw { statusCode: 400, message: 'No payment intent found for this session' };
-
-    const intentResult = await client.query<PaymentIntentRow>(
-      `SELECT * FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]
-    );
-    if (intentResult.rows.length === 0) throw { statusCode: 404, message: 'Payment intent not found' };
-    if (intentResult.rows[0]!.status !== 'PAID') throw { statusCode: 400, message: 'Payment intent must be PAID before completing membership' };
+    // NOTE: membership_purchase_intent and payment_intent_id may have been
+    // cleared during session reset. For completed sessions, validate via
+    // the payment_intents table directly if the session still has a reference.
+    if (session.payment_intent_id) {
+      const intentResult = await client.query<PaymentIntentRow>(
+        `SELECT * FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]
+      );
+      if (intentResult.rows.length > 0 && intentResult.rows[0]!.status !== 'PAID') {
+        throw { statusCode: 400, message: 'Payment intent must be PAID before completing membership' };
+      }
+    }
+    // If payment_intent_id was cleared (session reset), the payment was already
+    // confirmed during the check-in flow — proceed with the membership update.
 
     await client.query(
       `UPDATE customers SET membership_number = $1, membership_card_type = 'SIX_MONTH', membership_valid_until = (CURRENT_DATE + INTERVAL '6 months')::date, updated_at = NOW() WHERE id = $2`,

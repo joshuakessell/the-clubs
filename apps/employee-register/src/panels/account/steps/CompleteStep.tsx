@@ -233,12 +233,15 @@ export function CompleteStep() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void handleSaveMembership();
               }}
-              placeholder="Membership card #"
-              className="flex-1 rounded-lg border px-3 py-2 text-sm"
+              placeholder="Card #"
+              className="rounded-lg border px-3 py-2 text-sm"
               style={{
                 backgroundColor: 'var(--color-surface-input)',
                 borderColor: 'var(--color-border-default)',
                 color: 'var(--color-text-primary)',
+                minWidth: 0,
+                flex: '1 1 0',
+                maxWidth: 180,
               }}
             />
             <button

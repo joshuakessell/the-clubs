@@ -288,8 +288,7 @@ style = {{
   Start Check - In
     </button>
         )}
-{
-  currentSessionId && (
+{currentSessionId && sessionPayload?.paymentStatus !== 'PAID' && (
     <button
             onClick={ () => void cancelSession() }
   className = "flex-1 rounded-lg border px-4 py-2 text-sm font-semibold transition"

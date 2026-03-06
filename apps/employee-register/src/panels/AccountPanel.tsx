@@ -125,76 +125,72 @@ const showAssist = hasSession;
 const showCharges = hasSession || isCheckedIn;
 
 return (
-  <PanelShell align= "top" scroll = "hidden" >
-    <div className="flex flex-1 min-h-0 gap-4 w-full" >
-      {/* Column 1: Profile — always shown */ }
-      < div className = "flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden" >
+  <PanelShell align="top" scroll="hidden">
+    <div className="flex flex-1 min-h-0 gap-4 w-full">
+      {/* Column 1: Profile — always shown */}
+      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         <h3
+          className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          👤 Profile
+        </h3>
+        <div
+          className="flex-1 overflow-y-auto rounded-lg border p-2.5"
+          style={{
+            backgroundColor: 'var(--color-surface-overlay)',
+            borderColor: 'var(--color-border-subtle)',
+            scrollbarWidth: 'thin',
+          }}
+        >
+          <ProfileTab />
+        </div>
+      </div>
+
+      {/* Column 2: Assist — only during active check-in session */}
+      {showAssist && (
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+          <h3
             className="mb-2 text-[10px] font-bold uppercase tracking-widest"
-style = {{ color: 'var(--color-text-muted)' }}
+            style={{ color: 'var(--color-text-muted)' }}
           >
-            👤 Profile
-  </h3>
-  < div
-className = "flex-1 overflow-y-auto rounded-lg border p-2.5"
-style = {{
-  backgroundColor: 'var(--color-surface-overlay)',
-    borderColor: 'var(--color-border-subtle)',
-      scrollbarWidth: 'thin',
+            📋 Assist
+          </h3>
+          <div
+            className="flex-1 overflow-y-auto rounded-lg border p-2.5"
+            style={{
+              backgroundColor: 'var(--color-surface-overlay)',
+              borderColor: 'var(--color-border-subtle)',
+              scrollbarWidth: 'thin',
             }}
           >
-  <ProfileTab />
-  </div>
-  </div>
+            <EmployeeAssistTab />
+          </div>
+        </div>
+      )}
 
-{/* Column 2: Assist — only during active check-in session */ }
-{
-  showAssist && (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden" >
-      <h3
-              className="mb-2 text-[10px] font-bold uppercase tracking-widest"
-  style = {{ color: 'var(--color-text-muted)' }
-}
-            >
-              📋 Assist
-  </h3>
-  < div
-className = "flex-1 overflow-y-auto rounded-lg border p-2.5"
-style = {{
-  backgroundColor: 'var(--color-surface-overlay)',
-    borderColor: 'var(--color-border-subtle)',
-      scrollbarWidth: 'thin',
-              }}
-            >
-  <EmployeeAssistTab />
-  </div>
-  </div>
-        )}
-
-{/* Column 3: Charges — during active session or when checked in */ }
-{
-  showCharges && (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden" >
-      <h3
-              className="mb-2 text-[10px] font-bold uppercase tracking-widest"
-  style = {{ color: 'var(--color-text-muted)' }
-}
-            >
-              📋 Check-In Ledger
-  </h3>
-  < div
-className = "flex-1 overflow-y-auto rounded-lg border p-2.5"
-style = {{
-  backgroundColor: 'var(--color-surface-overlay)',
-    borderColor: 'var(--color-border-subtle)',
-      scrollbarWidth: 'thin',
-              }}
-            >
-  <ChargesTab />
-  </div>
-  </div>
-        )}
-</div>
+      {/* Column 3: Charges — during active session or when checked in */}
+      {showCharges && (
+        <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
+          <h3
+            className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
+            📋 Check-In Ledger
+          </h3>
+          <div
+            className="flex-1 overflow-y-auto rounded-lg border p-2.5"
+            style={{
+              backgroundColor: 'var(--color-surface-overlay)',
+              borderColor: 'var(--color-border-subtle)',
+              scrollbarWidth: 'thin',
+            }}
+          >
+            <ChargesTab />
+          </div>
+        </div>
+      )}
+    </div>
 
 {/* Notes bar — below all columns */}
 {customerId && (
