@@ -56,37 +56,31 @@ async function authRoutes(fastify) {
      * GET /v1/auth/staff - Get list of active staff for login selection
      *
      * Public endpoint that returns active staff members (name, id, role only).
+     */
     fastify.get('/v1/auth/staff', async (request, reply) => {
-      try {
-        const isDemoMode = process.env.DEMO_MODE === 'true';
-        const result = await query<{
-          id: string;
-          name: string;
-          role: string;
-        }>(
-          `SELECT id, name, role
-           FROM staff
-           WHERE active = true
-           ${isDemoMode ? '' : 'AND pin_hash IS NOT NULL'}
-           ORDER BY name`
-        );
-  
-        return reply.send({
-          staff: result.rows.map((row) => ({
-            id: row.id,
-            name: row.name,
-            role: row.role,
-          })),
-        });
-      } catch (error) {
-        request.log.error(error, 'Failed to fetch staff list');
-        return reply.status(500).send({
-          error: 'Internal Server Error',
-          message: 'Failed to fetch staff list',
-        });
-      }
+        try {
+            const isDemoMode = process.env.DEMO_MODE === 'true';
+            const result = await (0, db_1.query)(`SELECT id, name, role
+         FROM staff
+         WHERE active = true
+         ${isDemoMode ? '' : 'AND pin_hash IS NOT NULL'}
+         ORDER BY name`);
+            return reply.send({
+                staff: result.rows.map((row) => ({
+                    id: row.id,
+                    name: row.name,
+                    role: row.role,
+                })),
+            });
+        }
+        catch (error) {
+            request.log.error(error, 'Failed to fetch staff list');
+            return reply.status(500).send({
+                error: 'Internal Server Error',
+                message: 'Failed to fetch staff list',
+            });
+        }
     });
-  
     /**
      * POST /v1/auth/login-pin - Staff login with PIN
      *

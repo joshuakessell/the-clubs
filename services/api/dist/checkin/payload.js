@@ -272,6 +272,7 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
             session.flow_step === 'WAITLIST_DISCLAIMER' ||
             session.flow_step === 'PAYMENT' ||
             session.flow_step === 'AGREEMENT' ||
+            session.flow_step === 'ASSIGNMENT' ||
             session.flow_step === 'COMPLETE'
             ? session.flow_step
             : undefined,
@@ -393,6 +394,19 @@ async function buildLedgerLineItems(client, session, customer, pastDueBalance, p
                 ledgerItems.push({ description: formatChargeDescription(charge.type), amount });
                 total += amount;
             }
+        }
+        // Retail items added to ledger via orders linked to this session
+        const retailItems = await client.query(`SELECT oli.name, oli.total
+       FROM order_line_items oli
+       JOIN orders o ON o.id = oli.order_id
+       WHERE o.metadata_json->>'laneSessionId' = $1
+         AND o.status = 'OPEN'`, [session.id]);
+        for (const item of retailItems.rows) {
+            const amount = (0, utils_1.toNumber)(item.total);
+            if (amount === undefined)
+                continue;
+            ledgerItems.push({ description: item.name, amount });
+            total += amount;
         }
     }
     return { ledgerItems, total };

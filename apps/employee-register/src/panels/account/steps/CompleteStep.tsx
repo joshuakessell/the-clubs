@@ -3,6 +3,66 @@ import { getApiUrl } from '@the-clubs/shared';
 import { useRegisterStore } from '../../../stores/useRegisterStore';
 import { useCheckinFlow } from '../CheckinFlowContext';
 
+function renderRoomContent(
+  loadingRooms: boolean,
+  availableRooms: { id: string; number: string }[],
+  selectedRoom: string,
+  setSelectedRoom: (v: string) => void,
+  overrideLoading: boolean,
+  handleRoomOverride: () => Promise<void>,
+  setShowRoomOverride: (v: boolean) => void,
+) {
+  if (loadingRooms) {
+    return <p className="mt-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>Loading available rooms…</p>;
+  }
+  if (availableRooms.length === 0) {
+    return <p className="mt-2 text-xs" style={{ color: 'var(--color-status-error)' }}>No available rooms in this tier</p>;
+  }
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <select
+        value={selectedRoom}
+        onChange={(e) => setSelectedRoom(e.target.value)}
+        className="rounded-lg border px-3 py-2 text-sm"
+        style={{
+          backgroundColor: 'var(--color-surface-input)',
+          borderColor: 'var(--color-border-default)',
+          color: 'var(--color-text-primary)',
+        }}
+      >
+        <option value="">Choose a room…</option>
+        {availableRooms.map((r) => (
+          <option key={r.id} value={r.id}>
+            Room {r.number}
+          </option>
+        ))}
+      </select>
+      <div className="flex gap-2">
+        <button
+          disabled={!selectedRoom || overrideLoading}
+          onClick={() => void handleRoomOverride()}
+          className="flex-1 rounded-lg border px-4 py-2 text-sm font-bold transition"
+          style={{
+            borderColor: 'var(--color-accent-primary)',
+            color: 'var(--color-accent-primary)',
+            backgroundColor: 'rgba(0,212,255,0.05)',
+            opacity: !selectedRoom || overrideLoading ? 0.5 : 1,
+          }}
+        >
+          {overrideLoading ? '…' : '✓ Assign This Room'}
+        </button>
+        <button
+          onClick={() => { setShowRoomOverride(false); setSelectedRoom(''); }}
+          className="rounded-lg border px-4 py-2 text-sm font-medium"
+          style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function CompleteStep() {
   const { state, actions, meta } = useCheckinFlow();
   const { sp } = state;
@@ -153,56 +213,10 @@ export function CompleteStep() {
       {showRoomOverride && (
         <div className="w-full rounded-xl border p-4" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
           <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
-            Select Room ({currentTier.replace(/_/g, ' ')})
+            Select Room ({currentTier.replaceAll('_', ' ')})
           </span>
 
-          {loadingRooms ? (
-            <p className="mt-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>Loading available rooms…</p>
-          ) : availableRooms.length === 0 ? (
-            <p className="mt-2 text-xs" style={{ color: 'var(--color-status-error)' }}>No available rooms in this tier</p>
-          ) : (
-            <div className="mt-2 flex flex-col gap-2">
-              <select
-                value={selectedRoom}
-                onChange={(e) => setSelectedRoom(e.target.value)}
-                className="rounded-lg border px-3 py-2 text-sm"
-                style={{
-                  backgroundColor: 'var(--color-surface-input)',
-                  borderColor: 'var(--color-border-default)',
-                  color: 'var(--color-text-primary)',
-                }}
-              >
-                <option value="">Choose a room…</option>
-                {availableRooms.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    Room {r.number}
-                  </option>
-                ))}
-              </select>
-              <div className="flex gap-2">
-                <button
-                  disabled={!selectedRoom || overrideLoading}
-                  onClick={() => void handleRoomOverride()}
-                  className="flex-1 rounded-lg border px-4 py-2 text-sm font-bold transition"
-                  style={{
-                    borderColor: 'var(--color-accent-primary)',
-                    color: 'var(--color-accent-primary)',
-                    backgroundColor: 'rgba(0,212,255,0.05)',
-                    opacity: !selectedRoom || overrideLoading ? 0.5 : 1,
-                  }}
-                >
-                  {overrideLoading ? '…' : '✓ Assign This Room'}
-                </button>
-                <button
-                  onClick={() => { setShowRoomOverride(false); setSelectedRoom(''); }}
-                  className="rounded-lg border px-4 py-2 text-sm font-medium"
-                  style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+          {renderRoomContent(loadingRooms, availableRooms, selectedRoom, setSelectedRoom, overrideLoading, handleRoomOverride, setShowRoomOverride)}
 
           {overrideError && (
             <p className="mt-2 text-xs font-semibold" style={{ color: 'var(--color-status-error)' }}>
@@ -218,7 +232,7 @@ export function CompleteStep() {
           borderColor: 'var(--color-accent-secondary, #a78bfa)',
           backgroundColor: 'rgba(167, 139, 250, 0.05)',
         }}>
-          <label className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
+          <label htmlFor="membership-card-input" className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
             Enter Membership Card Number
           </label>
           <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
@@ -226,6 +240,7 @@ export function CompleteStep() {
           </p>
           <div className="mt-3 flex gap-2">
             <input
+              id="membership-card-input"
               type="text"
               autoFocus
               value={membershipCardNumber}

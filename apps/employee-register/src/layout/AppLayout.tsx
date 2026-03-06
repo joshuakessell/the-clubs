@@ -73,8 +73,8 @@ export function AppLayout() {
       handleNav(tabs[idx]);
     };
 
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    globalThis.addEventListener('keydown', handler);
+    return () => globalThis.removeEventListener('keydown', handler);
   }, [handleNav]);
 
   // Wire store's selectNavTab to our local handleNav

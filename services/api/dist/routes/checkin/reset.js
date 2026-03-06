@@ -6,6 +6,7 @@ const kioskToken_1 = require("../../auth/kioskToken");
 const payload_1 = require("../../checkin/payload");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const clubEventLog_1 = require("../../activity/clubEventLog");
 function registerCheckinResetRoutes(fastify) {
     /**
      * POST /v1/checkin/lane/:laneId/reset
@@ -60,6 +61,21 @@ function registerCheckinResetRoutes(fastify) {
                flow_version = 0,
                updated_at = NOW()
            WHERE id = $1`, [session.id, newStatus]);
+                // Log CHECKIN_CANCELLED club event
+                if (isCancelled && session.customer_id) {
+                    await (0, clubEventLog_1.insertClubEvent)(client, {
+                        eventType: 'CHECKIN_CANCELLED',
+                        eventDomain: 'CHECKIN',
+                        sourceApp: 'EMPLOYEE_REGISTER',
+                        staffId: request.staff.staffId,
+                        staffName: request.staff.name ?? null,
+                        customerId: session.customer_id,
+                        customerName: session.customer_display_name ?? null,
+                        summary: `Check-in cancelled for ${session.customer_display_name ?? 'customer'}`,
+                        metadata: { laneId, laneSessionId: session.id },
+                        dedupeKey: `CLUB:CHECKIN_CANCELLED:${session.id}`,
+                    });
+                }
                 return { success: true, sessionId: session.id };
             });
             const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, result.sessionId));

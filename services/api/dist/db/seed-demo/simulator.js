@@ -114,7 +114,7 @@ function sampleStayMinutes(rng) {
         { item: 120, weight: 0.06 },
         { item: 240, weight: 0.18 },
         { item: 360, weight: 0.62 },
-        { item: 480, weight: 0.10 },
+        { item: 480, weight: 0.1 },
         { item: 720, weight: 0.04 },
     ]);
 }
@@ -123,7 +123,7 @@ function sampleCheckoutDelta(rng) {
     return pickWeighted(rng, [
         { item: 0, weight: 0.55 },
         { item: 5, weight: 0.18 },
-        { item: 10, weight: 0.10 },
+        { item: 10, weight: 0.1 },
         { item: 30, weight: 0.07 },
         { item: 60, weight: 0.04 },
         { item: 120, weight: 0.02 },
@@ -259,9 +259,11 @@ async function seedBaseEntities(now, progress) {
     progress.addTotal(shared_1.ROOMS.length + shared_1.LOCKER_NUMBERS.length);
     // Upsert rooms
     for (const r of shared_1.ROOMS) {
-        const type = r.tier === 'DOUBLE' ? shared_1.RoomType.DOUBLE
-            : r.tier === 'SPECIAL' ? shared_1.RoomType.SPECIAL
-                : shared_1.RoomType.STANDARD;
+        let type = shared_1.RoomType.STANDARD;
+        if (r.tier === 'DOUBLE')
+            type = shared_1.RoomType.DOUBLE;
+        else if (r.tier === 'SPECIAL')
+            type = shared_1.RoomType.SPECIAL;
         await (0, index_1.query)(`INSERT INTO rooms (number, type, status, floor, last_status_change)
        VALUES ($1, $2, 'CLEAN', $3, NOW())
        ON CONFLICT (number) DO UPDATE SET type = EXCLUDED.type, floor = EXCLUDED.floor, updated_at = NOW()`, [String(r.number), type, Math.floor(r.number / 100)]);
@@ -292,13 +294,13 @@ async function seedBaseEntities(now, progress) {
     // Ensure agreement exists
     progress.setMessage('Ensuring agreement');
     const existingAgreement = await (0, index_1.query)(`SELECT COUNT(*) as count FROM agreements WHERE active = true`);
-    if (parseInt(existingAgreement.rows[0]?.count || '0', 10) === 0) {
+    if (Number.parseInt(existingAgreement.rows[0]?.count || '0', 10) === 0) {
         await (0, index_1.query)(`INSERT INTO agreements (version, title, body_text, active) VALUES ($1, $2, $3, true)`, ['demo-v1', 'Club Dallas Entry & Liability Waiver (Demo)', shared_1.AGREEMENT_LEGAL_BODY_HTML_BY_LANG.EN]);
     }
     // Seed initial customers (100 members + 200 guests)
     progress.setMessage('Seeding initial customers');
     const existingCustomers = await (0, index_1.query)(`SELECT COUNT(*) as count FROM customers`);
-    if (parseInt(existingCustomers.rows[0]?.count || '0', 10) === 0) {
+    if (Number.parseInt(existingCustomers.rows[0]?.count || '0', 10) === 0) {
         const MEMBER_COUNT = 100;
         const GUEST_COUNT = 200;
         const rng = seededRng(0x4e414d45);
@@ -339,7 +341,7 @@ async function seedBaseEntities(now, progress) {
 async function seedShifts(now, progress) {
     const existingShifts = await (0, index_1.query)(`SELECT COUNT(*) as count FROM employee_shifts
      WHERE starts_at >= $1 AND starts_at <= $2`, [new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000), new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000)]);
-    if (parseInt(existingShifts.rows[0]?.count || '0', 10) > 0) {
+    if (Number.parseInt(existingShifts.rows[0]?.count || '0', 10) > 0) {
         progress.log('⚠️  Shifts already exist, skipping.');
         return;
     }
@@ -371,7 +373,11 @@ async function seedShifts(now, progress) {
         const dow = baseDate.getDay();
         const dayPlan = weekly[dow];
         for (const [code, empIds] of Object.entries(dayPlan)) {
-            const startHour = code === 'A' ? 0 : code === 'B' ? 8 : 16;
+            let startHour = 16;
+            if (code === 'A')
+                startHour = 0;
+            else if (code === 'B')
+                startHour = 8;
             const shiftStart = new Date(baseDate);
             shiftStart.setHours(startHour, 0, 0, 0);
             const shiftEnd = code === 'C'
@@ -403,7 +409,7 @@ async function seedShifts(now, progress) {
                     // Today: clock in if shift is active now
                     if (shiftStart.getTime() <= now.getTime() && shiftEnd.getTime() > now.getTime()) {
                         const existing = await (0, index_1.query)(`SELECT COUNT(*) as count FROM timeclock_sessions WHERE employee_id = $1 AND clock_out_at IS NULL`, [empId]);
-                        if (parseInt(existing.rows[0]?.count || '0', 10) === 0) {
+                        if (Number.parseInt(existing.rows[0]?.count || '0', 10) === 0) {
                             await (0, index_1.query)(`INSERT INTO timeclock_sessions (employee_id, shift_id, clock_in_at, clock_out_at, source)
                  VALUES ($1, $2, $3, NULL, 'OFFICE_DASHBOARD')`, [empId, shiftId, new Date(shiftStart.getTime() + Math.random() * 5 * 60 * 1000)]);
                         }
@@ -609,7 +615,7 @@ async function simulateVisits(params) {
                 }
             }
             // --- Customer Notes (~10% general, ~6% late checkout, ~5% feedback) ---
-            if (rng() < 0.10) {
+            if (rng() < 0.1) {
                 const noteText = GENERAL_NOTES[Math.floor(rng() * GENERAL_NOTES.length)];
                 const noteAt = new Date(end.getTime() - Math.floor(rng() * 60) * 60 * 1000);
                 await insertNote(client, { customerId: customer.id, staffId: emp.id, staffName: emp.name, note: noteText, at: noteAt, visitId, important: false, dedupeKey: `ACT:SIM:NOTE:GEN:${visitId}:${noteAt.getTime()}` });
@@ -859,7 +865,7 @@ async function checkoutActiveVisits(client, p) {
         if (actualEnd > p.now)
             actualEnd = p.now;
         if (actualEnd <= scheduledEnd)
-            actualEnd = new Date(scheduledEnd.getTime()); // at-minimum on-time
+            actualEnd = new Date(scheduledEnd); // at-minimum on-time
         const lateMins = Math.max(0, Math.round((actualEnd.getTime() - scheduledEnd.getTime()) / 60_000));
         const isLate = lateMins > 15;
         const lateFee = isLate ? Math.ceil((lateMins - 15) / 15) * 15 : 0;
@@ -1066,24 +1072,32 @@ async function seedActiveWaitlist(client, p) {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, [(0, node_crypto_1.randomUUID)(), agreement.id, customer.name, customer.membership_number, signedAt, agreement.body_text, agreement.version, blockId]);
         }
         if (reg) {
-            await client.query(`INSERT INTO customer_activity_events (id, customer_id, staff_id, action, category, summary, metadata, search_blob, dedupe_key, created_at)
-         VALUES ($1, $2, $3, 'CHECKIN_COMPLETED', 'CHECKIN', 'Checked in', $4, $5, $6, $7)
-         ON CONFLICT (dedupe_key) DO NOTHING`, [
-                (0, node_crypto_1.randomUUID)(), customer.id, p.staff[0]?.id ?? null,
-                JSON.stringify({ visitId, blockId, rentalType, registerNumber: reg.register_number }),
-                `Checked in ${customer.name} ${rentalType} ${visitId}`,
-                `ACT:SIM:ACTIVE_ROOM_CHECKIN:${blockId}`,
-                signedAt,
-            ]);
+            await insertActivityEvent(client, {
+                at: signedAt,
+                customerId: customer.id,
+                action: 'CHECKIN_COMPLETED',
+                category: 'CHECKIN',
+                staffId: p.staff[0]?.id,
+                staffName: p.staff[0]?.name,
+                summary: 'Checked in',
+                metadata: { visitId, blockId, rentalType, registerNumber: reg.register_number },
+                searchBlob: `Checked in ${customer.name} ${rentalType} ${visitId}`,
+                dedupeKey: `ACT:SIM:ACTIVE_ROOM_CHECKIN:${blockId}`,
+            });
         }
     }
     // Create pending waitlist entries
     for (let i = 0; i < WAITLIST_SIZE; i++) {
         const customer = p.customers[Math.floor(rng() * p.customers.length)];
-        const desiredTier = rng() < 0.6 ? 'STANDARD' : rng() < 0.8 ? 'DOUBLE' : 'SPECIAL';
+        const tierRoll = rng();
+        let desiredTier = 'SPECIAL';
+        if (tierRoll < 0.6)
+            desiredTier = 'STANDARD';
+        else if (tierRoll < 0.8)
+            desiredTier = 'DOUBLE';
         const createdAt = new Date(p.now.getTime() - Math.floor(5 + rng() * 25) * 60 * 1000);
-        const emp = p.staff[Math.floor(rng() * p.staff.length)];
-        const reg = p.registerSessions[Math.floor(rng() * p.registerSessions.length)];
+        const _emp = p.staff[Math.floor(rng() * p.staff.length)];
+        const _reg = p.registerSessions[Math.floor(rng() * p.registerSessions.length)];
         // Create a visit + locker checkin block for the waiting customer
         const visitId = (0, node_crypto_1.randomUUID)();
         const blockId = (0, node_crypto_1.randomUUID)();
@@ -1113,10 +1127,16 @@ async function seedActiveWaitlist(client, p) {
 // CLI Entrypoint
 // ---------------------------------------------------------------------------
 if (require.main === module) {
-    runSimulator({ forceReseed: process.env.FORCE_RESEED === 'true' })
-        .catch((err) => {
-        console.error('❌ Simulator CLI failed:', err);
-        process.exitCode = 1;
-    })
-        .finally(() => (0, index_1.closeDatabase)());
+    void (async () => {
+        try {
+            await runSimulator({ forceReseed: process.env.FORCE_RESEED === 'true' });
+        }
+        catch (err) {
+            console.error('❌ Simulator CLI failed:', err);
+            process.exitCode = 1;
+        }
+        finally {
+            await (0, index_1.closeDatabase)();
+        }
+    })();
 }

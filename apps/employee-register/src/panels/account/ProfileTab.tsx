@@ -25,6 +25,38 @@ type FetchedProfile = {
  * Shows customer info, membership status, language toggle, and
  * Start/Cancel Check-In or Checkout controls.
  */
+async function performCheckout(
+  occupancyId: string,
+  token: string | undefined,
+  customerName: string | null | undefined,
+  returnTab: string | null,
+  selectNavTab: (tab: string) => void,
+) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(getApiUrl('/api/v1/checkout/manual-complete'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ occupancyId }),
+  });
+
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.error ?? `HTTP ${res.status}`);
+  }
+
+  const dest = returnTab;
+  useRegisterStore.setState({
+    customerId: null,
+    customerName: null,
+    activeCheckinInfo: null,
+    returnTab: null,
+    successToastMessage: `${customerName ?? 'Customer'} checked out successfully`,
+  });
+  if (dest) selectNavTab(dest);
+}
+
 export function ProfileTab() {
   const {
     sessionPayload,
@@ -105,19 +137,20 @@ export function ProfileTab() {
 
   const isMembershipExpired = !hasMembership && !!membershipNumber;
 
-  const membershipLabel = hasMembership
-    ? 'Member'
-    : sp?.membershipChoice === 'SIX_MONTH'
-      ? 'Membership Pending'
-      : isMembershipExpired
-        ? 'Non-Member (Expired)'
-        : 'Non-Member';
+  const getMembershipLabel = () => {
+    if (hasMembership) return 'Member';
+    if (sp?.membershipChoice === 'SIX_MONTH') return 'Membership Pending';
+    if (isMembershipExpired) return 'Non-Member (Expired)';
+    return 'Non-Member';
+  };
+  const membershipLabel = getMembershipLabel();
 
-  const membershipColor = hasMembership
-    ? 'var(--color-status-success)'
-    : sp?.membershipChoice === 'SIX_MONTH'
-      ? 'var(--color-status-warning)'
-      : 'var(--color-text-muted)';
+  const getMembershipColor = () => {
+    if (hasMembership) return 'var(--color-status-success)';
+    if (sp?.membershipChoice === 'SIX_MONTH') return 'var(--color-status-warning)';
+    return 'var(--color-text-muted)';
+  };
+  const membershipColor = getMembershipColor();
 
 
   const handleStartCheckin = () => {
@@ -134,30 +167,7 @@ export function ProfileTab() {
     if (!activeCheckinInfo?.occupancyId) return;
     setCheckingOut(true);
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(getApiUrl('/api/v1/checkout/manual-complete'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ occupancyId: activeCheckinInfo.occupancyId }),
-      });
-
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error ?? `HTTP ${res.status}`);
-      }
-
-      // Navigate back and clear customer state after successful checkout
-      const dest = returnTab;
-      useRegisterStore.setState({
-        customerId: null,
-        customerName: null,
-        activeCheckinInfo: null,
-        returnTab: null,
-        successToastMessage: `${customerName ?? 'Customer'} checked out successfully`,
-      });
-      if (dest) selectNavTab(dest);
+      await performCheckout(activeCheckinInfo.occupancyId, token, customerName, returnTab, selectNavTab);
     } catch (err: any) {
       useRegisterStore.setState({
         successToastMessage: err.message ?? 'Checkout failed',
@@ -209,9 +219,9 @@ style = {{
   <Field label="Membership #" value = { membershipNumber } />
     <Field label="Membership Exp." value = { membershipValidUntil ? new Date(membershipValidUntil).toLocaleDateString() : undefined } color = { isMembershipExpired ? 'var(--color-status-error)' : undefined } />
     <Field label="DOB" value = { dob } />
-      <Field label="Language" value = { primaryLanguage === 'ES' ? 'Español' : primaryLanguage ? 'English' : undefined} />
-        < Field label = "Last Visit" value = { lastVisitAt? new Date(lastVisitAt).toLocaleDateString() : undefined } />
-          <Field label="ID Type" value = { idType === 'DRIVERS_LICENSE' ? 'DL' : idType === 'STATE_ID' ? 'State ID' : idType === 'PASSPORT' ? 'Passport' : idType === 'OTHER' ? 'Other' : (idType ?? undefined)} />
+      <Field label="Language" value={primaryLanguage === 'ES' ? 'Español' : primaryLanguage || undefined} />
+      <Field label="Last Visit" value={lastVisitAt ? new Date(lastVisitAt).toLocaleDateString() : undefined} />
+      <Field label="ID Type" value={formatIdType(idType)} />
             < Field label = "ID #" value = { idNumber } />
               <Field label="ID Exp." value = { idExpirationDate } />
                 <Field label="Past Due" value = { pastDueBalance? `$${pastDueBalance.toFixed(2)}` : '$0.00'} color = { pastDueBalance? 'var(--color-status-error)': undefined } />
@@ -252,71 +262,101 @@ style = {{
 
 
 
-{/* Actions */ }
-<div className="flex gap-3" >
-  {/* Checkout button for already-checked-in customers */ }
-{
-  activeCheckinInfo && !currentSessionId && (
-    <button
-            onClick={ () => void handleCheckout() }
-  disabled = { checkingOut }
-  className = "flex-1 rounded-lg px-4 py-2 text-sm font-bold transition"
-  style = {{
-    backgroundColor: checkingOut ? 'var(--color-surface-overlay)' : 'var(--color-status-warning)',
-      color: 'var(--color-text-inverse)',
-        boxShadow: checkingOut ? 'none' : '0 0 20px rgba(245, 158, 11, 0.3)',
-          opacity: checkingOut ? 0.6 : 1,
-            }
-}
-          >
-  { checkingOut? 'Checking out…': 'Checkout' }
-  </button>
-        )}
-{/* Start Check-In for customers not currently checked in */ }
-{
-  !currentSessionId && !activeCheckinInfo && (customerId || sp?.customerId) && (
-    <button
-            onClick={ handleStartCheckin }
-  className = "flex-1 rounded-lg px-4 py-2 text-sm font-bold transition"
-  style = {{
-    backgroundColor: 'var(--color-accent-primary)',
-      color: 'var(--color-text-inverse)',
-        boxShadow: '0 0 20px var(--color-accent-glow)',
-            }
-}
-          >
-  Start Check - In
-    </button>
-        )}
-{currentSessionId && sessionPayload?.paymentStatus !== 'PAID' && (
-    <button
-            onClick={ () => void cancelSession() }
-  className = "flex-1 rounded-lg border px-4 py-2 text-sm font-semibold transition"
-  style = {{
-    borderColor: 'var(--color-status-error)',
-      color: 'var(--color-status-error)',
-        backgroundColor: 'rgba(239, 68, 68, 0.05)',
-            }
-}
-          >
-  Cancel Check - In
-    </button>
-        )}
+{/* Actions */}
+<ActionButtons
+  activeCheckinInfo={activeCheckinInfo}
+  currentSessionId={currentSessionId}
+  customerId={customerId ?? sp?.customerId}
+  paymentStatus={sessionPayload?.paymentStatus}
+  checkingOut={checkingOut}
+  onCheckout={() => void handleCheckout()}
+  onStartCheckin={handleStartCheckin}
+  onCancel={() => void cancelSession()}
+/>
 </div>
   </div>
   );
 }
 
-function Field({ label, value, color }: { label: string; value?: string | null; color?: string }) {
+// ── Helpers ──
+
+const ID_TYPE_LABELS: Record<string, string> = {
+  DRIVERS_LICENSE: 'DL',
+  STATE_ID: 'State ID',
+  PASSPORT: 'Passport',
+  OTHER: 'Other',
+};
+function formatIdType(idType?: string | null): string | undefined {
+  if (!idType) return undefined;
+  return ID_TYPE_LABELS[idType] ?? idType;
+}
+
+function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymentStatus, checkingOut, onCheckout, onStartCheckin, onCancel }: Readonly<{
+  activeCheckinInfo: any;
+  currentSessionId: string | null;
+  customerId: string | null | undefined;
+  paymentStatus: string | undefined;
+  checkingOut: boolean;
+  onCheckout: () => void;
+  onStartCheckin: () => void;
+  onCancel: () => void;
+}>) {
+  return (
+    <div className="flex gap-3">
+      {activeCheckinInfo && !currentSessionId && (
+        <button
+          onClick={onCheckout}
+          disabled={checkingOut}
+          className="flex-1 rounded-lg px-4 py-2 text-sm font-bold transition"
+          style={{
+            backgroundColor: checkingOut ? 'var(--color-surface-overlay)' : 'var(--color-status-warning)',
+            color: 'var(--color-text-inverse)',
+            boxShadow: checkingOut ? 'none' : '0 0 20px rgba(245, 158, 11, 0.3)',
+            opacity: checkingOut ? 0.6 : 1,
+          }}
+        >
+          {checkingOut ? 'Checking out…' : 'Checkout'}
+        </button>
+      )}
+      {!currentSessionId && !activeCheckinInfo && customerId && (
+        <button
+          onClick={onStartCheckin}
+          className="flex-1 rounded-lg px-4 py-2 text-sm font-bold transition"
+          style={{
+            backgroundColor: 'var(--color-accent-primary)',
+            color: 'var(--color-text-inverse)',
+            boxShadow: '0 0 20px var(--color-accent-glow)',
+          }}
+        >
+          Start Check-In
+        </button>
+      )}
+      {currentSessionId && paymentStatus !== 'PAID' && (
+        <button
+          onClick={onCancel}
+          className="flex-1 rounded-lg border px-4 py-2 text-sm font-semibold transition"
+          style={{
+            borderColor: 'var(--color-status-error)',
+            color: 'var(--color-status-error)',
+            backgroundColor: 'rgba(239, 68, 68, 0.05)',
+          }}
+        >
+          Cancel Check-In
+        </button>
+      )}
+    </div>
+  );
+}
+
+function Field({ label, value, color }: Readonly<{ label: string; value?: string | null; color?: string }>) {
   return (
     <div>
-    <span className= "text-[10px] font-bold uppercase tracking-wider" style = {{ color: 'var(--color-text-muted)' }
-}>
-  { label }
-  </span>
-  < p className = "mt-0.5 text-sm font-medium" style = {{ color: color ?? 'var(--color-text-primary)' }}>
-    { value || '—'}
-</p>
-  </div>
+      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+        {label}
+      </span>
+      <p className="mt-0.5 text-sm font-medium" style={{ color: color ?? 'var(--color-text-primary)' }}>
+        {value || '—'}
+      </p>
+    </div>
   );
 }

@@ -52,7 +52,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     customerIdNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerLastVisitAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerIdExpirationDate: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    customerIdType: z.ZodEffects<z.ZodOptional<z.ZodEnum<["STATE_ID", "DRIVERS_LICENSE", "PASSPORT", "OTHER"]>>, "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined, unknown>;
+    customerIdType: z.ZodEffects<z.ZodOptional<z.ZodEnum<["STATE_ID", "DRIVERS_LICENSE", "PASSPORT", "OTHER"]>>, "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined, unknown>;
     customerIdTypeOther: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerHasEncryptedLookupMarker: z.ZodOptional<z.ZodBoolean>;
     idScanIssue: z.ZodEffects<z.ZodOptional<z.ZodEnum<["ID_EXPIRED", "UNDERAGE"]>>, "ID_EXPIRED" | "UNDERAGE" | undefined, unknown>;
@@ -67,22 +67,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;
@@ -93,7 +93,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "ASSIGNMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "ASSIGNMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
-    flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "SYSTEM" | "CUSTOMER" | "EMPLOYEE" | undefined, unknown>;
+    flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
     sessionId: z.ZodString;
@@ -125,7 +125,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     customerIdNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerLastVisitAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerIdExpirationDate: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    customerIdType: z.ZodEffects<z.ZodOptional<z.ZodEnum<["STATE_ID", "DRIVERS_LICENSE", "PASSPORT", "OTHER"]>>, "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined, unknown>;
+    customerIdType: z.ZodEffects<z.ZodOptional<z.ZodEnum<["STATE_ID", "DRIVERS_LICENSE", "PASSPORT", "OTHER"]>>, "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined, unknown>;
     customerIdTypeOther: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerHasEncryptedLookupMarker: z.ZodOptional<z.ZodBoolean>;
     idScanIssue: z.ZodEffects<z.ZodOptional<z.ZodEnum<["ID_EXPIRED", "UNDERAGE"]>>, "ID_EXPIRED" | "UNDERAGE" | undefined, unknown>;
@@ -140,22 +140,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;
@@ -166,7 +166,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "ASSIGNMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "ASSIGNMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
-    flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "SYSTEM" | "CUSTOMER" | "EMPLOYEE" | undefined, unknown>;
+    flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
     sessionId: z.ZodString;
@@ -198,7 +198,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     customerIdNumber: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerLastVisitAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerIdExpirationDate: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    customerIdType: z.ZodEffects<z.ZodOptional<z.ZodEnum<["STATE_ID", "DRIVERS_LICENSE", "PASSPORT", "OTHER"]>>, "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined, unknown>;
+    customerIdType: z.ZodEffects<z.ZodOptional<z.ZodEnum<["STATE_ID", "DRIVERS_LICENSE", "PASSPORT", "OTHER"]>>, "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined, unknown>;
     customerIdTypeOther: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     customerHasEncryptedLookupMarker: z.ZodOptional<z.ZodBoolean>;
     idScanIssue: z.ZodEffects<z.ZodOptional<z.ZodEnum<["ID_EXPIRED", "UNDERAGE"]>>, "ID_EXPIRED" | "UNDERAGE" | undefined, unknown>;
@@ -213,22 +213,22 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     paymentFailureReason: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     ledgerLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
         description: z.ZodString;
         amount: z.ZodNumber;
     }, "strip", z.ZodTypeAny, {
-        amount: number;
         description: string;
+        amount: number;
     }, {
-        amount: number;
         description: string;
+        amount: number;
     }>, "many">>;
     ledgerTotal: z.ZodOptional<z.ZodNumber>;
     agreementSigned: z.ZodOptional<z.ZodBoolean>;
@@ -239,7 +239,7 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     checkoutAt: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
     flowStep: z.ZodEffects<z.ZodOptional<z.ZodEnum<["LANGUAGE", "RENTAL", "WAITLIST_PREFERENCES", "WAITLIST_BACKUP", "WAITLIST_DISCLAIMER", "PAYMENT", "AGREEMENT", "ASSIGNMENT", "COMPLETE"]>>, "LANGUAGE" | "RENTAL" | "WAITLIST_PREFERENCES" | "WAITLIST_BACKUP" | "WAITLIST_DISCLAIMER" | "PAYMENT" | "AGREEMENT" | "ASSIGNMENT" | "COMPLETE" | undefined, unknown>;
     flowVersion: z.ZodEffects<z.ZodOptional<z.ZodNumber>, number | undefined, unknown>;
-    flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "SYSTEM" | "CUSTOMER" | "EMPLOYEE" | undefined, unknown>;
+    flowLastActor: z.ZodEffects<z.ZodOptional<z.ZodEnum<["CUSTOMER", "EMPLOYEE", "SYSTEM"]>>, "CUSTOMER" | "EMPLOYEE" | "SYSTEM" | undefined, unknown>;
     flowLastCommandId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const CheckinOptionHighlightedPayloadSchema: z.ZodObject<{
@@ -397,14 +397,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -413,14 +413,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -429,14 +429,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -445,64 +445,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -512,14 +512,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -528,14 +528,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
         byType: z.ZodObject<{
@@ -546,14 +546,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -562,14 +562,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -578,14 +578,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -594,64 +594,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -661,14 +661,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -677,14 +677,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
         byType: z.ZodObject<{
@@ -695,14 +695,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -711,14 +711,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -727,14 +727,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -743,64 +743,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -810,14 +810,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -826,14 +826,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, z.ZodTypeAny, "passthrough">>;
     available: z.ZodOptional<z.ZodObject<{
@@ -925,14 +925,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -941,14 +941,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -957,14 +957,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -973,64 +973,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -1040,14 +1040,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -1056,14 +1056,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
         byType: z.ZodObject<{
@@ -1074,14 +1074,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1090,14 +1090,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1106,14 +1106,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1122,64 +1122,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -1189,14 +1189,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -1205,14 +1205,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
         byType: z.ZodObject<{
@@ -1223,14 +1223,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1239,14 +1239,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1255,14 +1255,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1271,64 +1271,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -1338,14 +1338,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -1354,14 +1354,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, z.ZodTypeAny, "passthrough">>;
     available: z.ZodOptional<z.ZodObject<{
@@ -1453,14 +1453,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1469,14 +1469,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1485,14 +1485,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1501,64 +1501,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -1568,14 +1568,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -1584,14 +1584,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
         byType: z.ZodObject<{
@@ -1602,14 +1602,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1618,14 +1618,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1634,14 +1634,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1650,64 +1650,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -1717,14 +1717,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -1733,14 +1733,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
         byType: z.ZodObject<{
@@ -1751,14 +1751,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             DOUBLE: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1767,14 +1767,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             SPECIAL: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1783,14 +1783,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
             LOCKER: z.ZodObject<{
                 clean: z.ZodNumber;
@@ -1799,64 +1799,64 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
                 total: z.ZodNumber;
             }, "strip", z.ZodTypeAny, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }, {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             }>;
         }, "strip", z.ZodTypeAny, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }, {
-            LOCKER: {
-                dirty: number;
-                total: number;
-                clean: number;
-                cleaning: number;
-            };
             STANDARD: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             DOUBLE: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
             };
             SPECIAL: {
                 dirty: number;
-                total: number;
                 clean: number;
                 cleaning: number;
+                total: number;
+            };
+            LOCKER: {
+                dirty: number;
+                clean: number;
+                cleaning: number;
+                total: number;
             };
         }>;
         overall: z.ZodObject<{
@@ -1866,14 +1866,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
         lockers: z.ZodObject<{
             clean: z.ZodNumber;
@@ -1882,14 +1882,14 @@ export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
             total: z.ZodNumber;
         }, "strip", z.ZodTypeAny, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }, {
             dirty: number;
-            total: number;
             clean: number;
             cleaning: number;
+            total: number;
         }>;
     }, z.ZodTypeAny, "passthrough">>;
     available: z.ZodOptional<z.ZodObject<{

@@ -193,12 +193,12 @@ export interface SessionUpdatedPayload {
     assignedResourceType?: 'room' | 'locker';
     assignedResourceNumber?: string;
     checkoutAt?: string;
-    flowStep?: 'LANGUAGE' | 'RENTAL' | 'WAITLIST_PREFERENCES' | 'WAITLIST_BACKUP' | 'WAITLIST_DISCLAIMER' | 'PAYMENT' | 'AGREEMENT' | 'COMPLETE';
+    flowStep?: 'LANGUAGE' | 'RENTAL' | 'WAITLIST_PREFERENCES' | 'WAITLIST_BACKUP' | 'WAITLIST_DISCLAIMER' | 'PAYMENT' | 'AGREEMENT' | 'ASSIGNMENT' | 'COMPLETE';
     flowVersion?: number;
     flowLastActor?: 'CUSTOMER' | 'EMPLOYEE' | 'SYSTEM';
     flowLastCommandId?: string;
 }
-export type CheckinFlowStep = 'LANGUAGE' | 'RENTAL' | 'WAITLIST_PREFERENCES' | 'WAITLIST_BACKUP' | 'WAITLIST_DISCLAIMER' | 'PAYMENT' | 'AGREEMENT' | 'COMPLETE';
+export type CheckinFlowStep = 'LANGUAGE' | 'RENTAL' | 'WAITLIST_PREFERENCES' | 'WAITLIST_BACKUP' | 'WAITLIST_DISCLAIMER' | 'PAYMENT' | 'AGREEMENT' | 'ASSIGNMENT' | 'COMPLETE';
 export type CheckinFlowActor = 'CUSTOMER' | 'EMPLOYEE' | 'SYSTEM';
 export type CheckinFlowCommandType = 'SET_STEP' | 'BACK_STEP' | 'CANCEL_STEP';
 export interface CheckinFlowCommandRequest {

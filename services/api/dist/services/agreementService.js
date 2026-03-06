@@ -17,6 +17,7 @@ const waitlist_1 = require("../checkin/waitlist");
 const pdf_generator_1 = require("../utils/pdf-generator");
 const rounding_1 = require("../time/rounding");
 const customerActivityLog_1 = require("../activity/customerActivityLog");
+const clubEventLog_1 = require("../activity/clubEventLog");
 const shared_1 = require("@the-clubs/shared");
 // ── Helpers ──
 function isFlowCommandsEnabled() {
@@ -426,7 +427,11 @@ async function processAgreementSigning(input) {
             ]);
         }
         // Update session status
-        await client.query(`UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`, [session.id]);
+        // When flow commands are enabled, keep the session active during ASSIGNMENT
+        // so the kiosk shows the room info and the employee can override/complete.
+        if (!isFlowCommandsEnabled()) {
+            await client.query(`UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`, [session.id]);
+        }
         return {
             success: true,
             sessionId: session.id,
@@ -442,6 +447,9 @@ async function processAgreementSigning(input) {
     });
     // Activity events (separate transaction — after main commit)
     await (0, db_1.transaction)(async (client) => {
+        // Look up customer name for event summaries
+        const custRow = await client.query(`SELECT name FROM customers WHERE id = $1`, [coreResult.customerId]);
+        const customerName = custRow.rows[0]?.name ?? 'Customer';
         await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
             customerId: coreResult.customerId,
             actionType: 'AGREEMENT_SIGNED',
@@ -480,6 +488,25 @@ async function processAgreementSigning(input) {
             },
             dedupeKey: coreResult.visitId ? `ACT:CHECKIN_COMPLETED:${coreResult.visitId}` : null,
             searchParts: [coreResult.visitId ?? '', coreResult.checkinBlockId ?? ''],
+        });
+        await (0, clubEventLog_1.insertClubEvent)(client, {
+            eventType: 'CHECKIN_COMPLETED',
+            eventDomain: 'CHECKIN',
+            sourceApp: input.ctx.sourceApp === 'CUSTOMER_KIOSK' ? 'CUSTOMER_KIOSK' : 'EMPLOYEE_REGISTER',
+            staffId: input.ctx.staffId ?? null,
+            staffName: input.ctx.staffName ?? null,
+            customerId: coreResult.customerId,
+            customerName,
+            visitId: coreResult.visitId ?? null,
+            summary: `Check-in completed for ${customerName}`,
+            metadata: {
+                laneId: input.laneId,
+                laneSessionId: coreResult.sessionId,
+                checkinBlockId: coreResult.checkinBlockId,
+                assignedResourceType: coreResult.assignedResourceType,
+                assignedResourceNumber: coreResult.assignedResourceNumber,
+            },
+            dedupeKey: coreResult.visitId ? `CLUB:CHECKIN_COMPLETED:${coreResult.visitId}` : null,
         });
     });
     return coreResult;

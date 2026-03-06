@@ -86,11 +86,11 @@ function extractUpSql(content: string): string {
   const downIdx = content.search(/^-- down migration/im);
 
   let upSql: string;
-  if (downIdx !== -1) {
-    upSql = content.substring(0, downIdx);
-  } else {
+  if (downIdx === -1) {
     // No down marker — the entire file is the up migration
     upSql = content;
+  } else {
+    upSql = content.substring(0, downIdx);
   }
 
   // Strip the leading `-- up migration` marker if present
@@ -123,7 +123,7 @@ export async function runPendingMigrations(): Promise<number> {
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((f) => f.endsWith('.sql') && !f.startsWith('_'))
-    .sort(); // lexicographic sort = chronological for YYYYMMDD prefixes
+    .sort((a, b) => a.localeCompare(b)); // chronological for YYYYMMDD prefixes
 
   const pending = files.filter((f) => !appliedSet.has(f));
 
