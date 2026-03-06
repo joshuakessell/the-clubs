@@ -102,8 +102,8 @@ export function ChargesTab() {
   // Active session mode — use SSE payload data
   // ──────────────────────────────────────────────
   if (currentSessionId && sp) {
-    const lineItems = sp.paymentLineItems ?? sp.ledgerLineItems ?? [];
-    const total = sp.paymentTotal ?? sp.ledgerTotal ?? 0;
+    const lineItems = sp.ledgerLineItems ?? sp.paymentLineItems ?? [];
+    const total = sp.ledgerTotal ?? sp.paymentTotal ?? 0;
     const isPaid = sp.paymentStatus === 'PAID';
     const membershipChoice = sp.membershipChoice;
 

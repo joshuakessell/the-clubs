@@ -175,7 +175,7 @@ export function RetailPanel() {
                 sku: i.id,
                 name: i.name,
                 quantity: i.qty,
-                unitPrice: Math.round(i.price * 100),
+                unitPrice: i.price,
               })),
             }),
           }
