@@ -84,8 +84,8 @@ export function InventoryPanel() {
       const data = await res.json();
       setRooms(data.rooms ?? []);
       setLockers(data.lockers ?? []);
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to load inventory');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load inventory');
     } finally {
       setLoading(false);
     }

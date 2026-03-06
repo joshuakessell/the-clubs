@@ -131,8 +131,8 @@ export function AppLayout() {
           <div
             className="flex items-center gap-3 rounded-xl border px-5 py-3 shadow-lg"
             style={{
-              backgroundColor: isErrorToast ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.12)',
-              borderColor: isErrorToast ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)',
+              backgroundColor: isErrorToast ? 'color-mix(in oklch, var(--color-status-error) 12%, transparent)' : 'color-mix(in oklch, var(--color-status-success) 12%, transparent)',
+              borderColor: isErrorToast ? 'color-mix(in oklch, var(--color-status-error) 30%, transparent)' : 'color-mix(in oklch, var(--color-status-success) 30%, transparent)',
               color: isErrorToast ? '#ef4444' : '#22c55e',
               backdropFilter: 'blur(12px)',
               maxWidth: '480px',

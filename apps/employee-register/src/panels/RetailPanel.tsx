@@ -243,8 +243,8 @@ export function RetailPanel() {
         : 'Sale completed!';
       setSuccess(label);
       setTimeout(() => setSuccess(null), 4000);
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to complete sale');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to complete sale');
     } finally {
       setSubmitting(false);
     }
@@ -427,7 +427,7 @@ export function RetailPanel() {
                       {checkingInGuests.map((g) => (
                         <button
                           key={`checkingin-${g.customerId}`}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
                           style={{ color: 'var(--color-text-primary)' }}
                           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
@@ -455,7 +455,7 @@ export function RetailPanel() {
                       {roomGuests.map((g) => (
                         <button
                           key={`room-${g.number}`}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
                           style={{ color: 'var(--color-text-primary)' }}
                           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
@@ -481,7 +481,7 @@ export function RetailPanel() {
                       {lockerGuests.map((g) => (
                         <button
                           key={`locker-${g.number}`}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
                           style={{ color: 'var(--color-text-primary)' }}
                           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
@@ -547,7 +547,7 @@ export function RetailPanel() {
                     {/* Qty controls */}
                     <div className="flex items-center gap-1">
                       <button
-                        className="flex h-5 w-5 items-center justify-center rounded text-xs font-bold transition"
+                        className="flex h-5 w-5 items-center justify-center rounded text-xs font-bold transition-colors"
                         style={{
                           backgroundColor: 'var(--color-surface-overlay)',
                           color: 'var(--color-text-secondary)',
@@ -565,7 +565,7 @@ export function RetailPanel() {
                         {item.qty}
                       </span>
                       <button
-                        className="flex h-5 w-5 items-center justify-center rounded text-xs font-bold transition"
+                        className="flex h-5 w-5 items-center justify-center rounded text-xs font-bold transition-colors"
                         style={{
                           backgroundColor: 'var(--color-surface-overlay)',
                           color: 'var(--color-text-secondary)',
@@ -627,7 +627,7 @@ export function RetailPanel() {
 
             {cartLines.length > 0 ? (
               <button
-                className="mt-2 w-full text-center text-xs font-medium transition"
+                className="mt-2 w-full text-center text-xs font-medium transition-colors"
                 style={{ color: 'var(--color-text-muted)' }}
                 onClick={clearCart}
               >
