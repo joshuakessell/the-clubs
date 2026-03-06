@@ -31,7 +31,10 @@ export function parseLaneFromPath(): string | null {
 /** Map server `flowStep` → kiosk view */
 function flowStepToView(flowStep: string | undefined | null): KioskView {
   switch (flowStep) {
+    case 'LANGUAGE':
     case 'RENTAL':
+    case 'ADD_ONS':
+    case 'WAITLIST_PREFERENCES':
     case 'WAITLIST_BACKUP':
     case 'WAITLIST_DISCLAIMER':
     case 'PAYMENT':
