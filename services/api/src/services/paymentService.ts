@@ -10,6 +10,7 @@ import {
   type PricingInput,
 } from '../pricing/engine';
 import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from '../checkin/types';
+import { LANE_SESSION_COLS, PAYMENT_INTENT_COLS } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { toDate, toNumber } from '../checkin/utils';
 import { calculateAge } from '../checkin/identity';
@@ -49,7 +50,7 @@ function parsePaymentIntentQuote(raw: unknown): {
 export async function createPaymentIntent(laneId: string) {
   return transaction(async (client) => {
     const sessionResult = await client.query<LaneSessionRow>(
-      `SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`,
+      `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`,
       [laneId]
     );
     if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };
@@ -90,7 +91,7 @@ export async function createPaymentIntent(laneId: string) {
 
     // Ensure at most one active DUE payment intent
     const dueIntents = await client.query<PaymentIntentRow>(
-      `SELECT * FROM payment_intents WHERE lane_session_id = $1 AND status = 'DUE' ORDER BY created_at DESC`,
+      `SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE lane_session_id = $1 AND status = 'DUE' ORDER BY created_at DESC`,
       [session.id]
     );
 
@@ -152,7 +153,7 @@ export async function markPaymentPaid(input: MarkPaidInput) {
       payment_method?: string | null; register_number?: number | null;
       square_transaction_id?: string | null; paid_at?: Date | null;
       lane_session_id?: string | null; tip?: number | null; paid_by_staff_id?: string | null;
-    }>(`SELECT * FROM payment_intents WHERE id = $1`, [input.paymentIntentId]);
+    }>(`SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1`, [input.paymentIntentId]);
     if (intentResult.rows.length === 0) throw { statusCode: 404, message: 'Payment intent not found' };
     const intent = intentResult.rows[0]!;
 
@@ -222,7 +223,7 @@ export async function markPaymentPaid(input: MarkPaidInput) {
       await insertAuditLog(client, { staffId: input.staffId, action: 'FINAL_EXTENSION_PAID', entityType: 'payment_intent', entityId: input.paymentIntentId, oldValue: { status: 'DUE' }, newValue: { status: 'PAID', visitId: quote.visitId, blockId: quote.blockId } });
       await insertAuditLog(client, { staffId: input.staffId, action: 'FINAL_EXTENSION_COMPLETED', entityType: 'visit', entityId: quote.visitId, oldValue: { paymentIntentId: input.paymentIntentId, status: 'DUE' }, newValue: { paymentIntentId: input.paymentIntentId, status: 'PAID', blockId: quote.blockId } });
     } else {
-      const sessionResult = await client.query<LaneSessionRow>(`SELECT * FROM lane_sessions WHERE payment_intent_id = $1`, [paidIntent.id]);
+      const sessionResult = await client.query<LaneSessionRow>(`SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE payment_intent_id = $1`, [paidIntent.id]);
       if (sessionResult.rows.length > 0) {
         const session = sessionResult.rows[0]!;
         await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [session.id]);

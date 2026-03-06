@@ -10,6 +10,7 @@
 import { transaction } from '../db';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import type { LaneSessionRow, PoolClient } from '../checkin/types';
+import { LANE_SESSION_COLS } from '../checkin/types';
 
 // ── Shared helpers ──
 
@@ -54,7 +55,7 @@ export interface SelectRentalInput {
 export async function selectRental(input: SelectRentalInput) {
   return transaction(async (client) => {
     const sessionResult = await client.query<LaneSessionRow>(
-      `SELECT * FROM lane_sessions WHERE lane_id = $1 AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`,
+      `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`,
       [input.laneId]
     );
     if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };
@@ -122,7 +123,7 @@ export interface ProposeSelectionInput {
 export async function proposeSelection(input: ProposeSelectionInput) {
   return transaction(async (client) => {
     const sessionResult = await client.query<LaneSessionRow>(
-      `SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`,
+      `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`,
       [input.laneId]
     );
     if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };
@@ -167,11 +168,11 @@ export async function setWaitlistDesired(input: WaitlistDesiredInput) {
   return transaction(async (client) => {
     const sessionResult = input.sessionId
       ? await client.query<LaneSessionRow>(
-          `SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2 LIMIT 1`,
+          `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 AND lane_id = $2 LIMIT 1`,
           [input.sessionId, input.laneId]
         )
       : await client.query<LaneSessionRow>(
-          `SELECT * FROM lane_sessions WHERE lane_id = $1
+          `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1
            AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
            ORDER BY created_at DESC LIMIT 1`,
           [input.laneId]
@@ -203,7 +204,7 @@ export async function setWaitlistDesired(input: WaitlistDesiredInput) {
 export async function confirmSelection(laneId: string, confirmedBy: 'CUSTOMER' | 'EMPLOYEE') {
   return transaction(async (client) => {
     const sessionResult = await client.query<LaneSessionRow>(
-      `SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`,
+      `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`,
       [laneId]
     );
     if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };
@@ -250,7 +251,7 @@ export async function confirmSelection(laneId: string, confirmedBy: 'CUSTOMER' |
 export async function acknowledgeSelection(laneId: string, acknowledgedBy: 'CUSTOMER' | 'EMPLOYEE') {
   return transaction(async (client) => {
     const sessionResult = await client.query<LaneSessionRow>(
-      `SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`,
+      `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`,
       [laneId]
     );
     if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };

@@ -10,6 +10,7 @@ import {
   type PricingInput,
 } from '../pricing/engine';
 import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from '../checkin/types';
+import { LANE_SESSION_COLS, PAYMENT_INTENT_COLS } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { calculateAge } from '../checkin/identity';
 import { toDate } from '../checkin/utils';
@@ -28,9 +29,9 @@ class ServiceError extends Error {
 
 async function findSession(client: import('pg').PoolClient, laneId: string, sessionId?: string) {
   const sessionResult = sessionId
-    ? await client.query<LaneSessionRow>(`SELECT * FROM lane_sessions WHERE id = $1 LIMIT 1`, [sessionId])
+    ? await client.query<LaneSessionRow>(`SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 LIMIT 1`, [sessionId])
     : await client.query<LaneSessionRow>(
-        `SELECT * FROM lane_sessions WHERE lane_id = $1
+        `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1
          AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
          ORDER BY created_at DESC LIMIT 1`,
         [laneId]
@@ -49,7 +50,7 @@ async function recomputeQuoteIfNeeded(
   if (!session.payment_intent_id || !session.selection_confirmed) return;
 
   const intentResult = await client.query<PaymentIntentRow>(
-    `SELECT * FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]
+    `SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]
   );
   const pi = intentResult.rows[0];
   if (pi?.status !== 'DUE') return;
@@ -137,7 +138,7 @@ export async function completeMembershipPurchase(
     // the payment_intents table directly if the session still has a reference.
     if (session.payment_intent_id) {
       const intentResult = await client.query<PaymentIntentRow>(
-        `SELECT * FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]
+        `SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]
       );
       const pi = intentResult.rows[0];
       if (pi && pi.status !== 'PAID') {
