@@ -54,6 +54,8 @@ type Queryable = {
   query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }>;
 };
 
+const REGISTER_SESSION_COLS = 'id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at';
+
 // ── Shared Helpers ──
 
 /**
@@ -189,7 +191,7 @@ export async function getRegisterAvailability(): Promise<RegisterAvailability[]>
 export async function startCloseout(registerSessionId: string, staffId: string) {
   return transaction(async (client) => {
     const registerResult = await client.query<RegisterSessionRow>(
-      `SELECT * FROM register_sessions WHERE id = $1 AND signed_out_at IS NULL`,
+      `SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE id = $1 AND signed_out_at IS NULL`,
       [registerSessionId]
     );
     if (registerResult.rows.length === 0) throw { statusCode: 404, message: 'Active register session not found' };
@@ -279,7 +281,7 @@ export async function assignRegister(employeeId: string, deviceId: string, reque
 
   return transaction(async (client) => {
     const existingDevice = await client.query<RegisterSessionRow>(
-      `SELECT * FROM register_sessions WHERE device_id = $1 AND signed_out_at IS NULL`,
+      `SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE device_id = $1 AND signed_out_at IS NULL`,
       [deviceId]
     );
     if (existingDevice.rows.length > 0) {
@@ -301,7 +303,7 @@ export async function assignRegister(employeeId: string, deviceId: string, reque
     if (requestedRegisterNumber) {
       if (occupiedNumbers.has(requestedRegisterNumber)) {
         const existing = await client.query<RegisterSessionRow>(
-          `SELECT * FROM register_sessions WHERE register_number = $1 AND signed_out_at IS NULL`,
+          `SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE register_number = $1 AND signed_out_at IS NULL`,
           [requestedRegisterNumber]
         );
         if (existing.rows[0]?.employee_id === employeeId) {
@@ -498,7 +500,7 @@ export async function signout(deviceId: string, staff: StaffContext): Promise<Si
   return transaction(async (client) => {
     const closeoutAt = new Date();
     const sessionResult = await client.query<RegisterSessionRow>(
-      `SELECT * FROM register_sessions WHERE device_id = $1 AND signed_out_at IS NULL`,
+      `SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE device_id = $1 AND signed_out_at IS NULL`,
       [deviceId]
     );
     if (sessionResult.rows.length === 0) throw new Error('No active register session found');
@@ -585,7 +587,7 @@ export async function signoutAll(staff: StaffContext) {
 export async function getRegisterStatus(deviceId: string) {
   await ensureDeviceEnabled(deviceId);
   const result = await query<RegisterSessionRow & { employee_name: string; employee_role: string }>(
-    `SELECT rs.*, s.name as employee_name, s.role as employee_role
+    `SELECT rs.id, rs.employee_id, rs.device_id, rs.register_number, rs.last_heartbeat, rs.last_activity_at, rs.created_at, rs.signed_out_at, s.name as employee_name, s.role as employee_role
      FROM register_sessions rs JOIN staff s ON s.id = rs.employee_id
      WHERE rs.device_id = $1 AND rs.signed_out_at IS NULL`,
     [deviceId]
