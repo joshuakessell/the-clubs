@@ -224,7 +224,7 @@ export function ScanPanel() {
 
   return (
     <PanelShell align="top">
-      <div onClick={handlePanelClick} className="flex flex-col items-center gap-2 w-full">
+      <div role="region" aria-label="Scanner capture area" onClick={handlePanelClick} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handlePanelClick(); }} className="flex flex-col items-center gap-2 w-full">
         {/* Header */}
         <div className="flex flex-col items-center gap-2 text-center">
           <span className="text-4xl" aria-hidden="true">📷</span>
@@ -272,11 +272,10 @@ export function ScanPanel() {
 
         {/* Status text */}
         <p className="mt-3 text-center text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }} aria-live="polite">
-          {scanReady
-            ? scanCaptureSubmitting
-              ? 'Processing scan…'
-              : 'Scanner ready'
-            : `Scanner paused: ${scanBlockedReason || 'Unavailable'}`}
+        {(() => {
+            if (!scanReady) return `Scanner paused: ${scanBlockedReason || 'Unavailable'}`;
+            return scanCaptureSubmitting ? 'Processing scan…' : 'Scanner ready';
+          })()}
         </p>
 
 
@@ -286,8 +285,10 @@ export function ScanPanel() {
       {(isReceiving || scanCaptureSubmitting) && (
         <div
           className="fixed inset-0 z-50 flex flex-col items-center justify-center backdrop-blur-lg"
-          style={{ backgroundColor: 'rgba(10, 10, 15, 0.75)' }}
+          style={{ backgroundColor: 'color-mix(in oklch, var(--color-surface-base) 75%, transparent)' }}
           onMouseDown={(e) => e.preventDefault()} // Prevent focus steal
+          role="status"
+          aria-label="Processing scan"
         >
           <div
             className="flex flex-col items-center gap-4 rounded-xl border p-8"
@@ -313,8 +314,12 @@ export function ScanPanel() {
       {candidates && candidates.length > 0 && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          style={{ backgroundColor: 'color-mix(in oklch, var(--color-surface-base) 60%, transparent)' }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Customer selection"
           onClick={handleNoneOfThese}
+          onKeyDown={(e) => { if (e.key === 'Escape') handleNoneOfThese(); }}
         >
           <div
             className="w-full max-w-md rounded-xl border p-6 shadow-2xl"
@@ -323,6 +328,7 @@ export function ScanPanel() {
               borderColor: 'var(--color-border-default)',
             }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           >
             <h3 className="text-lg font-bold" style={{ color: 'var(--color-text-primary)' }}>
               Multiple Matches Found
@@ -335,18 +341,10 @@ export function ScanPanel() {
               {candidates.map((c) => (
                 <button
                   key={c.id}
-                  className="flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors"
+                  className="flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors hover:border-[var(--color-accent-primary)] hover:bg-[var(--color-accent-glow)]"
                   style={{
                     backgroundColor: 'var(--color-surface-input)',
                     borderColor: 'var(--color-border-default)',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-accent-primary)';
-                    (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-accent-glow)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
-                    (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-input)';
                   }}
                   onClick={() => handleSelectCandidate(c)}
                 >
@@ -373,17 +371,11 @@ export function ScanPanel() {
             </div>
 
             <button
-              className="mt-4 w-full rounded-lg border px-4 py-3 text-center text-sm font-semibold transition-colors"
+              className="mt-4 w-full rounded-lg border px-4 py-3 text-center text-sm font-semibold transition-colors hover:border-[var(--color-status-warning)]"
               style={{
                 backgroundColor: 'var(--color-surface-overlay)',
                 borderColor: 'var(--color-border-default)',
                 color: 'var(--color-text-secondary)',
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-status-warning)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)';
               }}
               onClick={handleNoneOfThese}
             >
