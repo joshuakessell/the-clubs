@@ -3,6 +3,7 @@ import { Button, useAuthStore } from '@the-clubs/ui';
 import { getApiUrl } from '@the-clubs/shared';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
+import { useRegisterStore } from '../stores/useRegisterStore';
 
 /* ─── Types ─────────────────────────────────────────── */
 
@@ -17,9 +18,10 @@ interface CatalogItem {
 interface ActiveGuest {
   customerId: string;
   customerName: string;
-  resourceType: 'ROOM' | 'LOCKER';
+  resourceType: 'ROOM' | 'LOCKER' | 'CHECKING_IN';
   number: string;
   visitId: string;
+  laneSessionId?: string;
 }
 
 /* ─── Helpers ───────────────────────────────────────── */
@@ -32,6 +34,7 @@ function formatPrice(dollars: number) {
 
 export function RetailPanel() {
   const token = useAuthStore((s) => s.session?.sessionToken);
+  const laneId = useRegisterStore((s) => s.laneId);
 
   /* Product catalog from API */
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
@@ -129,6 +132,7 @@ export function RetailPanel() {
     );
   }, [guests, guestFilter]);
 
+  const checkingInGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'CHECKING_IN'), [filteredGuests]);
   const roomGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'ROOM'), [filteredGuests]);
   const lockerGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'LOCKER'), [filteredGuests]);
 
@@ -148,7 +152,7 @@ export function RetailPanel() {
   const cartTotal = cartLines.reduce((sum: number, i) => sum + i.price * i.qty, 0);
   const cartCount = cartLines.reduce((sum: number, i) => sum + i.qty, 0);
 
-  /* Complete sale — 3-step order flow */
+  /* Complete sale — 3-step order flow, or add-to-ledger for checking-in guests */
   const handleCompleteSale = async () => {
     if (cartLines.length === 0) return;
     setSubmitting(true);
@@ -159,6 +163,34 @@ export function RetailPanel() {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
+      // ── Add-to-Ledger mode: guest is being checked in on a lane ──
+      if (selectedGuest?.laneSessionId && laneId) {
+        const res = await fetch(
+          getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/add-retail-items`),
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              items: cartLines.map((i) => ({
+                sku: i.id,
+                name: i.name,
+                quantity: i.qty,
+                unitPrice: Math.round(i.price * 100),
+              })),
+            }),
+          }
+        );
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.error ?? `Add to ledger failed: HTTP ${res.status}`);
+        }
+        clearCart();
+        setSuccess(`Items added to ${selectedGuest.customerName}'s ledger!`);
+        setTimeout(() => setSuccess(null), 4000);
+        return;
+      }
+
+      // ── Normal sale flow ──
       // Step 1: Create order
       const createRes = await fetch(getApiUrl('/api/v1/orders'), {
         method: 'POST',
@@ -376,7 +408,7 @@ export function RetailPanel() {
               )}
 
               {/* Dropdown */}
-              {dropdownOpen && !selectedGuest && (roomGuests.length > 0 || lockerGuests.length > 0) ? (
+              {dropdownOpen && !selectedGuest && (checkingInGuests.length > 0 || roomGuests.length > 0 || lockerGuests.length > 0) ? (
                 <div
                   className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg"
                   style={{
@@ -384,6 +416,34 @@ export function RetailPanel() {
                     borderColor: 'var(--color-border-default)',
                   }}
                 >
+                  {checkingInGuests.length > 0 ? (
+                    <>
+                      <div className="sticky top-0 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest"
+                        style={{ color: 'var(--color-status-warning)', backgroundColor: 'var(--color-surface-raised)' }}
+                      >
+                        Checking In
+                      </div>
+                      {checkingInGuests.map((g) => (
+                        <button
+                          key={`checkingin-${g.customerId}`}
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition"
+                          style={{ color: 'var(--color-text-primary)' }}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                          onClick={() => { setSelectedGuest(g); setDropdownOpen(false); setGuestFilter(''); }}
+                        >
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                            style={{ backgroundColor: 'var(--color-status-warning)', color: '#fff' }}
+                          >
+                            Ledger
+                          </span>
+                          <span className="truncate">{g.customerName}</span>
+                        </button>
+                      ))}
+                    </>
+                  ) : null}
+
                   {roomGuests.length > 0 ? (
                     <>
                       <div className="sticky top-0 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest"
@@ -557,7 +617,11 @@ export function RetailPanel() {
               disabled={cartLines.length === 0 || submitting}
               onClick={() => void handleCompleteSale()}
             >
-              {submitting ? 'Processing…' : 'Complete Sale'}
+              {submitting
+                ? 'Processing…'
+                : selectedGuest?.laneSessionId
+                  ? '📋 Add to Ledger'
+                  : 'Complete Sale'}
             </Button>
 
             {cartLines.length > 0 ? (

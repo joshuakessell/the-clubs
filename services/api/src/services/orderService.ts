@@ -21,7 +21,7 @@ type LineItemRow = {
   unit_price: number; discount: number; tax: number; total: number; metadata_json: unknown | null;
 };
 
-interface LineItemInput { kind: 'RETAIL' | 'ADDON' | 'UPGRADE' | 'LATE_FEE' | 'MANUAL'; sku?: string | null; name: string; quantity: number; unitPrice: number; discount?: number | null; tax?: number | null; }
+export interface LineItemInput { kind: 'RETAIL' | 'ADDON' | 'UPGRADE' | 'LATE_FEE' | 'MANUAL'; sku?: string | null; name: string; quantity: number; unitPrice: number; discount?: number | null; tax?: number | null; }
 
 function toNumber(value: unknown): number { const n = typeof value === 'number' ? value : Number(value); return Number.isFinite(n) ? n : 0; }
 

@@ -236,6 +236,7 @@ export interface SessionUpdatedPayload {
     | 'WAITLIST_DISCLAIMER'
     | 'PAYMENT'
     | 'AGREEMENT'
+    | 'ASSIGNMENT'
     | 'COMPLETE';
   flowVersion?: number;
   flowLastActor?: 'CUSTOMER' | 'EMPLOYEE' | 'SYSTEM';
@@ -250,6 +251,7 @@ export type CheckinFlowStep =
   | 'WAITLIST_DISCLAIMER'
   | 'PAYMENT'
   | 'AGREEMENT'
+  | 'ASSIGNMENT'
   | 'COMPLETE';
 
 export type CheckinFlowActor = 'CUSTOMER' | 'EMPLOYEE' | 'SYSTEM';
