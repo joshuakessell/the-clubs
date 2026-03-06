@@ -7,7 +7,7 @@
  * - Shows active session info and opens the full AccountPanel
  * - Available on every tab
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useRegisterStore } from '../stores/useRegisterStore';
 import { AccountPanel } from '../panels/AccountPanel';
 
@@ -17,22 +17,34 @@ const TAB_HEIGHT = 48;    // px — height of the exposed pull tab
 export function LaneSessionDrawer() {
   const { currentSessionId, customerName, customerId, accountDrawerOpen: open, setAccountDrawerOpen: setOpen } = useRegisterStore();
   const drawerRef = useRef<HTMLDivElement>(null);
+  const tabRef = useRef<HTMLButtonElement>(null);
 
   // NOTE: Intentionally do NOT auto-close on session changes.
   // Heartbeats can transiently clear currentSessionId and would incorrectly dismiss the drawer.
   // The drawer closes only via user interaction (click outside, Escape, ✕).
 
-  // Close on outside click
+  // Close on outside click — delayed registration prevents the same click from
+  // being caught as both "toggle open" and "outside click to close".
   useEffect(() => {
     if (!open) return;
+    let rafId: number;
     const handler = (e: MouseEvent) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      // Don't close if the click is on the drawer OR the pull tab
+      if (drawerRef.current?.contains(target)) return;
+      if (tabRef.current?.contains(target)) return;
+      setOpen(false);
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+    // Delay listener registration by one animation frame so the current
+    // click/mousedown event finishes propagating before we start listening.
+    rafId = requestAnimationFrame(() => {
+      document.addEventListener('mousedown', handler);
+    });
+    return () => {
+      cancelAnimationFrame(rafId);
+      document.removeEventListener('mousedown', handler);
+    };
+  }, [open, setOpen]);
 
   // Close on Escape
   useEffect(() => {
@@ -41,7 +53,13 @@ export function LaneSessionDrawer() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, []);
+  }, [setOpen]);
+
+  // Toggle drawer — reads fresh state from store to avoid stale closures
+  const handleToggle = useCallback(() => {
+    const current = useRegisterStore.getState().accountDrawerOpen;
+    setOpen(!current);
+  }, [setOpen]);
 
   // Auto-close the drawer when there is no active profile
   // (e.g. after check-in completes and state is cleared)
@@ -50,7 +68,7 @@ export function LaneSessionDrawer() {
     if (!hasActiveProfile && open) {
       setOpen(false);
     }
-  }, [hasActiveProfile]);
+  }, [hasActiveProfile, open, setOpen]);
 
 
   return (
@@ -58,6 +76,7 @@ export function LaneSessionDrawer() {
       ref={drawerRef}
       style={{
         position: 'fixed',
+        top: 0,
         bottom: 0,
         left: 0,
         right: 0,
@@ -65,6 +84,7 @@ export function LaneSessionDrawer() {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
+        justifyContent: 'flex-end',
         pointerEvents: 'none',
         // Hide the drawer fully if there's no active profile and it's closed
         visibility: (!hasActiveProfile && !open) ? 'hidden' : 'visible',
@@ -87,7 +107,7 @@ export function LaneSessionDrawer() {
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          pointerEvents: 'auto',
+          pointerEvents: open ? 'auto' : 'none',
           paddingBottom: TAB_HEIGHT,
         }}
       >
@@ -112,7 +132,7 @@ export function LaneSessionDrawer() {
         </div>
 
         {/* Account panel fills the drawer */}
-        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <AccountPanel />
         </div>
       </div>
@@ -121,7 +141,8 @@ export function LaneSessionDrawer() {
       {/* Visible when drawer is open (so user can close it) OR there's an active profile */}
       {(open || hasActiveProfile) && (
         <button
-          onClick={() => setOpen(!open)}
+          ref={tabRef}
+          onClick={handleToggle}
           aria-label={open ? 'Close account panel' : 'Open account panel'}
           style={{
             position: 'relative',

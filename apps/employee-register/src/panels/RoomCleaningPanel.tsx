@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
-import { Badge, Button } from '@the-clubs/ui';
-import { useAuthStore } from '@the-clubs/ui';
+import { Badge, Button, useAuthStore } from '@the-clubs/ui';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
 
@@ -20,7 +19,6 @@ export function RoomCleaningPanel() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [transitioning, setTransitioning] = useState<string | null>(null);
   const token = useAuthStore((s) => s.session?.sessionToken);
 
   const fetchRooms = useCallback(async () => {
@@ -47,7 +45,9 @@ export function RoomCleaningPanel() {
   }, [fetchRooms]);
 
   const handleMarkClean = async (roomId: string) => {
-    setTransitioning(roomId);
+    // Optimistic: remove the room from the list immediately
+    const previousRooms = rooms;
+    setRooms((prev) => prev.filter((r) => r.id !== roomId));
     setError(null);
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -67,13 +67,10 @@ export function RoomCleaningPanel() {
         const d = await res.json().catch(() => ({}));
         throw new Error(d.error ?? `HTTP ${res.status}`);
       }
-
-      // Refresh the list
-      await fetchRooms();
     } catch (err: any) {
+      // Rollback on failure
+      setRooms(previousRooms);
       setError(err.message ?? 'Transition failed');
-    } finally {
-      setTransitioning(null);
     }
   };
 
@@ -122,10 +119,9 @@ export function RoomCleaningPanel() {
             <Button
               size="sm"
               variant="primary"
-              disabled={transitioning === r.id}
               onClick={() => void handleMarkClean(r.id)}
             >
-              {transitioning === r.id ? 'Updating…' : 'Mark Clean'}
+              Mark Clean
             </Button>
           </div>
         ))}

@@ -203,16 +203,24 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
               });
 
               // Spend ledger: RENTAL_FEE (check-in fee paid)
+              // Look up the active visit so the ledger entry is linked to the visit
+              const visitRow = await client.query<{ id: string }>(
+                `SELECT id FROM visits WHERE customer_id = $1 AND checked_out_at IS NULL ORDER BY checked_in_at DESC LIMIT 1`,
+                [session.customer_id]
+              );
+              const activeVisitId = visitRow.rows[0]?.id ?? null;
+
               await client.query(
                 `INSERT INTO customer_spend_ledger_entries
                    (occurred_at, customer_id, visit_id, entry_type, amount, currency,
                     source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
                  VALUES
-                   (NOW(), $1::uuid, NULL, 'RENTAL_FEE', $2::bigint, 'USD',
-                    $3, $4, $5::uuid, $6, $7, $8::jsonb, $9)
+                   (NOW(), $1::uuid, $2::uuid, 'RENTAL_FEE', $3::bigint, 'USD',
+                    $4, $5, $6::uuid, $7, $8, $9::jsonb, $10)
                  ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
                 [
                   session.customer_id,
+                  activeVisitId,
                   amount,
                   request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
                   request.staff ? 'STAFF' : 'CUSTOMER',

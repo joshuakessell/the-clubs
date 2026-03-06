@@ -9,7 +9,7 @@
  */
 import { db } from '../db';
 import { visits, customers, checkinBlocks, paymentIntents } from '../db/schema';
-import { eq, isNull, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import { assignRoom, assignLocker } from '../domain/resourceAssignment';
 import { assertNotBanned, assertCustomerExists } from '../domain/customerGuards';
@@ -92,16 +92,18 @@ function formatBlock(block: {
 
 // ── Input types ──
 
+export type RentalType = 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'LOCKER' | 'GYM_LOCKER';
+
 export interface CreateVisitInput {
   customerId: string;
-  rentalType: 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'LOCKER' | 'GYM_LOCKER';
+  rentalType: RentalType;
   roomId?: string;
   lockerId?: string;
 }
 
 export interface RenewVisitInput {
   visitId: string;
-  rentalType: 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'LOCKER' | 'GYM_LOCKER';
+  rentalType: RentalType;
   roomId?: string;
   lockerId?: string;
   renewalHours?: 2 | 6;
@@ -109,7 +111,7 @@ export interface RenewVisitInput {
 
 export interface FinalExtensionInput {
   visitId: string;
-  rentalType: 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'LOCKER' | 'GYM_LOCKER';
+  rentalType: RentalType;
   roomId?: string;
   lockerId?: string;
   staffId: string;
@@ -279,12 +281,7 @@ export async function renewVisit(input: RenewVisitInput) {
     }
 
     const renewalStartsAt = latestBlockEnd;
-    const renewalEndsAt =
-      requestedRenewalHours === 2
-        ? new Date(renewalStartsAt.getTime() + 2 * 60 * 60 * 1000)
-        : roundUpToQuarterHour(
-            new Date(renewalStartsAt.getTime() + 6 * 60 * 60 * 1000)
-          );
+    const renewalEndsAt = new Date(renewalStartsAt.getTime() + requestedRenewalHours * 60 * 60 * 1000);
 
     // 6. Room/locker assignment (renewal allows reassign-to-same)
     const assignedRoomId = input.roomId
@@ -441,7 +438,7 @@ export async function createFinalExtension(input: FinalExtensionInput) {
           visitId: visit.id,
           blockId: block.id,
           hours: 2,
-          amount: 20.0,
+          amount: 20,
         },
       })
       .returning();
@@ -480,7 +477,7 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       block: formatBlock(block),
       paymentIntentId: paymentIntent.id,
       amount: typeof paymentIntent.amount === 'string'
-        ? parseFloat(paymentIntent.amount)
+        ? Number.parseFloat(paymentIntent.amount)
         : Number(paymentIntent.amount),
     };
   }, { isolationLevel: 'serializable' });

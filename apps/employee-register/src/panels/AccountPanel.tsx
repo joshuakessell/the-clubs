@@ -126,19 +126,20 @@ const showCharges = hasSession || isCheckedIn;
 
 return (
   <PanelShell align="top" scroll="hidden">
+    {/* Columns row — takes all remaining space, each column scrolls independently */}
     <div className="flex flex-1 min-h-0 gap-4 w-full">
       {/* Column 1: Profile — always shown */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         <h3
-          className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+          className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0"
           style={{ color: 'var(--color-text-muted)' }}
         >
           👤 Profile
         </h3>
         <div
-          className="flex-1 overflow-y-auto rounded-lg border p-2.5"
+          className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5"
           style={{
-            backgroundColor: 'var(--color-surface-overlay)',
+            backgroundColor: 'transparent',
             borderColor: 'var(--color-border-subtle)',
             scrollbarWidth: 'thin',
           }}
@@ -151,15 +152,15 @@ return (
       {showAssist && (
         <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           <h3
-            className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+            className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0"
             style={{ color: 'var(--color-text-muted)' }}
           >
             📋 Assist
           </h3>
           <div
-            className="flex-1 overflow-y-auto rounded-lg border p-2.5"
+            className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5"
             style={{
-              backgroundColor: 'var(--color-surface-overlay)',
+              backgroundColor: 'transparent',
               borderColor: 'var(--color-border-subtle)',
               scrollbarWidth: 'thin',
             }}
@@ -173,15 +174,15 @@ return (
       {showCharges && (
         <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           <h3
-            className="mb-2 text-[10px] font-bold uppercase tracking-widest"
+            className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0"
             style={{ color: 'var(--color-text-muted)' }}
           >
             📋 Check-In Ledger
           </h3>
           <div
-            className="flex-1 overflow-y-auto rounded-lg border p-2.5"
+            className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5"
             style={{
-              backgroundColor: 'var(--color-surface-overlay)',
+              backgroundColor: 'transparent',
               borderColor: 'var(--color-border-subtle)',
               scrollbarWidth: 'thin',
             }}
@@ -192,10 +193,12 @@ return (
       )}
     </div>
 
-{/* Notes bar — below all columns */}
-{customerId && (
-  <CustomerNotesBar customerId={customerId} />
-)}
+    {/* Notes bar — pinned at bottom, never scrolls */}
+    {customerId && (
+      <div className="flex-shrink-0 mt-2">
+        <CustomerNotesBar customerId={customerId} />
+      </div>
+    )}
   </PanelShell>
   );
 }

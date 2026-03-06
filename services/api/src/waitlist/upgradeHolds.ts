@@ -219,12 +219,15 @@ export async function processUpgradeHoldsTick(
       const expiresAt = holdRes.rows[0]!.expires_at;
 
       // Insert reservation record (enforced unique-active-per-resource).
+      // ON CONFLICT handles races where a reservation was created between our
+      // availability check and this insert (e.g. from seed data or concurrent ticks).
       await client.query(
         `
         INSERT INTO inventory_reservations
           (resource_type, resource_id, kind, waitlist_id, expires_at)
         VALUES
           ('room', $1, 'UPGRADE_HOLD', $2, $3)
+        ON CONFLICT ON CONSTRAINT uniq_inventory_reservations_active_resource DO NOTHING
         `,
         [room.room_id, candidate.waitlist_id, expiresAt]
       );

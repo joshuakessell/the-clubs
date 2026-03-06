@@ -6,6 +6,7 @@
  * processAgreementSigning() function. This module contains ZERO HTTP/Fastify concepts.
  */
 import { transaction } from '../db';
+import type { PoolClient } from 'pg';
 import type {
   LaneSessionRow,
   LockerRow,
@@ -20,10 +21,10 @@ import {
 import { getRoomTier } from '../checkin/waitlist';
 import { generateAgreementPdf } from '../utils/pdf-generator';
 import { roundUpToQuarterHour } from '../time/rounding';
-import { insertAuditLog } from '../audit/auditLog';
 import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
 import { insertClubEvent } from '../activity/clubEventLog';
 import { AGREEMENT_LEGAL_BODY_HTML_BY_LANG } from '@the-clubs/shared';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -40,7 +41,7 @@ export interface SigningInput {
   laneId: string;
   sessionId?: string;
   /** Base64 signature image, or 'MANUAL_OVERRIDE' for staff override flow */
-  signaturePayload: string | 'MANUAL_OVERRIDE';
+  signaturePayload: string;
   ctx: AgreementContext;
 }
 
@@ -185,10 +186,10 @@ async function findActiveSession(
   }
 
   if (sessionResult.rows.length === 0) {
-    throw { statusCode: 404, message: 'No active session found' };
+    throw new HttpError(404, 'No active session found');
   }
 
-  return sessionResult.rows[0]!;
+  return sessionResult.rows[0];
 }
 
 async function validatePrerequisites(
@@ -197,38 +198,529 @@ async function validatePrerequisites(
 ): Promise<void> {
   // Agreement signing is required only for CHECKIN and RENEWAL lane sessions
   if (session.checkin_mode !== 'CHECKIN' && session.checkin_mode !== 'RENEWAL') {
-    throw {
-      statusCode: 400,
-      message: 'Agreement signing is only required for CHECKIN and RENEWAL check-ins',
-    };
+    throw new HttpError(400, 'Agreement signing is only required for CHECKIN and RENEWAL check-ins');
   }
 
   // Demo flow: require the rental selection to be confirmed/locked before payment+signature
   if (!session.selection_confirmed || !session.selection_locked_at) {
-    throw {
-      statusCode: 400,
-      message: 'Selection must be confirmed/locked before signing agreement',
-    };
+    throw new HttpError(400, 'Selection must be confirmed/locked before signing agreement');
   }
 
   // Check payment is paid
   if (!session.payment_intent_id) {
-    throw {
-      statusCode: 400,
-      message: 'Payment intent must be created before signing agreement',
-    };
+    throw new HttpError(400, 'Payment intent must be created before signing agreement');
   }
 
   const intentResult = await client.query<PaymentIntentRow>(
     `SELECT status FROM payment_intents WHERE id = $1`,
     [session.payment_intent_id]
   );
-  if (intentResult.rows.length === 0 || intentResult.rows[0]!.status !== 'PAID') {
-    throw {
-      statusCode: 400,
-      message: 'Payment must be marked as paid before signing agreement',
+  if (intentResult.rows.length === 0 || intentResult.rows[0].status !== 'PAID') {
+    throw new HttpError(400, 'Payment must be marked as paid before signing agreement');
+  }
+}
+
+// ── Decomposed helpers for processAgreementSigning ──
+
+type CustomerDob = Date | string | null;
+
+interface CustomerInfo {
+  customerName: string;
+  customerDob: CustomerDob;
+  membershipNumber: string | undefined;
+  customerLang: 'EN' | 'ES';
+}
+
+async function fetchCustomerInfo(client: Queryable, session: LaneSessionRow): Promise<CustomerInfo> {
+  const customerResult = session.customer_id
+    ? await client.query<{
+        name: string;
+        dob: Date | string | null;
+        membership_number: string | null;
+        primary_language: string | null;
+      }>(
+        `SELECT name, dob, membership_number, primary_language FROM customers WHERE id = $1`,
+        [session.customer_id]
+      )
+    : { rows: [] as Array<{ name: string; dob: Date | string | null; membership_number: string | null; primary_language: string | null }> };
+
+  return {
+    customerName: customerResult.rows[0]?.name || session.customer_display_name || 'Customer',
+    customerDob: customerResult.rows[0]?.dob ?? null,
+    membershipNumber: customerResult.rows[0]?.membership_number || session.membership_number || undefined,
+    customerLang: customerResult.rows[0]?.primary_language === 'ES' ? 'ES' : 'EN',
+  };
+}
+
+interface RenewalTimeInfo {
+  visitId: string;
+  blockType: 'RENEWAL' | 'FINAL2H';
+  startsAt: Date;
+  endsAt: Date;
+  assignedResourceId: string;
+  assignedResourceType: 'room' | 'locker';
+  assignedResourceNumber: string | undefined;
+}
+
+async function computeRenewalTimeBlock(
+  client: Queryable,
+  session: LaneSessionRow,
+  renewalHours: number,
+): Promise<RenewalTimeInfo> {
+  const visitResult = await client.query<{ id: string }>(
+    `SELECT id FROM visits WHERE customer_id = $1 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
+    [session.customer_id!]
+  );
+  if (visitResult.rows.length === 0) {
+    throw new HttpError(400, 'No active visit found for renewal');
+  }
+  const visitId = visitResult.rows[0].id;
+
+  const blocksResult = await client.query<{
+    starts_at: Date;
+    ends_at: Date;
+    room_id: string | null;
+    locker_id: string | null;
+  }>(
+    `SELECT starts_at, ends_at, room_id, locker_id FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC`,
+    [visitId]
+  );
+  if (blocksResult.rows.length === 0) {
+    throw new HttpError(400, 'Visit has no blocks');
+  }
+
+  let currentTotalHours = 0;
+  for (const block of blocksResult.rows) {
+    const hours = (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
+    currentTotalHours += hours;
+  }
+
+  const latestBlock = blocksResult.rows[0];
+  const latestBlockEnd = latestBlock.ends_at;
+  const diffMs = Math.abs(latestBlockEnd.getTime() - Date.now());
+  if (diffMs > 60 * 60 * 1000) {
+    throw new HttpError(400, 'Renewal is only available within 1 hour of checkout');
+  }
+
+  if (currentTotalHours + renewalHours > 14) {
+    throw new HttpError(
+      400,
+      `Renewal would exceed 14-hour maximum. Current total: ${currentTotalHours} hours, renewal would add ${renewalHours} hours.`,
+    );
+  }
+
+  const startsAt = latestBlockEnd;
+  const endsAt = new Date(startsAt.getTime() + renewalHours * 60 * 60 * 1000);
+  const blockType = renewalHours === 2 ? 'FINAL2H' as const : 'RENEWAL' as const;
+
+  const resource = await resolveRenewalResource(client, session, latestBlock);
+
+  return { visitId, blockType, startsAt, endsAt, ...resource };
+}
+
+async function resolveRenewalResource(
+  client: Queryable,
+  session: LaneSessionRow,
+  latestBlock: { room_id: string | null; locker_id: string | null },
+): Promise<{ assignedResourceId: string; assignedResourceType: 'room' | 'locker'; assignedResourceNumber: string | undefined }> {
+  if (latestBlock.room_id) {
+    const room = (
+      await client.query<RoomRow>(
+        `SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 LIMIT 1`,
+        [latestBlock.room_id]
+      )
+    ).rows[0];
+    if (!room) throw new HttpError(400, 'Renewal room assignment not found');
+    if (room.assigned_to_customer_id !== session.customer_id || room.status !== 'OCCUPIED') {
+      throw new HttpError(409, `Room ${room.number} is not currently assigned to this customer`);
+    }
+    return { assignedResourceId: room.id, assignedResourceType: 'room', assignedResourceNumber: room.number };
+  }
+
+  if (latestBlock.locker_id) {
+    const locker = (
+      await client.query<LockerRow>(
+        `SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 LIMIT 1`,
+        [latestBlock.locker_id]
+      )
+    ).rows[0];
+    if (!locker) throw new HttpError(400, 'Renewal locker assignment not found');
+    if (locker.assigned_to_customer_id !== session.customer_id || locker.status !== 'OCCUPIED') {
+      throw new HttpError(409, `Locker ${locker.number} is not currently assigned to this customer`);
+    }
+    return { assignedResourceId: locker.id, assignedResourceType: 'locker', assignedResourceNumber: locker.number };
+  }
+
+  throw new HttpError(400, 'Active visit has no assigned room or locker');
+}
+
+async function resolvePreAssignedResource(
+  client: Queryable,
+  session: LaneSessionRow,
+  assignedResourceId: string,
+  assignedResourceType: 'room' | 'locker',
+): Promise<string> {
+  if (assignedResourceType === 'room') {
+    const room = (
+      await client.query<RoomRow>(
+        `SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`,
+        [assignedResourceId]
+      )
+    ).rows[0];
+    if (!room) throw new HttpError(404, 'Selected room not found');
+    if (room.status !== 'CLEAN' || room.assigned_to_customer_id) {
+      throw new HttpError(409, `Selected room ${room.number} is no longer available`);
+    }
+    const selectedByOther = await client.query<{ id: string }>(
+      `SELECT id FROM lane_sessions
+       WHERE id <> $1
+         AND assigned_resource_type = 'room'
+         AND assigned_resource_id = $2
+         AND status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
+       LIMIT 1`,
+      [session.id, assignedResourceId]
+    );
+    if (selectedByOther.rows.length > 0) {
+      throw new HttpError(409, `Selected room ${room.number} is reserved by another lane session`);
+    }
+    return room.number;
+  }
+
+  const locker = (
+    await client.query<LockerRow>(
+      `SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`,
+      [assignedResourceId]
+    )
+  ).rows[0];
+  if (!locker) throw new HttpError(404, 'Selected locker not found');
+  if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id) {
+    throw new HttpError(409, `Selected locker ${locker.number} is no longer available`);
+  }
+  const selectedByOther = await client.query<{ id: string }>(
+    `SELECT id FROM lane_sessions
+     WHERE id <> $1
+       AND assigned_resource_type = 'locker'
+       AND assigned_resource_id = $2
+       AND status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
+     LIMIT 1`,
+    [session.id, assignedResourceId]
+  );
+  if (selectedByOther.rows.length > 0) {
+    throw new HttpError(409, `Selected locker ${locker.number} is reserved by another lane session`);
+  }
+  return locker.number;
+}
+
+async function autoAssignResource(
+  client: PoolClient,
+  rentalType: string,
+): Promise<{ id: string; type: 'room' | 'locker'; number: string }> {
+  if (rentalType === 'LOCKER' || rentalType === 'GYM_LOCKER') {
+    const locker = (
+      await client.query<LockerRow>(
+        `SELECT id, number, status, assigned_to_customer_id
+         FROM lockers
+         WHERE status = 'CLEAN' AND assigned_to_customer_id IS NULL
+         AND NOT EXISTS (
+           SELECT 1 FROM lane_sessions ls
+           WHERE ls.assigned_resource_type = 'locker'
+             AND ls.assigned_resource_id = lockers.id
+             AND ls.status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
+         )
+         ORDER BY number LIMIT 1 FOR UPDATE SKIP LOCKED`
+      )
+    ).rows[0];
+    if (!locker) throw new HttpError(409, 'No available lockers');
+    return { id: locker.id, type: 'locker', number: locker.number };
+  }
+
+  const room = await selectRoomForNewCheckin(client, rentalType as RoomRentalType);
+  if (!room) throw new HttpError(409, 'No available rooms');
+  return { id: room.id, type: 'room', number: room.number };
+}
+
+async function markResourceOccupied(
+  client: Queryable,
+  isRenewal: boolean,
+  resourceType: 'room' | 'locker',
+  customerId: string,
+  resourceId: string,
+): Promise<void> {
+  if (isRenewal) return;
+  if (resourceType === 'room') {
+    await client.query(
+      `UPDATE rooms SET status = 'OCCUPIED', assigned_to_customer_id = $1, last_status_change = NOW(), updated_at = NOW() WHERE id = $2`,
+      [customerId, resourceId]
+    );
+  } else {
+    await client.query(
+      `UPDATE lockers SET status = 'OCCUPIED', assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`,
+      [customerId, resourceId]
+    );
+  }
+}
+
+async function maybeInsertFlowCommand(
+  client: Queryable,
+  sessionId: string,
+): Promise<void> {
+  if (!isFlowCommandsEnabled()) return;
+  const commandId =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `agr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  await client.query(
+    `INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (session_id, command_id) DO NOTHING`,
+    [sessionId, commandId, 'CUSTOMER', 'SET_STEP', { step: 'ASSIGNMENT' }]
+  );
+  await client.query(
+    `UPDATE lane_sessions
+     SET flow_step = 'ASSIGNMENT',
+         flow_version = COALESCE(flow_version, 0) + 1,
+         flow_last_command_id = $1,
+         flow_last_actor = 'CUSTOMER',
+         updated_at = NOW()
+     WHERE id = $2`,
+    [commandId, sessionId]
+  );
+}
+
+interface BlockInsertParams {
+  client: Queryable;
+  visitId: string | null;
+  customerId: string;
+  blockType: string;
+  startsAt: Date;
+  endsAt: Date;
+  rentalType: string;
+  resourceType: 'room' | 'locker';
+  resourceId: string;
+  sessionId: string;
+  pdfBuffer: Buffer;
+  signedAt: Date;
+}
+
+async function createVisitAndBlock(params: BlockInsertParams): Promise<{ visitId: string; checkinBlockId: string }> {
+  let visitId = params.visitId;
+  if (!visitId) {
+    const visitResult = await params.client.query<{ id: string }>(
+      `INSERT INTO visits (customer_id, started_at) VALUES ($1, $2) RETURNING id`,
+      [params.customerId, params.startsAt]
+    );
+    visitId = visitResult.rows[0].id;
+  }
+
+  const blockResult = await params.client.query<{ id: string }>(
+    `INSERT INTO checkin_blocks
+     (visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id, session_id, agreement_signed, agreement_pdf, agreement_signed_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10)
+     RETURNING id`,
+    [
+      visitId,
+      params.blockType,
+      params.startsAt,
+      params.endsAt,
+      params.rentalType,
+      params.resourceType === 'room' ? params.resourceId : null,
+      params.resourceType === 'locker' ? params.resourceId : null,
+      params.sessionId,
+      params.pdfBuffer,
+      params.signedAt,
+    ]
+  );
+
+  return { visitId, checkinBlockId: blockResult.rows[0].id };
+}
+
+async function maybeCreateWaitlist(
+  client: Queryable,
+  session: LaneSessionRow,
+  visitId: string,
+  checkinBlockId: string,
+  assignedResourceId: string,
+): Promise<CheckinCompletedResult['waitlist'] | undefined> {
+  if (!session.waitlist_desired_type || !session.backup_rental_type) return undefined;
+
+  const waitlistResult = await client.query<{ id: string }>(
+    `INSERT INTO waitlist
+     (visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially, status)
+     VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
+     RETURNING id`,
+    [visitId, checkinBlockId, session.waitlist_desired_type, session.backup_rental_type, assignedResourceId]
+  );
+  const waitlistId = waitlistResult.rows[0].id;
+
+  await client.query(`UPDATE checkin_blocks SET waitlist_id = $1 WHERE id = $2`, [waitlistId, checkinBlockId]);
+
+  return {
+    waitlistId,
+    status: 'ACTIVE',
+    visitId,
+    desiredTier: session.waitlist_desired_type,
+  };
+}
+
+interface StoreSignatureParams {
+  client: Queryable;
+  agreementId: string;
+  checkinBlockId: string;
+  customerName: string;
+  membershipNumber: string | undefined;
+  signedAt: Date;
+  signatureData: string;
+  agreementTextSnapshot: string;
+  agreementVersion: string;
+  userAgent: string | undefined;
+  ipAddress: string | undefined;
+}
+
+async function storeSignatureArtifact(params: StoreSignatureParams): Promise<void> {
+  await params.client.query(
+    `INSERT INTO agreement_signatures
+     (agreement_id, checkin_block_id, customer_name, membership_number, signed_at, signature_png_base64, agreement_text_snapshot, agreement_version, user_agent, ip_address)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    [
+      params.agreementId,
+      params.checkinBlockId,
+      params.customerName,
+      params.membershipNumber || null,
+      params.signedAt,
+      params.signatureData,
+      params.agreementTextSnapshot,
+      params.agreementVersion,
+      params.userAgent || null,
+      params.ipAddress || null,
+    ]
+  );
+}
+
+async function maybeCompleteSession(client: Queryable, sessionId: string): Promise<void> {
+  if (isFlowCommandsEnabled()) return;
+  await client.query(
+    `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
+    [sessionId]
+  );
+}
+
+interface AgreementRow {
+  id: string;
+  body_text: string;
+  version: string;
+  title: string;
+}
+
+async function fetchActiveAgreement(client: Queryable): Promise<AgreementRow> {
+  const result = await client.query<AgreementRow>(
+    `SELECT id, body_text, version, title FROM agreements WHERE active = true ORDER BY created_at DESC LIMIT 1`
+  );
+  if (result.rows.length === 0) {
+    throw new HttpError(404, 'No active agreement found');
+  }
+  return result.rows[0];
+}
+
+function extractSignatureData(signaturePayload: string, isManualOverride: boolean): string | undefined {
+  if (isManualOverride) return undefined;
+  const data = signaturePayload.startsWith('data:')
+    ? signaturePayload.split(',')[1]
+    : signaturePayload;
+  if (!data || data.trim().length < 16) {
+    throw new HttpError(400, 'Signature payload is required');
+  }
+  return data;
+}
+
+interface TimeBlockResult {
+  isRenewal: boolean;
+  visitId: string | null;
+  blockType: 'INITIAL' | 'RENEWAL' | 'FINAL2H';
+  startsAt: Date;
+  endsAt: Date;
+  /** Only present for renewals */
+  renewalResourceId?: string;
+  renewalResourceType?: 'room' | 'locker';
+  renewalResourceNumber?: string;
+}
+
+async function resolveTimeBlock(
+  client: Queryable,
+  session: LaneSessionRow,
+  signedAt: Date,
+): Promise<TimeBlockResult> {
+  const isRenewal = session.checkin_mode === 'RENEWAL';
+  if (!isRenewal) {
+    return {
+      isRenewal: false,
+      visitId: null,
+      blockType: 'INITIAL',
+      startsAt: signedAt,
+      endsAt: roundUpToQuarterHour(new Date(signedAt.getTime() + 6 * 60 * 60 * 1000)),
     };
   }
+
+  const renewalHours =
+    session.renewal_hours === 2 || session.renewal_hours === 6
+      ? session.renewal_hours
+      : null;
+  if (!renewalHours) {
+    throw new HttpError(400, 'Renewal hours not set for this session');
+  }
+
+  const renewal = await computeRenewalTimeBlock(client, session, renewalHours);
+  return {
+    isRenewal: true,
+    visitId: renewal.visitId,
+    blockType: renewal.blockType,
+    startsAt: renewal.startsAt,
+    endsAt: renewal.endsAt,
+    renewalResourceId: renewal.assignedResourceId,
+    renewalResourceType: renewal.assignedResourceType,
+    renewalResourceNumber: renewal.assignedResourceNumber,
+  };
+}
+
+interface ResourceResult {
+  id: string;
+  type: 'room' | 'locker';
+  number: string | undefined;
+}
+
+async function resolveResourceAssignment(
+  client: PoolClient,
+  session: LaneSessionRow,
+  timeBlock: TimeBlockResult,
+  rentalType: string,
+): Promise<ResourceResult> {
+  if (timeBlock.isRenewal && timeBlock.renewalResourceId && timeBlock.renewalResourceType) {
+    return {
+      id: timeBlock.renewalResourceId,
+      type: timeBlock.renewalResourceType,
+      number: timeBlock.renewalResourceNumber,
+    };
+  }
+
+  const assignedResourceId = session.assigned_resource_id;
+  const assignedResourceType = session.assigned_resource_type as 'room' | 'locker' | null;
+
+  if (assignedResourceId && assignedResourceType) {
+    const number = await resolvePreAssignedResource(client, session, assignedResourceId, assignedResourceType);
+    return { id: assignedResourceId, type: assignedResourceType, number };
+  }
+
+  return autoAssignResource(client, rentalType);
+}
+
+function buildAgreementTextSnapshot(
+  startsAt: Date,
+  endsAt: Date,
+  customerLang: 'EN' | 'ES',
+  agreementBodyText: string,
+): string {
+  const timeBlockHtml = buildAgreementTimeBlockHtml({ startsAt, endsAt, lang: customerLang });
+  const baseText = customerLang === 'ES' ? AGREEMENT_LEGAL_BODY_HTML_BY_LANG.ES : agreementBodyText;
+  return `${timeBlockHtml}${baseText}`;
 }
 
 // ── Service Methods ──
@@ -248,310 +740,23 @@ export async function processAgreementSigning(
     const session = await findActiveSession(client, input.laneId, input.sessionId);
     await validatePrerequisites(client, session);
 
-    // Get customer identity info for PDF + signature snapshot
-    const customerResult = session.customer_id
-      ? await client.query<{
-          name: string;
-          dob: Date | string | null;
-          membership_number: string | null;
-          primary_language: string | null;
-        }>(
-          `SELECT name, dob, membership_number, primary_language FROM customers WHERE id = $1`,
-          [session.customer_id]
-        )
-      : { rows: [] as Array<{ name: string; dob: Date | string | null; membership_number: string | null; primary_language: string | null }> };
+    const { customerName, customerDob, membershipNumber, customerLang } =
+      await fetchCustomerInfo(client, session);
 
-    const customerName =
-      customerResult.rows[0]?.name || session.customer_display_name || 'Customer';
-    const customerDob = customerResult.rows[0]?.dob ?? null;
-    const membershipNumber =
-      customerResult.rows[0]?.membership_number || session.membership_number || undefined;
-    const customerLang = customerResult.rows[0]?.primary_language === 'ES' ? 'ES' : 'EN';
-
-    // Get active agreement text
-    const agreementResult = await client.query<{
-      id: string;
-      body_text: string;
-      version: string;
-      title: string;
-    }>(
-      `SELECT id, body_text, version, title FROM agreements WHERE active = true ORDER BY created_at DESC LIMIT 1`
-    );
-
-    if (agreementResult.rows.length === 0) {
-      throw { statusCode: 404, message: 'No active agreement found' };
-    }
-
-    const agreement = agreementResult.rows[0]!;
-
-    // Validate signature (for digital signing only)
-    let signatureData: string | undefined;
-    if (!isManualOverride) {
-      const payload = input.signaturePayload as string;
-      signatureData = payload.startsWith('data:')
-        ? payload.split(',')[1]
-        : payload;
-
-      if (!signatureData || signatureData.trim().length < 16) {
-        throw { statusCode: 400, message: 'Signature payload is required' };
-      }
-    }
-
+    const agreement = await fetchActiveAgreement(client);
+    const signatureData = extractSignatureData(input.signaturePayload, isManualOverride);
     const signedAt = new Date();
 
     if (!session.customer_id) {
-      throw { statusCode: 400, message: 'Session has no customer; cannot complete check-in' };
+      throw new HttpError(400, 'Session has no customer; cannot complete check-in');
     }
 
-    const isRenewal = session.checkin_mode === 'RENEWAL';
-    const renewalHours =
-      session.renewal_hours === 2 || session.renewal_hours === 6
-        ? session.renewal_hours
-        : null;
+    const timeBlock = await resolveTimeBlock(client, session, signedAt);
+    const rentalType = (session.desired_rental_type || session.backup_rental_type || 'LOCKER') as
+      'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
+    const resource = await resolveResourceAssignment(client, session, timeBlock, rentalType);
 
-    let visitId: string | null = null;
-    let blockType: 'INITIAL' | 'RENEWAL' | 'FINAL2H';
-    let startsAt: Date;
-    let endsAt: Date;
-
-    let renewalAssignedResourceId: string | null = null;
-    let renewalAssignedResourceType: 'room' | 'locker' | null = null;
-    let renewalAssignedResourceNumber: string | undefined;
-
-    if (isRenewal) {
-      if (!renewalHours) {
-        throw { statusCode: 400, message: 'Renewal hours not set for this session' };
-      }
-
-      const visitResult = await client.query<{ id: string }>(
-        `SELECT id FROM visits WHERE customer_id = $1 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
-        [session.customer_id]
-      );
-      if (visitResult.rows.length === 0) {
-        throw { statusCode: 400, message: 'No active visit found for renewal' };
-      }
-      visitId = visitResult.rows[0]!.id;
-
-      const blocksResult = await client.query<{
-        starts_at: Date;
-        ends_at: Date;
-        room_id: string | null;
-        locker_id: string | null;
-      }>(
-        `SELECT starts_at, ends_at, room_id, locker_id FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC`,
-        [visitId]
-      );
-      if (blocksResult.rows.length === 0) {
-        throw { statusCode: 400, message: 'Visit has no blocks' };
-      }
-
-      let currentTotalHours = 0;
-      for (const block of blocksResult.rows) {
-        const hours = (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
-        currentTotalHours += hours;
-      }
-
-      const latestBlock = blocksResult.rows[0]!;
-      const latestBlockEnd = latestBlock.ends_at;
-      const diffMs = Math.abs(latestBlockEnd.getTime() - Date.now());
-      if (diffMs > 60 * 60 * 1000) {
-        throw { statusCode: 400, message: 'Renewal is only available within 1 hour of checkout' };
-      }
-
-      if (currentTotalHours + renewalHours > 14) {
-        throw {
-          statusCode: 400,
-          message: `Renewal would exceed 14-hour maximum. Current total: ${currentTotalHours} hours, renewal would add ${renewalHours} hours.`,
-        };
-      }
-
-      startsAt = latestBlockEnd;
-      endsAt =
-        renewalHours === 2
-          ? new Date(startsAt.getTime() + 2 * 60 * 60 * 1000)
-          : roundUpToQuarterHour(new Date(startsAt.getTime() + 6 * 60 * 60 * 1000));
-      blockType = renewalHours === 2 ? 'FINAL2H' : 'RENEWAL';
-
-      if (latestBlock.room_id) {
-        const room = (
-          await client.query<RoomRow>(
-            `SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 LIMIT 1`,
-            [latestBlock.room_id]
-          )
-        ).rows[0];
-        if (!room) throw { statusCode: 400, message: 'Renewal room assignment not found' };
-        if (room.assigned_to_customer_id !== session.customer_id || room.status !== 'OCCUPIED') {
-          throw {
-            statusCode: 409,
-            message: `Room ${room.number} is not currently assigned to this customer`,
-          };
-        }
-        renewalAssignedResourceId = room.id;
-        renewalAssignedResourceType = 'room';
-        renewalAssignedResourceNumber = room.number;
-      } else if (latestBlock.locker_id) {
-        const locker = (
-          await client.query<LockerRow>(
-            `SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 LIMIT 1`,
-            [latestBlock.locker_id]
-          )
-        ).rows[0];
-        if (!locker) throw { statusCode: 400, message: 'Renewal locker assignment not found' };
-        if (locker.assigned_to_customer_id !== session.customer_id || locker.status !== 'OCCUPIED') {
-          throw {
-            statusCode: 409,
-            message: `Locker ${locker.number} is not currently assigned to this customer`,
-          };
-        }
-        renewalAssignedResourceId = locker.id;
-        renewalAssignedResourceType = 'locker';
-        renewalAssignedResourceNumber = locker.number;
-      } else {
-        throw { statusCode: 400, message: 'Active visit has no assigned room or locker' };
-      }
-    } else {
-      blockType = 'INITIAL';
-      startsAt = signedAt;
-      endsAt = roundUpToQuarterHour(new Date(startsAt.getTime() + 6 * 60 * 60 * 1000));
-    }
-
-    // Build agreement text + PDF
-    const agreementTimeBlockHtml = buildAgreementTimeBlockHtml({
-      startsAt,
-      endsAt,
-      lang: customerLang,
-    });
-    const baseAgreementTextSnapshot =
-      customerLang === 'ES' ? AGREEMENT_LEGAL_BODY_HTML_BY_LANG.ES : agreement.body_text;
-    const agreementTextSnapshot = `${agreementTimeBlockHtml}${baseAgreementTextSnapshot}`;
-    const agreementTitleForPdf = customerLang === 'ES' ? 'Acuerdo del Club' : agreement.title;
-
-    // Generate PDF
-    const pdfBuffer = await generateAgreementPdf({
-      agreementTitle: agreementTitleForPdf,
-      agreementVersion: agreement.version,
-      agreementText: agreementTextSnapshot,
-      customerName,
-      customerDob,
-      membershipNumber,
-      checkinAt: startsAt,
-      signedAt,
-      ...(isManualOverride
-        ? { signatureText: 'Manual Signature Override' }
-        : { signatureImageBase64: signatureData }),
-    });
-
-    // Determine rental type from locked selection snapshot
-    const rentalType = (session.desired_rental_type ||
-      session.backup_rental_type ||
-      'LOCKER') as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
-
-    // Handle resource assignment
-    let assignedResourceId = session.assigned_resource_id;
-    let assignedResourceType = session.assigned_resource_type as 'room' | 'locker' | null;
-    let assignedResourceNumber: string | undefined;
-
-    if (isRenewal) {
-      assignedResourceId = renewalAssignedResourceId;
-      assignedResourceType = renewalAssignedResourceType;
-      assignedResourceNumber = renewalAssignedResourceNumber;
-    }
-
-    if (!isRenewal && assignedResourceId && assignedResourceType) {
-      if (assignedResourceType === 'room') {
-        const room = (
-          await client.query<RoomRow>(
-            `SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`,
-            [assignedResourceId]
-          )
-        ).rows[0];
-        if (!room) throw { statusCode: 404, message: 'Selected room not found' };
-        if (room.status !== 'CLEAN' || room.assigned_to_customer_id) {
-          throw { statusCode: 409, message: `Selected room ${room.number} is no longer available` };
-        }
-        const selectedByOther = await client.query<{ id: string }>(
-          `SELECT id FROM lane_sessions
-           WHERE id <> $1
-             AND assigned_resource_type = 'room'
-             AND assigned_resource_id = $2
-             AND status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
-           LIMIT 1`,
-          [session.id, assignedResourceId]
-        );
-        if (selectedByOther.rows.length > 0) {
-          throw { statusCode: 409, message: `Selected room ${room.number} is reserved by another lane session` };
-        }
-        assignedResourceNumber = room.number;
-      } else {
-        const locker = (
-          await client.query<LockerRow>(
-            `SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`,
-            [assignedResourceId]
-          )
-        ).rows[0];
-        if (!locker) throw { statusCode: 404, message: 'Selected locker not found' };
-        if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id) {
-          throw { statusCode: 409, message: `Selected locker ${locker.number} is no longer available` };
-        }
-        const selectedByOther = await client.query<{ id: string }>(
-          `SELECT id FROM lane_sessions
-           WHERE id <> $1
-             AND assigned_resource_type = 'locker'
-             AND assigned_resource_id = $2
-             AND status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
-           LIMIT 1`,
-          [session.id, assignedResourceId]
-        );
-        if (selectedByOther.rows.length > 0) {
-          throw { statusCode: 409, message: `Selected locker ${locker.number} is reserved by another lane session` };
-        }
-        assignedResourceNumber = locker.number;
-      }
-    } else if (!isRenewal) {
-      if (rentalType === 'LOCKER' || rentalType === 'GYM_LOCKER') {
-        const locker = (
-          await client.query<LockerRow>(
-            `SELECT id, number, status, assigned_to_customer_id
-             FROM lockers
-             WHERE status = 'CLEAN' AND assigned_to_customer_id IS NULL
-             AND NOT EXISTS (
-               SELECT 1 FROM lane_sessions ls
-               WHERE ls.assigned_resource_type = 'locker'
-                 AND ls.assigned_resource_id = lockers.id
-                 AND ls.status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
-             )
-             ORDER BY number LIMIT 1 FOR UPDATE SKIP LOCKED`
-          )
-        ).rows[0];
-        if (!locker) throw { statusCode: 409, message: 'No available lockers' };
-        assignedResourceId = locker.id;
-        assignedResourceType = 'locker';
-        assignedResourceNumber = locker.number;
-      } else {
-        const room = await selectRoomForNewCheckin(client, rentalType as RoomRentalType);
-        if (!room) throw { statusCode: 409, message: 'No available rooms' };
-        assignedResourceId = room.id;
-        assignedResourceType = 'room';
-        assignedResourceNumber = room.number;
-      }
-    }
-
-    if (!assignedResourceId || !assignedResourceType) {
-      throw { statusCode: 500, message: 'Failed to assign a room or locker' };
-    }
-
-    // Assign inventory + mark OCCUPIED (server-authoritative)
-    if (!isRenewal && assignedResourceType === 'room') {
-      await client.query(
-        `UPDATE rooms SET status = 'OCCUPIED', assigned_to_customer_id = $1, last_status_change = NOW(), updated_at = NOW() WHERE id = $2`,
-        [session.customer_id, assignedResourceId]
-      );
-    } else if (!isRenewal) {
-      await client.query(
-        `UPDATE lockers SET status = 'OCCUPIED', assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`,
-        [session.customer_id, assignedResourceId]
-      );
-    }
+    await markResourceOccupied(client, timeBlock.isRenewal, resource.type, session.customer_id, resource.id);
 
     // Update lane session snapshot
     await client.query(
@@ -562,134 +767,64 @@ export async function processAgreementSigning(
            agreement_bypass_pending = false,
            updated_at = NOW()
        WHERE id = $4`,
-      [assignedResourceId, assignedResourceType, isManualOverride ? 'MANUAL' : 'DIGITAL', session.id]
+      [resource.id, resource.type, isManualOverride ? 'MANUAL' : 'DIGITAL', session.id]
     );
 
-    // Flow commands (if enabled)
-    if (isFlowCommandsEnabled()) {
-      const commandId =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `agr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      await client.query(
-        `INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (session_id, command_id) DO NOTHING`,
-        [session.id, commandId, 'CUSTOMER', 'SET_STEP', { step: 'ASSIGNMENT' }]
-      );
-      await client.query(
-        `UPDATE lane_sessions
-         SET flow_step = 'ASSIGNMENT',
-             flow_version = COALESCE(flow_version, 0) + 1,
-             flow_last_command_id = $1,
-             flow_last_actor = 'CUSTOMER',
-             updated_at = NOW()
-         WHERE id = $2`,
-        [commandId, session.id]
-      );
-    }
+    await maybeInsertFlowCommand(client, session.id);
 
-    // Create visit (if needed) and check-in block with PDF
-    if (!visitId) {
-      const visitResult = await client.query<{ id: string }>(
-        `INSERT INTO visits (customer_id, started_at) VALUES ($1, $2) RETURNING id`,
-        [session.customer_id, startsAt]
-      );
-      visitId = visitResult.rows[0]!.id;
-    }
-
-    const blockResult = await client.query<{ id: string }>(
-      `INSERT INTO checkin_blocks
-       (visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id, session_id, agreement_signed, agreement_pdf, agreement_signed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10)
-       RETURNING id`,
-      [
-        visitId,
-        blockType,
-        startsAt,
-        endsAt,
-        rentalType,
-        assignedResourceType === 'room' ? assignedResourceId : null,
-        assignedResourceType === 'locker' ? assignedResourceId : null,
-        session.id,
-        pdfBuffer,
-        signedAt,
-      ]
+    // Build agreement text + PDF
+    const agreementTextSnapshot = buildAgreementTextSnapshot(
+      timeBlock.startsAt, timeBlock.endsAt, customerLang, agreement.body_text,
     );
+    const agreementTitleForPdf = customerLang === 'ES' ? 'Acuerdo del Club' : agreement.title;
 
-    const checkinBlockId = blockResult.rows[0]!.id;
-
-    // Waitlist entry if customer elected a waitlist/upgrade path
-    let waitlistInfo: CheckinCompletedResult['waitlist'] | undefined;
-    if (session.waitlist_desired_type && session.backup_rental_type) {
-      const waitlistResult = await client.query<{ id: string }>(
-        `INSERT INTO waitlist
-         (visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially, status)
-         VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
-         RETURNING id`,
-        [visitId, checkinBlockId, session.waitlist_desired_type, session.backup_rental_type, assignedResourceId]
-      );
-      const waitlistId = waitlistResult.rows[0]!.id;
-
-      await client.query(`UPDATE checkin_blocks SET waitlist_id = $1 WHERE id = $2`, [waitlistId, checkinBlockId]);
-
-      waitlistInfo = {
-        waitlistId,
-        status: 'ACTIVE',
-        visitId: visitId!,
-        desiredTier: session.waitlist_desired_type,
-      };
-    }
-
-    // Assert resource assignment persisted
-    await assertAssignedResourcePersistedAndUnavailable({
-      client,
-      sessionId: session.id,
-      customerId: session.customer_id,
-      resourceType: assignedResourceType === 'room' ? 'room' : 'locker',
-      resourceId: assignedResourceId,
-      resourceNumber: assignedResourceNumber,
+    const pdfBuffer = await generateAgreementPdf({
+      agreementTitle: agreementTitleForPdf,
+      agreementVersion: agreement.version,
+      agreementText: agreementTextSnapshot,
+      customerName,
+      customerDob,
+      membershipNumber,
+      checkinAt: timeBlock.startsAt,
+      signedAt,
+      ...(isManualOverride
+        ? { signatureText: 'Manual Signature Override' }
+        : { signatureImageBase64: signatureData }),
     });
 
-    // Store signature as immutable audit artifact (only for digital signing)
+    const { visitId, checkinBlockId } = await createVisitAndBlock({
+      client, visitId: timeBlock.visitId, customerId: session.customer_id,
+      blockType: timeBlock.blockType, startsAt: timeBlock.startsAt, endsAt: timeBlock.endsAt,
+      rentalType, resourceType: resource.type, resourceId: resource.id,
+      sessionId: session.id, pdfBuffer, signedAt,
+    });
+
+    const waitlistInfo = await maybeCreateWaitlist(client, session, visitId, checkinBlockId, resource.id);
+
+    await assertAssignedResourcePersistedAndUnavailable({
+      client, sessionId: session.id, customerId: session.customer_id,
+      resourceType: resource.type, resourceId: resource.id, resourceNumber: resource.number,
+    });
+
     if (!isManualOverride && signatureData) {
-      await client.query(
-        `INSERT INTO agreement_signatures
-         (agreement_id, checkin_block_id, customer_name, membership_number, signed_at, signature_png_base64, agreement_text_snapshot, agreement_version, user_agent, ip_address)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          agreement.id,
-          checkinBlockId,
-          customerName,
-          membershipNumber || null,
-          signedAt,
-          signatureData,
-          agreementTextSnapshot,
-          agreement.version,
-          input.ctx.userAgent || null,
-          input.ctx.ipAddress || null,
-        ]
-      );
+      await storeSignatureArtifact({
+        client, agreementId: agreement.id, checkinBlockId, customerName,
+        membershipNumber, signedAt, signatureData, agreementTextSnapshot,
+        agreementVersion: agreement.version,
+        userAgent: input.ctx.userAgent, ipAddress: input.ctx.ipAddress,
+      });
     }
 
-    // Update session status
-    // When flow commands are enabled, keep the session active during ASSIGNMENT
-    // so the kiosk shows the room info and the employee can override/complete.
-    if (!isFlowCommandsEnabled()) {
-      await client.query(
-        `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
-        [session.id]
-      );
-    }
+    await maybeCompleteSession(client, session.id);
 
     return {
       success: true as const,
       sessionId: session.id,
-      customerId: session.customer_id!,
-      visitId: visitId!,
+      customerId: session.customer_id,
+      visitId,
       checkinBlockId,
-      assignedResourceType: assignedResourceType!,
-      assignedResourceNumber,
+      assignedResourceType: resource.type,
+      assignedResourceNumber: resource.number,
       rentalType,
       laneId: input.laneId,
       waitlist: waitlistInfo,
@@ -765,6 +900,29 @@ export async function processAgreementSigning(
       },
       dedupeKey: coreResult.visitId ? `CLUB:CHECKIN_COMPLETED:${coreResult.visitId}` : null,
     });
+
+    // Log room/locker assignment
+    if (coreResult.assignedResourceType && coreResult.assignedResourceNumber) {
+      const isRoom = coreResult.assignedResourceType === 'room';
+      await insertClubEvent(client, {
+        eventType: isRoom ? 'ROOM_ASSIGNED' : 'LOCKER_ASSIGNED',
+        eventDomain: 'INVENTORY',
+        sourceApp: input.ctx.sourceApp === 'CUSTOMER_KIOSK' ? 'CUSTOMER_KIOSK' : 'EMPLOYEE_REGISTER',
+        staffId: input.ctx.staffId ?? null,
+        staffName: input.ctx.staffName ?? null,
+        customerId: coreResult.customerId,
+        customerName,
+        visitId: coreResult.visitId ?? null,
+        summary: `${isRoom ? 'Room' : 'Locker'} ${coreResult.assignedResourceNumber} assigned to ${customerName}`,
+        metadata: {
+          resourceType: coreResult.assignedResourceType,
+          resourceNumber: coreResult.assignedResourceNumber,
+          checkinBlockId: coreResult.checkinBlockId,
+          laneSessionId: coreResult.sessionId,
+        },
+        dedupeKey: coreResult.checkinBlockId ? `CLUB:${isRoom ? 'ROOM' : 'LOCKER'}_ASSIGNED:${coreResult.checkinBlockId}` : null,
+      });
+    }
   });
 
   return coreResult;
@@ -778,26 +936,23 @@ export async function requestAgreementBypass(input: BypassInput): Promise<Bypass
     const session = await findActiveSession(client, input.laneId, input.sessionId);
 
     if (session.checkin_mode !== 'CHECKIN' && session.checkin_mode !== 'RENEWAL') {
-      throw {
-        statusCode: 400,
-        message: 'Agreement bypass is only required for CHECKIN and RENEWAL check-ins',
-      };
+      throw new HttpError(400, 'Agreement bypass is only required for CHECKIN and RENEWAL check-ins');
     }
 
     if (!session.selection_confirmed) {
-      throw { statusCode: 400, message: 'Selection must be confirmed before bypassing agreement' };
+      throw new HttpError(400, 'Selection must be confirmed before bypassing agreement');
     }
 
     if (!session.payment_intent_id) {
-      throw { statusCode: 400, message: 'Payment intent must be created before bypassing agreement' };
+      throw new HttpError(400, 'Payment intent must be created before bypassing agreement');
     }
 
     const intentResult = await client.query<PaymentIntentRow>(
       `SELECT status FROM payment_intents WHERE id = $1`,
       [session.payment_intent_id]
     );
-    if (intentResult.rows.length === 0 || intentResult.rows[0]!.status !== 'PAID') {
-      throw { statusCode: 400, message: 'Payment must be marked as paid before bypassing agreement' };
+    if (intentResult.rows.length === 0 || intentResult.rows[0].status !== 'PAID') {
+      throw new HttpError(400, 'Payment must be marked as paid before bypassing agreement');
     }
 
     await client.query(
@@ -822,79 +977,99 @@ export async function processCustomerConfirm(
     );
 
     if (sessionResult.rows.length === 0) {
-      throw { statusCode: 404, message: 'Session not found' };
+      throw new HttpError(404, 'Session not found');
     }
 
-    const session = sessionResult.rows[0]!;
+    const session = sessionResult.rows[0];
 
     if (input.confirmed) {
-      if (!session.assigned_resource_type || !session.assigned_resource_id) {
-        throw { statusCode: 400, message: 'No assigned resource to confirm' };
-      }
-
-      let confirmedType: string;
-      let confirmedNumber: string;
-
-      if (session.assigned_resource_type === 'room') {
-        const roomRes = await client.query<{ number: string }>(
-          `SELECT number FROM rooms WHERE id = $1 LIMIT 1`,
-          [session.assigned_resource_id]
-        );
-        if (roomRes.rows.length === 0) throw { statusCode: 404, message: 'Assigned room not found' };
-        confirmedNumber = roomRes.rows[0]!.number;
-        confirmedType = getRoomTier(confirmedNumber);
-      } else if (session.assigned_resource_type === 'locker') {
-        const lockerRes = await client.query<{ number: string }>(
-          `SELECT number FROM lockers WHERE id = $1 LIMIT 1`,
-          [session.assigned_resource_id]
-        );
-        if (lockerRes.rows.length === 0) throw { statusCode: 404, message: 'Assigned locker not found' };
-        confirmedNumber = lockerRes.rows[0]!.number;
-        confirmedType = 'LOCKER';
-      } else {
-        throw { statusCode: 400, message: 'Invalid assigned resource type' };
-      }
-
-      return {
-        success: true as const,
-        confirmed: true,
-        confirmedPayload: {
-          sessionId: session.id,
-          confirmedType,
-          confirmedNumber,
-        },
-      };
-    } else {
-      // Customer declined — unassign resource
-      if (session.assigned_resource_id) {
-        if (session.assigned_resource_type === 'room') {
-          await client.query(
-            `UPDATE rooms SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = $1`,
-            [session.assigned_resource_id]
-          );
-        } else if (session.assigned_resource_type === 'locker') {
-          await client.query(
-            `UPDATE lockers SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = $1`,
-            [session.assigned_resource_id]
-          );
-        }
-
-        await client.query(
-          `UPDATE lane_sessions SET assigned_resource_id = NULL, assigned_resource_type = NULL, updated_at = NOW() WHERE id = $1`,
-          [session.id]
-        );
-      }
-
-      return {
-        success: true as const,
-        confirmed: false,
-        declinedPayload: {
-          sessionId: session.id,
-          requestedType: session.desired_rental_type || '',
-        },
-      };
+      return resolveConfirmation(client, session);
     }
+
+    return resolveDecline(client, session);
   });
+}
+
+async function resolveConfirmation(
+  client: Queryable,
+  session: LaneSessionRow,
+): Promise<CustomerConfirmResult> {
+  if (!session.assigned_resource_type || !session.assigned_resource_id) {
+    throw new HttpError(400, 'No assigned resource to confirm');
+  }
+
+  const { confirmedType, confirmedNumber } = await lookupAssignedResource(
+    client, session.assigned_resource_type, session.assigned_resource_id,
+  );
+
+  return {
+    success: true as const,
+    confirmed: true,
+    confirmedPayload: {
+      sessionId: session.id,
+      confirmedType,
+      confirmedNumber,
+    },
+  };
+}
+
+async function lookupAssignedResource(
+  client: Queryable,
+  resourceType: string,
+  resourceId: string,
+): Promise<{ confirmedType: string; confirmedNumber: string }> {
+  if (resourceType === 'room') {
+    const roomRes = await client.query<{ number: string }>(
+      `SELECT number FROM rooms WHERE id = $1 LIMIT 1`,
+      [resourceId]
+    );
+    if (roomRes.rows.length === 0) throw new HttpError(404, 'Assigned room not found');
+    return { confirmedType: getRoomTier(roomRes.rows[0].number), confirmedNumber: roomRes.rows[0].number };
+  }
+
+  if (resourceType === 'locker') {
+    const lockerRes = await client.query<{ number: string }>(
+      `SELECT number FROM lockers WHERE id = $1 LIMIT 1`,
+      [resourceId]
+    );
+    if (lockerRes.rows.length === 0) throw new HttpError(404, 'Assigned locker not found');
+    return { confirmedType: 'LOCKER', confirmedNumber: lockerRes.rows[0].number };
+  }
+
+  throw new HttpError(400, 'Invalid assigned resource type');
+}
+
+async function resolveDecline(
+  client: Queryable,
+  session: LaneSessionRow,
+): Promise<CustomerConfirmResult> {
+  if (session.assigned_resource_id) {
+    if (session.assigned_resource_type === 'room') {
+      await client.query(
+        `UPDATE rooms SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = $1`,
+        [session.assigned_resource_id]
+      );
+    } else if (session.assigned_resource_type === 'locker') {
+      await client.query(
+        `UPDATE lockers SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = $1`,
+        [session.assigned_resource_id]
+      );
+    }
+
+    await client.query(
+      `UPDATE lane_sessions SET assigned_resource_id = NULL, assigned_resource_type = NULL, updated_at = NOW() WHERE id = $1`,
+      [session.id]
+    );
+  }
+
+  return {
+    success: true as const,
+    confirmed: false,
+    declinedPayload: {
+      sessionId: session.id,
+      requestedType: session.desired_rental_type || '',
+    },
+  };
 }
 
 /**

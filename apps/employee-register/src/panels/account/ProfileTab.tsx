@@ -178,11 +178,11 @@ export function ProfileTab() {
   };
 
   return (
-    <div className= "flex flex-col gap-3" >
+    <div className= "flex flex-col gap-2" >
     {/* Customer header */ }
-    < div className = "flex items-center gap-4" >
+    < div className = "flex items-center gap-3" >
       <div
-          className="flex h-10 w-10 items-center justify-center rounded-full text-base font-bold"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
   style = {{
     backgroundColor: 'var(--color-accent-primary)',
       color: 'var(--color-text-inverse)',
@@ -210,7 +210,7 @@ style = {{ backgroundColor: `${membershipColor}20`, color: membershipColor }}
 
 {/* Details grid */ }
 <div
-        className="grid grid-cols-2 gap-2 rounded-lg border p-3"
+        className="grid grid-cols-3 gap-x-3 gap-y-1 rounded-lg border p-2"
 style = {{
   backgroundColor: 'var(--color-surface-overlay)',
     borderColor: 'var(--color-border-subtle)',
@@ -230,7 +230,7 @@ style = {{
 {/* Active visit info (opened from Rentals) */ }
 {
   activeCheckinInfo && !currentSessionId && (
-    <div className="rounded-lg border p-3" style = {{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }
+    <div className="rounded-lg border p-2" style = {{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }
 }>
   <span className="text-[10px] font-bold uppercase tracking-wider" style = {{ color: 'var(--color-text-muted)' }}>
     Active Visit
@@ -274,7 +274,6 @@ style = {{
   onCancel={() => void cancelSession()}
 />
 </div>
-  </div>
   );
 }
 
@@ -307,7 +306,7 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
         <button
           onClick={onCheckout}
           disabled={checkingOut}
-          className="flex-1 rounded-lg px-4 py-2 text-sm font-bold transition"
+           className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition"
           style={{
             backgroundColor: checkingOut ? 'var(--color-surface-overlay)' : 'var(--color-status-warning)',
             color: 'var(--color-text-inverse)',
@@ -321,7 +320,7 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
       {!currentSessionId && !activeCheckinInfo && customerId && (
         <button
           onClick={onStartCheckin}
-          className="flex-1 rounded-lg px-4 py-2 text-sm font-bold transition"
+          className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition"
           style={{
             backgroundColor: 'var(--color-accent-primary)',
             color: 'var(--color-text-inverse)',
@@ -334,7 +333,7 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
       {currentSessionId && paymentStatus !== 'PAID' && (
         <button
           onClick={onCancel}
-          className="flex-1 rounded-lg border px-4 py-2 text-sm font-semibold transition"
+          className="flex-1 rounded-lg border px-4 py-1.5 text-sm font-semibold transition"
           style={{
             borderColor: 'var(--color-status-error)',
             color: 'var(--color-status-error)',
@@ -351,10 +350,10 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
 function Field({ label, value, color }: Readonly<{ label: string; value?: string | null; color?: string }>) {
   return (
     <div>
-      <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+      <span className="text-[10px] font-bold uppercase tracking-wider leading-tight" style={{ color: 'var(--color-text-muted)' }}>
         {label}
       </span>
-      <p className="mt-0.5 text-sm font-medium" style={{ color: color ?? 'var(--color-text-primary)' }}>
+      <p className="text-xs font-medium leading-tight" style={{ color: color ?? 'var(--color-text-primary)' }}>
         {value || '—'}
       </p>
     </div>

@@ -1337,11 +1337,34 @@ async function seedActiveWaitlist(client: DbClient, p: {
   rooms: SimRoom[]; customers: SimCustomer[]; staff: SimStaff[];
   registerSessions: SimRegisterSession[]; now: Date;
 }): Promise<void> {
-  // Check if active waitlist entries already exist
-  const existing = await client.query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM waitlist WHERE status IN ('ACTIVE', 'OFFERED')`
+  // Clean up stale state from previous runs so rooms can be re-filled
+  // 1. Cancel any lingering ACTIVE/OFFERED waitlist entries
+  await client.query(
+    `UPDATE waitlist SET status = 'CANCELLED', updated_at = NOW()
+     WHERE status IN ('ACTIVE', 'OFFERED')`
   );
-  if (Number.parseInt(existing.rows[0]?.count || '0', 10) > 0) return;
+  // 2. Release all room assignments and reset rooms to CLEAN
+  await client.query(
+    `UPDATE rooms SET assigned_to_customer_id = NULL, status = 'CLEAN',
+            last_status_change = $1, updated_at = $1`,
+    [p.now]
+  );
+  // 3. Close any open visits whose scheduled end has passed (belt-and-suspenders)
+  await client.query(
+    `UPDATE visits SET ended_at = $1, updated_at = NOW()
+     WHERE ended_at IS NULL
+       AND id IN (
+         SELECT v.id FROM visits v
+         JOIN checkin_blocks cb ON cb.visit_id = v.id
+         WHERE v.ended_at IS NULL AND cb.ends_at IS NOT NULL AND cb.ends_at <= $1
+       )`,
+    [p.now]
+  );
+  // 4. Release locker assignments from previously-seeded waitlist visits
+  await client.query(
+    `UPDATE lockers SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW()
+     WHERE assigned_to_customer_id IS NOT NULL`
+  );
 
   const WAITLIST_SIZE = 6;
   const rng = seededRng(0x57414954); // 'WAIT'
@@ -1444,19 +1467,16 @@ async function seedActiveWaitlist(client: DbClient, p: {
       [customer.id, lockerId]
     );
 
-    // Create the pending waitlist entry
+    // Create the pending waitlist entry — always ACTIVE (no room offered yet)
     const wlId = randomUUID();
-    const status = i < 2 ? 'OFFERED' : 'ACTIVE';
-    const offeredAt = status === 'OFFERED' ? new Date(createdAt.getTime() + Math.floor(rng() * 5) * 60 * 1000) : null;
-    const expiresAt = offeredAt ? new Date(offeredAt.getTime() + 10 * 60 * 1000) : null;
 
     await client.query(
       `INSERT INTO waitlist
          (id, visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially,
           status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts)
        VALUES ($1, $2, $3, $4::rental_type, 'LOCKER'::rental_type, $5,
-               $6, $7, $7, $8, $9, $8, $10)`,
-      [wlId, visitId, blockId, desiredTier, lockerId, status, createdAt, offeredAt, expiresAt, offeredAt ? 1 : 0]
+               'ACTIVE', $6, $6, NULL, NULL, NULL, 0)`,
+      [wlId, visitId, blockId, desiredTier, lockerId, createdAt]
     );
   }
 }

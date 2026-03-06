@@ -1,12 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { query, serializableTransaction } from '../../db';
+import { query, serializableTransaction, transaction } from '../../db';
 import {
   ResolveKeySchema,
   CreateCheckoutRequestSchema,
   type ResolveKeyInput,
   type CreateCheckoutRequestInput,
 } from '../../checkout/schemas';
+import { insertClubEvent } from '../../activity/clubEventLog';
 import type {
   CheckinBlockRow,
   CheckoutRequestRow,
@@ -366,6 +367,30 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
             timestamp: new Date().toISOString(),
           });
         }
+
+        // Log club event for checkout requested
+        await transaction(async (client) => {
+          const resourceLabel = roomNumber ? ` (Room ${roomNumber})` : lockerNumber ? ` (Locker ${lockerNumber})` : '';
+          await insertClubEvent(client, {
+            eventType: 'CHECKOUT_REQUESTED',
+            eventDomain: 'CHECKOUT',
+            sourceApp: 'CUSTOMER_KIOSK',
+            customerId: customer.id,
+            customerName: customer.name,
+            visitId: block.visit_id,
+            summary: `Checkout requested \u2014 ${customer.name}${resourceLabel}`,
+            metadata: {
+              checkoutRequestId: result.id,
+              occupancyId: body.occupancyId,
+              roomNumber: roomNumber ?? null,
+              lockerNumber: lockerNumber ?? null,
+              lateMinutes: result.late_minutes,
+              lateFeeAmount: result.late_fee_amount,
+              banApplied: result.ban_applied,
+            },
+            dedupeKey: `CLUB:CHECKOUT_REQUESTED:${result.id}`,
+          });
+        });
 
         return reply.status(201).send({
           requestId: result.id,

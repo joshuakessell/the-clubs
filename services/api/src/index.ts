@@ -113,6 +113,30 @@ async function main() {
     done();
   });
 
+  // Log response body for error responses to aid debugging
+  fastify.addHook('onSend', (request, reply, payload, done) => {
+    if (reply.statusCode >= 400 && request.url !== '/health') {
+      try {
+        const body = typeof payload === 'string' ? JSON.parse(payload) : payload;
+        fastify.log.warn({
+          method: request.method,
+          url: request.url,
+          statusCode: reply.statusCode,
+          errorBody: body,
+        }, 'Error Response');
+      } catch {
+        // payload isn't JSON — log raw
+        fastify.log.warn({
+          method: request.method,
+          url: request.url,
+          statusCode: reply.statusCode,
+          errorBody: typeof payload === 'string' ? payload.slice(0, 500) : '(non-string payload)',
+        }, 'Error Response');
+      }
+    }
+    done(null, payload);
+  });
+
   // Register CORS — lock origins to an explicit allow-list in production.
   // ALLOWED_ORIGINS can be a comma-separated list (e.g. "https://a.com,https://b.com").
   // Fail-fast in production if ALLOWED_ORIGINS is unset to prevent open CORS.
@@ -141,11 +165,17 @@ async function main() {
   // Register global rate limiting (F-03)
   // Exclude SSE/WebSocket endpoints — they're long-lived connections, not typical requests.
   await fastify.register(rateLimit, {
-    max: 100,
+    max: 300,
     timeWindow: '1 minute',
     allowList: (req) => {
       const url = req.url ?? '';
-      return url.startsWith('/v1/realtime/');
+      // Exempt long-lived SSE/WS connections and authenticated mutation routes
+      // that are already auth-gated. The low global limit starves these during
+      // bursty demo/reload scenarios.
+      return url.startsWith('/v1/realtime/')
+        || url.startsWith('/v1/upgrades/')
+        || url.startsWith('/v1/checkout/')
+        || url.startsWith('/v1/checkin/');
     },
   });
 

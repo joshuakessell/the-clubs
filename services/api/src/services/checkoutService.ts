@@ -375,6 +375,28 @@ export async function completeManualCheckout(
           await client.query(`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES ($1, $2, 'LATE_FEE', $3, NULL)`, [row.visit_id, row.occupancy_id, feeAmount]);
         }
       }
+
+      // Club event for late fee
+      await insertClubEvent(client, {
+        eventType: 'LATE_FEE_CHARGED',
+        eventDomain: 'SALES',
+        sourceApp: 'EMPLOYEE_REGISTER',
+        staffId: looksLikeUuid(staff.staffId) ? staff.staffId : null,
+        staffName: staff.staffName,
+        customerId: row.customer_id,
+        customerName: row.customer_name,
+        visitId: row.visit_id,
+        amount: feeAmount,
+        summary: `Late fee charged — $${feeAmount.toFixed(2)} (${lateMinutes} min late)`,
+        metadata: {
+          occupancyId: row.occupancy_id,
+          lateMinutes,
+          feeAmount,
+          banApplied,
+          payAtCheckout,
+        },
+        dedupeKey: `CLUB:LATE_FEE_CHARGED:MANUAL:${row.occupancy_id}`,
+      });
     }
 
     // Log late checkout event if late >= 30 minutes
@@ -624,6 +646,32 @@ export async function markFeePaid(
             },
             dedupeKey: `ACT:CHECKOUT_FEE_PAID:${requestId}`,
             searchParts: [requestId, ensured.order.id, intent.id],
+          });
+
+          // Look up customer name for the club event
+          const custNameResult = await client.query<{ name: string }>(
+            `SELECT name FROM customers WHERE id = $1`,
+            [checkoutRequest.customer_id]
+          );
+
+          await insertClubEvent(client, {
+            eventType: 'LATE_FEE_CHARGED',
+            eventDomain: 'SALES',
+            sourceApp: 'EMPLOYEE_REGISTER',
+            staffId: staff.staffId,
+            staffName: staff.staffName,
+            customerId: checkoutRequest.customer_id,
+            customerName: custNameResult.rows[0]?.name ?? null,
+            visitId,
+            amount: feeAmount,
+            summary: `Late fee paid — $${feeAmount.toFixed(2)}`,
+            metadata: {
+              checkoutRequestId: requestId,
+              orderId: ensured.order.id,
+              paymentIntentId: intent.id,
+              feeAmount,
+            },
+            dedupeKey: `CLUB:LATE_FEE_CHARGED:${requestId}`,
           });
         }
       }

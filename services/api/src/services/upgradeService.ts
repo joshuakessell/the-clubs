@@ -7,6 +7,7 @@ import { serializableTransaction } from '../db';
 import { getRoomTierFromNumber } from '@the-clubs/shared';
 import { insertAuditLog } from '../audit/auditLog';
 import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
+import { insertClubEvent } from '../activity/clubEventLog';
 
 // ── Types ──
 
@@ -202,8 +203,9 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
       newValue: { newRoomId, newRoomNumber: newRoom.number, newRentalType: waitlist.desired_tier, paymentIntentId, blockEndsAt: block.ends_at.toISOString() },
     });
 
-    const customerIdRow = await client.query<{ customer_id: string }>(`SELECT customer_id FROM visits WHERE id = $1 LIMIT 1`, [waitlist.visit_id]);
+    const customerIdRow = await client.query<{ customer_id: string; name: string }>(`SELECT v.customer_id, c.name FROM visits v JOIN customers c ON c.id = v.customer_id WHERE v.id = $1 LIMIT 1`, [waitlist.visit_id]);
     const customerId = customerIdRow.rows[0]!.customer_id;
+    const customerName = customerIdRow.rows[0]!.name;
 
     await insertCustomerActivityEvent(client, {
       customerId, actionType: 'UPGRADE_COMPLETED', actionCategory: 'UPGRADE', sourceApp: 'EMPLOYEE_REGISTER',
@@ -212,6 +214,30 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
       metadata: { visitId: waitlist.visit_id, waitlistId, paymentIntentId, newRoomId, newRoomNumber: newRoom.number },
       dedupeKey: `ACT:UPGRADE_COMPLETED:${waitlistId}`,
       searchParts: [waitlistId, paymentIntentId, newRoom.number],
+    });
+
+    await insertClubEvent(client, {
+      eventType: 'UPGRADE_PAID',
+      eventDomain: 'SALES',
+      sourceApp: 'EMPLOYEE_REGISTER',
+      staffId: staff.staffId,
+      staffName: staff.name,
+      customerId,
+      customerName,
+      visitId: waitlist.visit_id,
+      amount: upgradeAmount ?? 0,
+      summary: `Upgrade completed: ${block.rental_type} → ${waitlist.desired_tier} (Room ${newRoom.number})`,
+      metadata: {
+        waitlistId,
+        paymentIntentId,
+        fromTier: block.rental_type,
+        toTier: waitlist.desired_tier,
+        newRoomId,
+        newRoomNumber: newRoom.number,
+        upgradeFee: upgradeAmount,
+      },
+      searchParts: [customerName, waitlistId, newRoom.number],
+      dedupeKey: `CLUB:UPGRADE_PAID:${waitlistId}`,
     });
 
     return {

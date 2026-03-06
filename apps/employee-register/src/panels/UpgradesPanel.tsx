@@ -132,6 +132,7 @@ export function UpgradesPanel() {
     paymentStatus: 'DUE' | 'PAID' | null;
   }>({ open: false, entry: null, fulfill: null, paymentStatus: null });
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingCancelId, setConfirmingCancelId] = useState<string | null>(null);
 
   const headers = useCallback(() => {
     const h: Record<string, string> = {};
@@ -246,13 +247,13 @@ export function UpgradesPanel() {
     setSubmitting(true);
     try {
       const h = headers();
-      // Mark payment as paid
+      // Mark payment as paid via the payments API
       const payRes = await fetch(
-        getApiUrl(`/api/v1/checkin/payment-intent/${paymentModal.fulfill.paymentIntentId}/pay`),
+        getApiUrl(`/api/v1/payments/${paymentModal.fulfill.paymentIntentId}/mark-paid`),
         {
           method: 'POST',
           headers: { ...h, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method, paidByStaffId: null }),
+          body: JSON.stringify({ paymentMethod: method }),
         }
       );
       if (!payRes.ok) throw new Error('Payment failed');
@@ -288,6 +289,36 @@ export function UpgradesPanel() {
     }
   }, [headers, paymentModal.fulfill, fetchData]);
 
+  /* ── Cancel a waitlist entry (two-tap confirm) ── */
+  const handleCancelTap = useCallback((entryId: string) => {
+    if (confirmingCancelId === entryId) return; // already confirming
+    setConfirmingCancelId(entryId);
+    // Auto-reset after 3 seconds
+    setTimeout(() => setConfirmingCancelId((prev) => prev === entryId ? null : prev), 3000);
+  }, [confirmingCancelId]);
+
+  const handleCancelConfirm = useCallback(async (entry: WaitlistEntry) => {
+    setConfirmingCancelId(null);
+    setSubmitting(true);
+    try {
+      const h = headers();
+      const res = await fetch(getApiUrl(`/api/v1/waitlist/${entry.id}/cancel`), {
+        method: 'POST',
+        headers: { ...h, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ waitlistId: entry.id, reason: 'Cancelled by staff' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || err.message || 'Cancel failed');
+      }
+      await fetchData();
+    } catch (err: any) {
+      setError(err.message ?? 'Cancel failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [headers, fetchData]);
+
   /* ── Check if an entry can be offered ── */
   const canOffer = useCallback((entry: WaitlistEntry): boolean => {
     if (entry.status !== 'ACTIVE') return false;
@@ -296,6 +327,20 @@ export function UpgradesPanel() {
       (t) => (availability[t as keyof RoomAvailability] ?? 0) > 0
     );
   }, [availability]);
+
+  /* ── First eligible entry per tier (for highlighting) ── */
+  const firstEligibleIds = new Set<string>();
+  const claimedTiers = new Set<string>();
+  for (const entry of entries) {
+    if (entry.status !== 'ACTIVE') continue;
+    const tiers = normalizeDesiredTiers(entry.desiredTiers);
+    for (const t of tiers) {
+      if (!claimedTiers.has(t) && (availability[t as keyof RoomAvailability] ?? 0) > 0) {
+        firstEligibleIds.add(entry.id);
+        claimedTiers.add(t);
+      }
+    }
+  }
 
   /* ── Render ── */
 
@@ -344,27 +389,41 @@ export function UpgradesPanel() {
                 marginBottom: '2px',
               }}
             >
-              {TIER_COLUMNS.map((tier) => (
-                <div
-                  key={tier}
-                  className="rounded-t-lg px-3 py-2 text-center text-xs font-bold uppercase tracking-wider"
-                  style={{
-                    backgroundColor: 'var(--color-surface-overlay)',
-                    color: TIER_COLORS[tier],
-                    borderBottom: `2px solid ${TIER_COLORS[tier]}`,
-                  }}
-                >
-                  {TIER_LABELS[tier]}
-                </div>
-              ))}
-            </div>
+              {TIER_COLUMNS.map((tier) => {
+                const avail = availability[tier];
+                return (
+                  <div
+                    key={tier}
+                    className="text-center"
+                    style={{
+                      padding: '6px 8px',
+                      borderBottom: `2px solid ${TIER_COLORS[tier]}`,
+                    }}
+                  >
+                    <span
+                      className="text-xs font-bold uppercase tracking-wider"
+                      style={{ color: TIER_COLORS[tier] }}
+                    >
+                      {TIER_LABELS[tier]}
+                    </span>
+                    <span
+                      className="ml-1.5 text-[10px] font-semibold"
+                      style={{ color: avail > 0 ? 'var(--color-status-success)' : 'var(--color-text-muted)' }}
+                    >
+                      ({avail} avail)
+                    </span>
+                  </div>
+                );
+              })}</div>
 
             {/* Rows */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {entries.map((entry) => {
+              {entries.map((entry, idx) => {
                 const { startCol, span } = computeSpan(entry.desiredTiers);
                 const isOffered = entry.status === 'OFFERED';
                 const eligible = canOffer(entry);
+                const isFirstEligible = firstEligibleIds.has(entry.id);
+                const queuePos = idx + 1;
 
                 return (
                   <div
@@ -396,6 +455,16 @@ export function UpgradesPanel() {
                     >
                       {/* Left: customer info */}
                       <div className="flex items-center gap-2.5 min-w-0">
+                        {/* Queue position */}
+                        <span
+                          className="text-[11px] font-bold tabular-nums shrink-0"
+                          style={{
+                            color: isFirstEligible ? 'var(--color-status-success)' : 'var(--color-text-muted)',
+                            minWidth: '24px',
+                          }}
+                        >
+                          #{String(queuePos).padStart(2, '0')}
+                        </span>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -432,7 +501,7 @@ export function UpgradesPanel() {
                       </div>
 
                       {/* Right: action buttons */}
-                      <div className="shrink-0 ml-2">
+                      <div className="shrink-0 ml-2 flex items-center gap-1.5">
                         {isOffered ? (
                           <button
                             onClick={() => void handleStartUpgrade(entry)}
@@ -457,7 +526,38 @@ export function UpgradesPanel() {
                               opacity: eligible ? 1 : 0.5,
                             }}
                           >
-                            Offer
+                            Offer Room
+                          </button>
+                        )}
+                        {confirmingCancelId === entry.id ? (
+                          <button
+                            onClick={() => void handleCancelConfirm(entry)}
+                            disabled={submitting}
+                            className="rounded-md px-2.5 py-1.5 text-xs font-bold transition-colors"
+                            style={{
+                              backgroundColor: 'var(--color-status-error)',
+                              color: 'var(--color-text-inverse)',
+                              border: '1px solid var(--color-status-error)',
+                              cursor: submitting ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            Cancel?
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleCancelTap(entry.id)}
+                            disabled={submitting}
+                            className="rounded-md px-2 py-1.5 text-xs font-semibold transition-colors"
+                            style={{
+                              backgroundColor: 'transparent',
+                              color: 'var(--color-status-error)',
+                              border: '1px solid var(--color-status-error)',
+                              opacity: submitting ? 0.5 : 0.7,
+                              cursor: submitting ? 'not-allowed' : 'pointer',
+                            }}
+                            title="Cancel upgrade request"
+                          >
+                            ✕
                           </button>
                         )}
                       </div>

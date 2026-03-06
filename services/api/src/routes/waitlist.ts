@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { requireAuth, requireReauth } from '../auth/middleware';
+import { requireAuth } from '../auth/middleware';
 import type { Broadcaster } from '../realtime/broadcaster';
 import { listWaitlistEntries, offerUpgrade, cancelWaitlistEntry } from '../services/waitlistService';
 
@@ -43,7 +43,7 @@ export async function waitlistRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof CancelWaitlistSchema> }>(
-    '/v1/waitlist/:id/cancel', { preHandler: [requireAuth, requireReauth] },
+    '/v1/waitlist/:id/cancel', { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       let body: z.infer<typeof CancelWaitlistSchema>;
