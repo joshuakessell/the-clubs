@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import { Button, useAuthStore } from '@the-clubs/ui';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
+import { StatusDot } from '../components/StatusDot';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -16,11 +18,6 @@ interface Room {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_DOT: Record<string, string> = {
-  DIRTY: 'var(--color-status-error)',
-  CLEANING: 'var(--color-status-warning, #f59e0b)',
-};
-
 const TYPE_LABEL: Record<string, string> = {
   STANDARD: 'Standard',
   DOUBLE: 'Double',
@@ -28,64 +25,51 @@ const TYPE_LABEL: Record<string, string> = {
   LOCKER: 'Locker',
 };
 
-// ── Extracted sub-components (composition pattern) ───────────────────────────
-
-/** Status indicator dot + label — avoids repeated inline‑style blocks. */
-function StatusPill({ status }: { status: string }) {
-  const dotColor = STATUS_DOT[status] ?? 'var(--color-text-muted)';
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: dotColor }}>
+const COLUMNS: DataTableColumn<Room>[] = [
+  {
+    key: 'number',
+    header: 'Room',
+    width: '120px',
+    render: (r) => (
       <span
-        className="inline-block h-2 w-2 rounded-full"
-        style={{ backgroundColor: dotColor, boxShadow: `0 0 6px ${dotColor}` }}
-      />
-      {status.charAt(0) + status.slice(1).toLowerCase()}
-    </span>
-  );
-}
-
-/** Checkbox with accent-colored styling. */
-function RowCheckbox({
-  checked,
-  indeterminate,
-  onChange,
-}: {
-  checked: boolean;
-  indeterminate?: boolean;
-  onChange: () => void;
-}) {
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = !!indeterminate;
-  }, [indeterminate]);
-
-  return (
-    <input
-      ref={ref}
-      type="checkbox"
-      checked={checked}
-      onChange={onChange}
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        cursor: 'pointer',
-        accentColor: 'var(--color-accent-primary)',
-        width: 16,
-        height: 16,
-      }}
-    />
-  );
-}
+        className="text-sm font-bold"
+        style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+      >
+        {r.number}
+      </span>
+    ),
+  },
+  {
+    key: 'type',
+    header: 'Type',
+    render: (r) => (
+      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+        {TYPE_LABEL[r.type ?? ''] ?? r.type ?? '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'floor',
+    header: 'Floor',
+    render: (r) => (
+      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+        {r.floor != null ? `Floor ${r.floor}` : '—'}
+      </span>
+    ),
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    render: (r) => <StatusDot status={r.status} />,
+  },
+];
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
 /**
  * RoomCleaningPanel — Batch-select dirty rooms and mark them clean.
  *
- * Performance notes (Vercel React best practices):
- * - Uses functional setState (`rerender-functional-setstate`) for immutable, stable updates
- * - Ternary conditionals instead of `&&` (`rendering-conditional-render`)
- * - Stable callbacks via useCallback
- * - Memoized derived values for selection state
+ * Uses the shared DataTable for consistent table styling.
  */
 export function RoomCleaningPanel() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -95,7 +79,7 @@ export function RoomCleaningPanel() {
   const [error, setError] = useState<string | null>(null);
   const token = useAuthStore((s) => s.session?.sessionToken);
 
-  // ── Data fetching ───────────────────────────────────────────────────────
+  // ── Data fetching ───────────────────────────────────────────────────
 
   const fetchRooms = useCallback(async () => {
     setLoading(true);
@@ -121,31 +105,12 @@ export function RoomCleaningPanel() {
     void fetchRooms();
   }, [fetchRooms]);
 
-  // ── Selection handlers (functional setState) ────────────────────────────
-
-  const toggleRoom = useCallback((id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const toggleAll = useCallback(() => {
-    setSelected((prev) => {
-      const allIds = rooms.map((r) => r.id);
-      return prev.size === allIds.length ? new Set<string>() : new Set(allIds);
-    });
-  }, [rooms]);
-
-  // ── Batch clean ─────────────────────────────────────────────────────────
+  // ── Batch clean ─────────────────────────────────────────────────────
 
   const handleCleanSelected = useCallback(async () => {
     if (selected.size === 0) return;
     const ids = [...selected];
 
-    // Optimistic removal
     const previousRooms = rooms;
     setRooms((prev) => prev.filter((r) => !selected.has(r.id)));
     setSelected(new Set());
@@ -159,11 +124,7 @@ export function RoomCleaningPanel() {
       const res = await fetch(getApiUrl('/api/v1/cleaning/batch'), {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          roomIds: ids,
-          targetStatus: 'CLEAN',
-          override: false,
-        }),
+        body: JSON.stringify({ roomIds: ids, targetStatus: 'CLEAN', override: false }),
       });
 
       if (!res.ok) {
@@ -171,7 +132,6 @@ export function RoomCleaningPanel() {
         throw new Error(d.error ?? `HTTP ${res.status}`);
       }
     } catch (err: unknown) {
-      // Rollback
       setRooms(previousRooms);
       setSelected(new Set(ids));
       setError(err instanceof Error ? err.message : 'Transition failed');
@@ -180,14 +140,12 @@ export function RoomCleaningPanel() {
     }
   }, [selected, rooms, token]);
 
-  // ── Derived state (memoised booleans) ───────────────────────────────────
+  // ── Derived state ───────────────────────────────────────────────────
 
-  const allSelected = useMemo(() => rooms.length > 0 && selected.size === rooms.length, [rooms, selected]);
-  const someSelected = useMemo(() => selected.size > 0 && !allSelected, [selected, allSelected]);
   const selectionCount = selected.size;
-  const isEmpty = rooms.length === 0 && !loading;
+  const isEmpty = useMemo(() => rooms.length === 0 && !loading, [rooms, loading]);
 
-  // ── Render ──────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────
 
   return (
     <PanelShell align="top">
@@ -224,120 +182,22 @@ export function RoomCleaningPanel() {
         </p>
       ) : null}
 
-      {/* Content */}
-      {isEmpty ? (
-        <div className="flex flex-col items-center justify-center gap-2 py-12">
-          <span className="text-3xl">✨</span>
-          <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
-            All rooms are clean
-          </p>
-        </div>
-      ) : rooms.length > 0 ? (
+      {/* Table */}
+      {!isEmpty ? (
         <>
-          {/* ── Table ─────────────────────────────────────────────────── */}
-          <div
-            className="mt-4 overflow-hidden rounded-xl border"
-            style={{
-              borderColor: 'var(--color-border-default)',
-              boxShadow: '0 1px 3px 0 rgba(0,0,0,0.06)',
-            }}
-          >
-            <table className="w-full text-left text-sm" style={{ borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--color-surface-overlay)' }}>
-                  <th
-                    className="w-12 px-3 py-3 text-center"
-                    style={{ borderBottom: '1px solid var(--color-border-default)' }}
-                  >
-                    <RowCheckbox
-                      checked={allSelected}
-                      indeterminate={someSelected}
-                      onChange={toggleAll}
-                    />
-                  </th>
-                  {['Room', 'Type', 'Floor', 'Status'].map((col) => (
-                    <th
-                      key={col}
-                      className="px-3 py-3 text-xs font-semibold uppercase tracking-wider"
-                      style={{
-                        color: 'var(--color-text-muted)',
-                        borderBottom: '1px solid var(--color-border-default)',
-                        letterSpacing: '0.08em',
-                      }}
-                    >
-                      {col}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rooms.map((r, idx) => {
-                  const isSelected = selected.has(r.id);
-                  const isOdd = idx % 2 === 1;
-                  return (
-                    <tr
-                      key={r.id}
-                      onClick={() => toggleRoom(r.id)}
-                      className="group"
-                      style={{
-                        cursor: 'pointer',
-                        backgroundColor: isSelected
-                          ? 'color-mix(in oklch, var(--color-accent-primary) 10%, transparent)'
-                          : isOdd
-                            ? 'var(--color-surface-overlay)'
-                            : 'var(--color-surface-card)',
-                        borderBottom: '1px solid var(--color-border-default)',
-                        transition: 'background-color 0.12s ease',
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!isSelected) {
-                          e.currentTarget.style.backgroundColor =
-                            'color-mix(in oklch, var(--color-accent-primary) 5%, transparent)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!isSelected) {
-                          e.currentTarget.style.backgroundColor = isOdd
-                            ? 'var(--color-surface-overlay)'
-                            : 'var(--color-surface-card)';
-                        }
-                      }}
-                    >
-                      <td className="px-3 py-3 text-center">
-                        <RowCheckbox checked={isSelected} onChange={() => toggleRoom(r.id)} />
-                      </td>
-                      <td className="px-3 py-3">
-                        <span
-                          className="text-sm font-bold"
-                          style={{
-                            fontFamily: 'var(--font-display)',
-                            color: 'var(--color-text-primary)',
-                          }}
-                        >
-                          {r.number}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                          {TYPE_LABEL[r.type ?? ''] ?? r.type ?? '—'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                          {r.floor != null ? `Floor ${r.floor}` : '—'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3">
-                        <StatusPill status={r.status} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="mt-4">
+            <DataTable
+              columns={COLUMNS}
+              data={rooms}
+              rowKey={(r) => r.id}
+              selectedKeys={selected}
+              onSelectionChange={setSelected}
+              emptyMessage="All rooms are clean ✨"
+              emptyIcon="✨"
+            />
           </div>
 
-          {/* ── Action Bar ────────────────────────────────────────────── */}
+          {/* Action bar */}
           <div
             className="mt-3 flex items-center justify-between rounded-xl px-4 py-3"
             style={{
@@ -371,6 +231,13 @@ export function RoomCleaningPanel() {
             </Button>
           </div>
         </>
+      ) : !loading ? (
+        <div className="flex flex-col items-center justify-center gap-2 py-12">
+          <span className="text-3xl">✨</span>
+          <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+            All rooms are clean
+          </p>
+        </div>
       ) : null}
     </PanelShell>
   );

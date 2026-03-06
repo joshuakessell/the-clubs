@@ -86,6 +86,16 @@ textarea::placeholder {
   outline-offset: 2px;
 }
 
+/* ── Touch: prevent double-tap zoom delay ────────────── */
+button, a, [role="button"], input, select, textarea, label {
+  touch-action: manipulation;
+}
+
+/* ── Tabular numbers for data columns ────────────────── */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Reduced motion ─────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
