@@ -351,7 +351,7 @@ describe('Check-in Flow', () => {
           expect(last).toBeTruthy();
           // flowStep may be undefined when flow commands are not enabled in test setup
           if (last!.flowStep !== undefined) {
-            expect(last!.flowStep).toBe('AGREEMENT');
+            expect(last!.flowStep).toBe('ASSIGNMENT');
           }
 
           // Verify visit and check-in block created

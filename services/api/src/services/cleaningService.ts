@@ -147,7 +147,7 @@ export async function processCleaningBatch(
          SET status = $1,
              last_status_change = NOW(),
              override_flag = CASE WHEN $2 THEN true ELSE override_flag END,
-             assigned_to_customer_id = CASE WHEN $1 = 'CLEAN' THEN NULL ELSE assigned_to_customer_id END,
+             assigned_to_customer_id = CASE WHEN $1::text = 'CLEAN' THEN NULL ELSE assigned_to_customer_id END,
              updated_at = NOW()
          WHERE id = $3`,
         [toStatus, isOverrideTransition, roomId]
