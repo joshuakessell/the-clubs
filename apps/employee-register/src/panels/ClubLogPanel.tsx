@@ -1,7 +1,9 @@
 import { useEffect, useMemo } from 'react';
-import { Badge, Button, Alert } from '@the-clubs/ui';
-import { useAuthStore } from '@the-clubs/ui';
+import { Badge, Button, Alert, useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../stores/useRegisterStore';
+import { DataTable, type DataTableColumn } from '../components/DataTable';
+
+/* ── Constants ──────────────────────────────────────── */
 
 const DOMAIN_OPTIONS = ['', 'HR', 'SALES', 'CHECKIN', 'CHECKOUT', 'INVENTORY', 'ADMIN'];
 
@@ -10,6 +12,8 @@ const inputStyle: React.CSSProperties = {
   borderColor: 'var(--color-border-default)',
   color: 'var(--color-text-primary)',
 };
+
+/* ── Helpers ────────────────────────────────────────── */
 
 function domainColor(d: string): 'primary' | 'success' | 'warning' | 'error' | 'light' {
   switch (d) {
@@ -41,11 +45,24 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 };
 
 function humanizeEventType(raw: string): string {
-  return EVENT_TYPE_LABELS[raw] ?? raw.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return EVENT_TYPE_LABELS[raw] ?? raw.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-const thStyle: React.CSSProperties = { color: 'var(--color-text-muted)' };
-const tdStyle: React.CSSProperties = { color: 'var(--color-text-secondary)' };
+/* ── Types ──────────────────────────────────────────── */
+
+interface LogItem {
+  id: string;
+  occurredAt: string;
+  eventDomain: string;
+  eventType: string;
+  staffName?: string | null;
+  customerId?: string | null;
+  customerName?: string | null;
+  amount?: number | null;
+  summary?: string;
+}
+
+/* ── Component ──────────────────────────────────────── */
 
 export function ClubLogPanel() {
   const { openCustomerAccount, clubLog } = useRegisterStore();
@@ -54,29 +71,111 @@ export function ClubLogPanel() {
     setQ, setDomain, setCategory, reload, loadMore, nextCursor,
   } = clubLog;
 
-  const rows = useMemo(() => items.slice(0, 600), [items]);
+  const rows = useMemo(() => items.slice(0, 600) as LogItem[], [items]);
 
   const token = useAuthStore((s) => s.session?.sessionToken);
 
-  // Set global auth token for store API calls and trigger reload on mount / filter change
   useEffect(() => {
-    (window as any).__authToken = token;
+    (globalThis as unknown as Record<string, unknown>).__authToken = token;
     void reload();
   }, [token, q, domain, category]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /* ── Column definitions ── */
+  const columns = useMemo<DataTableColumn<LogItem>[]>(() => [
+    {
+      key: 'time',
+      header: 'Time',
+      width: '160px',
+      render: (it) => (
+        <span className="tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+          {new Date(it.occurredAt).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      key: 'domain',
+      header: 'Domain',
+      render: (it) => <Badge color={domainColor(it.eventDomain)} variant="light" size="sm">{it.eventDomain}</Badge>,
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      render: (it) => (
+        <span style={{ color: 'var(--color-text-secondary)' }}>{humanizeEventType(it.eventType)}</span>
+      ),
+    },
+    {
+      key: 'staff',
+      header: 'Staff',
+      render: (it) => (
+        <span style={{ color: 'var(--color-text-secondary)' }}>{it.staffName ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'customer',
+      header: 'Customer',
+      render: (it) => (
+        it.customerId && it.customerName ? (
+          <button
+            type="button"
+            className="text-sm font-bold hover:underline"
+            style={{ color: 'var(--color-accent-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+            onClick={() => openCustomerAccount(it.customerId!, it.customerName!, { autoStart: false, authToken: token })}
+          >
+            {it.customerName}
+          </button>
+        ) : (
+          <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+        )
+      ),
+    },
+    {
+      key: 'amount',
+      header: 'Amount',
+      width: '100px',
+      align: 'right',
+      numeric: true,
+      render: (it) => (
+        <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+          {it.amount != null ? formatCurrency(it.amount) : ''}
+        </span>
+      ),
+    },
+    {
+      key: 'summary',
+      header: 'Summary',
+      render: (it) => (
+        <span className="block max-w-[420px] truncate" style={{ color: 'var(--color-text-secondary)' }}>
+          {it.summary ?? ''}
+        </span>
+      ),
+    },
+  ], [openCustomerAccount, token]);
+
   return (
-    <div className="flex h-full flex-col gap-4 rounded-xl border p-5"
+    <div
+      className="flex h-full flex-col gap-4 rounded-xl border p-5"
       style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
     >
       {/* Filter bar */}
-      <div className="rounded-lg border p-4" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
+      <div
+        className="rounded-lg border p-4"
+        style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}
+      >
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[220px] flex-1">
             <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }} htmlFor="club-log-search">
               Search
             </label>
-            <input id="club-log-search" className="h-11 w-full rounded-lg border px-4 text-sm" style={inputStyle}
-              value={q} placeholder="customer name, order id, visit id, etc" onChange={(e) => setQ(e.target.value)}
+            <input
+              id="club-log-search"
+              name="search"
+              autoComplete="off"
+              className="h-11 w-full rounded-lg border px-4 text-sm"
+              style={inputStyle}
+              value={q}
+              placeholder="customer name, order id, visit id…"
+              onChange={(e) => setQ(e.target.value)}
             />
           </div>
 
@@ -84,8 +183,13 @@ export function ClubLogPanel() {
             <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }} htmlFor="club-log-domain">
               Domain
             </label>
-            <select id="club-log-domain" className="h-11 w-full appearance-none rounded-lg border px-4 text-sm" style={inputStyle}
-              value={domain} onChange={(e) => setDomain(e.target.value)}
+            <select
+              id="club-log-domain"
+              name="domain"
+              className="h-11 w-full appearance-none rounded-lg border px-4 text-sm"
+              style={inputStyle}
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
             >
               {DOMAIN_OPTIONS.map((d) => (
                 <option key={d || 'ALL'} value={d}>{d ? d : 'All Domains'}</option>
@@ -97,8 +201,13 @@ export function ClubLogPanel() {
             <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }} htmlFor="club-log-type">
               Event Type
             </label>
-            <select id="club-log-type" className="h-11 w-full appearance-none rounded-lg border px-4 text-sm" style={inputStyle}
-              value={category} onChange={(e) => setCategory(e.target.value)}
+            <select
+              id="club-log-type"
+              name="eventType"
+              className="h-11 w-full appearance-none rounded-lg border px-4 text-sm"
+              style={inputStyle}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
             >
               <option value="">All Types</option>
               <optgroup label="HR">
@@ -133,52 +242,17 @@ export function ClubLogPanel() {
       </div>
 
       {/* Data table */}
-      <div className="flex-1 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border-default)' }}>
+      <div className="flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
         <div className="h-full overflow-auto">
-          <table className="w-full">
-            <thead className="border-b" style={{ borderColor: 'var(--color-border-default)' }}>
-              <tr className="text-left">
-                <th className="w-[160px] px-4 py-3 text-sm font-medium" style={thStyle}>Time</th>
-                <th className="px-4 py-3 text-sm font-medium" style={thStyle}>Domain</th>
-                <th className="px-4 py-3 text-sm font-medium" style={thStyle}>Type</th>
-                <th className="px-4 py-3 text-sm font-medium" style={thStyle}>Staff</th>
-                <th className="px-4 py-3 text-sm font-medium" style={thStyle}>Customer</th>
-                <th className="w-[100px] px-4 py-3 text-right text-sm font-medium" style={thStyle}>Amount</th>
-                <th className="px-4 py-3 text-sm font-medium" style={thStyle}>Summary</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y" style={{ '--tw-divide-opacity': 1, borderColor: 'var(--color-border-subtle)' } as React.CSSProperties}>
-              {rows.map((it) => (
-                <tr key={it.id} className="transition"
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
-                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                >
-                  <td className="px-4 py-3 text-sm" style={tdStyle}>{new Date(it.occurredAt).toLocaleString()}</td>
-                  <td className="px-4 py-3"><Badge color={domainColor(it.eventDomain)} variant="light" size="sm">{it.eventDomain}</Badge></td>
-                  <td className="px-4 py-3 text-sm" style={tdStyle}>{humanizeEventType(it.eventType)}</td>
-                  <td className="px-4 py-3 text-sm" style={tdStyle}>{it.staffName ?? '—'}</td>
-                  <td className="px-4 py-3">
-                    {it.customerId && it.customerName ? (
-                      <button type="button" className="text-sm font-bold"
-                        style={{ color: 'var(--color-accent-primary)' }}
-                        onClick={() => openCustomerAccount(it.customerId!, it.customerName!, { autoStart: false, authToken: token })}
-                      >
-                        {it.customerName}
-                      </button>
-                    ) : <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>—</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
-                    {it.amount != null ? formatCurrency(it.amount) : ''}
-                  </td>
-                  <td className="max-w-[420px] px-4 py-3 text-sm" style={tdStyle}>{it.summary}</td>
-                </tr>
-              ))}
-
-              {rows.length === 0 && !loading ? (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No log entries found.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
+          <DataTable
+            columns={columns}
+            data={rows}
+            rowKey={(it) => it.id}
+            stickyHeader
+            bare
+            emptyMessage="No log entries found"
+            emptyIcon="📋"
+          />
 
           <div className="flex justify-center p-4">
             {nextCursor ? (

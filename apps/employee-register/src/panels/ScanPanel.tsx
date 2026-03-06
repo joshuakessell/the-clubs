@@ -1,6 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Badge, Spinner } from '@the-clubs/ui';
-import { useAuthStore } from '@the-clubs/ui';
+import { Badge, Spinner, useAuthStore } from '@the-clubs/ui';
 import { getApiUrl } from '@the-clubs/shared';
 import { useRegisterStore } from '../stores/useRegisterStore';
 
@@ -50,7 +49,7 @@ export function ScanPanel() {
   const token = useAuthStore((s) => s.session?.sessionToken);
   const [scanError, setScanError] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
-  const [pendingScanData, setPendingScanData] = useState<any>(null);
+  const [pendingScanData, setPendingScanData] = useState<{ extracted?: Record<string, string> } | null>(null);
   const [isReceiving, setIsReceiving] = useState(false);
 
   /* ── Auto-focus the hidden input when the panel mounts ── */
@@ -251,13 +250,13 @@ export function ScanPanel() {
 
         {/* Error message */}
         {scanError && (
-          <p className="mt-2 text-center text-xs font-medium" style={{ color: 'var(--color-status-error)' }}>
+          <p className="mt-2 text-center text-xs font-medium" style={{ color: 'var(--color-status-error)' }} role="alert">
             {scanError}
           </p>
         )}
 
         {/* Status text */}
-        <p className="mt-3 text-center text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="mt-3 text-center text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }} aria-live="polite">
           {scanReady
             ? scanCaptureSubmitting
               ? 'Processing scan…'
@@ -321,7 +320,7 @@ export function ScanPanel() {
               {candidates.map((c) => (
                 <button
                   key={c.id}
-                  className="flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-all"
+                  className="flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors"
                   style={{
                     backgroundColor: 'var(--color-surface-input)',
                     borderColor: 'var(--color-border-default)',
@@ -359,7 +358,7 @@ export function ScanPanel() {
             </div>
 
             <button
-              className="mt-4 w-full rounded-lg border px-4 py-3 text-center text-sm font-semibold transition-all"
+              className="mt-4 w-full rounded-lg border px-4 py-3 text-center text-sm font-semibold transition-colors"
               style={{
                 backgroundColor: 'var(--color-surface-overlay)',
                 borderColor: 'var(--color-border-default)',
