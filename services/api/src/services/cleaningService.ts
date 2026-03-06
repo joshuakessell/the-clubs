@@ -142,15 +142,16 @@ export async function processCleaningBatch(
       const isOverrideTransition = input.override && validation.ok;
 
       // 4. Update the room status
+      const isClean = toStatus === RoomStatus.CLEAN;
       await client.query(
         `UPDATE rooms
          SET status = $1,
              last_status_change = NOW(),
              override_flag = CASE WHEN $2 THEN true ELSE override_flag END,
-             assigned_to_customer_id = CASE WHEN $1::text = 'CLEAN' THEN NULL ELSE assigned_to_customer_id END,
+             assigned_to_customer_id = CASE WHEN $4 THEN NULL ELSE assigned_to_customer_id END,
              updated_at = NOW()
          WHERE id = $3`,
-        [toStatus, isOverrideTransition, roomId]
+        [toStatus, isOverrideTransition, roomId, isClean]
       );
 
       // 5. Record in cleaning_batch_rooms
