@@ -672,10 +672,14 @@ export async function processAgreementSigning(
     }
 
     // Update session status
-    await client.query(
-      `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
-      [session.id]
-    );
+    // When flow commands are enabled, keep the session active during ASSIGNMENT
+    // so the kiosk shows the room info and the employee can override/complete.
+    if (!isFlowCommandsEnabled()) {
+      await client.query(
+        `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
+        [session.id]
+      );
+    }
 
     return {
       success: true as const,

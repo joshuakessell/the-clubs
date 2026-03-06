@@ -606,7 +606,10 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     const { laneId, customerId, customerName, sessionPayload } = get();
 
     let optimisticCheckin;
-    if (sessionPayload?.status === 'COMPLETED' && sessionPayload.assignedResourceNumber) {
+    // Build optimistic checkin info from the session payload.
+    // With flow commands, the session stays in AWAITING_SIGNATURE during ASSIGNMENT
+    // (status transitions to COMPLETED only after /reset is called below).
+    if (sessionPayload?.assignedResourceNumber) {
       optimisticCheckin = {
         visitId: sessionPayload.sessionId,
         occupancyId: sessionPayload.sessionId,

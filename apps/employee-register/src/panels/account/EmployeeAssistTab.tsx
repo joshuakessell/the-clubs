@@ -17,7 +17,6 @@ import { BackupSelectionStep } from './steps/BackupSelectionStep';
 import { WaitlistDisclaimerStep } from './steps/WaitlistDisclaimerStep';
 import { PaymentStep } from './steps/PaymentStep';
 import { AgreementStep } from './steps/AgreementStep';
-import { AssignmentStep } from './steps/AssignmentStep';
 import { CompleteStep } from './steps/CompleteStep';
 
 export function EmployeeAssistTab() {
@@ -42,7 +41,7 @@ export function EmployeeAssistTab() {
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (cancelled) return;
-        if (data.session && data.session.status === 'ACTIVE') {
+        if (data.session && data.session.status !== 'COMPLETED' && data.session.status !== 'CANCELLED') {
           useRegisterStore.setState({
             currentSessionId: data.session.sessionId,
             customerId: data.session.customerId ?? null,
@@ -99,7 +98,7 @@ function CheckinFlowContent() {
       {flowStep === 'WAITLIST_DISCLAIMER' && <WaitlistDisclaimerStep />}
       {flowStep === 'PAYMENT' && <PaymentStep />}
       {flowStep === 'AGREEMENT' && <AgreementStep />}
-      {flowStep === 'ASSIGNMENT' && <AssignmentStep />}
+      {flowStep === 'ASSIGNMENT' && <CompleteStep />}
       {flowStep === 'COMPLETE' && <CompleteStep />}
     </div>
   );

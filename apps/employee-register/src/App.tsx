@@ -33,7 +33,7 @@ export default function App() {
 
       // Also recover currentSessionId / customerId / customerName when SSE delivers a session
       const p = event.payload;
-      if (p.sessionId && p.status === 'ACTIVE') {
+      if (p.sessionId && p.status !== 'COMPLETED' && p.status !== 'CANCELLED') {
         useRegisterStore.setState({
           currentSessionId: p.sessionId,
           customerId: p.customerId ?? null,
