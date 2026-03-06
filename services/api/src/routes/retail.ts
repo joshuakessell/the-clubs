@@ -61,7 +61,7 @@ export async function retailRoutes(fastify: FastifyInstance): Promise<void> {
             ORDER BY cb.locker_id, cb.starts_at DESC
           ),
           checking_in AS (
-            SELECT
+            SELECT DISTINCT ON (ls.lane_id)
               ls.customer_id,
               c.name as customer_name,
               'CHECKING_IN'::text as resource_type,
@@ -72,6 +72,7 @@ export async function retailRoutes(fastify: FastifyInstance): Promise<void> {
             JOIN customers c ON ls.customer_id = c.id
             WHERE ls.customer_id IS NOT NULL
               AND ls.status NOT IN ('COMPLETED', 'CANCELLED')
+            ORDER BY ls.lane_id, ls.created_at DESC
           )
           SELECT * FROM room_guests
           UNION ALL

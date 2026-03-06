@@ -132,7 +132,8 @@ export function RetailPanel() {
     );
   }, [guests, guestFilter]);
 
-  const checkingInGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'CHECKING_IN'), [filteredGuests]);
+  const currentSessionId = useRegisterStore((s) => s.sessionPayload?.sessionId);
+  const checkingInGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'CHECKING_IN' && g.laneSessionId === currentSessionId), [filteredGuests, currentSessionId]);
   const roomGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'ROOM'), [filteredGuests]);
   const lockerGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'LOCKER'), [filteredGuests]);
 
