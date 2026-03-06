@@ -40,6 +40,8 @@ export function AppLayout() {
   const clearSession = useAuthStore((s) => s.clearSession);
 
   const handleNav = useCallback((tab: NavTab) => {
+    // Close account drawer before navigating
+    useRegisterStore.getState().setAccountDrawerOpen(false);
     setActiveTab(tab);
     // Auto-focus first interactive element in new panel
     requestAnimationFrame(() => {

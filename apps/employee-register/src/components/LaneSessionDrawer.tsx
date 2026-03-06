@@ -52,7 +52,6 @@ export function LaneSessionDrawer() {
     }
   }, [hasActiveProfile]);
 
-  const drawerHeight = `calc(100vh - ${NAVBAR_HEIGHT}px)`;
 
   return (
     <div
@@ -75,15 +74,15 @@ export function LaneSessionDrawer() {
       <div
         style={{
           position: 'absolute',
-          bottom: 0,
+          top: NAVBAR_HEIGHT,
           left: 0,
           right: 0,
-          height: `calc(${drawerHeight} + ${TAB_HEIGHT}px)`,
+          bottom: 0,
           background: 'var(--color-surface-base)',
           borderTop: '1px solid var(--color-border-default)',
           borderRadius: '12px 12px 0 0',
           boxShadow: '0 -8px 32px rgba(0,0,0,0.35)',
-          transform: open ? 'translateY(0)' : `translateY(calc(${drawerHeight} + ${TAB_HEIGHT}px))`,
+          transform: open ? 'translateY(0)' : `translateY(calc(100vh - ${NAVBAR_HEIGHT}px))`,
           transition: 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
           display: 'flex',
           flexDirection: 'column',
