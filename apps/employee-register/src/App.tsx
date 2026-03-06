@@ -42,6 +42,9 @@ export default function App() {
       } else if (p.status === 'COMPLETED' || p.status === 'CANCELLED') {
         useRegisterStore.setState({
           currentSessionId: null,
+          customerId: null,
+          customerName: null,
+          activeCheckinInfo: null,
           sessionPayload: undefined,
         });
       }
