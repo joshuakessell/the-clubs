@@ -43,8 +43,16 @@ export function LaneSessionDrawer() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  const drawerHeight = `calc(100vh - ${NAVBAR_HEIGHT}px)`;
+  // Auto-close the drawer when there is no active profile
+  // (e.g. after check-in completes and state is cleared)
   const hasActiveProfile = Boolean(currentSessionId || customerId);
+  useEffect(() => {
+    if (!hasActiveProfile && open) {
+      setOpen(false);
+    }
+  }, [hasActiveProfile]);
+
+  const drawerHeight = `calc(100vh - ${NAVBAR_HEIGHT}px)`;
 
   return (
     <div
@@ -111,8 +119,8 @@ export function LaneSessionDrawer() {
       </div>
 
       {/* ── Pull tab ── */}
-      {/* Only render pull tab if there's an active profile */}
-      {hasActiveProfile && (
+      {/* Visible when drawer is open (so user can close it) OR there's an active profile */}
+      {(open || hasActiveProfile) && (
         <button
           onClick={() => setOpen(!open)}
           aria-label={open ? 'Close account panel' : 'Open account panel'}
