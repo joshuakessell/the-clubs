@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth, requireReauth } from '../auth/middleware';
+import { idempotencyKey } from '../middleware/idempotency';
 import type { Broadcaster } from '../realtime/broadcaster';
 import { broadcastInventoryUpdate } from '../inventory/broadcast';
 import { registerVisitActiveRoutes } from './visits/active';
@@ -159,7 +160,8 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Creates a new visit and initial 6-hour block.
    */
-  fastify.post<{ Body: CreateVisitInput }>('/v1/visits', async (request, reply) => {
+  fastify.post<{ Body: CreateVisitInput }>('/v1/visits', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+    if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     let body: CreateVisitInput;
 
     try {
@@ -203,7 +205,9 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.post<{ Params: { visitId: string }; Body: RenewVisitInput }>(
     '/v1/visits/:visitId/renew',
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
+      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       let body: RenewVisitInput;
 
       try {
