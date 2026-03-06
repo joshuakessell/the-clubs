@@ -162,21 +162,32 @@ async function main() {
     credentials: true,
   });
 
-  // Register global rate limiting (F-03)
-  // Exclude SSE/WebSocket endpoints — they're long-lived connections, not typical requests.
+  // Register global rate limiting
+  // Global: 100 req/min per IP. SSE/WS/health are exempt (long-lived connections).
+  // Write endpoints (POST/PUT/DELETE) get a tighter 30 req/min limit applied
+  // automatically via the onRoute hook below.
   await fastify.register(rateLimit, {
-    max: 300,
+    max: 100,
     timeWindow: '1 minute',
     allowList: (req) => {
       const url = req.url ?? '';
-      // Exempt long-lived SSE/WS connections and authenticated mutation routes
-      // that are already auth-gated. The low global limit starves these during
-      // bursty demo/reload scenarios.
+      // Exempt long-lived SSE/WS connections and health checks
       return url.startsWith('/v1/realtime/')
-        || url.startsWith('/v1/upgrades/')
-        || url.startsWith('/v1/checkout/')
-        || url.startsWith('/v1/checkin/');
+        || url === '/health';
     },
+  });
+
+  // Tighter rate limit for write endpoints (POST/PUT/DELETE): 30 req/min
+  fastify.addHook('onRoute', (routeOptions) => {
+    const method = routeOptions.method;
+    const methods = Array.isArray(method) ? method : [method];
+    const isWrite = methods.some((m) => ['POST', 'PUT', 'DELETE', 'PATCH'].includes(m));
+    if (isWrite) {
+      routeOptions.config = {
+        ...routeOptions.config,
+        rateLimit: { max: 30, timeWindow: '1 minute' },
+      };
+    }
   });
 
   await fastify.register(websocket);
