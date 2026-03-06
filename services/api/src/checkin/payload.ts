@@ -504,7 +504,7 @@ async function buildLedgerLineItems(
       `SELECT oli.name, oli.total
        FROM order_line_items oli
        JOIN orders o ON o.id = oli.order_id
-       WHERE o.register_session_id = $1
+       WHERE o.metadata_json->>'laneSessionId' = $1
          AND o.status = 'OPEN'`,
       [session.id]
     );

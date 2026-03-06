@@ -60,12 +60,11 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
           return reply.status(404).send({ error: 'No active session found' });
         }
 
-        // Create the order linked to this session
+        // Create the order linked to this session via metadata
         const orderResult = await createOrder(
           {
             customerId: sessionResult.customer_id,
-            registerSessionId: sessionResult.id,
-            metadataJson: { laneId, addedToLedger: true },
+            metadataJson: { laneSessionId: sessionResult.id, laneId, addedToLedger: true },
           },
           request.staff.staffId
         );
