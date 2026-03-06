@@ -67,10 +67,10 @@ export function LaneSessionDrawer() {
       <div
         style={{
           position: 'absolute',
-          bottom: TAB_HEIGHT,
+          bottom: 0,
           left: 0,
           right: 0,
-          height: drawerHeight,
+          height: `calc(${drawerHeight} + ${TAB_HEIGHT}px)`,
           background: 'var(--color-surface-base)',
           borderTop: '1px solid var(--color-border-default)',
           borderRadius: '12px 12px 0 0',
@@ -81,6 +81,7 @@ export function LaneSessionDrawer() {
           flexDirection: 'column',
           overflow: 'hidden',
           pointerEvents: 'auto',
+          paddingBottom: TAB_HEIGHT,
         }}
       >
         {/* Drag handle indicator */}
