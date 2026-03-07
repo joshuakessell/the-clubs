@@ -173,7 +173,6 @@ jobs:
             --paths "/*"
 
       - name: Deploy Office Dashboard
-        if: needs.resolve-env.outputs.environment == 'production'
         run: |
           aws s3 sync apps/office-dashboard/dist/ \
             s3://${{ vars.S3_OFFICE_DASHBOARD }} --delete \

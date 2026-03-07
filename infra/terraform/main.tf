@@ -419,6 +419,7 @@ resource "aws_iam_role_policy" "deploy_spas" {
           [
             "arn:aws:s3:::${var.project_name}-demo-employee-register",
             "arn:aws:s3:::${var.project_name}-demo-customer-kiosk",
+            "arn:aws:s3:::${var.project_name}-demo-office-dashboard",
           ]
         )
       },
@@ -434,6 +435,7 @@ resource "aws_iam_role_policy" "deploy_spas" {
           [
             "arn:aws:s3:::${var.project_name}-demo-employee-register/*",
             "arn:aws:s3:::${var.project_name}-demo-customer-kiosk/*",
+            "arn:aws:s3:::${var.project_name}-demo-office-dashboard/*",
           ]
         )
       },
