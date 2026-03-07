@@ -643,7 +643,7 @@ describe('PIN Login', () => {
 
       expect(response.statusCode).toBe(401);
       const body = JSON.parse(response.body);
-      expect(body.message).toContain('Invalid PIN');
+      expect(body.message).toContain('Invalid credentials');
     });
 
     it('should require re-auth for PIN reset', async () => {
