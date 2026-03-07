@@ -143,29 +143,20 @@ function visitRatePerHour(day: number, hour: number): number {
   return isWeekend ? rate : Math.round(rate / 2);
 }
 
-/** How long a customer stays (weighted distribution) */
-function sampleStayMinutes(rng: () => number): number {
-  return pickWeighted(rng, [
-    { item: 120, weight: 0.06 },
-    { item: 240, weight: 0.18 },
-    { item: 360, weight: 0.62 },
-    { item: 480, weight: 0.1 },
-    { item: 720, weight: 0.04 },
-  ]);
-}
+/** Fixed checkout window: always 6 hours from checkin */
+const STAY_DURATION_MINUTES = 360;
 
-/** Minutes early/late for checkout (positive = early, negative = late) */
-function sampleCheckoutDelta(rng: () => number): number {
+/** Minutes early departure (positive = leaves early, 0 = stays full 6 hours).
+ *  Account checkout time always shows the full 6-hour mark. */
+function sampleEarlyDepartureMinutes(rng: () => number): number {
   return pickWeighted(rng, [
     { item: 0, weight: 0.55 },
-    { item: 5, weight: 0.18 },
-    { item: 10, weight: 0.1 },
-    { item: 30, weight: 0.07 },
-    { item: 60, weight: 0.04 },
-    { item: 120, weight: 0.02 },
-    { item: -5, weight: 0.02 },
-    { item: -15, weight: 0.01 },
-    { item: -30, weight: 0.01 },
+    { item: 15, weight: 0.12 },
+    { item: 30, weight: 0.1 },
+    { item: 60, weight: 0.08 },
+    { item: 90, weight: 0.06 },
+    { item: 120, weight: 0.05 },
+    { item: 180, weight: 0.04 },
   ]);
 }
 
@@ -577,7 +568,6 @@ async function simulateVisits(params: {
   let roomIdx = 0;
   let created = 0;
   let orderSeed = Math.floor(from.getTime() / 60000) % 100000;
-  const lateCountByNight = new Map<string, number>();
 
   for (let i = 0; i < intervals && created < maxVisits; i++) {
     const slotStart = new Date(from.getTime() + i * HOUR_MS);
@@ -591,11 +581,12 @@ async function simulateVisits(params: {
       let start = ceilTo15Min(new Date(slotStart.getTime() + offsetMs));
       if (start > to) continue;
 
-      const stayMin = sampleStayMinutes(rng);
-      const scheduledEnd = ceilTo15Min(new Date(start.getTime() + stayMin * 60 * 1000));
+      // Scheduled checkout: always 6 hours from checkin, rounded up to nearest 15 min
+      const scheduledEnd = ceilTo15Min(new Date(start.getTime() + STAY_DURATION_MINUTES * 60 * 1000));
       if (scheduledEnd <= start) continue;
-      const checkoutDelta = sampleCheckoutDelta(rng);
-      const end = new Date(scheduledEnd.getTime() - checkoutDelta * 60 * 1000);
+      // Some guests leave early; actual departure may be before the scheduled checkout
+      const earlyMins = sampleEarlyDepartureMinutes(rng);
+      const end = earlyMins > 0 ? new Date(scheduledEnd.getTime() - earlyMins * 60 * 1000) : scheduledEnd;
       if (end <= start || end > to) continue;
 
       // --- Pick customer (80% returning, 20% new) ---
@@ -761,18 +752,8 @@ async function simulateVisits(params: {
 
       // --- Checkout Request for room visits ---
       if (roomId) {
-        const isLate = checkoutDelta < -15;
-        const lateMins = isLate ? Math.abs(checkoutDelta) - 15 : 0;
-        const lateFee = Math.ceil(lateMins / 15) * 15;
-        await insertCheckoutRequest(client, { blockId, customerId: customer.id, lateMins, lateFee, at: end });
-        if (isLate && lateMins > 0) {
-          const night = nightKey(end);
-          const cnt = lateCountByNight.get(night) ?? 0;
-          if (cnt < 2) {
-            lateCountByNight.set(night, cnt + 1);
-            await insertLateCheckout(client, { blockId, visitId, customerId: customer.id, lateMins, feeAmount: lateFee, banApplied: lateMins >= 60, at: end, staff, to, rng });
-          }
-        }
+        // With a fixed 6-hour checkout window, guests are never late
+        await insertCheckoutRequest(client, { blockId, customerId: customer.id, lateMins: 0, lateFee: 0, at: end });
       }
 
       // --- Customer Notes (~10% general, ~6% late checkout, ~5% feedback) ---
@@ -1138,9 +1119,9 @@ async function checkoutActiveVisits(client: DbClient, p: {
 
   for (const row of res.rows) {
     const scheduledEnd = new Date(row.scheduled_end);
-    const delta = sampleCheckoutDelta(rng);             // +ve = early, -ve = late
-    let actualEnd = new Date(scheduledEnd.getTime() - delta * 60 * 1000);
-    // Never set a future checkout time, and never before scheduledEnd - 2h
+    const earlyMins = sampleEarlyDepartureMinutes(rng);
+    let actualEnd = earlyMins > 0 ? new Date(scheduledEnd.getTime() - earlyMins * 60 * 1000) : new Date(scheduledEnd);
+    // Never set a future checkout time
     if (actualEnd > p.now) actualEnd = p.now;
     if (actualEnd <= scheduledEnd) actualEnd = new Date(scheduledEnd); // at-minimum on-time
 
