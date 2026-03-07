@@ -62,6 +62,8 @@ export function StaffView() {
       {/* Toast notification */}
       {toast && (
         <div
+          role="status"
+          aria-live="polite"
           className="fixed left-1/2 top-1/2 z-[10000] -translate-x-1/2 -translate-y-1/2 rounded-xl border px-8 py-5 text-center text-sm font-medium shadow-2xl"
           style={{
             backgroundColor: 'var(--color-surface-raised)',

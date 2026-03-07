@@ -107,6 +107,10 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden" style={{ backgroundColor: 'var(--color-surface-base)' }}>
+      {/* Skip link for keyboard/screen-reader users */}
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:rounded-lg focus:bg-[var(--color-surface-raised)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold" style={{ color: 'var(--color-accent-primary)' }}>
+        Skip to main content
+      </a>
       <TopNavbar
         activeTab={activeTab}
         onNavigate={handleNav}
@@ -118,11 +122,12 @@ export function AppLayout() {
       <KioskDrawer />
       <LaneSessionDrawer />
 
-      <main className="flex flex-col flex-1 min-h-0 overflow-hidden p-4" data-main-content>
+      <main id="main-content" className="flex flex-col flex-1 min-h-0 overflow-hidden p-4" data-main-content>
         <ActivePanel />
       </main>
 
-      {/* Global toast */}
+      {/* Global toast — aria-live for screen readers */}
+      <div aria-live="polite" aria-atomic="true">
       {visibleToast && (
         <div
           className="fixed top-4 left-1/2 z-[9999] -translate-x-1/2 animate-[slideDown_0.25s_ease-out]"
@@ -152,6 +157,7 @@ export function AppLayout() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
