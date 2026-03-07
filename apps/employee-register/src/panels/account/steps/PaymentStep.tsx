@@ -123,7 +123,7 @@ export function PaymentStep() {
                 value={splitCashDollars}
                 onChange={(e) => setSplitCashDollars(Math.round(parseFloat(e.target.value || '0')))}
                 className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-semibold"
-                style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: '#1f2937' }}
+                style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               />
             </div>
             <div className="flex-1">
