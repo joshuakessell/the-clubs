@@ -114,6 +114,8 @@ interface RegisterState {
 
   /* ── Misc ──────────────────────────────────── */
   isSubmitting: boolean;
+  refreshRentalsTrigger: number;
+  triggerRentalsRefresh: () => void;
 
   /* ── Club Log ──────────────────────────────── */
   clubLog: {
@@ -665,6 +667,8 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
 
   /* Misc */
   isSubmitting: false,
+  refreshRentalsTrigger: 0,
+  triggerRentalsRefresh: () => set((s) => ({ refreshRentalsTrigger: s.refreshRentalsTrigger + 1 })),
 
   /* Club Log */
   clubLog: {

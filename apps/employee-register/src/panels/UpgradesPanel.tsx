@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
+import { useRegisterStore } from '../stores/useRegisterStore';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
 import { StatusDot } from '../components/StatusDot';
@@ -432,11 +433,13 @@ export function UpgradesPanel() {
     }
   }, [headers]);
 
+  const refreshRentalsTrigger = useRegisterStore((s) => s.refreshRentalsTrigger);
+
   useEffect(() => {
     void fetchData();
     const id = setInterval(() => void fetchData(), POLL_INTERVAL);
     return () => clearInterval(id);
-  }, [fetchData]);
+  }, [fetchData, refreshRentalsTrigger]);
 
   /* ── Offer room ── */
   const handleOffer = useCallback(async (entry: WaitlistEntry) => {

@@ -452,6 +452,7 @@ export function CheckoutPanelContent() {
         throw new Error((d as Record<string, string>).error ?? `HTTP ${res.status}`);
       }
       // Remove and select next
+        useRegisterStore.getState().triggerRentalsRefresh();
         const idx = candidates.findIndex((c) => c.occupancyId === occupancyId);
         const next = candidates.filter((c) => c.occupancyId !== occupancyId);
         if (next.length > 0) {

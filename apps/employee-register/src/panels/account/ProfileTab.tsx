@@ -47,6 +47,7 @@ async function performCheckout(
   }
 
   const dest = returnTab;
+  useRegisterStore.getState().triggerRentalsRefresh();
   useRegisterStore.setState({
     customerId: null,
     customerName: null,
