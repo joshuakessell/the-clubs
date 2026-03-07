@@ -27,7 +27,6 @@ export function LaneSessionDrawer() {
   // being caught as both "toggle open" and "outside click to close".
   useEffect(() => {
     if (!open) return;
-    let rafId: number;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       // Don't close if the click is on the drawer OR the pull tab
@@ -37,7 +36,7 @@ export function LaneSessionDrawer() {
     };
     // Delay listener registration by one animation frame so the current
     // click/mousedown event finishes propagating before we start listening.
-    rafId = requestAnimationFrame(() => {
+    const rafId = requestAnimationFrame(() => {
       document.addEventListener('mousedown', handler);
     });
     return () => {
