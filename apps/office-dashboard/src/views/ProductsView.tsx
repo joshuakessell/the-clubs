@@ -66,8 +66,8 @@ export function ProductsView() {
         {showCreate && (
           <div className="mt-4 flex items-end gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-input)' }}>
             <div className="flex-1">
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Name</label>
-              <input className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              <label htmlFor="productName" className="mb-1 block text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Name</label>
+              <input id="productName" className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
                 placeholder="e.g. Energy Drink" value={newName} onChange={(e) => setNewName(e.target.value)} />
               {newName && (
@@ -77,8 +77,8 @@ export function ProductsView() {
               )}
             </div>
             <div className="w-28">
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Price ($)</label>
-              <input className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+              <label htmlFor="productPrice" className="mb-1 block text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Price ($)</label>
+              <input id="productPrice" className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
                 placeholder="0.00" type="number" step="0.01" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} />
             </div>
@@ -87,9 +87,10 @@ export function ProductsView() {
         )}
 
         <input
-          className="mt-4 w-full rounded-lg border px-3 py-2 text-sm outline-none"
+          className="mt-4 w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
           style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
-          placeholder="Filter products..."
+          placeholder="Filter products…"
+          aria-label="Filter products"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />

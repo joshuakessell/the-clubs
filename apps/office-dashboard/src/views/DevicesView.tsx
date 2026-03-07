@@ -51,12 +51,12 @@ export function DevicesView() {
 
         {showAdd && (
           <div className="mt-4 grid grid-cols-3 gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-input)' }}>
-            <input className="rounded-lg border px-3 py-2 text-sm outline-none"
+            <input className="rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
-              placeholder="Device ID" value={newId} onChange={(e) => setNewId(e.target.value)} />
-            <input className="rounded-lg border px-3 py-2 text-sm outline-none"
+              placeholder="Device ID" aria-label="Device ID" value={newId} onChange={(e) => setNewId(e.target.value)} />
+            <input className="rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
-              placeholder="Display Name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              placeholder="Display Name" aria-label="Display Name" value={newName} onChange={(e) => setNewName(e.target.value)} />
             <Button size="sm" onClick={handleAdd}>Add</Button>
           </div>
         )}

@@ -808,7 +808,7 @@ export function ScheduleView() {
             <div className="mb-4">
               <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Reason (optional)</label>
               <textarea
-                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
                 rows={3}
                 value={dayOffReason}
@@ -847,7 +847,7 @@ export function ScheduleView() {
             <div className="mb-4 rounded-lg p-4" style={{ backgroundColor: 'var(--color-surface-base)' }}>
               <label className="mb-2 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Select your shift to trade:</label>
               <select
-                className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
                 value={tradeSelectedShiftId}
                 onChange={(e) => setTradeSelectedShiftId(e.target.value)}
@@ -926,7 +926,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: {
           {/* Employee */}
           <div>
             <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Employee</label>
-            <select className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            <select className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
               {staffList.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -936,7 +936,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: {
           {/* Shift code */}
           <div>
             <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Shift</label>
-            <select className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            <select className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={shiftCode} onChange={(e) => setShiftCode(e.target.value as 'A' | 'B' | 'C')}>
               <option value="A">{SHIFT_LABELS.A}</option>
@@ -948,7 +948,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: {
           {/* Notes */}
           <div>
             <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Notes</label>
-            <input className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+            <input className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes..." />
           </div>

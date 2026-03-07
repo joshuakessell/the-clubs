@@ -91,11 +91,12 @@ export function StaffView() {
 
         {showCreate && (
           <div className="mt-4 grid grid-cols-3 gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-input)' }}>
-            <input className="rounded-lg border px-3 py-2 text-sm outline-none"
+            <input className="rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
-              placeholder="Name" value={newName} onChange={(e) => setNewName(e.target.value)} />
-            <select className="rounded-lg border px-3 py-2 text-sm outline-none"
+              placeholder="Name" aria-label="Staff member name" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <select className="rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+              aria-label="Staff role"
               value={newRole} onChange={(e) => setNewRole(e.target.value as 'STAFF' | 'ADMIN')}>
               <option value="STAFF">STAFF</option>
               <option value="ADMIN">ADMIN</option>

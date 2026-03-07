@@ -476,11 +476,13 @@ export function KioskMirrorView({ sessionPayload, laneId }: Readonly<KioskMirror
 
       {/* Animations */}
       <style>{`
-        @keyframes kioskMirrorPulse {
-          50% { opacity: 0.5; }
-        }
-        @keyframes kioskMirrorSpin {
-          to { transform: rotate(360deg); }
+        @media (prefers-reduced-motion: no-preference) {
+          @keyframes kioskMirrorPulse {
+            50% { opacity: 0.5; }
+          }
+          @keyframes kioskMirrorSpin {
+            to { transform: rotate(360deg); }
+          }
         }
       `}
       </style>
