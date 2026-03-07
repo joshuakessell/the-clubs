@@ -3,6 +3,9 @@
 
 -- 1. cleaning_batches: completed_at must be >= started_at
 ALTER TABLE cleaning_batches
+  DROP CONSTRAINT IF EXISTS cleaning_batches_completed_after_started;
+
+ALTER TABLE cleaning_batches
   ADD CONSTRAINT cleaning_batches_completed_after_started
   CHECK (completed_at IS NULL OR completed_at >= started_at);
 
