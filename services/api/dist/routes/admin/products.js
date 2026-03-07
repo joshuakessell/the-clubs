@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerAdminProductRoutes = registerAdminProductRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
+const idempotency_1 = require("../../middleware/idempotency");
 const db_1 = require("../../db");
 // ---------------------------------------------------------------------------
 // Schemas
@@ -90,7 +91,7 @@ function registerAdminProductRoutes(fastify) {
     /**
      * POST /v1/admin/products
      */
-    fastify.post('/v1/admin/products', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/admin/products', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;

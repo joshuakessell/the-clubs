@@ -2,13 +2,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinMembershipRoutes = registerCheckinMembershipRoutes;
 const middleware_1 = require("../../auth/middleware");
+const idempotency_1 = require("../../middleware/idempotency");
 const kioskToken_1 = require("../../auth/kioskToken");
 const schemas_1 = require("../../checkin/schemas");
 const utils_1 = require("../../checkin/utils");
 const membershipService_1 = require("../../services/membershipService");
 function registerCheckinMembershipRoutes(fastify) {
     // POST /v1/checkin/lane/:laneId/membership-purchase-intent
-    fastify.post('/v1/checkin/lane/:laneId/membership-purchase-intent', { preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff] }, async (request, reply) => {
+    fastify.post('/v1/checkin/lane/:laneId/membership-purchase-intent', { preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff, idempotency_1.idempotencyKey] }, async (request, reply) => {
         const { laneId } = request.params;
         const parsed = schemas_1.MembershipPurchaseIntentSchema.safeParse(request.body);
         if (!parsed.success)
@@ -28,7 +29,7 @@ function registerCheckinMembershipRoutes(fastify) {
         }
     });
     // POST /v1/checkin/lane/:laneId/membership-choice
-    fastify.post('/v1/checkin/lane/:laneId/membership-choice', { preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff] }, async (request, reply) => {
+    fastify.post('/v1/checkin/lane/:laneId/membership-choice', { preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff, idempotency_1.idempotencyKey] }, async (request, reply) => {
         const { laneId } = request.params;
         const parsed = schemas_1.MembershipChoiceSchema.safeParse(request.body);
         if (!parsed.success)
@@ -48,7 +49,7 @@ function registerCheckinMembershipRoutes(fastify) {
         }
     });
     // POST /v1/checkin/lane/:laneId/complete-membership-purchase
-    fastify.post('/v1/checkin/lane/:laneId/complete-membership-purchase', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkin/lane/:laneId/complete-membership-purchase', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const { laneId } = request.params;

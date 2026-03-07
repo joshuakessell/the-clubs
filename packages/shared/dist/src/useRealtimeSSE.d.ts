@@ -12,6 +12,15 @@ export interface UseRealtimeSSEOptions {
     /** Heartbeat timeout in ms (default: 65000). If no message or heartbeat arrives
      *  within this window, we close and let EventSource auto-reconnect. */
     heartbeatTimeoutMs?: number;
+    /** Fired when a reconnection occurs (transition from disconnected to connected).
+     *  Ideal for fetching a fresh state snapshot to prevent out-of-sync holes. */
+    onReconnect?: () => void;
+    /**
+     * Provides monotonic clock guarantees.
+     * If true, events with timestamps strictly older than the last seen event are dropped,
+     * preventing out-of-order execution.
+     */
+    enforceMonotonicClock?: boolean;
 }
 export interface UseRealtimeSSEResult {
     connected: boolean;
@@ -27,5 +36,5 @@ export interface UseRealtimeSSEResult {
  * Events are parsed through `safeParseRealtimeEvent` and forwarded
  * to the caller via `onEvent`.
  */
-export declare function useRealtimeSSE({ url, onEvent, authParams, enabled, heartbeatTimeoutMs, }: UseRealtimeSSEOptions): UseRealtimeSSEResult;
+export declare function useRealtimeSSE({ url, onEvent, authParams, enabled, heartbeatTimeoutMs, onReconnect, enforceMonotonicClock, }: UseRealtimeSSEOptions): UseRealtimeSSEResult;
 //# sourceMappingURL=useRealtimeSSE.d.ts.map

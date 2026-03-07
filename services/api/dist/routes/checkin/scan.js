@@ -4,6 +4,7 @@ exports.registerCheckinScanRoutes = registerCheckinScanRoutes;
 const zod_1 = require("zod");
 const shared_1 = require("@the-clubs/shared");
 const middleware_1 = require("../../auth/middleware");
+const idempotency_1 = require("../../middleware/idempotency");
 const payload_1 = require("../../checkin/payload");
 const schemas_1 = require("../../checkin/schemas");
 const utils_1 = require("../../checkin/utils");
@@ -14,7 +15,7 @@ function registerCheckinScanRoutes(fastify) {
     /**
      * POST /v1/checkin/scan — Server-side scan normalization and customer matching.
      */
-    fastify.post('/v1/checkin/scan', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkin/scan', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;
@@ -49,7 +50,7 @@ function registerCheckinScanRoutes(fastify) {
     /**
      * POST /v1/checkin/lane/:laneId/scan-id — ID scan (PDF417) to identify customer and start/update lane session.
      */
-    fastify.post('/v1/checkin/lane/:laneId/scan-id', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkin/lane/:laneId/scan-id', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;

@@ -13,6 +13,7 @@ const db_1 = require("../db");
 const shared_1 = require("@the-clubs/shared");
 const auditLog_1 = require("../audit/auditLog");
 const customerActivityLog_1 = require("../activity/customerActivityLog");
+const clubEventLog_1 = require("../activity/clubEventLog");
 function toNumber(value) {
     if (value === null || value === undefined)
         return undefined;
@@ -162,19 +163,19 @@ async function logUpgradeStarted(result, staff) {
 }
 async function completeUpgrade(waitlistId, paymentIntentId, staff) {
     return (0, db_1.serializableTransaction)(async (client) => {
-        const intentResult = await client.query(`SELECT * FROM payment_intents WHERE id = $1`, [paymentIntentId]);
+        const intentResult = await client.query(`SELECT id, amount, status, quote_json FROM payment_intents WHERE id = $1`, [paymentIntentId]);
         if (intentResult.rows.length === 0)
             throw { statusCode: 404, message: 'Payment intent not found' };
         const intent = intentResult.rows[0];
         if (intent.status !== 'PAID')
             throw { statusCode: 400, message: `Payment must be PAID (current: ${intent.status})` };
-        const waitlistResult = await client.query(`SELECT * FROM waitlist WHERE id = $1 FOR UPDATE`, [waitlistId]);
+        const waitlistResult = await client.query(`SELECT id, visit_id, checkin_block_id, desired_tier, backup_tier, status FROM waitlist WHERE id = $1 FOR UPDATE`, [waitlistId]);
         if (waitlistResult.rows.length === 0)
             throw { statusCode: 404, message: 'Waitlist entry not found' };
         const waitlist = waitlistResult.rows[0];
         if (waitlist.status !== 'OFFERED')
             throw { statusCode: 400, message: `Waitlist entry must be OFFERED (current: ${waitlist.status})` };
-        const blockResult = await client.query(`SELECT * FROM checkin_blocks WHERE id = $1 FOR UPDATE`, [waitlist.checkin_block_id]);
+        const blockResult = await client.query(`SELECT id, visit_id, room_id, locker_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = $1 FOR UPDATE`, [waitlist.checkin_block_id]);
         if (blockResult.rows.length === 0)
             throw { statusCode: 404, message: 'Check-in block not found' };
         const block = blockResult.rows[0];
@@ -183,7 +184,7 @@ async function completeUpgrade(waitlistId, paymentIntentId, staff) {
         if (!quote.newRoomId)
             throw { statusCode: 400, message: 'Room ID not found in payment intent (upgrade must be fulfilled first)' };
         const newRoomId = quote.newRoomId;
-        const newRoomResult = await client.query(`SELECT * FROM rooms WHERE id = $1 FOR UPDATE`, [newRoomId]);
+        const newRoomResult = await client.query(`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [newRoomId]);
         if (newRoomResult.rows.length === 0)
             throw { statusCode: 404, message: 'New room not found' };
         const newRoom = newRoomResult.rows[0];
@@ -209,8 +210,9 @@ async function completeUpgrade(waitlistId, paymentIntentId, staff) {
             oldValue: { oldResourceId, oldResourceType, oldRentalType: block.rental_type },
             newValue: { newRoomId, newRoomNumber: newRoom.number, newRentalType: waitlist.desired_tier, paymentIntentId, blockEndsAt: block.ends_at.toISOString() },
         });
-        const customerIdRow = await client.query(`SELECT customer_id FROM visits WHERE id = $1 LIMIT 1`, [waitlist.visit_id]);
+        const customerIdRow = await client.query(`SELECT v.customer_id, c.name FROM visits v JOIN customers c ON c.id = v.customer_id WHERE v.id = $1 LIMIT 1`, [waitlist.visit_id]);
         const customerId = customerIdRow.rows[0].customer_id;
+        const customerName = customerIdRow.rows[0].name;
         await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
             customerId, actionType: 'UPGRADE_COMPLETED', actionCategory: 'UPGRADE', sourceApp: 'EMPLOYEE_REGISTER',
             actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
@@ -218,6 +220,29 @@ async function completeUpgrade(waitlistId, paymentIntentId, staff) {
             metadata: { visitId: waitlist.visit_id, waitlistId, paymentIntentId, newRoomId, newRoomNumber: newRoom.number },
             dedupeKey: `ACT:UPGRADE_COMPLETED:${waitlistId}`,
             searchParts: [waitlistId, paymentIntentId, newRoom.number],
+        });
+        await (0, clubEventLog_1.insertClubEvent)(client, {
+            eventType: 'UPGRADE_PAID',
+            eventDomain: 'SALES',
+            sourceApp: 'EMPLOYEE_REGISTER',
+            staffId: staff.staffId,
+            staffName: staff.name,
+            customerId,
+            customerName,
+            visitId: waitlist.visit_id,
+            amount: upgradeAmount ?? 0,
+            summary: `Upgrade completed: ${block.rental_type} → ${waitlist.desired_tier} (Room ${newRoom.number})`,
+            metadata: {
+                waitlistId,
+                paymentIntentId,
+                fromTier: block.rental_type,
+                toTier: waitlist.desired_tier,
+                newRoomId,
+                newRoomNumber: newRoom.number,
+                upgradeFee: upgradeAmount,
+            },
+            searchParts: [customerName, waitlistId, newRoom.number],
+            dedupeKey: `CLUB:UPGRADE_PAID:${waitlistId}`,
         });
         return {
             waitlistId, success: true, oldResourceId, oldResourceType,

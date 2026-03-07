@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, Suspense } from 'react';
+import useSWR from 'swr';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../stores/useRegisterStore';
@@ -16,36 +17,26 @@ import { CustomerNotesBar } from './account/CustomerNotesBar';
  *  - Checked in (from Rentals) → Profile + Charges (2 columns)
  *  - Checking in (active session) → Profile + Assist + Charges (3 columns)
  */
-export function AccountPanel() {
+const getFetcher = async ([url, token]: [string, string?]) => {
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};
+
+export function AccountPanelContent() {
   const { currentSessionId, customerId, customerName, activeCheckinInfo, laneId } = useRegisterStore();
   const token = useAuthStore((s) => s.session?.sessionToken);
   const [resuming, setResuming] = useState(false);
-  const [hasLiveSession, setHasLiveSession] = useState(false);
 
   // Auto-check for an active session on this lane when no customer is selected
   const noCustomer = !currentSessionId && !customerId && !customerName;
-  useEffect(() => {
-    if (!noCustomer || !laneId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch(
-          getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`),
-          { headers },
-        );
-        if (res.ok && !cancelled) {
-          const data = await res.json();
-          const s = data.session;
-          setHasLiveSession(!!s && s.status !== 'COMPLETED' && s.status !== 'CANCELLED');
-        }
-      } catch {
-        // Non-critical
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [noCustomer, laneId, token]);
+  const sessionUrl = (noCustomer && laneId) ? getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`) : null;
+  
+  const { data, mutate } = useSWR([sessionUrl, token], getFetcher, { suspense: true, revalidateOnFocus: false });
+  const fetchedSession = data?.session;
+  const hasLiveSession = !!fetchedSession && fetchedSession.status !== 'COMPLETED' && fetchedSession.status !== 'CANCELLED';
 
   const handleResumeSession = async () => {
     if (!laneId) return;
@@ -58,8 +49,8 @@ export function AccountPanel() {
         { headers },
       );
       if (res.ok) {
-        const data = await res.json();
-        const s = data.session;
+        const d = await res.json();
+        const s = d.session;
         const isLive = s && s.status !== 'COMPLETED' && s.status !== 'CANCELLED';
         if (isLive) {
           useRegisterStore.setState({
@@ -69,7 +60,7 @@ export function AccountPanel() {
             sessionPayload: s,
           });
         } else {
-          setHasLiveSession(false);
+          void mutate(); // Refetch standard route to align states
           useRegisterStore.setState({
             successToastMessage: 'No active session found on this lane.',
           });
@@ -201,5 +192,19 @@ return (
       </div>
     )}
   </PanelShell>
+  );
+}
+
+export function AccountPanel() {
+  return (
+    <Suspense fallback={
+      <PanelShell align="top" scroll="hidden">
+        <div className="flex flex-col items-center justify-center h-full opacity-50">
+          <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>Loading account profile...</p>
+        </div>
+      </PanelShell>
+    }>
+      <AccountPanelContent />
+    </Suspense>
   );
 }

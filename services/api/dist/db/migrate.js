@@ -83,12 +83,12 @@ function extractUpSql(content) {
     // Find the up/down markers
     const downIdx = content.search(/^-- down migration/im);
     let upSql;
-    if (downIdx !== -1) {
-        upSql = content.substring(0, downIdx);
-    }
-    else {
+    if (downIdx === -1) {
         // No down marker — the entire file is the up migration
         upSql = content;
+    }
+    else {
+        upSql = content.substring(0, downIdx);
     }
     // Strip the leading `-- up migration` marker if present
     upSql = upSql.replace(/^-- up migration\s*/im, '');
@@ -112,7 +112,7 @@ async function runPendingMigrations() {
     const files = node_fs_1.default
         .readdirSync(MIGRATIONS_DIR)
         .filter((f) => f.endsWith('.sql') && !f.startsWith('_'))
-        .sort(); // lexicographic sort = chronological for YYYYMMDD prefixes
+        .sort((a, b) => a.localeCompare(b)); // chronological for YYYYMMDD prefixes
     const pending = files.filter((f) => !appliedSet.has(f));
     if (pending.length === 0) {
         console.log('[migrate] Schema is up to date.');

@@ -117,44 +117,57 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                     ]);
                     // Update session status
                     await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [session.id]);
-                    // Activity event: PAYMENT_COMPLETED
+                    // Activity event + spend ledger: non-critical, must not roll back payment
                     if (session.customer_id) {
-                        await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
-                            customerId: session.customer_id,
-                            actionType: 'PAYMENT_COMPLETED',
-                            actionCategory: 'PAYMENT',
-                            sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
-                            actorType: request.staff ? 'STAFF' : 'CUSTOMER',
-                            actorStaffId: staffId,
-                            actorStaffName: request.staff?.name ?? null,
-                            summary: `Payment of $${amount.toFixed(2)} ${paymentMethod}`,
-                            metadata: {
-                                laneId,
-                                laneSessionId: session.id,
-                                paymentIntentId: intent.id,
-                                paymentMethod,
-                                amount: amount,
-                            },
-                            dedupeKey: `ACT:PAYMENT_COMPLETED:${intent.id}`,
-                        });
-                        // Spend ledger: RENTAL_FEE (check-in fee paid)
-                        await client.query(`INSERT INTO customer_spend_ledger_entries
-                   (occurred_at, customer_id, visit_id, entry_type, amount, currency,
-                    source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
-                 VALUES
-                   (NOW(), $1::uuid, NULL, 'RENTAL_FEE', $2::bigint, 'USD',
-                    $3, $4, $5::uuid, $6, $7, $8::jsonb, $9)
-                 ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, [
-                            session.customer_id,
-                            amount,
-                            request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
-                            request.staff ? 'STAFF' : 'CUSTOMER',
-                            staffId,
-                            request.staff?.name ?? null,
-                            `Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`,
-                            { paymentIntentId: intent.id, paymentMethod, laneSessionId: session.id },
-                            `LEDGER:RENTAL_FEE:${intent.id}`,
-                        ]);
+                        try {
+                            await client.query('SAVEPOINT activity_logging');
+                            await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+                                customerId: session.customer_id,
+                                actionType: 'PAYMENT_COMPLETED',
+                                actionCategory: 'PAYMENT',
+                                sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
+                                actorType: request.staff ? 'STAFF' : 'CUSTOMER',
+                                actorStaffId: staffId,
+                                actorStaffName: request.staff?.name ?? null,
+                                summary: `Payment of $${amount.toFixed(2)} ${paymentMethod}`,
+                                metadata: {
+                                    laneId,
+                                    laneSessionId: session.id,
+                                    paymentIntentId: intent.id,
+                                    paymentMethod,
+                                    amount: amount,
+                                },
+                                dedupeKey: `ACT:PAYMENT_COMPLETED:${intent.id}`,
+                            });
+                            // Spend ledger: RENTAL_FEE (check-in fee paid)
+                            // Look up the active visit so the ledger entry is linked to the visit
+                            const visitRow = await client.query(`SELECT id FROM visits WHERE customer_id = $1 AND checked_out_at IS NULL ORDER BY checked_in_at DESC LIMIT 1`, [session.customer_id]);
+                            const activeVisitId = visitRow.rows[0]?.id ?? null;
+                            const amountInt = Math.round(amount);
+                            await client.query(`INSERT INTO customer_spend_ledger_entries
+                     (occurred_at, customer_id, visit_id, entry_type, amount, currency,
+                      source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+                   VALUES
+                     (NOW(), $1::uuid, $2::uuid, 'RENTAL_FEE', $3::bigint, 'USD',
+                      $4, $5, $6::uuid, $7, $8, $9::jsonb, $10)
+                   ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, [
+                                session.customer_id,
+                                activeVisitId,
+                                amountInt,
+                                request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
+                                request.staff ? 'STAFF' : 'CUSTOMER',
+                                staffId,
+                                request.staff?.name ?? null,
+                                `Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`,
+                                { paymentIntentId: intent.id, paymentMethod, laneSessionId: session.id },
+                                `LEDGER:RENTAL_FEE:${intent.id}`,
+                            ]);
+                            await client.query('RELEASE SAVEPOINT activity_logging');
+                        }
+                        catch (activityErr) {
+                            await client.query('ROLLBACK TO SAVEPOINT activity_logging');
+                            request.log.warn(activityErr, 'Non-critical: failed to log payment activity/ledger');
+                        }
                     }
                 }
                 else {
@@ -169,25 +182,33 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                  last_payment_decline_at = NOW(),
                  updated_at = NOW()
              WHERE id = $2`, [declineReason || 'Payment declined', session.id]);
-                    // Activity event: PAYMENT_DECLINED
+                    // Activity event: PAYMENT_DECLINED (non-critical)
                     if (session.customer_id) {
-                        await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
-                            customerId: session.customer_id,
-                            actionType: 'PAYMENT_DECLINED',
-                            actionCategory: 'PAYMENT',
-                            sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
-                            actorType: request.staff ? 'STAFF' : 'CUSTOMER',
-                            actorStaffId: staffId,
-                            actorStaffName: request.staff?.name ?? null,
-                            summary: `Payment declined: ${declineReason || 'Payment declined'}`,
-                            metadata: {
-                                laneId,
-                                laneSessionId: session.id,
-                                paymentIntentId: intent.id,
-                                declineReason: declineReason || 'Payment declined',
-                            },
-                            dedupeKey: `ACT:PAYMENT_DECLINED:${intent.id}:${Date.now()}`,
-                        });
+                        try {
+                            await client.query('SAVEPOINT decline_activity_logging');
+                            await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+                                customerId: session.customer_id,
+                                actionType: 'PAYMENT_DECLINED',
+                                actionCategory: 'PAYMENT',
+                                sourceApp: request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
+                                actorType: request.staff ? 'STAFF' : 'CUSTOMER',
+                                actorStaffId: staffId,
+                                actorStaffName: request.staff?.name ?? null,
+                                summary: `Payment declined: ${declineReason || 'Payment declined'}`,
+                                metadata: {
+                                    laneId,
+                                    laneSessionId: session.id,
+                                    paymentIntentId: intent.id,
+                                    declineReason: declineReason || 'Payment declined',
+                                },
+                                dedupeKey: `ACT:PAYMENT_DECLINED:${intent.id}:${Date.now()}`,
+                            });
+                            await client.query('RELEASE SAVEPOINT decline_activity_logging');
+                        }
+                        catch (activityErr) {
+                            await client.query('ROLLBACK TO SAVEPOINT decline_activity_logging');
+                            request.log.warn(activityErr, 'Non-critical: failed to log payment decline activity');
+                        }
                     }
                 }
                 // Strategic log: payment outcome

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerRoomManagementRoutes = registerRoomManagementRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
+const idempotency_1 = require("../../middleware/idempotency");
 const roomManagementService_1 = require("../../services/roomManagementService");
 const RoomNumberSchema = zod_1.z.string().regex(/^\d{3}$/, 'Number must be exactly 3 digits');
 const RoomTypeSchema = zod_1.z.enum(['STANDARD', 'DOUBLE', 'SPECIAL']);
@@ -11,7 +12,7 @@ const CreateRoomSchema = zod_1.z.object({ number: RoomNumberSchema, type: RoomTy
 const UpdateRoomSchema = zod_1.z.object({ type: RoomTypeSchema.optional(), floor: zod_1.z.number().int().min(1).max(10).optional() });
 function registerRoomManagementRoutes(fastify) {
     fastify.get('/v1/admin/room-management', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (_request, reply) => reply.send(await (0, roomManagementService_1.listRoomsAndLockers)()));
-    fastify.post('/v1/admin/room-management/rooms', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.post('/v1/admin/room-management/rooms', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin, idempotency_1.idempotencyKey] }, async (request, reply) => {
         let body;
         try {
             body = CreateRoomSchema.parse(request.body);
@@ -49,7 +50,7 @@ function registerRoomManagementRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.post('/v1/admin/room-management/rooms/:roomId/set-status', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.post('/v1/admin/room-management/rooms/:roomId/set-status', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin, idempotency_1.idempotencyKey] }, async (request, reply) => {
         let body;
         try {
             body = StatusSchema.parse(request.body?.status);
@@ -67,7 +68,7 @@ function registerRoomManagementRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.post('/v1/admin/room-management/lockers', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.post('/v1/admin/room-management/lockers', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin, idempotency_1.idempotencyKey] }, async (request, reply) => {
         let body;
         try {
             body = zod_1.z.object({ number: RoomNumberSchema }).parse(request.body);
@@ -85,7 +86,7 @@ function registerRoomManagementRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.post('/v1/admin/room-management/lockers/:lockerId/set-status', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.post('/v1/admin/room-management/lockers/:lockerId/set-status', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin, idempotency_1.idempotencyKey] }, async (request, reply) => {
         let body;
         try {
             body = StatusSchema.parse(request.body?.status);

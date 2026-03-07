@@ -4,6 +4,7 @@ exports.registerCheckoutKioskRoutes = registerCheckoutKioskRoutes;
 const zod_1 = require("zod");
 const db_1 = require("../../db");
 const schemas_1 = require("../../checkout/schemas");
+const clubEventLog_1 = require("../../activity/clubEventLog");
 const utils_1 = require("../../checkout/utils");
 function registerCheckoutKioskRoutes(fastify) {
     /**
@@ -263,6 +264,29 @@ function registerCheckoutKioskRoutes(fastify) {
                     timestamp: new Date().toISOString(),
                 });
             }
+            // Log club event for checkout requested
+            await (0, db_1.transaction)(async (client) => {
+                const resourceLabel = roomNumber ? ` (Room ${roomNumber})` : lockerNumber ? ` (Locker ${lockerNumber})` : '';
+                await (0, clubEventLog_1.insertClubEvent)(client, {
+                    eventType: 'CHECKOUT_REQUESTED',
+                    eventDomain: 'CHECKOUT',
+                    sourceApp: 'CUSTOMER_KIOSK',
+                    customerId: customer.id,
+                    customerName: customer.name,
+                    visitId: block.visit_id,
+                    summary: `Checkout requested \u2014 ${customer.name}${resourceLabel}`,
+                    metadata: {
+                        checkoutRequestId: result.id,
+                        occupancyId: body.occupancyId,
+                        roomNumber: roomNumber ?? null,
+                        lockerNumber: lockerNumber ?? null,
+                        lateMinutes: result.late_minutes,
+                        lateFeeAmount: result.late_fee_amount,
+                        banApplied: result.ban_applied,
+                    },
+                    dedupeKey: `CLUB:CHECKOUT_REQUESTED:${result.id}`,
+                });
+            });
             return reply.status(201).send({
                 requestId: result.id,
             });

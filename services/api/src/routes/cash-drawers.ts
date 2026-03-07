@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware';
+import { idempotencyKey } from '../middleware/idempotency';
 import { openDrawerSession, recordDrawerEvent, closeDrawerSession, type OpenDrawerInput, type RecordEventInput, type CloseDrawerInput } from '../services/cashDrawerService';
 
 const CashDrawerOpenSchema = z.object({ registerSessionId: z.string().uuid(), openingFloat: z.number().int().nonnegative(), notes: z.string().optional().nullable() });
@@ -15,7 +16,7 @@ const CashDrawerEventSchema = z.object({
 const CashDrawerCloseSchema = z.object({ countedCash: z.number().int().nonnegative(), notes: z.string().optional().nullable() });
 
 export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.post('/v1/cash-drawers/open', { preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post('/v1/cash-drawers/open', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     try {
       const body = CashDrawerOpenSchema.parse(request.body);

@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
+import helmet from '@fastify/helmet';
 
 import { loadEnvFromDotEnvIfPresent } from './env/loadEnv';
 
@@ -92,6 +93,20 @@ async function main() {
     },
   });
 
+  await fastify.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'", "http://localhost:*", "ws://localhost:*", "https:"],
+      },
+    },
+    // Allows iframing local dev stuff or external images without breaking instantly
+    crossOriginEmbedderPolicy: false,
+  });
+
   // Global Request Logging
   fastify.addHook('onRequest', (request, reply, done) => {
     // Skip health checks to avoid log spam
@@ -138,25 +153,30 @@ async function main() {
   });
 
   // Register CORS — lock origins to an explicit allow-list in production.
+  // Register CORS — lock origins to an explicit allow-list.
   // ALLOWED_ORIGINS can be a comma-separated list (e.g. "https://a.com,https://b.com").
-  // Fail-fast in production if ALLOWED_ORIGINS is unset to prevent open CORS.
+  // Fail-fast in production if ALLOWED_ORIGINS is unset.
   const isProduction = process.env.NODE_ENV === 'production';
   if (isProduction && !process.env.ALLOWED_ORIGINS) {
-    console.error('FATAL: ALLOWED_ORIGINS must be set in production. Refusing to start with open CORS.');
+    console.error('FATAL: ALLOWED_ORIGINS must be set in production. Refusing to start API server.');
     process.exit(1);
   }
+
+  const defaultDevOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
   const rawOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
     : null;
-  // @fastify/cors treats an array as exact-match origins. A single '*' entry means "allow all",
-  // which requires `origin: true` (reflect any origin), not the literal string '*' in an array.
+
+  // @fastify/cors treats an array as exact-match origins.
   const allowedOrigins: true | string[] =
-    !rawOrigins ? true :                          // env unset → allow all in dev
-    rawOrigins.length === 1 && rawOrigins[0] === '*' ? true :  // explicit wildcard
-    rawOrigins;                                    // explicit list
-  if (allowedOrigins === true) {
-    fastify.log.warn('ALLOWED_ORIGINS is not set or is "*" — CORS allows all origins. Set ALLOWED_ORIGINS in production.');
+    !rawOrigins ? defaultDevOrigins :
+    rawOrigins.length === 1 && rawOrigins[0] === '*' ? defaultDevOrigins : 
+    rawOrigins;
+
+  if (allowedOrigins === defaultDevOrigins) {
+    fastify.log.info('ALLOWED_ORIGINS unset or "*". Falling back to strict local dev origins: ' + defaultDevOrigins.join(', '));
   }
+
   await fastify.register(cors, {
     origin: allowedOrigins,
     credentials: true,
@@ -319,6 +339,7 @@ async function main() {
     autoReplayAbort.abort();
     clearInterval(cleanupInterval);
     clearInterval(waitlistExpiryInterval);
+    clearInterval(idempotencyCleanupInterval);
     if (upgradeHoldInterval) clearInterval(upgradeHoldInterval);
     await fastify.close();
     if (!SKIP_DB) {

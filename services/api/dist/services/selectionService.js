@@ -18,6 +18,7 @@ exports.buildSessionPayload = buildSessionPayload;
  */
 const db_1 = require("../db");
 const payload_1 = require("../checkin/payload");
+const types_1 = require("../checkin/types");
 // ── Shared helpers ──
 function isFlowCommandsEnabled() {
     return process.env.FLOW_COMMANDS === 'true';
@@ -41,7 +42,7 @@ function normalizeDesiredTypes(desiredTypes) {
 }
 async function selectRental(input) {
     return (0, db_1.transaction)(async (client) => {
-        const sessionResult = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`, [input.laneId]);
+        const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`, [input.laneId]);
         if (sessionResult.rows.length === 0)
             throw { statusCode: 404, message: 'No active session found' };
         const session = sessionResult.rows[0];
@@ -83,7 +84,7 @@ async function selectRental(input) {
 /** Non-flow-command propose path: validates + updates DB. Returns session info + payload for broadcasting. */
 async function proposeSelection(input) {
     return (0, db_1.transaction)(async (client) => {
-        const sessionResult = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [input.laneId]);
+        const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [input.laneId]);
         if (sessionResult.rows.length === 0)
             throw { statusCode: 404, message: 'No active session found' };
         const session = sessionResult.rows[0];
@@ -111,8 +112,8 @@ async function proposeSelection(input) {
 async function setWaitlistDesired(input) {
     return (0, db_1.transaction)(async (client) => {
         const sessionResult = input.sessionId
-            ? await client.query(`SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2 LIMIT 1`, [input.sessionId, input.laneId])
-            : await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1
+            ? await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 AND lane_id = $2 LIMIT 1`, [input.sessionId, input.laneId])
+            : await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1
            AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
            ORDER BY created_at DESC LIMIT 1`, [input.laneId]);
         if (sessionResult.rows.length === 0)
@@ -135,7 +136,7 @@ async function setWaitlistDesired(input) {
 /** Non-flow-command confirm path: locks selection + returns payload for broadcasting. */
 async function confirmSelection(laneId, confirmedBy) {
     return (0, db_1.transaction)(async (client) => {
-        const sessionResult = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
+        const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
         if (sessionResult.rows.length === 0)
             throw { statusCode: 404, message: 'No active session found' };
         const session = sessionResult.rows[0];
@@ -174,7 +175,7 @@ async function confirmSelection(laneId, confirmedBy) {
 /** Validate and return session for acknowledge-selection. */
 async function acknowledgeSelection(laneId, acknowledgedBy) {
     return (0, db_1.transaction)(async (client) => {
-        const sessionResult = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
+        const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
         if (sessionResult.rows.length === 0)
             throw { statusCode: 404, message: 'No active session found' };
         const session = sessionResult.rows[0];

@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo, Suspense } from 'react';
+import useSWR from 'swr';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { PanelHeader } from '../views/PanelHeader';
@@ -29,9 +30,13 @@ interface ResolvedDetails {
 
 /* ── Helpers ────────────────────────────────────────── */
 
-function formatTime(iso: string) {
+function formatTime(iso: string, timeZone: string = 'America/New_York') {
   try {
-    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: timeZone,
+    }).format(new Date(iso));
   } catch {
     return iso;
   }
@@ -39,7 +44,7 @@ function formatTime(iso: string) {
 
 function formatDuration(checkinAt: string) {
   const ms = Date.now() - new Date(checkinAt).getTime();
-  const totalMin = Math.floor(ms / 60000);
+  const totalMin = Math.floor(Math.max(0, ms) / 60000);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
@@ -74,6 +79,40 @@ function DetailRow({ label, children }: Readonly<{ label: string; children: Reac
   );
 }
 
+const postFetcher = async ([url, body, token]: [string, any, string?]) => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (!res.ok) {
+     const err = await res.json().catch(() => ({}));
+     throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+};
+
+const getFetcher = async ([url, token]: [string, string?]) => {
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+};
+
+function useManualResolve(occupancyId: string | undefined) {
+  const token = useAuthStore((s) => s.session?.sessionToken);
+  
+  const { data, isLoading } = useSWR(
+    occupancyId ? [getApiUrl('/api/v1/checkout/manual-resolve'), { occupancyId }, token] : null,
+    postFetcher,
+    { suspense: true, keepPreviousData: false, revalidateOnFocus: false }
+  );
+
+  return { 
+    resolved: data ? { lateMinutes: data.lateMinutes ?? 0, fee: data.fee ?? 0, banApplied: !!data.banApplied } : null, 
+    resolving: isLoading 
+  };
+}
+
 /** Right-side detail panel for the selected candidate. */
 function DetailPanel({
   candidate,
@@ -84,29 +123,7 @@ function DetailPanel({
   onCheckout: (c: Candidate, resolve: ResolvedDetails | null) => void;
   isProcessing: boolean;
 }>) {
-  const token = useAuthStore((s) => s.session?.sessionToken);
-  const [resolved, setResolved] = useState<ResolvedDetails | null>(null);
-  const [resolving, setResolving] = useState(false);
-
-  useEffect(() => {
-    if (!candidate) { setResolved(null); return; }
-    let cancelled = false;
-    setResolving(true);
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    fetch(getApiUrl('/api/v1/checkout/manual-resolve'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ occupancyId: candidate.occupancyId }),
-    })
-      .then((r) => r.json())
-      .then((d) => {
-        if (!cancelled) setResolved({ lateMinutes: d.lateMinutes ?? 0, fee: d.fee ?? 0, banApplied: !!d.banApplied });
-      })
-      .catch(() => { if (!cancelled) setResolved(null); })
-      .finally(() => { if (!cancelled) setResolving(false); });
-    return () => { cancelled = true; };
-  }, [candidate?.occupancyId, token]);
+  const { resolved, resolving } = useManualResolve(candidate?.occupancyId);
 
   if (!candidate) {
     return (
@@ -234,15 +251,23 @@ function LateFeeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-      onClick={onDismiss}
     >
       <div
-        className="mx-4 w-full max-w-md rounded-xl border shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="late-fee-title"
+        className="w-full max-w-md rounded-xl border shadow-2xl relative"
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
-        onClick={(e) => e.stopPropagation()}
       >
+        <button 
+          onClick={onDismiss}
+          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 rounded-sm"
+          aria-label="Close modal"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
           <div className="flex items-center gap-3">
@@ -259,7 +284,7 @@ function LateFeeModal({
               </svg>
             </div>
             <div>
-              <h3 className="text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+              <h3 id="late-fee-title" className="text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
                 Late Checkout Fee
               </h3>
               <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
@@ -379,42 +404,30 @@ function LateFeeModal({
  * CheckoutPanel — Manual checkout flow.
  * 70/30 split: DataTable on the left, checkout detail panel on the right.
  */
-export function CheckoutPanel() {
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [checkingOut, setCheckingOut] = useState(false);
-  const [lateFeeModal, setLateFeeModal] = useState<{ candidate: Candidate; resolved: ResolvedDetails } | null>(null);
-
+export function CheckoutPanelContent() {
   const token = useAuthStore((s) => s.session?.sessionToken);
   const openCustomerAccount = useRegisterStore((s) => s.openCustomerAccount);
   const didAutoSelect = useRef(false);
 
   /* ── Data fetching ── */
-  const fetchCandidates = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(getApiUrl('/api/v1/checkout/manual-candidates'), { headers });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const rows: Candidate[] = data.candidates ?? [];
-      setCandidates(rows);
-      if (!didAutoSelect.current && rows.length > 0) {
-        setSelectedId(rows[0]!.occupancyId);
-        didAutoSelect.current = true;
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load candidates');
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const { data, error, mutate, isLoading } = useSWR(
+    [getApiUrl('/api/v1/checkout/manual-candidates'), token],
+    getFetcher,
+    { suspense: true }
+  );
+  
+  const candidates: Candidate[] = data?.candidates ?? [];
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  useEffect(() => { void fetchCandidates(); }, [fetchCandidates]);
+  useEffect(() => {
+    if (!didAutoSelect.current && candidates.length > 0) {
+      setSelectedId(candidates[0].occupancyId);
+      didAutoSelect.current = true;
+    }
+  }, [candidates]);
+
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [lateFeeModal, setLateFeeModal] = useState<{ candidate: Candidate; resolved: ResolvedDetails } | null>(null);
 
   const selectedCandidate = candidates.find((c) => c.occupancyId === selectedId) ?? null;
 
@@ -439,23 +452,21 @@ export function CheckoutPanel() {
         throw new Error((d as Record<string, string>).error ?? `HTTP ${res.status}`);
       }
       // Remove and select next
-      setCandidates((prev) => {
-        const idx = prev.findIndex((c) => c.occupancyId === occupancyId);
-        const next = prev.filter((c) => c.occupancyId !== occupancyId);
+        const idx = candidates.findIndex((c) => c.occupancyId === occupancyId);
+        const next = candidates.filter((c) => c.occupancyId !== occupancyId);
         if (next.length > 0) {
-          const nextIdx = Math.min(idx, next.length - 1);
-          setSelectedId(next[nextIdx]!.occupancyId);
+          const nextIdx = Math.max(0, Math.min(idx, next.length - 1));
+          setSelectedId(next[nextIdx].occupancyId);
         } else {
           setSelectedId(null);
         }
-        return next;
-      });
+        await mutate(); // Re-fetch the remaining
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Checkout failed');
+      console.error('Checkout failed', err);
     } finally {
       setCheckingOut(false);
     }
-  }, [token]);
+  }, [token, candidates, mutate]);
 
   const handleCheckoutRequest = useCallback((candidate: Candidate, resolved: ResolvedDetails | null) => {
     const fee = resolved?.fee ?? 0;
@@ -545,18 +556,18 @@ export function CheckoutPanel() {
       <div className="flex items-center justify-between mb-4">
         <PanelHeader title="Checkout" subtitle="Select a room to check out" />
         <button
-          onClick={() => void fetchCandidates()}
-          disabled={loading}
-          className="ml-auto rounded-md px-3 py-1.5 text-xs font-semibold"
+          onClick={() => void mutate()}
+          disabled={isLoading}
+          className="ml-auto rounded-md px-3 py-1.5 text-xs font-semibold hover:opacity-80"
           style={{
             backgroundColor: 'var(--color-surface-overlay)',
             color: 'var(--color-text-secondary)',
             border: '1px solid var(--color-border-default)',
             transition: 'opacity 0.15s ease',
-            opacity: loading ? 0.5 : 1,
+            opacity: isLoading ? 0.5 : 1,
           }}
         >
-          {loading ? 'Loading…' : '↻ Refresh'}
+          {isLoading ? 'Loading…' : '↻ Refresh'}
         </button>
       </div>
 
@@ -569,7 +580,7 @@ export function CheckoutPanel() {
             border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, transparent)',
           }}
         >
-          {error}
+          {error.message || 'Failed to load candidates'}
         </p>
       ) : null}
 
@@ -616,5 +627,19 @@ export function CheckoutPanel() {
         />
       ) : null}
     </PanelShell>
+  );
+}
+
+export function CheckoutPanel() {
+  return (
+    <Suspense fallback={
+      <PanelShell align="top" scroll="hidden">
+        <div className="flex flex-col items-center justify-center h-full opacity-50">
+          <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>Loading checkout data...</p>
+        </div>
+      </PanelShell>
+    }>
+      <CheckoutPanelContent />
+    </Suspense>
   );
 }

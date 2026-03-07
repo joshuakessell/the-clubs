@@ -14,6 +14,15 @@ export interface UseRealtimeSSEOptions {
   /** Heartbeat timeout in ms (default: 65000). If no message or heartbeat arrives
    *  within this window, we close and let EventSource auto-reconnect. */
   heartbeatTimeoutMs?: number;
+  /** Fired when a reconnection occurs (transition from disconnected to connected). 
+   *  Ideal for fetching a fresh state snapshot to prevent out-of-sync holes. */
+  onReconnect?: () => void;
+  /** 
+   * Provides monotonic clock guarantees. 
+   * If true, events with timestamps strictly older than the last seen event are dropped, 
+   * preventing out-of-order execution. 
+   */
+  enforceMonotonicClock?: boolean;
 }
 
 export interface UseRealtimeSSEResult {
@@ -37,22 +46,33 @@ export function useRealtimeSSE({
   authParams,
   enabled = true,
   heartbeatTimeoutMs = 65_000,
+  onReconnect,
+  enforceMonotonicClock = false,
 }: UseRealtimeSSEOptions): UseRealtimeSSEResult {
   const [connected, setConnected] = useState(false);
   const [reconnectCount, setReconnectCount] = useState(0);
   const onEventRef = useRef(onEvent);
+  const onReconnectRef = useRef(onReconnect);
   onEventRef.current = onEvent;
+  onReconnectRef.current = onReconnect;
+  
+  const wasConnected = useRef(false);
+  const lastTimestampRef = useRef<number>(0);
+
+  // Stable reference for authParams to avoid infinite reconnection loops
+  const authParamsString = authParams ? JSON.stringify(authParams) : '';
 
   // Build URL with auth query params (EventSource doesn't support custom headers)
   const buildUrl = useCallback(() => {
-    const u = new URL(url, window.location.origin);
-    if (authParams) {
-      for (const [key, value] of Object.entries(authParams)) {
-        if (value) u.searchParams.set(key, value);
+    const u = new URL(url, globalThis.location.origin);
+    if (authParamsString) {
+      const parsedParams = JSON.parse(authParamsString);
+      for (const [key, value] of Object.entries(parsedParams)) {
+        if (value) u.searchParams.set(key, value as string);
       }
     }
     return u.toString();
-  }, [url, authParams]);
+  }, [url, authParamsString]);
 
   useEffect(() => {
     if (!enabled) {
@@ -86,6 +106,11 @@ export function useRealtimeSSE({
     eventSource.onopen = () => {
       setConnected(true);
       resetHeartbeat();
+      if (wasConnected.current) {
+        // This is a reconnection. Fetch a fresh snapshot.
+        if (onReconnectRef.current) onReconnectRef.current();
+      }
+      wasConnected.current = true;
     };
 
     eventSource.onmessage = (event) => {
@@ -94,10 +119,17 @@ export function useRealtimeSSE({
         const data: unknown = JSON.parse(event.data);
         // Skip HEARTBEAT events — they are keepalive pings, not app events
         if (typeof data === 'object' && data !== null && (data as any).type === 'HEARTBEAT') return;
+        
         const parsed = safeParseRealtimeEvent(data);
-        if (parsed) {
-          onEventRef.current(parsed);
+        if (!parsed) return;
+        
+        if (enforceMonotonicClock && parsed.timestamp) {
+          const eventTime = new Date(parsed.timestamp).getTime();
+          if (eventTime < lastTimestampRef.current) return;
+          lastTimestampRef.current = eventTime;
         }
+        
+        onEventRef.current(parsed);
       } catch {
         // Invalid JSON — ignore
       }

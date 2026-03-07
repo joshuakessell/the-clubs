@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.visitRoutes = visitRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../auth/middleware");
+const idempotency_1 = require("../middleware/idempotency");
 const broadcast_1 = require("../inventory/broadcast");
 const active_1 = require("./visits/active");
 const visitService_1 = require("../services/visitService");
@@ -126,7 +127,9 @@ async function visitRoutes(fastify) {
      *
      * Creates a new visit and initial 6-hour block.
      */
-    fastify.post('/v1/visits', async (request, reply) => {
+    fastify.post('/v1/visits', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+        if (!request.staff)
+            return reply.status(401).send({ error: 'Unauthorized' });
         let body;
         try {
             body = CreateVisitSchema.parse(request.body);
@@ -165,7 +168,9 @@ async function visitRoutes(fastify) {
      * Creates a renewal block that extends from the previous block's end time.
      * Enforces 14-hour maximum visit duration.
      */
-    fastify.post('/v1/visits/:visitId/renew', async (request, reply) => {
+    fastify.post('/v1/visits/:visitId/renew', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+        if (!request.staff)
+            return reply.status(401).send({ error: 'Unauthorized' });
         let body;
         try {
             body = RenewVisitSchema.parse(request.body);

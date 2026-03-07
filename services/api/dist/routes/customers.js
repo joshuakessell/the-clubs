@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.customerRoutes = customerRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../auth/middleware");
+const idempotency_1 = require("../middleware/idempotency");
 const customerService_1 = require("../services/customerService");
 // ── Zod Schemas ──
 const SearchQuerySchema = zod_1.z.object({
@@ -102,7 +103,7 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/:customerId/notes
-    fastify.post('/v1/customers/:customerId/notes', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/customers/:customerId/notes', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let parsed;
@@ -141,7 +142,7 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/create-from-scan
-    fastify.post('/v1/customers/create-from-scan', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/customers/create-from-scan', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;
@@ -165,7 +166,7 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/match-identity
-    fastify.post('/v1/customers/match-identity', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/customers/match-identity', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;
@@ -189,7 +190,7 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/create-manual
-    fastify.post('/v1/customers/create-manual', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/customers/create-manual', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;

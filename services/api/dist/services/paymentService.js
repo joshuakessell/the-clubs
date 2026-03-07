@@ -10,6 +10,7 @@ exports.getSessionPayload = getSessionPayload;
  */
 const db_1 = require("../db");
 const engine_1 = require("../pricing/engine");
+const types_1 = require("../checkin/types");
 const payload_1 = require("../checkin/payload");
 const utils_1 = require("../checkin/utils");
 const identity_1 = require("../checkin/identity");
@@ -37,7 +38,7 @@ function parsePaymentIntentQuote(raw) {
 // ── Service Methods ──
 async function createPaymentIntent(laneId) {
     return (0, db_1.transaction)(async (client) => {
-        const sessionResult = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
+        const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
         if (sessionResult.rows.length === 0)
             throw { statusCode: 404, message: 'No active session found' };
         const session = sessionResult.rows[0];
@@ -70,7 +71,7 @@ async function createPaymentIntent(laneId) {
         };
         const quote = isRenewal ? (0, engine_1.calculateRenewalQuote)({ ...pricingInput, renewalHours }) : (0, engine_1.calculatePriceQuote)(pricingInput);
         // Ensure at most one active DUE payment intent
-        const dueIntents = await client.query(`SELECT * FROM payment_intents WHERE lane_session_id = $1 AND status = 'DUE' ORDER BY created_at DESC`, [session.id]);
+        const dueIntents = await client.query(`SELECT ${types_1.PAYMENT_INTENT_COLS} FROM payment_intents WHERE lane_session_id = $1 AND status = 'DUE' ORDER BY created_at DESC`, [session.id]);
         let intent;
         if (dueIntents.rows.length > 0) {
             intent = dueIntents.rows[0];
@@ -100,7 +101,7 @@ async function markPaymentPaid(input) {
     const resolvedRegisterNumber = typeof input.registerNumber === 'number' && Number.isFinite(input.registerNumber) ? Math.trunc(input.registerNumber) : undefined;
     const resolvedTip = typeof input.tip === 'number' && Number.isFinite(input.tip) ? Math.trunc(input.tip) : undefined;
     return (0, db_1.transaction)(async (client) => {
-        const intentResult = await client.query(`SELECT * FROM payment_intents WHERE id = $1`, [input.paymentIntentId]);
+        const intentResult = await client.query(`SELECT ${types_1.PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1`, [input.paymentIntentId]);
         if (intentResult.rows.length === 0)
             throw { statusCode: 404, message: 'Payment intent not found' };
         const intent = intentResult.rows[0];
@@ -165,7 +166,7 @@ async function markPaymentPaid(input) {
             await (0, auditLog_1.insertAuditLog)(client, { staffId: input.staffId, action: 'FINAL_EXTENSION_COMPLETED', entityType: 'visit', entityId: quote.visitId, oldValue: { paymentIntentId: input.paymentIntentId, status: 'DUE' }, newValue: { paymentIntentId: input.paymentIntentId, status: 'PAID', blockId: quote.blockId } });
         }
         else {
-            const sessionResult = await client.query(`SELECT * FROM lane_sessions WHERE payment_intent_id = $1`, [paidIntent.id]);
+            const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE payment_intent_id = $1`, [paidIntent.id]);
             if (sessionResult.rows.length > 0) {
                 const session = sessionResult.rows[0];
                 await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [session.id]);

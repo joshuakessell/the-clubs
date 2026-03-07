@@ -44,7 +44,7 @@ async function waitlistRoutes(fastify) {
         }
     });
     fastify.post('/v1/waitlist/:id/complete', { preHandler: [middleware_1.requireAuth] }, async (_request, reply) => reply.status(501).send({ error: 'Not Implemented', message: 'Use /v1/upgrades/fulfill instead' }));
-    fastify.post('/v1/waitlist/:id/cancel', { preHandler: [middleware_1.requireAuth, middleware_1.requireReauth] }, async (request, reply) => {
+    fastify.post('/v1/waitlist/:id/cancel', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;

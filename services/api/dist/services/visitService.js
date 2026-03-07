@@ -167,9 +167,7 @@ async function renewVisit(input) {
             throw new HttpError_1.HttpError(400, 'Renewal is only available within 1 hour of checkout');
         }
         const renewalStartsAt = latestBlockEnd;
-        const renewalEndsAt = requestedRenewalHours === 2
-            ? new Date(renewalStartsAt.getTime() + 2 * 60 * 60 * 1000)
-            : (0, rounding_1.roundUpToQuarterHour)(new Date(renewalStartsAt.getTime() + 6 * 60 * 60 * 1000));
+        const renewalEndsAt = new Date(renewalStartsAt.getTime() + requestedRenewalHours * 60 * 60 * 1000);
         // 6. Room/locker assignment (renewal allows reassign-to-same)
         const assignedRoomId = input.roomId
             ? await (0, resourceAssignment_1.assignRoom)(tx, input.roomId, visit.customer_id, {
@@ -287,7 +285,7 @@ async function createFinalExtension(input) {
                 visitId: visit.id,
                 blockId: block.id,
                 hours: 2,
-                amount: 20.0,
+                amount: 20,
             },
         })
             .returning();
@@ -324,7 +322,7 @@ async function createFinalExtension(input) {
             block: formatBlock(block),
             paymentIntentId: paymentIntent.id,
             amount: typeof paymentIntent.amount === 'string'
-                ? parseFloat(paymentIntent.amount)
+                ? Number.parseFloat(paymentIntent.amount)
                 : Number(paymentIntent.amount),
         };
     }, { isolationLevel: 'serializable' });

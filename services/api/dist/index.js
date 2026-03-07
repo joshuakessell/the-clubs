@@ -40,6 +40,7 @@ const fastify_1 = __importDefault(require("fastify"));
 const cors_1 = __importDefault(require("@fastify/cors"));
 const rate_limit_1 = __importDefault(require("@fastify/rate-limit"));
 const websocket_1 = __importDefault(require("@fastify/websocket"));
+const helmet_1 = __importDefault(require("@fastify/helmet"));
 const loadEnv_1 = require("./env/loadEnv");
 const routes_1 = require("./routes");
 const broadcaster_1 = require("./realtime/broadcaster");
@@ -81,6 +82,19 @@ async function main() {
                 }),
         },
     });
+    await fastify.register(helmet_1.default, {
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                scriptSrc: ["'self'", "'unsafe-inline'"],
+                styleSrc: ["'self'", "'unsafe-inline'"],
+                imgSrc: ["'self'", "data:", "https:"],
+                connectSrc: ["'self'", "http://localhost:*", "ws://localhost:*", "https:"],
+            },
+        },
+        // Allows iframing local dev stuff or external images without breaking instantly
+        crossOriginEmbedderPolicy: false,
+    });
     // Global Request Logging
     fastify.addHook('onRequest', (request, reply, done) => {
         // Skip health checks to avoid log spam
@@ -100,38 +114,79 @@ async function main() {
         }
         done();
     });
+    // Log response body for error responses to aid debugging
+    fastify.addHook('onSend', (request, reply, payload, done) => {
+        if (reply.statusCode >= 400 && request.url !== '/health') {
+            try {
+                const body = typeof payload === 'string' ? JSON.parse(payload) : payload;
+                fastify.log.warn({
+                    method: request.method,
+                    url: request.url,
+                    statusCode: reply.statusCode,
+                    errorBody: body,
+                }, 'Error Response');
+            }
+            catch {
+                // payload isn't JSON — log raw
+                fastify.log.warn({
+                    method: request.method,
+                    url: request.url,
+                    statusCode: reply.statusCode,
+                    errorBody: typeof payload === 'string' ? payload.slice(0, 500) : '(non-string payload)',
+                }, 'Error Response');
+            }
+        }
+        done(null, payload);
+    });
     // Register CORS — lock origins to an explicit allow-list in production.
+    // Register CORS — lock origins to an explicit allow-list.
     // ALLOWED_ORIGINS can be a comma-separated list (e.g. "https://a.com,https://b.com").
-    // Fail-fast in production if ALLOWED_ORIGINS is unset to prevent open CORS.
+    // Fail-fast in production if ALLOWED_ORIGINS is unset.
     const isProduction = process.env.NODE_ENV === 'production';
     if (isProduction && !process.env.ALLOWED_ORIGINS) {
-        console.error('FATAL: ALLOWED_ORIGINS must be set in production. Refusing to start with open CORS.');
+        console.error('FATAL: ALLOWED_ORIGINS must be set in production. Refusing to start API server.');
         process.exit(1);
     }
+    const defaultDevOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
     const rawOrigins = process.env.ALLOWED_ORIGINS
         ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
         : null;
-    // @fastify/cors treats an array as exact-match origins. A single '*' entry means "allow all",
-    // which requires `origin: true` (reflect any origin), not the literal string '*' in an array.
-    const allowedOrigins = !rawOrigins ? true : // env unset → allow all in dev
-        rawOrigins.length === 1 && rawOrigins[0] === '*' ? true : // explicit wildcard
-            rawOrigins; // explicit list
-    if (allowedOrigins === true) {
-        fastify.log.warn('ALLOWED_ORIGINS is not set or is "*" — CORS allows all origins. Set ALLOWED_ORIGINS in production.');
+    // @fastify/cors treats an array as exact-match origins.
+    const allowedOrigins = !rawOrigins ? defaultDevOrigins :
+        rawOrigins.length === 1 && rawOrigins[0] === '*' ? defaultDevOrigins :
+            rawOrigins;
+    if (allowedOrigins === defaultDevOrigins) {
+        fastify.log.info('ALLOWED_ORIGINS unset or "*". Falling back to strict local dev origins: ' + defaultDevOrigins.join(', '));
     }
     await fastify.register(cors_1.default, {
         origin: allowedOrigins,
         credentials: true,
     });
-    // Register global rate limiting (F-03)
-    // Exclude SSE/WebSocket endpoints — they're long-lived connections, not typical requests.
+    // Register global rate limiting
+    // Global: 100 req/min per IP. SSE/WS/health are exempt (long-lived connections).
+    // Write endpoints (POST/PUT/DELETE) get a tighter 30 req/min limit applied
+    // automatically via the onRoute hook below.
     await fastify.register(rate_limit_1.default, {
         max: 100,
         timeWindow: '1 minute',
         allowList: (req) => {
             const url = req.url ?? '';
-            return url.startsWith('/v1/realtime/');
+            // Exempt long-lived SSE/WS connections and health checks
+            return url.startsWith('/v1/realtime/')
+                || url === '/health';
         },
+    });
+    // Tighter rate limit for write endpoints (POST/PUT/DELETE): 30 req/min
+    fastify.addHook('onRoute', (routeOptions) => {
+        const method = routeOptions.method;
+        const methods = Array.isArray(method) ? method : [method];
+        const isWrite = methods.some((m) => ['POST', 'PUT', 'DELETE', 'PATCH'].includes(m));
+        if (isWrite) {
+            routeOptions.config = {
+                ...routeOptions.config,
+                rateLimit: { max: 30, timeWindow: '1 minute' },
+            };
+        }
     });
     await fastify.register(websocket_1.default);
     // Create broadcaster for realtime events
@@ -255,6 +310,7 @@ async function main() {
         autoReplayAbort.abort();
         clearInterval(cleanupInterval);
         clearInterval(waitlistExpiryInterval);
+        clearInterval(idempotencyCleanupInterval);
         if (upgradeHoldInterval)
             clearInterval(upgradeHoldInterval);
         await fastify.close();

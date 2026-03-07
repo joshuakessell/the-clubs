@@ -35,6 +35,8 @@ async function processCleaningBatch(input) {
         const roomMap = new Map(roomResult.rows.map((r) => [r.id, r]));
         const results = [];
         const successfulTransitions = [];
+        // Collect cleaning_batch_rooms rows for a single multi-row INSERT after the loop
+        const batchRoomRows = [];
         // 3. Process each room
         for (const roomId of input.roomIds) {
             const room = roomMap.get(roomId);
@@ -78,16 +80,22 @@ async function processCleaningBatch(input) {
             }
             const isOverrideTransition = input.override && validation.ok;
             // 4. Update the room status
+            const isClean = toStatus === shared_1.RoomStatus.CLEAN;
             await client.query(`UPDATE rooms
          SET status = $1,
              last_status_change = NOW(),
              override_flag = CASE WHEN $2 THEN true ELSE override_flag END,
+             assigned_to_customer_id = CASE WHEN $4 THEN NULL ELSE assigned_to_customer_id END,
              updated_at = NOW()
-         WHERE id = $3`, [toStatus, isOverrideTransition, roomId]);
-            // 5. Record in cleaning_batch_rooms
-            await client.query(`INSERT INTO cleaning_batch_rooms
-         (batch_id, room_id, status_from, status_to, override_flag, override_reason)
-         VALUES ($1, $2, $3, $4, $5, $6)`, [batchId, roomId, fromStatus, toStatus, isOverrideTransition, isOverrideTransition ? input.overrideReason : null]);
+         WHERE id = $3`, [toStatus, isOverrideTransition, roomId, isClean]);
+            // Collect for batch INSERT (step 5 moved after loop)
+            batchRoomRows.push({
+                roomId,
+                fromStatus,
+                toStatus,
+                isOverride: isOverrideTransition,
+                overrideReason: isOverrideTransition ? (input.overrideReason ?? null) : null,
+            });
             // 6. Audit log
             await (0, auditLog_1.insertAuditLog)(client, {
                 staffId: input.staffId,
@@ -134,6 +142,20 @@ async function processCleaningBatch(input) {
                 },
                 dedupeKey: `CLUB:ROOM_STATUS:${batchId}:${roomId}`,
             });
+        }
+        // 5. Batch INSERT all cleaning_batch_rooms in a single query (N rows → 1 query)
+        if (batchRoomRows.length > 0) {
+            const values = [];
+            const placeholders = [];
+            for (let i = 0; i < batchRoomRows.length; i++) {
+                const row = batchRoomRows[i];
+                const offset = i * 6;
+                placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`);
+                values.push(batchId, row.roomId, row.fromStatus, row.toStatus, row.isOverride, row.overrideReason);
+            }
+            await client.query(`INSERT INTO cleaning_batch_rooms
+         (batch_id, room_id, status_from, status_to, override_flag, override_reason)
+         VALUES ${placeholders.join(', ')}`, values);
         }
         // 8. Update batch completion if all rooms processed
         const successCount = results.filter((r) => r.success).length;

@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckoutStaffRoutes = registerCheckoutStaffRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
+const idempotency_1 = require("../../middleware/idempotency");
 const schemas_1 = require("../../checkout/schemas");
 const shared_1 = require("@the-clubs/shared");
 const broadcast_1 = require("../../inventory/broadcast");
@@ -11,7 +12,7 @@ function registerCheckoutStaffRoutes(fastify) {
     /**
      * POST /v1/checkout/:requestId/claim
      */
-    fastify.post('/v1/checkout/:requestId/claim', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkout/:requestId/claim', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
@@ -44,7 +45,7 @@ function registerCheckoutStaffRoutes(fastify) {
     /**
      * POST /v1/checkout/:requestId/mark-fee-paid
      */
-    fastify.post('/v1/checkout/:requestId/mark-fee-paid', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkout/:requestId/mark-fee-paid', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;
@@ -88,7 +89,7 @@ function registerCheckoutStaffRoutes(fastify) {
     /**
      * POST /v1/checkout/:requestId/confirm-items
      */
-    fastify.post('/v1/checkout/:requestId/confirm-items', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkout/:requestId/confirm-items', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
@@ -122,7 +123,7 @@ function registerCheckoutStaffRoutes(fastify) {
     /**
      * POST /v1/checkout/:requestId/complete
      */
-    fastify.post('/v1/checkout/:requestId/complete', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkout/:requestId/complete', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {

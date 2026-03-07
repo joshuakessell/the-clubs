@@ -2,11 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinPaymentIntentRoutes = registerCheckinPaymentIntentRoutes;
 const middleware_1 = require("../../auth/middleware");
+const idempotency_1 = require("../../middleware/idempotency");
 const utils_1 = require("../../checkin/utils");
 const paymentService_1 = require("../../services/paymentService");
 function registerCheckinPaymentIntentRoutes(fastify) {
     // POST /v1/checkin/lane/:laneId/create-payment-intent
-    fastify.post('/v1/checkin/lane/:laneId/create-payment-intent', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkin/lane/:laneId/create-payment-intent', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
@@ -24,7 +25,7 @@ function registerCheckinPaymentIntentRoutes(fastify) {
         }
     });
     // POST /v1/payments/:id/mark-paid
-    fastify.post('/v1/payments/:id/mark-paid', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/payments/:id/mark-paid', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {

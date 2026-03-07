@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
+import { idempotencyKey } from '../../middleware/idempotency';
 import { query } from '../../db';
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
    */
   fastify.post(
     '/v1/admin/products',
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 

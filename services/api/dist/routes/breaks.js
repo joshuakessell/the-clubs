@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.breakRoutes = breakRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../auth/middleware");
+const idempotency_1 = require("../middleware/idempotency");
 const db_1 = require("../db");
 const clubEventLog_1 = require("../activity/clubEventLog");
 const StartBreakSchema = zod_1.z.object({
@@ -18,7 +19,7 @@ async function breakRoutes(fastify) {
      *
      * Start a break for the authenticated staff member.
      */
-    fastify.post('/v1/breaks/start', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/breaks/start', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;
@@ -93,7 +94,7 @@ async function breakRoutes(fastify) {
      *
      * End the currently open break for the authenticated staff member.
      */
-    fastify.post('/v1/breaks/end', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/breaks/end', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         let body;

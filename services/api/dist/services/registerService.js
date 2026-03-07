@@ -25,6 +25,7 @@ const auditLog_1 = require("../audit/auditLog");
 const clubEventLog_1 = require("../activity/clubEventLog");
 const tenderSummary_1 = require("../money/tenderSummary");
 const closeout_1 = require("../money/closeout");
+const REGISTER_SESSION_COLS = 'id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at';
 // ── Shared Helpers ──
 /**
  * Ensure device is registered and enabled. Auto-registers unknown devices.
@@ -99,7 +100,7 @@ async function getRegisterAvailability() {
 }
 async function startCloseout(registerSessionId, staffId) {
     return (0, db_1.transaction)(async (client) => {
-        const registerResult = await client.query(`SELECT * FROM register_sessions WHERE id = $1 AND signed_out_at IS NULL`, [registerSessionId]);
+        const registerResult = await client.query(`SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE id = $1 AND signed_out_at IS NULL`, [registerSessionId]);
         if (registerResult.rows.length === 0)
             throw { statusCode: 404, message: 'Active register session not found' };
         const registerSession = registerResult.rows[0];
@@ -157,7 +158,7 @@ async function verifyEmployeePin(employeeId, pin, deviceId) {
 async function assignRegister(employeeId, deviceId, requestedRegisterNumber) {
     await ensureDeviceEnabled(deviceId);
     return (0, db_1.transaction)(async (client) => {
-        const existingDevice = await client.query(`SELECT * FROM register_sessions WHERE device_id = $1 AND signed_out_at IS NULL`, [deviceId]);
+        const existingDevice = await client.query(`SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE device_id = $1 AND signed_out_at IS NULL`, [deviceId]);
         if (existingDevice.rows.length > 0) {
             const session = existingDevice.rows[0];
             const ageMinutes = session.last_activity_at instanceof Date
@@ -173,7 +174,7 @@ async function assignRegister(employeeId, deviceId, requestedRegisterNumber) {
         const occupiedNumbers = new Set(occupiedRegisters.rows.map((r) => r.register_number));
         if (requestedRegisterNumber) {
             if (occupiedNumbers.has(requestedRegisterNumber)) {
-                const existing = await client.query(`SELECT * FROM register_sessions WHERE register_number = $1 AND signed_out_at IS NULL`, [requestedRegisterNumber]);
+                const existing = await client.query(`SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE register_number = $1 AND signed_out_at IS NULL`, [requestedRegisterNumber]);
                 if (existing.rows[0]?.employee_id === employeeId) {
                     return { registerNumber: requestedRegisterNumber, requiresConfirmation: true };
                 }
@@ -286,7 +287,7 @@ async function recordActivity(deviceId) {
 async function signout(deviceId, staff) {
     return (0, db_1.transaction)(async (client) => {
         const closeoutAt = new Date();
-        const sessionResult = await client.query(`SELECT * FROM register_sessions WHERE device_id = $1 AND signed_out_at IS NULL`, [deviceId]);
+        const sessionResult = await client.query(`SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE device_id = $1 AND signed_out_at IS NULL`, [deviceId]);
         if (sessionResult.rows.length === 0)
             throw new Error('No active register session found');
         const session = sessionResult.rows[0];
@@ -353,7 +354,7 @@ async function signoutAll(staff) {
 }
 async function getRegisterStatus(deviceId) {
     await ensureDeviceEnabled(deviceId);
-    const result = await (0, db_1.query)(`SELECT rs.*, s.name as employee_name, s.role as employee_role
+    const result = await (0, db_1.query)(`SELECT rs.id, rs.employee_id, rs.device_id, rs.register_number, rs.last_heartbeat, rs.last_activity_at, rs.created_at, rs.signed_out_at, s.name as employee_name, s.role as employee_role
      FROM register_sessions rs JOIN staff s ON s.id = rs.employee_id
      WHERE rs.device_id = $1 AND rs.signed_out_at IS NULL`, [deviceId]);
     if (result.rows.length === 0)

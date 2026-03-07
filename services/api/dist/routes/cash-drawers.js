@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.cashDrawerRoutes = cashDrawerRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../auth/middleware");
+const idempotency_1 = require("../middleware/idempotency");
 const cashDrawerService_1 = require("../services/cashDrawerService");
 const CashDrawerOpenSchema = zod_1.z.object({ registerSessionId: zod_1.z.string().uuid(), openingFloat: zod_1.z.number().int().nonnegative(), notes: zod_1.z.string().optional().nullable() });
 const CashDrawerEventSchema = zod_1.z.object({
@@ -23,7 +24,7 @@ const CashDrawerEventSchema = zod_1.z.object({
 });
 const CashDrawerCloseSchema = zod_1.z.object({ countedCash: zod_1.z.number().int().nonnegative(), notes: zod_1.z.string().optional().nullable() });
 async function cashDrawerRoutes(fastify) {
-    fastify.post('/v1/cash-drawers/open', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/cash-drawers/open', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {

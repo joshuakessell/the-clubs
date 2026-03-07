@@ -5,6 +5,7 @@ const zod_1 = require("zod");
 const shared_1 = require("@the-clubs/shared");
 const broadcast_1 = require("../inventory/broadcast");
 const middleware_1 = require("../auth/middleware");
+const idempotency_1 = require("../middleware/idempotency");
 const cleaningService_1 = require("../services/cleaningService");
 const CleaningBatchSchema = zod_1.z.object({
     roomIds: zod_1.z.array(zod_1.z.string().uuid()).min(1).max(50),
@@ -20,7 +21,7 @@ async function cleaningRoutes(fastify) {
     /**
      * POST /v1/cleaning/batch - Batch update room statuses
      */
-    fastify.post('/v1/cleaning/batch', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/cleaning/batch', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         let body;
         try {
             body = CleaningBatchSchema.parse(request.body);
