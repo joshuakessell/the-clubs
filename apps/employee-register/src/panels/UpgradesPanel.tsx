@@ -417,10 +417,10 @@ export function UpgradesPanel() {
       );
       setEntries(all);
 
-      const rooms: Array<{ tier: string; status: string }> = invData.rooms ?? [];
+      const rooms: Array<{ tier: string; status: string; assignedTo?: string; occupancyId?: string }> = invData.rooms ?? [];
       const avail: RoomAvailability = { STANDARD: 0, DOUBLE: 0, SPECIAL: 0 };
       for (const r of rooms) {
-        if (r.status === 'CLEAN' && r.tier in avail) {
+        if (r.status === 'CLEAN' && !r.assignedTo && !r.occupancyId && r.tier in avail) {
           avail[r.tier as keyof RoomAvailability]++;
         }
       }
@@ -446,8 +446,12 @@ export function UpgradesPanel() {
     setSubmitting(true);
     try {
       const h = headers();
+      const tiers = normalizeDesiredTiers(entry.desiredTiers);
+      const availableTier = tiers.find((t) => (availability[t as keyof RoomAvailability] ?? 0) > 0);
+      if (!availableTier) throw new Error('No rooms available for desired tier');
+
       const roomsRes = await fetch(
-        getApiUrl(`/api/v1/rooms/offerable?tier=${encodeURIComponent(entry.desiredTier)}`),
+        getApiUrl(`/api/v1/rooms/offerable?tier=${encodeURIComponent(availableTier)}`),
         { headers: h }
       );
       if (!roomsRes.ok) throw new Error('No rooms available');
@@ -469,7 +473,7 @@ export function UpgradesPanel() {
     } finally {
       setSubmitting(false);
     }
-  }, [headers, fetchData]);
+  }, [headers, fetchData, availability]);
 
   /* ── Start upgrade payment ── */
   const handleStartUpgrade = useCallback(async (entry: WaitlistEntry) => {

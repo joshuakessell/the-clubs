@@ -156,7 +156,7 @@ async function processUpgradeHoldsTick(fastify, options) {
           (resource_type, resource_id, kind, waitlist_id, expires_at)
         VALUES
           ('room', $1, 'UPGRADE_HOLD', $2, $3)
-        ON CONFLICT ON CONSTRAINT uniq_inventory_reservations_active_resource DO NOTHING
+        ON CONFLICT (resource_type, resource_id) WHERE released_at IS NULL DO NOTHING
         `, [room.room_id, candidate.waitlist_id, expiresAt]);
             heldPayloads.push({
                 waitlistId: candidate.waitlist_id,
