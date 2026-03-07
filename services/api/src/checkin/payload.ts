@@ -2,6 +2,7 @@ import type { CustomerIdType, SessionUpdatedPayload } from '@the-clubs/shared';
 import { getIdScanIssue } from './identity';
 import type { CustomerRow, LaneSessionRow, PaymentIntentRow, PoolClient } from './types';
 import { toDate, toNumber } from './utils';
+import { calculatePriceQuote, type RentalType } from '../pricing/engine';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -461,15 +462,20 @@ async function buildLedgerLineItems(
           SPECIAL: 'Special Room',
           GYM_LOCKER: 'Gym Locker',
         };
-        const rentalPrice: Record<string, number> = {
-          LOCKER: 17,
-          STANDARD: 30,
-          DOUBLE: 40,
-          SPECIAL: 50,
-          GYM_LOCKER: 0,
-        };
+        // Use the real pricing engine instead of hardcoded prices
+        const customerAge = customer?.dob
+          ? Math.floor((Date.now() - new Date(customer.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+          : undefined;
+        const estimate = calculatePriceQuote({
+          rentalType: rentalType as RentalType,
+          customerAge,
+          checkInTime: new Date(),
+          membershipCardType: (customer as any)?.membership_card_type as 'NONE' | 'SIX_MONTH' | undefined,
+          membershipValidUntil: toDate((customer as any)?.membership_valid_until) || undefined,
+          includeSixMonthMembershipPurchase: session.membership_choice === 'SIX_MONTH',
+        });
         const label = rentalLabel[rentalType] ?? rentalType;
-        const price = rentalPrice[rentalType] ?? 0;
+        const price = estimate.rentalFee;
         if (price > 0) {
           ledgerItems.push({ description: label, amount: price });
           total += price;

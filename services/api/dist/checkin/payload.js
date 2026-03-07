@@ -4,6 +4,7 @@ exports.getAllowedRentals = getAllowedRentals;
 exports.buildFullSessionUpdatedPayload = buildFullSessionUpdatedPayload;
 const identity_1 = require("./identity");
 const utils_1 = require("./utils");
+const engine_1 = require("../pricing/engine");
 function isRecord(value) {
     return typeof value === 'object' && value !== null;
 }
@@ -363,15 +364,20 @@ async function buildLedgerLineItems(client, session, customer, pastDueBalance, p
                     SPECIAL: 'Special Room',
                     GYM_LOCKER: 'Gym Locker',
                 };
-                const rentalPrice = {
-                    LOCKER: 17,
-                    STANDARD: 30,
-                    DOUBLE: 40,
-                    SPECIAL: 50,
-                    GYM_LOCKER: 0,
-                };
+                // Use the real pricing engine instead of hardcoded prices
+                const customerAge = customer?.dob
+                    ? Math.floor((Date.now() - new Date(customer.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+                    : undefined;
+                const estimate = (0, engine_1.calculatePriceQuote)({
+                    rentalType: rentalType,
+                    customerAge,
+                    checkInTime: new Date(),
+                    membershipCardType: customer?.membership_card_type,
+                    membershipValidUntil: (0, utils_1.toDate)(customer?.membership_valid_until) || undefined,
+                    includeSixMonthMembershipPurchase: session.membership_choice === 'SIX_MONTH',
+                });
                 const label = rentalLabel[rentalType] ?? rentalType;
-                const price = rentalPrice[rentalType] ?? 0;
+                const price = estimate.rentalFee;
                 if (price > 0) {
                     ledgerItems.push({ description: label, amount: price });
                     total += price;
