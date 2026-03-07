@@ -4,6 +4,7 @@
  * Extracted from routes/checkin/payment-intent.ts. Zero HTTP/Fastify concepts.
  */
 import { transaction } from '../db';
+import { insertCustomerSpendLedgerEntry } from '../ledger/customerSpendLedger';
 import {
   calculatePriceQuote,
   calculateRenewalQuote,
@@ -228,6 +229,51 @@ export async function markPaymentPaid(input: MarkPaidInput) {
         const session = sessionResult.rows[0]!;
         await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [session.id]);
         await ensureAuditTrail(paidIntent, quote);
+
+        // ── Write spend ledger entries so ChargesTab can show visit charges ──
+        if (session.customer_id) {
+          const visitRow = await client.query<{ visit_id: string }>(
+            `SELECT visit_id FROM checkin_blocks WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1`,
+            [session.id]
+          );
+          const visitId = visitRow.rows[0]?.visit_id ?? null;
+          const amount = toDollars(paidIntent.amount) ?? 0;
+          const parsedQuote = parsePaymentIntentQuote(paidIntent.quote_json);
+          const quoteObj = typeof paidIntent.quote_json === 'string'
+            ? JSON.parse(paidIntent.quote_json)
+            : paidIntent.quote_json;
+          const lineItems: Array<{ description: string; amount: number }> =
+            Array.isArray(quoteObj?.lineItems) ? quoteObj.lineItems : [];
+
+          if (lineItems.length > 0) {
+            for (const item of lineItems) {
+              await insertCustomerSpendLedgerEntry(client, {
+                customerId: session.customer_id,
+                visitId,
+                entryType: 'CHECKIN_CHARGE',
+                amount: typeof item.amount === 'number' ? item.amount : 0,
+                sourceApp: 'EMPLOYEE_REGISTER',
+                actorType: 'STAFF',
+                actorStaffId: input.staffId,
+                summary: item.description ?? 'Check-in charge',
+                dedupeKey: `LEDGER:CHECKIN:${paidIntent.id}:${item.description}`,
+              });
+            }
+          } else if (amount > 0) {
+            await insertCustomerSpendLedgerEntry(client, {
+              customerId: session.customer_id,
+              visitId,
+              entryType: 'CHECKIN_CHARGE',
+              amount,
+              sourceApp: 'EMPLOYEE_REGISTER',
+              actorType: 'STAFF',
+              actorStaffId: input.staffId,
+              summary: `Check-in payment (${parsedQuote.type ?? 'standard'})`,
+              dedupeKey: `LEDGER:CHECKIN:${paidIntent.id}`,
+            });
+          }
+        }
+
         return { paymentIntentId: paidIntent.id, status: 'PAID' as const, laneSessionToBroadcast: { sessionId: session.id, laneId: session.lane_id } };
       }
     }
