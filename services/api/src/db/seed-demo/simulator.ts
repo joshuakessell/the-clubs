@@ -13,6 +13,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import {
   LOCKER_NUMBERS,
   ROOMS,
@@ -1299,6 +1300,15 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       return visitCount;
     });
 
+    // Backfill fake agreement PDFs for all checkin blocks that are missing one
+    progress.log('📄 Generating placeholder agreement PDFs...');
+    const fakePdf = await generateFakeDemoPdf();
+    const pdfResult = await query(
+      `UPDATE checkin_blocks SET agreement_pdf = $1 WHERE agreement_pdf IS NULL AND agreement_signed = true`,
+      [fakePdf]
+    );
+    progress.log(`📄 Backfilled ${pdfResult.rowCount ?? 0} agreement PDFs.`);
+
     await saveSimState(now, anchor);
     progress.log(`✅ Simulation complete: ${created} visits generated.`);
     progress.done('Simulation complete');
@@ -1460,6 +1470,47 @@ async function seedActiveWaitlist(client: DbClient, p: {
       [wlId, visitId, blockId, desiredTier, lockerId, createdAt]
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Fake Agreement PDF for demo data
+// ---------------------------------------------------------------------------
+
+async function generateFakeDemoPdf(): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const helvBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const page = pdfDoc.addPage([612, 792]);
+
+  const black = rgb(0, 0, 0);
+  const gray = rgb(0.5, 0.5, 0.5);
+
+  // Letterhead
+  page.drawText('Club Dallas', { x: 54, y: 738, size: 16, font: helvBold, color: black });
+  page.drawLine({ start: { x: 54, y: 720 }, end: { x: 558, y: 720 }, thickness: 1, color: rgb(0.75, 0.75, 0.75) });
+
+  // Title
+  page.drawText('Agreement', { x: 54, y: 690, size: 14, font: helvBold, color: black });
+
+  // Body placeholder
+  const lines = [
+    'This is a demo agreement generated for testing purposes.',
+    'The actual agreement PDF is generated during the check-in process',
+    'and contains the full legal text, customer information, and signature.',
+    '',
+    'Customer signed agreement at check-in.',
+  ];
+  let y = 660;
+  for (const line of lines) {
+    if (line) page.drawText(line, { x: 54, y, size: 10, font: helv, color: gray });
+    y -= 16;
+  }
+
+  // Demo watermark
+  page.drawText('DEMO', { x: 220, y: 350, size: 60, font: helvBold, color: rgb(0.9, 0.9, 0.9) });
+
+  const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
+  return Buffer.from(pdfBytes);
 }
 
 // ---------------------------------------------------------------------------
