@@ -91,6 +91,7 @@ export function useRealtimeSSE({
 
     const eventSource = new EventSource(fullUrl);
     let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+    let manualRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const resetHeartbeat = () => {
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
@@ -136,16 +137,26 @@ export function useRealtimeSSE({
     };
 
     eventSource.onerror = () => {
-      // EventSource auto-reconnects; just update state
       setConnected(false);
+      // EventSource only auto-reconnects when readyState === CONNECTING.
+      // When the server is completely down (connection refused / non-SSE response),
+      // readyState may be CLOSED — meaning EventSource has permanently given up.
+      // In that case, schedule a manual retry with exponential backoff.
+      if (eventSource.readyState === EventSource.CLOSED) {
+        const backoffMs = Math.min(2000 * Math.pow(2, reconnectCount), 16000);
+        manualRetryTimer = setTimeout(() => {
+          setReconnectCount((c) => c + 1);
+        }, backoffMs);
+      }
     };
 
     return () => {
       eventSource.close();
       if (heartbeatTimer) clearTimeout(heartbeatTimer);
+      if (manualRetryTimer) clearTimeout(manualRetryTimer);
       setConnected(false);
     };
-  }, [buildUrl, enabled, heartbeatTimeoutMs, reconnectCount]);
+  }, [buildUrl, enabled, heartbeatTimeoutMs, reconnectCount, enforceMonotonicClock]);
 
   return { connected };
 }
