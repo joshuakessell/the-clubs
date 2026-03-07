@@ -111,7 +111,7 @@ style = {({ isActive }) => ({
 </div>
   < div className = "mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"
 style = {{
-  backgroundColor: role === 'ADMIN' ? 'rgba(0, 212, 255, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+  backgroundColor: role === 'ADMIN' ? 'color-mix(in oklch, var(--color-accent-primary) 10%, transparent)' : 'color-mix(in oklch, #3b82f6 10%, transparent)',
     color: role === 'ADMIN' ? 'var(--color-accent-primary)' : 'var(--color-accent-secondary)',
           }}
         >

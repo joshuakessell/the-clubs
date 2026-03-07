@@ -117,8 +117,8 @@ export function IdleScreen() {
               className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
               style={{
                 color: isStale ? '#ca8a04' : 'var(--color-text-muted)',
-                border: `1px solid ${isStale ? 'rgba(202,138,4,0.35)' : 'var(--color-border-subtle)'}`,
-                backgroundColor: isStale ? 'rgba(202,138,4,0.08)' : 'var(--color-surface-overlay)',
+                border: `1px solid ${isStale ? 'color-mix(in oklch, var(--color-status-warning) 35%, transparent)' : 'var(--color-border-subtle)'}`,
+                backgroundColor: isStale ? 'color-mix(in oklch, var(--color-status-warning) 8%, transparent)' : 'var(--color-surface-overlay)',
                 transition: 'color 0.4s, border-color 0.4s, background-color 0.4s',
               }}
             >
@@ -197,9 +197,9 @@ export function IdleScreen() {
                   onClick={() => globalThis.location.reload()}
                   className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
                   style={{
-                    backgroundColor: 'rgba(202,138,4,0.12)',
+                    backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 12%, transparent)',
                     color: '#ca8a04',
-                    border: '1px solid rgba(202,138,4,0.4)',
+                    border: '1px solid color-mix(in oklch, var(--color-status-warning) 40%, transparent)',
                     cursor: 'pointer',
                     transition: 'opacity 0.15s',
                   }}
@@ -215,9 +215,9 @@ export function IdleScreen() {
                 <div
                   className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-medium"
                   style={{
-                    backgroundColor: 'rgba(34,197,94,0.08)',
+                    backgroundColor: 'color-mix(in oklch, var(--color-status-success) 8%, transparent)',
                     color: 'var(--color-status-success)',
-                    border: '1px solid rgba(34,197,94,0.3)',
+                    border: '1px solid color-mix(in oklch, var(--color-status-success) 30%, transparent)',
                   }}
                 >
                   <div

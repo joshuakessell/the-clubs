@@ -48,7 +48,7 @@ export function MessagesView() {
 
 {
   error && (
-    <div className="rounded-lg border px-4 py-3 text-sm" style = {{ backgroundColor: 'rgba(239, 68, 68, 0.06)', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-status-error)' }
+    <div className="rounded-lg border px-4 py-3 text-sm" style = {{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }
 }>
   { error }
   </div>
@@ -108,7 +108,7 @@ onClick = {() => setSelectedMessage(null)}
 style = {{
   backgroundColor: 'var(--color-surface-raised)',
     borderColor: 'var(--color-border-default)',
-      boxShadow: '0 0 40px rgba(0, 212, 255, 0.08)',
+      boxShadow: '0 0 40px color-mix(in oklch, var(--color-accent-primary) 8%, transparent)',
             }}
 onClick = {(e) => e.stopPropagation()}
           >

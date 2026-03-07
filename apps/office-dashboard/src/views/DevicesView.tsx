@@ -63,7 +63,7 @@ export function DevicesView() {
       </div>
 
       {error && (
-        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'rgba(239, 68, 68, 0.06)', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-status-error)' }}>
+        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       )}
@@ -76,11 +76,11 @@ export function DevicesView() {
             <div key={d.deviceId} className="rounded-xl border p-5 transition"
               style={{
                 backgroundColor: 'var(--color-surface-raised)',
-                borderColor: d.enabled ? 'var(--color-border-default)' : 'rgba(239, 68, 68, 0.2)',
+                borderColor: d.enabled ? 'var(--color-border-default)' : 'color-mix(in oklch, var(--color-status-error) 20%, transparent)',
                 opacity: d.enabled ? 1 : 0.7,
               }}
               onMouseEnter={(e) => { if (d.enabled) (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-accent-primary)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = d.enabled ? 'var(--color-border-default)' : 'rgba(239, 68, 68, 0.2)'; }}>
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = d.enabled ? 'var(--color-border-default)' : 'color-mix(in oklch, var(--color-status-error) 20%, transparent)'; }}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>{d.displayName}</span>
               </div>

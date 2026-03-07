@@ -60,9 +60,9 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const DAYS_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 const SHIFT_LABELS: Record<string, string> = { A: '1st (12am–8am)', B: '2nd (8am–4pm)', C: '3rd (4pm–12am)' };
 const SHIFT_COLORS: Record<string, string> = {
-  A: 'rgba(99, 102, 241, 0.12)',  // indigo tint
-  B: 'rgba(16, 185, 129, 0.12)',  // emerald tint
-  C: 'rgba(245, 158, 11, 0.12)', // amber tint
+  A: 'color-mix(in oklch, #6366f1 12%, transparent)',  // indigo tint
+  B: 'color-mix(in oklch, var(--color-status-success) 12%, transparent)',  // emerald tint
+  C: 'color-mix(in oklch, var(--color-status-warning) 12%, transparent)', // amber tint
 };
 const SHIFT_ACCENTS: Record<string, string> = {
   A: '#818cf8', // indigo
@@ -423,7 +423,7 @@ export function ScheduleView() {
                           className={`px-2 py-3 text-center text-xs font-semibold uppercase tracking-wider transition${isAdmin ? ' cursor-pointer hover:opacity-80' : ''}`}
                           style={{
                             color: isToday ? 'var(--color-accent-primary)' : 'var(--color-text-muted)',
-                            backgroundColor: isToday ? 'rgba(99, 102, 241, 0.04)' : 'transparent',
+                            backgroundColor: isToday ? 'color-mix(in oklch, #6366f1 4%, transparent)' : 'transparent',
                           }}
                           onClick={isAdmin ? () => setSelectedDay(selectedDay === day ? null : day) : undefined}>
                           <div>{DAYS[idx]}</div>

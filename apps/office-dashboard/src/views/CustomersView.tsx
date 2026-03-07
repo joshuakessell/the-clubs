@@ -149,7 +149,7 @@ function CustomerDetail({ customer }: { customer: Customer }) {
         {loading ? (
           <div className="py-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading visits…</div>
         ) : error ? (
-          <div className="rounded-lg border px-3 py-2 text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)', color: 'var(--color-status-error)' }}>
+          <div className="rounded-lg border px-3 py-2 text-sm" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
             {error}
           </div>
         ) : visits.length === 0 ? (
@@ -201,9 +201,9 @@ function CustomerDetail({ customer }: { customer: Customer }) {
                             onClick={() => void handleDownloadPdf(block.checkinBlockId)}
                             className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition hover:opacity-80"
                             style={{
-                              backgroundColor: 'rgba(0, 212, 255, 0.08)',
+                              backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 8%, transparent)',
                               color: 'var(--color-accent-primary)',
-                              border: '1px solid rgba(0, 212, 255, 0.2)',
+                              border: '1px solid color-mix(in oklch, var(--color-accent-primary) 20%, transparent)',
                             }}
                           >
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -271,7 +271,7 @@ export function CustomersView() {
       </div>
 
       {error && (
-        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'rgba(239, 68, 68, 0.06)', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-status-error)' }}>
+        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       )}

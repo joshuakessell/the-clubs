@@ -21,8 +21,8 @@ export function DashboardHeader() {
           className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
           style={{
             color: 'var(--color-status-error)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
-            backgroundColor: 'rgba(239, 68, 68, 0.05)',
+            border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, transparent)',
+            backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)',
           }}
         >
           Sign Out

@@ -70,14 +70,14 @@ className = "flex items-center justify-center gap-3 rounded-xl border-2 px-8 py-
 style = {{
   borderColor: 'var(--color-border-accent)',
     color: 'var(--color-accent-primary)',
-      backgroundColor: 'rgba(0, 212, 255, 0.04)',
+      backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 4%, transparent)',
               }}
 onMouseOver = {(e) => {
-  e.currentTarget.style.backgroundColor = 'rgba(0, 212, 255, 0.12)';
+  e.currentTarget.style.backgroundColor = 'color-mix(in oklch, var(--color-accent-primary) 12%, transparent)';
   e.currentTarget.style.boxShadow = '0 0 24px var(--color-accent-glow)';
 }}
 onMouseOut = {(e) => {
-  e.currentTarget.style.backgroundColor = 'rgba(0, 212, 255, 0.04)';
+  e.currentTarget.style.backgroundColor = 'color-mix(in oklch, var(--color-accent-primary) 4%, transparent)';
   e.currentTarget.style.boxShadow = 'none';
 }}
             >

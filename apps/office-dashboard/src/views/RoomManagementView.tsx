@@ -29,10 +29,10 @@ type Tab = 'rooms' | 'lockers';
 /* ─── Status Styles ──────────────────────────────────────────── */
 
 const STATUS_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  CLEAN:          { bg: 'rgba(34,197,94,0.12)',  text: '#22c55e', label: 'Clean' },
-  DIRTY:          { bg: 'rgba(239,68,68,0.12)',  text: '#ef4444', label: 'Dirty' },
-  OCCUPIED:       { bg: 'rgba(99,102,241,0.12)', text: '#6366f1', label: 'Occupied' },
-  OUT_OF_SERVICE: { bg: 'rgba(156,163,175,0.15)', text: '#9ca3af', label: 'Out of Service' },
+  CLEAN:          { bg: 'color-mix(in oklch, var(--color-status-success) 12%, transparent)',  text: '#22c55e', label: 'Clean' },
+  DIRTY:          { bg: 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',  text: '#ef4444', label: 'Dirty' },
+  OCCUPIED:       { bg: 'color-mix(in oklch, #6366f1 12%, transparent)', text: '#6366f1', label: 'Occupied' },
+  OUT_OF_SERVICE: { bg: 'color-mix(in oklch, #9ca3af 15%, transparent)', text: '#9ca3af', label: 'Out of Service' },
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -180,8 +180,8 @@ export function RoomManagementView() {
             padding: '10px 14px',
             marginBottom: 16,
             borderRadius: 8,
-            backgroundColor: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.2)',
+            backgroundColor: 'color-mix(in oklch, var(--color-status-error) 8%, transparent)',
+            border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, transparent)',
             color: '#ef4444',
             fontSize: 13,
           }}
@@ -631,14 +631,14 @@ function ActionButton({
         borderRadius: 4,
         border: '1px solid',
         borderColor: danger
-          ? 'rgba(239,68,68,0.3)'
+          ? 'color-mix(in oklch, var(--color-status-error) 30%, transparent)'
           : accent
             ? 'var(--color-accent-primary)'
             : 'var(--color-border-default)',
         backgroundColor: danger
-          ? 'rgba(239,68,68,0.08)'
+          ? 'color-mix(in oklch, var(--color-status-error) 8%, transparent)'
           : accent
-            ? 'rgba(0,212,255,0.08)'
+            ? 'color-mix(in oklch, var(--color-accent-primary) 8%, transparent)'
             : 'transparent',
         color: danger
           ? '#ef4444'

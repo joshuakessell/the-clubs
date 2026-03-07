@@ -207,8 +207,8 @@ export function AgreementScreen() {
               <div
                 className="flex items-center gap-3 rounded-lg px-4 py-3"
                 style={{
-                  backgroundColor: 'rgba(22, 163, 74, 0.12)',
-                  border: '1px solid rgba(22, 163, 74, 0.3)',
+                  backgroundColor: 'color-mix(in oklch, var(--color-status-success) 12%, transparent)',
+                  border: '1px solid color-mix(in oklch, var(--color-status-success) 30%, transparent)',
                 }}
               >
                 <span style={{ color: '#16a34a', fontSize: '1.25rem' }}>✓</span>

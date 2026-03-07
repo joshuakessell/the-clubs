@@ -38,7 +38,7 @@ export function LateAlertsView() {
       </div>
 
       {error && (
-        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'rgba(239, 68, 68, 0.06)', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-status-error)' }}>
+        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       )}
@@ -50,8 +50,8 @@ export function LateAlertsView() {
           {alerts.map((a) => (
             <div key={a.id} className="flex items-center justify-between rounded-xl border p-4"
               style={{
-                backgroundColor: a.status === 'ESCALATED' ? 'rgba(239, 68, 68, 0.06)' : 'var(--color-surface-raised)',
-                borderColor: a.status === 'ESCALATED' ? 'rgba(239, 68, 68, 0.2)' : 'var(--color-border-default)',
+                backgroundColor: a.status === 'ESCALATED' ? 'color-mix(in oklch, var(--color-status-error) 6%, transparent)' : 'var(--color-surface-raised)',
+                borderColor: a.status === 'ESCALATED' ? 'color-mix(in oklch, var(--color-status-error) 20%, transparent)' : 'var(--color-border-default)',
               }}>
               <div className="flex items-center gap-4">
                 <span className="text-base font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>

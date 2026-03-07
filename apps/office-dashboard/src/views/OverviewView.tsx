@@ -47,7 +47,7 @@ export function OverviewView() {
   return (
     <div className="flex flex-col gap-6">
       {error && (
-        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'rgba(239, 68, 68, 0.06)', borderColor: 'rgba(239, 68, 68, 0.2)', color: 'var(--color-status-error)' }}>
+        <div className="rounded-lg border px-4 py-3 text-sm" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
           {error}
         </div>
       )}
@@ -89,7 +89,7 @@ export function OverviewView() {
           <div className="mt-3 flex flex-col gap-2">
             {LOW_AVAILABILITY.map((r) => (
               <div key={r.tier} className="flex items-center justify-between rounded-lg border px-4 py-3"
-                style={{ backgroundColor: 'rgba(245, 158, 11, 0.06)', borderColor: 'rgba(245, 158, 11, 0.2)' }}>
+                style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-warning) 20%, transparent)' }}>
                 <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{r.tier}</span>
                 <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-status-warning)' }}>{r.available} available</span>
               </div>

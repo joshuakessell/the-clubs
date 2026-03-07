@@ -31,8 +31,8 @@ export function CompleteScreen() {
         <div
           className="flex h-24 w-24 items-center justify-center rounded-full"
           style={{
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            border: '2px solid rgba(16, 185, 129, 0.3)',
+            backgroundColor: 'color-mix(in oklch, var(--color-status-success) 10%, transparent)',
+            border: '2px solid color-mix(in oklch, var(--color-status-success) 30%, transparent)',
           }}
         >
           <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-success)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

@@ -296,8 +296,8 @@ export function ChargeItemsList({
           <div
             className="flex items-center justify-center gap-2 rounded-lg px-4 py-2"
             style={{
-              backgroundColor: 'rgba(34,197,94,0.1)',
-              border: '1px solid rgba(34,197,94,0.3)',
+              backgroundColor: 'color-mix(in oklch, var(--color-status-success) 10%, transparent)',
+              border: '1px solid color-mix(in oklch, var(--color-status-success) 30%, transparent)',
               animation: 'fadeSlideIn 0.4s ease both',
               marginTop: 8,
             }}

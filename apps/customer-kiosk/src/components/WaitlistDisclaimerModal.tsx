@@ -87,9 +87,9 @@ export function WaitlistDisclaimerModal() {
               <div
                 className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs"
                 style={{
-                  backgroundColor: 'rgba(245,158,11,0.1)',
+                  backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 10%, transparent)',
                   color: 'var(--color-status-warning)',
-                  border: '1px solid rgba(245,158,11,0.25)',
+                  border: '1px solid color-mix(in oklch, var(--color-status-warning) 25%, transparent)',
                 }}
               >
                 {i + 1}

@@ -39,16 +39,16 @@ const CONFIG: Record<PaymentPillStatus, PillConfig> = {
   },
   authorizing: {
     dotColor: '#f59e0b',
-    bgColor: 'rgba(245, 158, 11, 0.08)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
+    bgColor: 'color-mix(in oklch, var(--color-status-warning) 8%, transparent)',
+    borderColor: 'color-mix(in oklch, var(--color-status-warning) 30%, transparent)',
     textColor: '#f59e0b',
     pulse: true,
     label: 'Processing…',
   },
   declined: {
     dotColor: '#ef4444',
-    bgColor: 'rgba(239, 68, 68, 0.08)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
+    bgColor: 'color-mix(in oklch, var(--color-status-error) 8%, transparent)',
+    borderColor: 'color-mix(in oklch, var(--color-status-error) 30%, transparent)',
     textColor: '#ef4444',
     pulse: false,
     label: 'Card Declined.',
@@ -56,8 +56,8 @@ const CONFIG: Record<PaymentPillStatus, PillConfig> = {
   },
   paid: {
     dotColor: '#22c55e',
-    bgColor: 'rgba(34, 197, 94, 0.08)',
-    borderColor: 'rgba(34, 197, 94, 0.3)',
+    bgColor: 'color-mix(in oklch, var(--color-status-success) 8%, transparent)',
+    borderColor: 'color-mix(in oklch, var(--color-status-success) 30%, transparent)',
     textColor: '#22c55e',
     pulse: false,
     label: 'Payment Complete',
@@ -123,7 +123,7 @@ export function PaymentStatusPill({ status, declineReason }: PaymentStatusPillPr
         <p
           style={{
             fontSize: '0.75rem',
-            color: 'rgba(239, 68, 68, 0.75)',
+            color: 'color-mix(in oklch, var(--color-status-error) 75%, transparent)',
             textAlign: 'center',
             margin: 0,
           }}
