@@ -61,10 +61,16 @@ async function ensureTrackingTable(): Promise<void> {
         END
         WHERE filename IS NULL AND name IS NOT NULL
       `);
+      // Drop NOT NULL on `name` so future inserts (which only set filename) don't fail
+      await pool.query(`ALTER TABLE schema_migrations ALTER COLUMN name DROP NOT NULL`);
       return; // Table is now compatible
     }
 
     if (hasFilename) {
+      // If the old `name` column still exists with NOT NULL, relax it
+      if (hasName) {
+        await pool.query(`ALTER TABLE schema_migrations ALTER COLUMN name DROP NOT NULL`);
+      }
       return; // Already has the expected schema
     }
   }
