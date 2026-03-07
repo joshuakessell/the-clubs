@@ -34,7 +34,7 @@ export function AccountPanelContent() {
   const noCustomer = !currentSessionId && !customerId && !customerName;
   const sessionUrl = (noCustomer && laneId) ? getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`) : null;
   
-  const { data, mutate } = useSWR([sessionUrl, token], getFetcher, { suspense: true, revalidateOnFocus: false });
+  const { data, mutate } = useSWR(sessionUrl ? [sessionUrl, token] : null, getFetcher, { suspense: true, revalidateOnFocus: false });
   const fetchedSession = data?.session;
   const hasLiveSession = !!fetchedSession && fetchedSession.status !== 'COMPLETED' && fetchedSession.status !== 'CANCELLED';
 
