@@ -3,7 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.seed = seed;
 const index_1 = require("./index");
 const shared_1 = require("@the-clubs/shared");
-const shared_2 = require("@the-clubs/shared");
 const utils_1 = require("../auth/utils");
 const loadEnv_1 = require("../env/loadEnv");
 (0, loadEnv_1.loadEnvFromDotEnvIfPresent)();
@@ -16,7 +15,7 @@ const loadEnv_1 = require("../env/loadEnv");
  *
  * This seed enforces inventory presence and removes any invalid legacy rooms/lockers.
  */
-const seedRooms = shared_2.ROOMS.map((r) => {
+const seedRooms = shared_1.ROOMS.map((r) => {
     const type = r.tier === 'DOUBLE'
         ? shared_1.RoomType.DOUBLE
         : r.tier === 'SPECIAL'
@@ -29,7 +28,7 @@ const seedRooms = shared_2.ROOMS.map((r) => {
         tagCode: `ROOM-${r.number}`,
     };
 });
-const seedLockers = shared_2.LOCKER_NUMBERS.map((n) => ({
+const seedLockers = shared_1.LOCKER_NUMBERS.map((n) => ({
     number: n,
     tagCode: `LOCKER-${n}`,
 }));
@@ -46,8 +45,8 @@ async function seed() {
          RETURNING 1
        )
        SELECT COUNT(*)::text as count FROM del`, [desiredRoomNumbers]);
-        if (parseInt(deletedRooms.rows[0]?.count || '0', 10) > 0) {
-            console.log(`🧹 Removed ${deletedRooms.rows[0].count} invalid legacy room(s) from inventory`);
+        if (Number.parseInt(deletedRooms.rows[0]?.count || '0', 10) > 0) {
+            console.log(`🧹 Removed ${deletedRooms.rows[0]?.count ?? '0'} invalid legacy room(s) from inventory`);
         }
         for (const roomSeed of seedRooms) {
             const roomResult = await (0, index_1.query)(`INSERT INTO rooms (number, type, status, floor, last_status_change)
@@ -57,7 +56,7 @@ async function seed() {
                floor = EXCLUDED.floor,
                updated_at = NOW()
          RETURNING id`, [roomSeed.number, roomSeed.type, shared_1.RoomStatus.CLEAN, roomSeed.floor]);
-            const roomId = roomResult.rows[0].id;
+            const roomId = roomResult.rows[0]?.id ?? '';
             await (0, index_1.query)(`INSERT INTO key_tags (room_id, tag_type, tag_code, is_active)
          VALUES ($1, 'QR', $2, true)
          ON CONFLICT (tag_code) DO UPDATE
@@ -75,8 +74,8 @@ async function seed() {
          RETURNING 1
        )
        SELECT COUNT(*)::text as count FROM del`, [desiredLockerNumbers]);
-        if (parseInt(deletedLockers.rows[0]?.count || '0', 10) > 0) {
-            console.log(`🧹 Removed ${deletedLockers.rows[0].count} invalid legacy locker(s) from inventory`);
+        if (Number.parseInt(deletedLockers.rows[0]?.count || '0', 10) > 0) {
+            console.log(`🧹 Removed ${deletedLockers.rows[0]?.count ?? '0'} invalid legacy locker(s) from inventory`);
         }
         for (const lockerSeed of seedLockers) {
             const lockerResult = await (0, index_1.query)(`INSERT INTO lockers (number, status)
@@ -84,7 +83,7 @@ async function seed() {
          ON CONFLICT (number) DO UPDATE
            SET updated_at = NOW()
          RETURNING id`, [lockerSeed.number, shared_1.RoomStatus.CLEAN]);
-            const lockerId = lockerResult.rows[0].id;
+            const lockerId = lockerResult.rows[0]?.id ?? '';
             await (0, index_1.query)(`INSERT INTO key_tags (locker_id, tag_type, tag_code, is_active)
          VALUES ($1, 'QR', $2, true)
          ON CONFLICT (tag_code) DO UPDATE
@@ -122,7 +121,7 @@ async function seed() {
         ];
         // Check if staff already exist
         const existingStaff = await (0, index_1.query)('SELECT COUNT(*) as count FROM staff');
-        if (parseInt(existingStaff.rows[0]?.count || '0', 10) > 0) {
+        if (Number.parseInt(existingStaff.rows[0]?.count || '0', 10) > 0) {
             console.log('⚠️  Staff users already exist. Updating existing staff to match seed data...');
             // Update existing staff if they match old names or create new ones
             for (const staff of staffUsers) {
@@ -138,8 +137,8 @@ async function seed() {
                     // Update existing staff
                     await (0, index_1.query)(`UPDATE staff 
              SET name = $1, role = $2, qr_token_hash = $3, pin_hash = $4, active = true
-             WHERE id = $5`, [staff.name, staff.role, qrTokenHash, pinHash, existing.rows[0].id]);
-                    console.log(`✓ Updated staff: ${existing.rows[0].name} → ${staff.name} (${staff.role})`);
+             WHERE id = $5`, [staff.name, staff.role, qrTokenHash, pinHash, existing.rows[0]?.id ?? '']);
+                    console.log(`✓ Updated staff: ${existing.rows[0]?.name ?? 'Unknown'} → ${staff.name} (${staff.role})`);
                 }
                 else {
                     // Create new staff if doesn't exist
@@ -176,7 +175,7 @@ async function seed() {
         ];
         for (const device of seedDevices) {
             const existing = await (0, index_1.query)('SELECT COUNT(*) as count FROM devices WHERE device_id = $1', [device.deviceId]);
-            if (parseInt(existing.rows[0]?.count || '0', 10) === 0) {
+            if (Number.parseInt(existing.rows[0]?.count || '0', 10) === 0) {
                 await (0, index_1.query)(`INSERT INTO devices (device_id, display_name, enabled)
            VALUES ($1, $2, true)`, [device.deviceId, device.displayName]);
                 console.log(`✓ Seeded device: ${device.displayName} (${device.deviceId})`);
@@ -195,7 +194,7 @@ async function seed() {
         console.log('\nSeeding active agreement...');
         const existingAgreement = await (0, index_1.query)('SELECT COUNT(*) as count FROM agreements WHERE active = true');
         const agreementBodyText = shared_1.AGREEMENT_LEGAL_BODY_HTML_BY_LANG.EN;
-        if (parseInt(existingAgreement.rows[0]?.count || '0', 10) > 0) {
+        if (Number.parseInt(existingAgreement.rows[0]?.count || '0', 10) > 0) {
             // Update existing active agreement if body_text is empty
             const activeAgreement = await (0, index_1.query)('SELECT body_text FROM agreements WHERE active = true LIMIT 1');
             if (activeAgreement.rows.length > 0 &&
@@ -218,16 +217,16 @@ async function seed() {
         // Seed retail products
         console.log('\nSeeding retail products...');
         const retailProducts = [
-            { sku: 'body-wash', name: 'Body Wash', price: 1500, sortOrder: 1, imageUrl: '/images/products/body-wash.png' },
-            { sku: 'body-lotion', name: 'Body Lotion', price: 1200, sortOrder: 2, imageUrl: '/images/products/body-lotion.png' },
-            { sku: 'charcoal-mask', name: 'Charcoal Face Mask', price: 2000, sortOrder: 3, imageUrl: '/images/products/charcoal-mask.png' },
-            { sku: 'aroma-roll-on', name: 'Aroma Roll-On', price: 1200, sortOrder: 4, imageUrl: '/images/products/aroma-roll-on.png' },
-            { sku: 'body-scrub', name: 'Exfoliating Scrub', price: 1800, sortOrder: 5, imageUrl: '/images/products/body-scrub.png' },
-            { sku: 'shampoo', name: 'Shampoo', price: 1400, sortOrder: 6, imageUrl: '/images/products/shampoo.png' },
-            { sku: 'conditioner', name: 'Conditioner', price: 1400, sortOrder: 7, imageUrl: '/images/products/conditioner.png' },
-            { sku: 'lip-balm', name: 'Lip Balm', price: 700, sortOrder: 8, imageUrl: '/images/products/lip-balm.png' },
-            { sku: 'aloe-gel', name: 'Aloe Vera Gel', price: 1000, sortOrder: 9, imageUrl: '/images/products/aloe-gel.png' },
-            { sku: 'facial-toner', name: 'Facial Toner', price: 1600, sortOrder: 10, imageUrl: '/images/products/facial-toner.png' },
+            { sku: 'body-wash', name: 'Body Wash', price: 15, sortOrder: 1, imageUrl: '/images/products/body-wash.png' },
+            { sku: 'body-lotion', name: 'Body Lotion', price: 12, sortOrder: 2, imageUrl: '/images/products/body-lotion.png' },
+            { sku: 'charcoal-mask', name: 'Charcoal Face Mask', price: 20, sortOrder: 3, imageUrl: '/images/products/charcoal-mask.png' },
+            { sku: 'aroma-roll-on', name: 'Aroma Roll-On', price: 12, sortOrder: 4, imageUrl: '/images/products/aroma-roll-on.png' },
+            { sku: 'body-scrub', name: 'Exfoliating Scrub', price: 18, sortOrder: 5, imageUrl: '/images/products/body-scrub.png' },
+            { sku: 'shampoo', name: 'Shampoo', price: 14, sortOrder: 6, imageUrl: '/images/products/shampoo.png' },
+            { sku: 'conditioner', name: 'Conditioner', price: 14, sortOrder: 7, imageUrl: '/images/products/conditioner.png' },
+            { sku: 'lip-balm', name: 'Lip Balm', price: 8, sortOrder: 8, imageUrl: '/images/products/lip-balm.png' },
+            { sku: 'aloe-gel', name: 'Aloe Vera Gel', price: 10, sortOrder: 9, imageUrl: '/images/products/aloe-gel.png' },
+            { sku: 'facial-toner', name: 'Facial Toner', price: 16, sortOrder: 10, imageUrl: '/images/products/facial-toner.png' },
         ];
         for (const product of retailProducts) {
             await (0, index_1.query)(`INSERT INTO products (sku, name, price, category, sort_order, image_url, is_active)

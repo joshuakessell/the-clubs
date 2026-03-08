@@ -4,11 +4,12 @@ exports.processScanId = processScanId;
 const identity_1 = require("../../checkin/identity");
 const payload_1 = require("../../checkin/payload");
 const utils_1 = require("../../checkin/utils");
+const HttpError_1 = require("../../errors/HttpError");
 // ── Helpers ____________________________________________________
 function normalizeIdNumberForMatch(value) {
     if (!value)
         return null;
-    const normalized = value.replace(/[^a-z0-9]/gi, '').toUpperCase();
+    const normalized = value.replaceAll(/[^a-z0-9]/gi, '').toUpperCase();
     return normalized || null;
 }
 function extractStoredIdNumberForMatch(value) {
@@ -71,7 +72,7 @@ async function processScanId(client, params) {
         customerName = `Customer ${body.idNumber}`;
     }
     if (!customerName) {
-        throw { statusCode: 400, message: 'Unable to determine customer name from ID scan' };
+        throw new HttpError_1.HttpError(400, 'Unable to determine customer name from ID scan');
     }
     // ── Step 3: Parse dates ──
     let dob = null;
@@ -110,20 +111,13 @@ async function processScanId(client, params) {
     });
     // ── Step 5: Check ID issues (after customer created, so record exists for retry) ──
     if (idScanIssue) {
-        throw {
-            statusCode: 403,
-            code: idScanIssue,
-            message: (0, identity_1.getIdScanIssueMessage)(idScanIssue),
-        };
+        throw new HttpError_1.HttpError(403, (0, identity_1.getIdScanIssueMessage)(idScanIssue), { code: idScanIssue });
     }
     // ── Step 6: Check ban status ──
     const customerCheck = await client.query(`SELECT banned_until FROM customers WHERE id = $1`, [customerId]);
     const bannedUntil = (0, utils_1.toDate)(customerCheck.rows[0]?.banned_until);
     if (bannedUntil && bannedUntil > new Date()) {
-        throw {
-            statusCode: 403,
-            message: `Customer is banned until ${bannedUntil.toISOString()}`,
-        };
+        throw new HttpError_1.HttpError(403, `Customer is banned until ${bannedUntil.toISOString()}`);
     }
     // ── Step 7: Check for active visit ──
     await assertNoActiveVisit(client, customerId);
@@ -234,21 +228,18 @@ async function assertNoActiveVisit(client, customerId) {
      WHERE visit_id = $1 AND status IN ('ACTIVE', 'OFFERED')
      ORDER BY created_at DESC LIMIT 1`, [activeVisitId]);
     const wl = waitlistResult.rows[0];
-    throw {
-        statusCode: 409,
-        code: 'ALREADY_CHECKED_IN',
-        message: 'Customer is currently checked in',
-        activeCheckin: {
-            visitId: activeVisitId,
-            rentalType: block?.rental_type ?? null,
-            assignedResourceType,
-            assignedResourceNumber,
-            checkinAt: block?.starts_at ? block.starts_at.toISOString() : null,
-            checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
-            overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
-            waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
-        },
+    const err = new HttpError_1.HttpError(409, 'Customer is currently checked in', { code: 'ALREADY_CHECKED_IN' });
+    err.activeCheckin = {
+        visitId: activeVisitId,
+        rentalType: block?.rental_type ?? null,
+        assignedResourceType,
+        assignedResourceNumber,
+        checkinAt: block?.starts_at ? block.starts_at.toISOString() : null,
+        checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
+        overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
+        waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
     };
+    throw err;
 }
 async function fetchCustomerInfoForResponse(client, session, computedMode) {
     if (!session.customer_id) {
@@ -259,7 +250,7 @@ async function fetchCustomerInfoForResponse(client, session, computedMode) {
         return { pastDueBalance: 0, pastDueBlocked: false };
     }
     const customer = customerInfo.rows[0];
-    const pastDueBalance = parseFloat(String(customer.past_due_balance || 0));
+    const pastDueBalance = Number.parseFloat(String(customer.past_due_balance || 0));
     const pastDueBlocked = pastDueBalance > 0 && !(session.past_due_bypassed || false);
     const customerPrimaryLanguage = customer.primary_language;
     let customerDobMonthDay;

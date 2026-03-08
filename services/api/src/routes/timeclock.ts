@@ -19,7 +19,7 @@ export async function timeclockRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.patch<{ Params: { sessionId: string }; Body: z.infer<typeof UpdateTimeclockSchema> }>(
-    '/v1/admin/timeclock/:sessionId', { schema: { body: UpdateTimeclockSchema }, preHandler: [requireAuth, requireAdmin] },
+    '/v1/admin/timeclock/:sessionId', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const body = request.body as z.infer<typeof UpdateTimeclockSchema>;

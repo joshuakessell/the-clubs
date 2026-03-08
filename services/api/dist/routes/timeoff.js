@@ -64,9 +64,10 @@ async function timeoffRoutes(fastify) {
         });
     });
     fastify.post('/v1/schedule/time-off-requests', {
+        schema: { body: CreateTimeOffRequestSchema },
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
-        const body = CreateTimeOffRequestSchema.parse(request.body);
+        const body = request.body;
         try {
             const inserted = await (0, db_1.transaction)(async (client) => {
                 const res = await client.query(`INSERT INTO time_off_requests (employee_id, day, reason)
@@ -87,7 +88,8 @@ async function timeoffRoutes(fastify) {
         }
         catch (err) {
             // Unique violation: one per employee per day
-            if (err?.code === '23505') {
+            const dbErr = err;
+            if (dbErr?.code === '23505') {
                 return reply
                     .status(409)
                     .send({ error: 'A time off request already exists for that day.' });
@@ -151,10 +153,11 @@ async function timeoffRoutes(fastify) {
         });
     });
     fastify.patch('/v1/admin/time-off-requests/:requestId', {
+        schema: { body: AdminDecisionSchema },
         preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin],
     }, async (request, reply) => {
         const { requestId } = request.params;
-        const body = AdminDecisionSchema.parse(request.body);
+        const body = request.body;
         try {
             const updated = await (0, db_1.transaction)(async (client) => {
                 const current = await client.query(`SELECT status, employee_id, day, reason FROM time_off_requests WHERE id = $1`, [

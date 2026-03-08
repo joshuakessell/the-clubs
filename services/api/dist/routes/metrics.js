@@ -63,14 +63,14 @@ async function metricsRoutes(fastify) {
                 },
                 dailyCounts: dailyCountResult.rows.map((row) => ({
                     date: row.date,
-                    count: parseInt(row.count, 10),
+                    count: Number.parseInt(row.count, 10),
                 })),
                 averageWaitlistTimeMinutes: avgTimeResult.rows[0]?.avg_minutes
-                    ? parseFloat(avgTimeResult.rows[0].avg_minutes)
+                    ? Number.parseFloat(avgTimeResult.rows[0].avg_minutes)
                     : 0,
                 upgradesByTier: tierCountResult.rows.map((row) => ({
                     tier: row.desired_tier,
-                    count: parseInt(row.count, 10),
+                    count: Number.parseInt(row.count, 10),
                 })),
             });
         }
@@ -107,10 +107,10 @@ async function metricsRoutes(fastify) {
          FROM waitlist
          WHERE status = 'ACTIVE'`);
             return reply.send({
-                activeCount: parseInt(activeCountResult.rows[0]?.count || '0', 10),
-                offeredCount: parseInt(offeredCountResult.rows[0]?.count || '0', 10),
+                activeCount: Number.parseInt(activeCountResult.rows[0]?.count || '0', 10),
+                offeredCount: Number.parseInt(offeredCountResult.rows[0]?.count || '0', 10),
                 averageWaitTimeMinutes: avgWaitResult.rows[0]?.avg_minutes
-                    ? parseFloat(avgWaitResult.rows[0].avg_minutes)
+                    ? Number.parseFloat(avgWaitResult.rows[0].avg_minutes)
                     : 0,
             });
         }

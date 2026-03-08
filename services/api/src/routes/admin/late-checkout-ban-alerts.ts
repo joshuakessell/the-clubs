@@ -54,7 +54,7 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
    */
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof RemoveBanSchema> }>(
     '/v1/admin/late-checkout-ban-alerts/:id/remove-ban',
-    { schema: { body: RemoveBanSchema }, preHandler: [requireReauthForAdmin] },
+    { preHandler: [requireReauthForAdmin] },
     async (request, reply) => {
       const parsed = request.body as z.infer<typeof RemoveBanSchema>;
 
@@ -120,7 +120,7 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
    */
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof ExtendBanSchema> }>(
     '/v1/admin/late-checkout-ban-alerts/:id/extend-ban',
-    { schema: { body: ExtendBanSchema }, preHandler: [requireReauthForAdmin] },
+    { preHandler: [requireReauthForAdmin] },
     async (request, reply) => {
       const parsed = request.body as z.infer<typeof ExtendBanSchema>;
 

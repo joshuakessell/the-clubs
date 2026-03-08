@@ -44,6 +44,7 @@ exports.resetStaffPin = resetStaffPin;
  */
 const db_1 = require("../db");
 const auditLog_1 = require("../audit/auditLog");
+const HttpError_1 = require("../errors/HttpError");
 // ── Service Methods ──
 async function searchStaff(input) {
     let whereClause = '1=1';
@@ -95,11 +96,11 @@ async function updateStaffMember(staffId, input, actorStaffId) {
         paramIndex++;
     }
     if (updates.length === 0)
-        throw { statusCode: 400, message: 'No fields to update' };
+        throw new HttpError_1.HttpError(400, 'No fields to update');
     params.push(staffId);
     const result = await (0, db_1.query)(`UPDATE staff SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${paramIndex} RETURNING id, name, role, active`, params);
     if (result.rows.length === 0)
-        throw { statusCode: 404, message: 'Staff not found' };
+        throw new HttpError_1.HttpError(404, 'Staff not found');
     const staff = result.rows[0];
     const action = input.active !== undefined ? (input.active ? 'STAFF_ACTIVATED' : 'STAFF_DEACTIVATED') : 'STAFF_UPDATED';
     await (0, auditLog_1.insertAuditLogQuery)(db_1.query, { staffId: actorStaffId, action, entityType: 'staff', entityId: staff.id, newValue: input });
@@ -110,7 +111,7 @@ async function resetStaffPin(staffId, actorStaffId) {
     const pinHash = await hashPin('000000');
     const staffResult = await (0, db_1.query)(`UPDATE staff SET pin_hash = $1, force_pin_change = true, updated_at = NOW() WHERE id = $2 RETURNING id, name`, [pinHash, staffId]);
     if (staffResult.rows.length === 0)
-        throw { statusCode: 404, message: 'Staff not found' };
+        throw new HttpError_1.HttpError(404, 'Staff not found');
     await (0, auditLog_1.insertAuditLogQuery)(db_1.query, { staffId: actorStaffId, action: 'STAFF_PIN_RESET', entityType: 'staff', entityId: staffId });
     return { success: true, name: staffResult.rows[0].name };
 }

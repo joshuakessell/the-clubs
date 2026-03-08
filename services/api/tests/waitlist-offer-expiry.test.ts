@@ -82,7 +82,7 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     app.decorate('broadcaster', broadcaster);
     await app.register(waitlistRoutes);

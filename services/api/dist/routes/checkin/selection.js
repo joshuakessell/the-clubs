@@ -5,6 +5,7 @@ const middleware_1 = require("../../auth/middleware");
 const kioskToken_1 = require("../../auth/kioskToken");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const HttpError_1 = require("../../errors/HttpError");
 const selectionService_1 = require("../../services/selectionService");
 function isFlowCommandsEnabled() {
     return process.env.FLOW_COMMANDS === 'true';
@@ -43,7 +44,7 @@ function registerCheckinSelectionRoutes(fastify) {
                 const session = await (0, db_1.transaction)(async (client) => {
                     const r = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
                     if (r.rows.length === 0)
-                        throw { statusCode: 404, message: 'No active session found' };
+                        throw new HttpError_1.HttpError(404, 'No active session found');
                     return r.rows[0];
                 });
                 const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `prop-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -95,7 +96,7 @@ function registerCheckinSelectionRoutes(fastify) {
                         ? await client.query(`SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2 LIMIT 1`, [request.body.sessionId, laneId])
                         : await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE') ORDER BY created_at DESC LIMIT 1`, [laneId]);
                     if (sessionResult.rows.length === 0)
-                        throw { statusCode: 404, message: 'No active session found' };
+                        throw new HttpError_1.HttpError(404, 'No active session found');
                     return sessionResult.rows[0];
                 });
                 const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `wl-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -149,7 +150,7 @@ function registerCheckinSelectionRoutes(fastify) {
                 const session = await (0, db_1.transaction)(async (client) => {
                     const r = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
                     if (r.rows.length === 0)
-                        throw { statusCode: 404, message: 'No active session found' };
+                        throw new HttpError_1.HttpError(404, 'No active session found');
                     return r.rows[0];
                 });
                 const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `conf-${Date.now()}-${Math.random().toString(16).slice(2)}`;

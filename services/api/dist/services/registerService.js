@@ -25,6 +25,7 @@ const auditLog_1 = require("../audit/auditLog");
 const clubEventLog_1 = require("../activity/clubEventLog");
 const tenderSummary_1 = require("../money/tenderSummary");
 const closeout_1 = require("../money/closeout");
+const HttpError_1 = require("../errors/HttpError");
 const REGISTER_SESSION_COLS = 'id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at';
 // ── Shared Helpers ──
 /**
@@ -58,8 +59,8 @@ async function buildRegisterCloseoutSummary(client, session, closeoutAt) {
 async function maybeCloseTimeclock(client, employeeId) {
     const otherRegister = await client.query(`SELECT COUNT(*) as count FROM register_sessions WHERE employee_id = $1 AND signed_out_at IS NULL`, [employeeId]);
     const otherStaff = await client.query(`SELECT COUNT(*) as count FROM staff_sessions WHERE staff_id = $1 AND revoked_at IS NULL AND expires_at > NOW()`, [employeeId]);
-    if (parseInt(otherRegister.rows[0]?.count || '0', 10) === 0 &&
-        parseInt(otherStaff.rows[0]?.count || '0', 10) === 0) {
+    if (Number.parseInt(otherRegister.rows[0]?.count || '0', 10) === 0 &&
+        Number.parseInt(otherStaff.rows[0]?.count || '0', 10) === 0) {
         await client.query(`UPDATE timeclock_sessions SET clock_out_at = NOW() WHERE employee_id = $1 AND clock_out_at IS NULL`, [employeeId]);
         return true;
     }
@@ -102,14 +103,14 @@ async function startCloseout(registerSessionId, staffId) {
     return (0, db_1.transaction)(async (client) => {
         const registerResult = await client.query(`SELECT ${REGISTER_SESSION_COLS} FROM register_sessions WHERE id = $1 AND signed_out_at IS NULL`, [registerSessionId]);
         if (registerResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Active register session not found' };
+            throw new HttpError_1.HttpError(404, 'Active register session not found');
         const registerSession = registerResult.rows[0];
         if (registerSession.employee_id !== staffId)
-            throw { statusCode: 403, message: 'Not authorized to close out this register' };
+            throw new HttpError_1.HttpError(403, 'Not authorized to close out this register');
         const drawerResult = await client.query(`SELECT id, register_session_id, opened_at, opening_float, status, closed_at, closeout_snapshot_json
        FROM cash_drawer_sessions WHERE register_session_id = $1 AND status = 'OPEN' ORDER BY opened_at DESC LIMIT 1`, [registerSession.id]);
         if (drawerResult.rows.length === 0)
-            throw { statusCode: 409, message: 'No open cash drawer session for this register' };
+            throw new HttpError_1.HttpError(409, 'No open cash drawer session for this register');
         const drawerSession = drawerResult.rows[0];
         const snapshot = await (0, closeout_1.buildCloseoutSnapshot)(client, drawerSession, new Date());
         return { registerSessionId: registerSession.id, drawerSessionId: drawerSession.id, snapshot };
@@ -119,20 +120,20 @@ async function finalizeCloseout(registerSessionId, countedCash, notes, staffId) 
     return (0, db_1.transaction)(async (client) => {
         const registerResult = await client.query(`SELECT * FROM register_sessions WHERE id = $1 AND signed_out_at IS NULL`, [registerSessionId]);
         if (registerResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Active register session not found' };
+            throw new HttpError_1.HttpError(404, 'Active register session not found');
         const registerSession = registerResult.rows[0];
         if (registerSession.employee_id !== staffId)
-            throw { statusCode: 403, message: 'Not authorized to close out this register' };
+            throw new HttpError_1.HttpError(403, 'Not authorized to close out this register');
         const drawerResult = await client.query(`SELECT id, register_session_id, opened_at, opening_float, status, closed_at, closeout_snapshot_json
        FROM cash_drawer_sessions WHERE register_session_id = $1 ORDER BY opened_at DESC LIMIT 1 FOR UPDATE`, [registerSession.id]);
         if (drawerResult.rows.length === 0)
-            throw { statusCode: 409, message: 'No cash drawer session for this register' };
+            throw new HttpError_1.HttpError(409, 'No cash drawer session for this register');
         const drawerSession = drawerResult.rows[0];
         if (drawerSession.status !== 'OPEN') {
             if (drawerSession.closeout_snapshot_json) {
                 return { registerSessionId: registerSession.id, drawerSessionId: drawerSession.id, alreadyClosed: true, snapshot: drawerSession.closeout_snapshot_json };
             }
-            throw { statusCode: 409, message: 'Cash drawer session already closed' };
+            throw new HttpError_1.HttpError(409, 'Cash drawer session already closed');
         }
         const closeoutAt = new Date();
         const snapshot = await (0, closeout_1.buildCloseoutSnapshot)(client, drawerSession, closeoutAt);

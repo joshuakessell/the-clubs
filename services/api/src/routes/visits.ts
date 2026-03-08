@@ -160,7 +160,7 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Creates a new visit and initial 6-hour block.
    */
-  fastify.post<{ Body: CreateVisitInput }>('/v1/visits', { schema: { body: CreateVisitSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post<{ Body: CreateVisitInput }>('/v1/visits', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as CreateVisitInput;
 

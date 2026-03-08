@@ -85,7 +85,7 @@ describe('GET /v1/inventory/available (effective availability subtracts waitlist
     );
     blockId = block.rows[0]!.id;
 
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     await app.register(inventoryRoutes);
     await app.ready();
   });

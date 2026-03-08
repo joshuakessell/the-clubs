@@ -240,7 +240,7 @@ describe('Checkout Flow', () => {
     // Ensure visit is active for each test
     await pool.query('UPDATE visits SET ended_at = NULL WHERE id = $1', [testVisitId]);
 
-    fastify = Fastify();
+    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     broadcastEvents = [];
     const originalBroadcast = broadcaster.broadcast.bind(broadcaster);

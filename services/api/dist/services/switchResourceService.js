@@ -13,6 +13,7 @@ const auditLog_1 = require("../audit/auditLog");
 const db_1 = require("../db");
 const engine_1 = require("../pricing/engine");
 const customerActivityLog_1 = require("../activity/customerActivityLog");
+const HttpError_1 = require("../errors/HttpError");
 // ── Helpers ──
 function normalizeRentalTier(value) {
     if (value === 'STANDARD' || value === 'DOUBLE' || value === 'SPECIAL')
@@ -37,32 +38,32 @@ async function switchResource(input) {
     return (0, db_1.serializableTransaction)(async (client) => {
         const visitResult = await client.query(`SELECT id, customer_id, ended_at FROM visits WHERE id = $1 FOR UPDATE`, [input.visitId]);
         if (visitResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Visit not found' };
+            throw new HttpError_1.HttpError(404, 'Visit not found');
         const visit = visitResult.rows[0];
         if (visit.ended_at)
-            throw { statusCode: 409, message: 'Visit is already completed' };
+            throw new HttpError_1.HttpError(409, 'Visit is already completed');
         const blockResult = await client.query(`SELECT id, room_id, locker_id, rental_type::text FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC LIMIT 1 FOR UPDATE`, [input.visitId]);
         if (blockResult.rows.length === 0)
-            throw { statusCode: 404, message: 'No active check-in block found' };
+            throw new HttpError_1.HttpError(404, 'No active check-in block found');
         const block = blockResult.rows[0];
         const currentResourceType = block.room_id ? 'room' : block.locker_id ? 'locker' : null;
         const currentResourceId = block.room_id || block.locker_id;
         if (!currentResourceType || !currentResourceId)
-            throw { statusCode: 400, message: 'Current visit has no assigned room/locker' };
+            throw new HttpError_1.HttpError(400, 'Current visit has no assigned room/locker');
         if (currentResourceType === input.targetResourceType && String(currentResourceId) === String(input.targetResourceId))
-            throw { statusCode: 400, message: 'Selected resource is already assigned' };
+            throw new HttpError_1.HttpError(400, 'Selected resource is already assigned');
         // Get current resource number
         let currentResourceNumber = '';
         if (currentResourceType === 'room') {
             const r = await client.query(`SELECT id, number FROM rooms WHERE id = $1 FOR UPDATE`, [currentResourceId]);
             if (r.rows.length === 0)
-                throw { statusCode: 404, message: 'Current room not found' };
+                throw new HttpError_1.HttpError(404, 'Current room not found');
             currentResourceNumber = r.rows[0].number;
         }
         else {
             const r = await client.query(`SELECT id, number FROM lockers WHERE id = $1 FOR UPDATE`, [currentResourceId]);
             if (r.rows.length === 0)
-                throw { statusCode: 404, message: 'Current locker not found' };
+                throw new HttpError_1.HttpError(404, 'Current locker not found');
             currentResourceNumber = r.rows[0].number;
         }
         // Validate target
@@ -71,20 +72,20 @@ async function switchResource(input) {
         if (input.targetResourceType === 'room') {
             const r = await client.query(`SELECT id, number, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [input.targetResourceId]);
             if (r.rows.length === 0)
-                throw { statusCode: 404, message: 'Target room not found' };
+                throw new HttpError_1.HttpError(404, 'Target room not found');
             const room = r.rows[0];
             if (room.status !== 'CLEAN' || room.assigned_to_customer_id)
-                throw { statusCode: 409, message: `Room ${room.number} is not available` };
+                throw new HttpError_1.HttpError(409, `Room ${room.number} is not available`);
             targetResourceNumber = room.number;
             targetRentalType = getTierFromRoomNumber(room.number);
         }
         else {
             const r = await client.query(`SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`, [input.targetResourceId]);
             if (r.rows.length === 0)
-                throw { statusCode: 404, message: 'Target locker not found' };
+                throw new HttpError_1.HttpError(404, 'Target locker not found');
             const locker = r.rows[0];
             if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id)
-                throw { statusCode: 409, message: `Locker ${locker.number} is not available` };
+                throw new HttpError_1.HttpError(409, `Locker ${locker.number} is not available`);
             targetResourceNumber = locker.number;
             targetRentalType = 'LOCKER';
         }
@@ -94,15 +95,18 @@ async function switchResource(input) {
         let paymentIntentId = null;
         if (additionalFee > 0) {
             if (!input.paymentOutcome) {
-                throw { statusCode: 409, code: 'PAYMENT_REQUIRED', message: 'Additional payment required for this switch', additionalFee, currentRentalType, targetRentalType };
+                const payErr = new HttpError_1.HttpError(409, 'Additional payment required for this switch', { code: 'PAYMENT_REQUIRED' });
+                Object.assign(payErr, { additionalFee, currentRentalType, targetRentalType });
+                throw payErr;
             }
             if (input.paymentOutcome === 'CREDIT_DECLINE') {
-                throw {
-                    statusCode: 402, code: 'PAYMENT_DECLINED', message: input.declineReason ?? 'Credit declined',
+                const declineErr = new HttpError_1.HttpError(402, input.declineReason ?? 'Credit declined', { code: 'PAYMENT_DECLINED' });
+                Object.assign(declineErr, {
                     additionalFee, currentRentalType, targetRentalType,
                     visitId: input.visitId, checkinBlockId: block.id,
                     targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber,
-                };
+                });
+                throw declineErr;
             }
             const pr = await client.query(`INSERT INTO payment_intents (amount, status, quote_json, paid_at) VALUES ($1, 'PAID', $2, NOW()) RETURNING id`, [additionalFee, JSON.stringify({ type: 'SWITCH_UPCHARGE', method: input.paymentOutcome, visitId: input.visitId, checkinBlockId: block.id, currentRentalType, targetRentalType, targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber })]);
             paymentIntentId = pr.rows[0].id;

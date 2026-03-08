@@ -13,6 +13,7 @@ const db_1 = require("../db");
 const customerActivityLog_1 = require("../activity/customerActivityLog");
 const customerSpendLedger_1 = require("../ledger/customerSpendLedger");
 const clubEventLog_1 = require("../activity/clubEventLog");
+const HttpError_1 = require("../errors/HttpError");
 function toNumber(value) { const n = typeof value === 'number' ? value : Number(value); return Number.isFinite(n) ? n : 0; }
 function computeLineTotal(item) {
     const discount = item.discount ?? 0;
@@ -21,7 +22,7 @@ function computeLineTotal(item) {
     return { subtotal, discount, tax, total: subtotal - discount + tax };
 }
 function buildReceiptNumber(order) {
-    const date = order.created_at.toISOString().slice(0, 10).replace(/-/g, '');
+    const date = order.created_at.toISOString().slice(0, 10).replaceAll(/-/g, '');
     return `R-${date}-${order.id}`;
 }
 async function createOrder(input, staffId) {
@@ -33,10 +34,10 @@ async function addLineItems(orderId, items) {
     return (0, db_1.transaction)(async (client) => {
         const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
         if (orderResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Order not found' };
+            throw new HttpError_1.HttpError(404, 'Order not found');
         const order = orderResult.rows[0];
         if (order.status !== 'OPEN')
-            throw { statusCode: 409, message: 'Order is not open' };
+            throw new HttpError_1.HttpError(409, 'Order is not open');
         const inserted = [];
         for (const item of items) {
             const computed = computeLineTotal(item);
@@ -57,10 +58,10 @@ async function markOrderPaid(orderId, staff) {
     return (0, db_1.transaction)(async (client) => {
         const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
         if (orderResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Order not found' };
+            throw new HttpError_1.HttpError(404, 'Order not found');
         const order = orderResult.rows[0];
         if (order.status !== 'OPEN')
-            throw { statusCode: 409, message: `Order is ${order.status}` };
+            throw new HttpError_1.HttpError(409, `Order is ${order.status}`);
         const totalsResult = await client.query(`SELECT COALESCE(SUM(quantity * unit_price), 0) as subtotal, COALESCE(SUM(discount), 0) as discount, COALESCE(SUM(tax), 0) as tax, COALESCE(SUM(total), 0) as total FROM order_line_items WHERE order_id = $1`, [order.id]);
         const totals = totalsResult.rows[0];
         const subtotal = toNumber(totals.subtotal);
@@ -122,10 +123,10 @@ async function issueReceipt(orderId) {
     return (0, db_1.transaction)(async (client) => {
         const orderResult = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
         if (orderResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Order not found' };
+            throw new HttpError_1.HttpError(404, 'Order not found');
         const order = orderResult.rows[0];
         if (order.status !== 'PAID')
-            throw { statusCode: 409, message: 'Order must be paid before issuing receipt' };
+            throw new HttpError_1.HttpError(409, 'Order must be paid before issuing receipt');
         const existingReceipt = await client.query(`SELECT id, receipt_number, issued_at, receipt_json FROM receipts WHERE order_id = $1 LIMIT 1`, [order.id]);
         if (existingReceipt.rows.length > 0) {
             const receipt = existingReceipt.rows[0];

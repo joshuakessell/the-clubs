@@ -7,6 +7,7 @@ const payload_1 = require("../../checkin/payload");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
 const clubEventLog_1 = require("../../activity/clubEventLog");
+const HttpError_1 = require("../../errors/HttpError");
 function registerCheckinResetRoutes(fastify) {
     /**
      * POST /v1/checkin/lane/:laneId/reset
@@ -29,7 +30,7 @@ function registerCheckinResetRoutes(fastify) {
            ORDER BY created_at DESC
            LIMIT 1`, [laneId]);
                 if (sessionResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'No active session found' };
+                    throw new HttpError_1.HttpError(404, 'No active session found');
                 }
                 const session = sessionResult.rows[0];
                 const newStatus = isCancelled ? 'CANCELLED' : 'COMPLETED';
@@ -116,7 +117,7 @@ function registerCheckinResetRoutes(fastify) {
            ORDER BY created_at DESC
            LIMIT 1`, [laneId]);
                 if (sessionResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'No session found' };
+                    throw new HttpError_1.HttpError(404, 'No session found');
                 }
                 const session = sessionResult.rows[0];
                 request.log.info({ laneId, sessionId: session.id, actor: 'kiosk', action: 'kiosk_ack' }, 'Kiosk acknowledged; marking kiosk_acknowledged_at (no session clear)');

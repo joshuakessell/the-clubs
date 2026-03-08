@@ -5,6 +5,7 @@ const middleware_1 = require("../../auth/middleware");
 const schemas_1 = require("../../checkin/schemas");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const HttpError_1 = require("../../errors/HttpError");
 function registerCheckinHighlightRoutes(fastify) {
     /**
      * POST /v1/checkin/lane/:laneId/highlight-option
@@ -33,7 +34,7 @@ function registerCheckinHighlightRoutes(fastify) {
                  ORDER BY created_at DESC
                  LIMIT 1`, [laneId]);
                 if (sessionResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'No active session found' };
+                    throw new HttpError_1.HttpError(404, 'No active session found');
                 }
                 const session = sessionResult.rows[0];
                 return { laneId: session.lane_id || laneId, sessionId: session.id };

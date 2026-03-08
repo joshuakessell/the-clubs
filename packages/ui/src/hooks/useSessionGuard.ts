@@ -17,8 +17,8 @@ import { getApiUrl } from '@the-clubs/shared';
  * Call this once at the top of your app (e.g., in App.tsx).
  */
 export function useSessionGuard() {
-    const validateSession = useAuthStore((s) => s.validateSession);
-    const session = useAuthStore((s) => s.session);
+    const validateSession = useAuthStore((s: { validateSession: any }) => s.validateSession);
+    const session = useAuthStore((s: { session: any }) => s.session);
     const patchedRef = useRef(false);
     // Track whether the session just changed (e.g. fresh login).
     // Skip the immediate validateSession call for freshly-created sessions

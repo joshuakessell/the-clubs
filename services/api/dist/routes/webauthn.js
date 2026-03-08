@@ -48,17 +48,8 @@ async function webauthnRoutes(fastify) {
      *
      * Generate registration options for enrolling a new passkey.
      */
-    fastify.post('/v1/auth/webauthn/registration/options', async (request, reply) => {
-        let body;
-        try {
-            body = RegistrationOptionsSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+    fastify.post('/v1/auth/webauthn/registration/options', { schema: { body: RegistrationOptionsSchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             // Verify staff exists and is active
             const staffResult = await (0, db_1.query)(`SELECT id, name FROM staff WHERE id = $1 AND active = true`, [body.staffId]);
@@ -109,17 +100,8 @@ async function webauthnRoutes(fastify) {
      *
      * Verify and store a new passkey credential.
      */
-    fastify.post('/v1/auth/webauthn/registration/verify', async (request, reply) => {
-        let body;
-        try {
-            body = RegistrationVerifySchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+    fastify.post('/v1/auth/webauthn/registration/verify', { schema: { body: RegistrationVerifySchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             const origin = (0, webauthn_1.getRpOrigin)(request.headers.origin);
             // Extract challenge from clientDataJSON
@@ -194,17 +176,8 @@ async function webauthnRoutes(fastify) {
      *
      * Generate authentication options for signing in with a passkey.
      */
-    fastify.post('/v1/auth/webauthn/authentication/options', async (request, reply) => {
-        let body;
-        try {
-            body = AuthenticationOptionsSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+    fastify.post('/v1/auth/webauthn/authentication/options', { schema: { body: AuthenticationOptionsSchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             // Find staff by ID or name (must be active)
             const staffResult = await (0, db_1.query)(`SELECT id, name, active FROM staff 
@@ -260,17 +233,8 @@ async function webauthnRoutes(fastify) {
      *
      * Verify authentication response and issue session token.
      */
-    fastify.post('/v1/auth/webauthn/authentication/verify', async (request, reply) => {
-        let body;
-        try {
-            body = AuthenticationVerifySchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+    fastify.post('/v1/auth/webauthn/authentication/verify', { schema: { body: AuthenticationVerifySchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             const origin = (0, webauthn_1.getRpOrigin)(request.headers.origin);
             // Extract credential ID from response
@@ -344,7 +308,7 @@ async function webauthnRoutes(fastify) {
             const registerSession = await (0, db_1.query)(`SELECT COUNT(*) as count FROM register_sessions
          WHERE employee_id = $1 AND signed_out_at IS NULL`, [staff.id]);
             // If not signed into register, assume cleaning station sign-in
-            if (parseInt(registerSession.rows[0]?.count || '0', 10) === 0) {
+            if (Number.parseInt(registerSession.rows[0]?.count || '0', 10) === 0) {
                 const now = new Date();
                 // Find nearest scheduled shift
                 const shiftResult = await (0, db_1.query)(`SELECT id, starts_at, ends_at
@@ -367,13 +331,11 @@ async function webauthnRoutes(fastify) {
              (employee_id, shift_id, clock_in_at, source, notes)
              VALUES ($1, $2, $3, 'OFFICE_DASHBOARD', NULL)`, [staff.id, shiftId, now]);
                 }
-                else {
+                else if (shiftId) {
                     // Update existing session to attach shift if not already attached
-                    if (shiftId) {
-                        await (0, db_1.query)(`UPDATE timeclock_sessions
+                    await (0, db_1.query)(`UPDATE timeclock_sessions
                SET shift_id = $1
                WHERE id = $2 AND shift_id IS NULL`, [shiftId, existingTimeclock.rows[0].id]);
-                    }
                 }
             }
             return reply.send({

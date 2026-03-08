@@ -46,20 +46,12 @@ async function authRoutes(fastify) {
      * Creates a session and returns session token.
      */
     fastify.post('/v1/auth/login-pin', {
+        schema: { body: LoginPinSchema },
         config: {
             rateLimit: { max: 10, timeWindow: '1 minute' },
         },
     }, async (request, reply) => {
-        let body;
-        try {
-            body = LoginPinSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         try {
             const isDemoMode = process.env.DEMO_MODE === 'true';
             const deviceType = body.deviceType || 'tablet';
@@ -111,21 +103,13 @@ async function authRoutes(fastify) {
         confirmPin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
     });
     fastify.post('/v1/auth/change-pin', {
+        schema: { body: ChangePinSchema },
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
         if (!request.staff) {
             return reply.status(401).send({ error: 'Unauthorized' });
         }
-        let body;
-        try {
-            body = ChangePinSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         if (body.newPin !== body.confirmPin) {
             return reply.status(400).send({ error: 'New PIN and confirmation do not match' });
         }
@@ -134,11 +118,12 @@ async function authRoutes(fastify) {
             return reply.send({ success: true });
         }
         catch (error) {
-            if (error.message === 'Unauthorized' || error.message === 'Current PIN is incorrect') {
-                return reply.status(401).send({ error: error.message });
+            const msg = error instanceof Error ? error.message : '';
+            if (msg === 'Unauthorized' || msg === 'Current PIN is incorrect') {
+                return reply.status(401).send({ error: msg });
             }
-            if (error.message === 'Current PIN is required' || error.message === 'New PIN must be different from current PIN') {
-                return reply.status(400).send({ error: error.message });
+            if (msg === 'Current PIN is required' || msg === 'New PIN must be different from current PIN') {
+                return reply.status(400).send({ error: msg });
             }
             request.log.error(error, 'Failed to change PIN');
             return reply.status(500).send({ error: 'Internal server error' });
@@ -153,7 +138,7 @@ async function authRoutes(fastify) {
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
         const authHeader = request.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (!authHeader?.startsWith('Bearer ')) {
             return reply.status(401).send({
                 error: 'Unauthorized',
             });
@@ -201,6 +186,7 @@ async function authRoutes(fastify) {
         pin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
     });
     fastify.post('/v1/auth/reauth-pin', {
+        schema: { body: ReauthPinSchema },
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
         if (!request.staff) {
@@ -208,18 +194,9 @@ async function authRoutes(fastify) {
                 error: 'Unauthorized',
             });
         }
-        let body;
-        try {
-            body = ReauthPinSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         const authHeader = request.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (!authHeader?.startsWith('Bearer ')) {
             return reply.status(401).send({
                 error: 'Unauthorized',
             });
@@ -234,10 +211,11 @@ async function authRoutes(fastify) {
             });
         }
         catch (error) {
-            if (error.message === 'Invalid credentials' || error.message === 'Session not found') {
+            const msg = error instanceof Error ? error.message : '';
+            if (msg === 'Invalid credentials' || msg === 'Session not found') {
                 return reply.status(401).send({
                     error: 'Unauthorized',
-                    message: error.message,
+                    message: msg,
                 });
             }
             request.log.error(error, 'Re-auth error');
@@ -266,8 +244,9 @@ async function authRoutes(fastify) {
             return reply.send(options);
         }
         catch (error) {
-            if (error.message === 'No passkeys registered for this staff member') {
-                return reply.status(400).send({ error: error.message });
+            const msg = error instanceof Error ? error.message : '';
+            if (msg === 'No passkeys registered for this staff member') {
+                return reply.status(400).send({ error: msg });
             }
             request.log.error(error, 'Failed to generate reauth WebAuthn options');
             return reply.status(500).send({
@@ -290,7 +269,7 @@ async function authRoutes(fastify) {
             });
         }
         const authHeader = request.headers.authorization;
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        if (!authHeader?.startsWith('Bearer ')) {
             return reply.status(401).send({
                 error: 'Unauthorized',
             });
@@ -307,7 +286,7 @@ async function authRoutes(fastify) {
             });
         }
         catch (error) {
-            const msg = error.message;
+            const msg = error instanceof Error ? error.message : '';
             if (msg === 'Session not found') {
                 return reply.status(401).send({ error: 'Unauthorized', message: msg });
             }

@@ -103,16 +103,10 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/:customerId/notes
-    fastify.post('/v1/customers/:customerId/notes', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/customers/:customerId/notes', { schema: { body: CreateCustomerNoteSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let parsed;
-        try {
-            parsed = CreateCustomerNoteSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+        const parsed = request.body;
         try {
             const result = await (0, customerService_1.createCustomerNote)(request.params.customerId, parsed.note, { staffId: request.staff.staffId, staffName: request.staff.name }, { isImportant: parsed.isImportant, sourceApp: parsed.sourceApp });
             return reply.send(result);
@@ -142,16 +136,10 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/create-from-scan
-    fastify.post('/v1/customers/create-from-scan', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/customers/create-from-scan', { schema: { body: CreateFromScanSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = CreateFromScanSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+        const body = request.body;
         try {
             const result = await (0, customerService_1.createFromScan)(body);
             return reply.send(result);
@@ -166,16 +154,10 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/match-identity
-    fastify.post('/v1/customers/match-identity', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/customers/match-identity', { schema: { body: MatchIdentitySchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = MatchIdentitySchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+        const body = request.body;
         try {
             const result = await (0, customerService_1.matchIdentity)(body);
             return reply.send(result);
@@ -190,16 +172,10 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/create-manual
-    fastify.post('/v1/customers/create-manual', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/customers/create-manual', { schema: { body: CreateManualSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = CreateManualSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+        const body = request.body;
         try {
             const result = await (0, customerService_1.createManual)(body);
             return reply.send(result);

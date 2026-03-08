@@ -6,6 +6,7 @@ const payload_1 = require("../../checkin/payload");
 const db_1 = require("../../db");
 const customerActivityLog_1 = require("../../activity/customerActivityLog");
 const clubEventLog_1 = require("../../activity/clubEventLog");
+const HttpError_1 = require("../../errors/HttpError");
 function registerCheckinNoteRoutes(fastify) {
     /**
      * POST /v1/checkin/lane/:laneId/add-note
@@ -31,15 +32,15 @@ function registerCheckinNoteRoutes(fastify) {
            ORDER BY created_at DESC
            LIMIT 1`, [laneId]);
                 if (sessionResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'No active session found' };
+                    throw new HttpError_1.HttpError(404, 'No active session found');
                 }
                 const session = sessionResult.rows[0];
                 if (!session.customer_id) {
-                    throw { statusCode: 400, message: 'Session has no customer' };
+                    throw new HttpError_1.HttpError(400, 'Session has no customer');
                 }
                 const customerResult = await client.query(`SELECT id FROM customers WHERE id = $1`, [session.customer_id]);
                 if (customerResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'Customer not found' };
+                    throw new HttpError_1.HttpError(404, 'Customer not found');
                 }
                 const trimmed = note.trim();
                 const inserted = await client.query(`

@@ -51,7 +51,7 @@ async function customerSpendLedgerRoutes(fastify) {
     fastify.get('/v1/customers/:customerId/visits/:visitId/spend-ledger', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        const limit = Math.min(Math.max(parseInt(request.query.limit || '200', 10) || 200, 1), 500);
+        const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '200', 10) || 200, 1), 500);
         try {
             const result = await (0, db_1.transaction)((client) => (0, customerSpendLedger_1.listVisitSpendLedgerEntries)(client, {
                 customerId: request.params.customerId,

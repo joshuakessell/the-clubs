@@ -56,7 +56,7 @@ describe('Visit and Renewal Flows', () => {
       return;
     }
 
-    fastify = Fastify();
+    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     fastify.decorate('broadcaster', broadcaster);
 

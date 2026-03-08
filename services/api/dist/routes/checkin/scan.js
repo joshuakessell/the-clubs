@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinScanRoutes = registerCheckinScanRoutes;
-const zod_1 = require("zod");
 const shared_1 = require("@the-clubs/shared");
 const middleware_1 = require("../../auth/middleware");
 const idempotency_1 = require("../../middleware/idempotency");
@@ -18,13 +17,11 @@ function registerCheckinScanRoutes(fastify) {
     fastify.post('/v1/checkin/scan', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = schemas_1.CheckinScanBodySchema.parse(request.body);
+        const parsed = schemas_1.CheckinScanBodySchema.safeParse(request.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
         }
-        catch (e) {
-            return reply.status(400).send({ error: 'Validation failed', details: e instanceof zod_1.z.ZodError ? e.errors : 'Invalid input' });
-        }
+        const body = parsed.data;
         try {
             const result = await (0, scanService_1.processCheckinScan)({
                 rawScanText: body.rawScanText,
@@ -53,13 +50,11 @@ function registerCheckinScanRoutes(fastify) {
     fastify.post('/v1/checkin/lane/:laneId/scan-id', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = shared_1.IdScanPayloadSchema.parse(request.body);
+        const parsed = shared_1.IdScanPayloadSchema.safeParse(request.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
         }
-        catch (e) {
-            return reply.status(400).send({ error: 'Validation failed', details: e instanceof zod_1.z.ZodError ? e.errors : 'Invalid input' });
-        }
+        const body = parsed.data;
         try {
             const result = await (0, db_1.transaction)(async (client) => (0, scanIdService_1.processScanId)(client, {
                 laneId: request.params.laneId,

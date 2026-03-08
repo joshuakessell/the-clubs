@@ -86,7 +86,7 @@ describe('Auth Tests', () => {
     }
 
     // Setup Fastify instance once
-    fastify = Fastify({ logger: false });
+    fastify = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     await fastify.register(authRoutes);
     await fastify.register(webauthnRoutes);
     await fastify.register(adminRoutes);

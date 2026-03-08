@@ -358,6 +358,12 @@ async function main() {
         },
       }),
     },
+    ajv: {
+      customOptions: {
+        strict: false,
+        allowUnionTypes: true,
+      },
+    },
   });
 
   await setupSecurityAndCors(fastify);

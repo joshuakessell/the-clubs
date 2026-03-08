@@ -6,6 +6,7 @@ const middleware_1 = require("../auth/middleware");
 const idempotency_1 = require("../middleware/idempotency");
 const db_1 = require("../db");
 const clubEventLog_1 = require("../activity/clubEventLog");
+const HttpError_1 = require("../errors/HttpError");
 const StartBreakSchema = zod_1.z.object({
     breakType: zod_1.z.enum(['MEAL', 'REST', 'OTHER']),
     notes: zod_1.z.string().optional().nullable(),
@@ -19,19 +20,10 @@ async function breakRoutes(fastify) {
      *
      * Start a break for the authenticated staff member.
      */
-    fastify.post('/v1/breaks/start', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/breaks/start', { schema: { body: StartBreakSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = StartBreakSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         try {
             const result = await (0, db_1.transaction)(async (client) => {
                 const openBreak = await client.query(`SELECT * FROM staff_break_sessions
@@ -39,14 +31,14 @@ async function breakRoutes(fastify) {
              ORDER BY started_at DESC
              LIMIT 1`, [request.staff.staffId]);
                 if (openBreak.rows.length > 0) {
-                    throw { statusCode: 409, message: 'Break already in progress' };
+                    throw new HttpError_1.HttpError(409, 'Break already in progress');
                 }
                 const timeclock = await client.query(`SELECT id FROM timeclock_sessions
              WHERE employee_id = $1 AND clock_out_at IS NULL
              ORDER BY clock_in_at DESC
              LIMIT 1`, [request.staff.staffId]);
                 if (timeclock.rows.length === 0) {
-                    throw { statusCode: 400, message: 'No active timeclock session' };
+                    throw new HttpError_1.HttpError(400, 'No active timeclock session');
                 }
                 const insert = await client.query(`INSERT INTO staff_break_sessions
              (staff_id, timeclock_session_id, break_type, status, notes)
@@ -94,19 +86,10 @@ async function breakRoutes(fastify) {
      *
      * End the currently open break for the authenticated staff member.
      */
-    fastify.post('/v1/breaks/end', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/breaks/end', { schema: { body: EndBreakSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = EndBreakSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         try {
             const result = await (0, db_1.transaction)(async (client) => {
                 const openBreak = await client.query(`SELECT * FROM staff_break_sessions
@@ -115,7 +98,7 @@ async function breakRoutes(fastify) {
              LIMIT 1
              FOR UPDATE`, [request.staff.staffId]);
                 if (openBreak.rows.length === 0) {
-                    throw { statusCode: 404, message: 'No active break found' };
+                    throw new HttpError_1.HttpError(404, 'No active break found');
                 }
                 const current = openBreak.rows[0];
                 const updated = await client.query(`UPDATE staff_break_sessions

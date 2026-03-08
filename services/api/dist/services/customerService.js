@@ -19,10 +19,11 @@ const db_1 = require("../db");
 const crypto_1 = __importDefault(require("crypto"));
 const identity_1 = require("../checkin/identity");
 const customerActivityLog_1 = require("../activity/customerActivityLog");
+const HttpError_1 = require("../errors/HttpError");
 // ── Utility Functions ──
 function normalizeScanText(raw) {
-    const lf = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const lines = lf.split('\n').map((line) => line.replace(/[ \t]+/g, ' ').trimEnd());
+    const lf = raw.replaceAll(/\r\n/g, '\n').replaceAll(/\r/g, '\n');
+    const lines = lf.split('\n').map((line) => line.replaceAll(/[ \t]+/g, ' ').trimEnd());
     return lines.join('\n').trim();
 }
 function computeSha256Hex(value) {
@@ -70,8 +71,8 @@ function toDobMonthDay(value) {
 }
 function normalizePersonNameForMatch(input) {
     const lowered = input.toLowerCase().trim();
-    const noPunct = lowered.replace(/[^a-z0-9 ]+/g, ' ');
-    const collapsed = noPunct.replace(/\s+/g, ' ').trim();
+    const noPunct = lowered.replaceAll(/[^a-z0-9 ]+/g, ' ');
+    const collapsed = noPunct.replaceAll(/\s+/g, ' ').trim();
     if (!collapsed)
         return '';
     const tokens = collapsed.split(' ').filter(Boolean);
@@ -173,7 +174,7 @@ async function listCustomerNotes(customerId, opts) {
 async function createCustomerNote(customerId, noteText, staff, opts) {
     const trimmed = noteText.trim();
     if (!trimmed)
-        throw { statusCode: 400, message: 'note is required' };
+        throw new HttpError_1.HttpError(400, 'note is required');
     return (0, db_1.transaction)(async (client) => {
         const inserted = await client.query(`INSERT INTO customer_notes (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
        VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6) RETURNING id, created_at`, [customerId, staff.staffId, staff.staffName, opts.sourceApp ?? 'EMPLOYEE_REGISTER', trimmed, opts.isImportant ?? false]);
@@ -208,7 +209,7 @@ async function getCustomerProfile(customerId) {
     const lastVisitResult = await (0, db_1.query)(`SELECT cb.starts_at FROM checkin_blocks cb JOIN visits v ON v.id = cb.visit_id
      WHERE v.customer_id = $1 ORDER BY cb.starts_at DESC LIMIT 1`, [row.id]);
     const lastVisitAt = lastVisitResult.rows.length > 0 ? toIsoTimestamp(lastVisitResult.rows[0].starts_at) : null;
-    const pastDueBalance = typeof row.past_due_balance === 'string' ? parseInt(row.past_due_balance, 10) || 0 : (row.past_due_balance ?? 0);
+    const pastDueBalance = typeof row.past_due_balance === 'string' ? Number.parseInt(row.past_due_balance, 10) || 0 : (row.past_due_balance ?? 0);
     return {
         id: row.id, name: row.name, firstName, lastName,
         dob: toDateOnlyString(row.dob), dobMonthDay: toDobMonthDay(row.dob),
@@ -224,29 +225,29 @@ async function getCustomerProfile(customerId) {
 async function createFromScan(input) {
     const idScanValue = normalizeScanText(input.idScanValue || input.rawScanText || '');
     if (!idScanValue)
-        throw { statusCode: 400, message: 'Invalid scan input' };
+        throw new HttpError_1.HttpError(400, 'Invalid scan input');
     const idScanHash = (0, identity_1.computeIdScanIdentityHash)({ firstName: input.firstName, lastName: input.lastName, fullName: input.fullName, dob: input.dob }) ||
         input.idScanHash || computeSha256Hex(idScanValue);
     const dob = toDateOnly(input.dob);
     if (!dob)
-        throw { statusCode: 400, message: 'Invalid dob; expected YYYY-MM-DD' };
+        throw new HttpError_1.HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
     const idExpirationDate = input.idExpirationDate ? toDateOnly(input.idExpirationDate) : null;
     if (input.idExpirationDate && !idExpirationDate)
-        throw { statusCode: 400, message: 'Invalid idExpirationDate; expected YYYY-MM-DD' };
+        throw new HttpError_1.HttpError(400, 'Invalid idExpirationDate; expected YYYY-MM-DD');
     const idType = input.idType ?? null;
     const idTypeOther = idType === 'OTHER' ? (input.idTypeOther?.trim() || null) : null;
     const idScanIssue = (0, identity_1.getIdScanIssue)({ dob, idExpirationDate });
     if (idScanIssue)
-        throw { statusCode: 403, message: (0, identity_1.getIdScanIssueMessage)(idScanIssue), code: idScanIssue };
+        throw new HttpError_1.HttpError(403, (0, identity_1.getIdScanIssueMessage)(idScanIssue), { code: idScanIssue });
     const name = (input.fullName?.trim() || `${input.firstName} ${input.lastName}`.trim()).slice(0, 255);
     if (!name)
-        throw { statusCode: 400, message: 'Invalid name' };
+        throw new HttpError_1.HttpError(400, 'Invalid name');
     // Check for existing customer
     const existing = await (0, db_1.query)(`SELECT id, name, dob, membership_number, banned_until, id_scan_hash, id_scan_value FROM customers WHERE id_scan_hash = $1 OR id_scan_value = $2 LIMIT 1`, [idScanHash, idScanValue]);
     if (existing.rows.length > 0) {
         const row = existing.rows[0];
         if (row.banned_until && row.banned_until > new Date())
-            throw { statusCode: 403, message: 'Customer is banned' };
+            throw new HttpError_1.HttpError(403, 'Customer is banned');
         const needsScanUpdate = !row.id_scan_hash || !row.id_scan_value || row.id_scan_hash !== idScanHash || row.id_scan_value !== idScanValue;
         if (needsScanUpdate || input.idNumber || input.state || idType || idTypeOther) {
             await (0, db_1.query)(`UPDATE customers SET
@@ -282,10 +283,10 @@ async function createFromScan(input) {
 async function matchIdentity(input) {
     const dob = toDateOnly(input.dob);
     if (!dob)
-        throw { statusCode: 400, message: 'Invalid dob; expected YYYY-MM-DD' };
+        throw new HttpError_1.HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
     const inputParts = splitNamePartsForMatch(`${input.firstName} ${input.lastName}`);
     if (!inputParts)
-        throw { statusCode: 400, message: 'Invalid name' };
+        throw new HttpError_1.HttpError(400, 'Invalid name');
     // Check by ID number first
     if (input.idNumber?.trim()) {
         const byIdNumber = await (0, db_1.query)(`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER($1) LIMIT 1`, [input.idNumber.trim()]);
@@ -324,19 +325,19 @@ async function matchIdentity(input) {
 async function createManual(input) {
     const dob = toDateOnly(input.dob);
     if (!dob)
-        throw { statusCode: 400, message: 'Invalid dob; expected YYYY-MM-DD' };
+        throw new HttpError_1.HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
     const idExpirationDate = toDateOnly(input.idExpirationDate);
     if (!idExpirationDate)
-        throw { statusCode: 400, message: 'Invalid idExpirationDate; expected YYYY-MM-DD' };
+        throw new HttpError_1.HttpError(400, 'Invalid idExpirationDate; expected YYYY-MM-DD');
     const idType = input.idType;
     const idTypeOther = idType === 'OTHER' ? input.idTypeOther?.trim() || null : null;
     const name = `${input.firstName} ${input.lastName}`.trim().slice(0, 255);
     if (!name)
-        throw { statusCode: 400, message: 'Invalid name' };
+        throw new HttpError_1.HttpError(400, 'Invalid name');
     const idScanValue = input.idNumber?.trim() || null;
     const idScanIssue = (0, identity_1.getIdScanIssue)({ dob, idExpirationDate });
     if (idScanIssue)
-        throw { statusCode: 403, message: (0, identity_1.getIdScanIssueMessage)(idScanIssue), code: idScanIssue };
+        throw new HttpError_1.HttpError(403, (0, identity_1.getIdScanIssueMessage)(idScanIssue), { code: idScanIssue });
     // Dedup: check ID number
     if (idScanValue) {
         const byIdNumber = await (0, db_1.query)(`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER($1) LIMIT 1`, [idScanValue]);

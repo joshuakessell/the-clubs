@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerAdminStaffRoutes = registerAdminStaffRoutes;
+const utils_1 = require("../../checkin/utils");
 const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const staffAdminService_1 = require("../../services/staffAdminService");
@@ -16,16 +17,10 @@ function registerAdminStaffRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.post('/v1/admin/staff', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.post('/v1/admin/staff', { schema: { body: CreateStaffSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = CreateStaffSchema.parse(request.body);
-        }
-        catch (e) {
-            return reply.status(400).send({ error: 'Validation failed', details: e instanceof zod_1.z.ZodError ? e.errors : 'Invalid input' });
-        }
+        const body = request.body;
         try {
             return reply.status(201).send(await (0, staffAdminService_1.createStaffMember)(body, request.staff.staffId));
         }
@@ -34,22 +29,18 @@ function registerAdminStaffRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.patch('/v1/admin/staff/:id', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.patch('/v1/admin/staff/:id', { schema: { body: UpdateStaffSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = UpdateStaffSchema.parse(request.body);
-        }
-        catch (e) {
-            return reply.status(400).send({ error: 'Validation failed', details: e instanceof zod_1.z.ZodError ? e.errors : 'Invalid input' });
-        }
+        const body = request.body;
         try {
             return reply.send(await (0, staffAdminService_1.updateStaffMember)(request.params.id, body, request.staff.staffId));
         }
         catch (e) {
-            if (e?.statusCode)
-                return reply.status(e.statusCode).send({ error: e.message });
+            const httpErr = (0, utils_1.getHttpError)(e);
+            if (httpErr) {
+                return reply.status(httpErr.statusCode).send({ error: httpErr.message });
+            }
             request.log.error(e, 'Failed to update staff');
             return reply.status(500).send({ error: 'Internal server error' });
         }
@@ -73,8 +64,10 @@ function registerAdminStaffRoutes(fastify) {
             return reply.send(await (0, staffAdminService_1.resetStaffPin)(request.params.id, request.staff.staffId));
         }
         catch (e) {
-            if (e?.statusCode)
-                return reply.status(e.statusCode).send({ error: e.message });
+            const httpErr = (0, utils_1.getHttpError)(e);
+            if (httpErr) {
+                return reply.status(httpErr.statusCode).send({ error: httpErr.message });
+            }
             request.log.error(e, 'Failed to reset PIN');
             return reply.status(500).send({ error: 'Internal server error' });
         }

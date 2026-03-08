@@ -26,6 +26,7 @@ const schema_1 = require("../db/schema/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const auditLog_1 = require("../audit/auditLog");
 const compliance_1 = require("../services/compliance");
+const HttpError_1 = require("../errors/HttpError");
 // ── Shift Management ──
 async function listShiftsWithCompliance(filters) {
     const db = (0, db_1.getDb)();
@@ -57,7 +58,6 @@ async function listShiftsWithCompliance(filters) {
             created_by: shift.createdBy,
             updated_by: shift.updatedBy,
         };
-        // @ts-ignore - mapping for compliance module compatibility
         const compliance = await (0, compliance_1.computeCompliance)(mappedShift, shift.employeeId);
         return {
             id: shift.id, employeeId: shift.employeeId, employeeName,
@@ -107,10 +107,10 @@ async function updateShift(shiftId, input, staffId) {
             setClause.endsAt = input.ends_at;
         if (input.employee_id !== undefined)
             setClause.employeeId = input.employee_id;
-        if (input.status !== undefined)
-            setClause.status = input.status;
-        else
+        if (input.status === undefined)
             setClause.status = 'UPDATED';
+        else
+            setClause.status = input.status;
         if (input.notes !== undefined)
             setClause.notes = input.notes;
         if (input.shift_code !== undefined)
@@ -396,17 +396,17 @@ async function createTradeRequest(staffId, role, requesterShiftId, targetShiftId
             where: (es, { eq, and, ne }) => and(eq(es.id, requesterShiftId), ne(es.status, 'CANCELED')),
             columns: { employeeId: true }
         });
-        if (!reqShift || reqShift.employeeId !== staffId)
-            throw { statusCode: 403, message: 'You do not own the requester shift.' };
+        if (!reqShift || reqShift?.employeeId !== staffId)
+            throw new HttpError_1.HttpError(403, 'You do not own the requester shift.');
         const tgtShift = await tx.query.employeeShifts.findFirst({
             where: (es, { eq, and, ne }) => and(eq(es.id, targetShiftId), ne(es.status, 'CANCELED')),
             columns: { employeeId: true }
         });
         if (!tgtShift)
-            throw { statusCode: 404, message: 'Target shift not found.' };
+            throw new HttpError_1.HttpError(404, 'Target shift not found.');
         const targetId = tgtShift.employeeId;
         if (targetId === staffId)
-            throw { statusCode: 400, message: 'Cannot trade with yourself.' };
+            throw new HttpError_1.HttpError(400, 'Cannot trade with yourself.');
         const res = await tx.execute((0, drizzle_orm_1.sql) `
       INSERT INTO shift_trade_requests (requester_id, requester_shift_id, target_id, target_shift_id) 
       VALUES (${staffId}, ${requesterShiftId}, ${targetId}, ${targetShiftId}) RETURNING id
@@ -444,7 +444,7 @@ async function decideTradeRequest(tradeId, status, staffId, role, decisionNotes)
             return null;
         const trade = current.rows[0];
         if (trade.status !== 'PENDING')
-            throw { statusCode: 409, message: `Trade already ${trade.status.toLowerCase()}.` };
+            throw new HttpError_1.HttpError(409, `Trade already ${trade.status.toLowerCase()}.`);
         await tx.execute((0, drizzle_orm_1.sql) `
       UPDATE shift_trade_requests 
       SET status = ${status}, decided_by = ${staffId}, decided_at = NOW(), decision_notes = ${decisionNotes ?? null}, updated_at = NOW() 

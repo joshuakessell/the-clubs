@@ -20,7 +20,7 @@ export async function waitlistRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof OfferUpgradeSchema> }>(
-    '/v1/waitlist/:id/offer', { schema: { body: OfferUpgradeSchema }, preHandler: [requireAuth] },
+    '/v1/waitlist/:id/offer', { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const body = request.body as z.infer<typeof OfferUpgradeSchema>;
@@ -36,7 +36,7 @@ export async function waitlistRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof CancelWaitlistSchema> }>(
-    '/v1/waitlist/:id/cancel', { schema: { body: CancelWaitlistSchema }, preHandler: [requireAuth] },
+    '/v1/waitlist/:id/cancel', { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const body = request.body as z.infer<typeof CancelWaitlistSchema>;

@@ -28,32 +28,20 @@ async function shiftsRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.patch('/v1/admin/shifts/:shiftId', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        try {
-            const body = UpdateShiftSchema.parse(request.body);
-            const result = await (0, shiftService_1.updateShift)(request.params.shiftId, body, request.staff.staffId);
-            return reply.send({ id: result.id, employeeId: result.employee_id, employeeName: result.employee_name, shiftCode: result.shift_code, scheduledStart: result.starts_at.toISOString(), scheduledEnd: result.ends_at.toISOString(), status: result.status, notes: result.notes });
-        }
-        catch (e) {
-            request.log.error(e, 'Failed to update shift');
-            return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to update shift' });
-        }
+    fastify.patch('/v1/admin/shifts/:shiftId', { schema: { body: UpdateShiftSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        const body = request.body;
+        const result = await (0, shiftService_1.updateShift)(request.params.shiftId, body, request.staff.staffId);
+        return reply.send({ id: result.id, employeeId: result.employee_id, employeeName: result.employee_name, shiftCode: result.shift_code, scheduledStart: result.starts_at.toISOString(), scheduledEnd: result.ends_at.toISOString(), status: result.status, notes: result.notes });
     });
-    fastify.post('/v1/admin/shifts', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        try {
-            const body = CreateShiftSchema.parse(request.body);
-            if (new Date(body.starts_at) >= new Date(body.ends_at))
-                return reply.status(400).send({ error: 'Shift start must be before end' });
-            const result = await (0, shiftService_1.createShift)(body, request.staff.staffId);
-            if (result.conflict)
-                return reply.status(409).send({ error: 'Shift overlaps with existing shift', conflictingShiftIds: result.conflictingShiftIds });
-            const s = result.shift;
-            return reply.status(201).send({ id: s.id, employeeId: s.employee_id, employeeName: s.employee_name, shiftCode: s.shift_code, scheduledStart: s.starts_at.toISOString(), scheduledEnd: s.ends_at.toISOString(), color: s.color, templateId: s.template_id, breakMinutes: s.break_minutes, status: s.status, notes: s.notes });
-        }
-        catch (e) {
-            request.log.error(e, 'Failed to create shift');
-            return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to create shift' });
-        }
+    fastify.post('/v1/admin/shifts', { schema: { body: CreateShiftSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        const body = request.body;
+        if (new Date(body.starts_at) >= new Date(body.ends_at))
+            return reply.status(400).send({ error: 'Shift start must be before end' });
+        const result = await (0, shiftService_1.createShift)(body, request.staff.staffId);
+        if (result.conflict)
+            return reply.status(409).send({ error: 'Shift overlaps with existing shift', conflictingShiftIds: result.conflictingShiftIds });
+        const s = result.shift;
+        return reply.status(201).send({ id: s.id, employeeId: s.employee_id, employeeName: s.employee_name, shiftCode: s.shift_code, scheduledStart: s.starts_at.toISOString(), scheduledEnd: s.ends_at.toISOString(), color: s.color, templateId: s.template_id, breakMinutes: s.break_minutes, status: s.status, notes: s.notes });
     });
     fastify.delete('/v1/admin/shifts/:shiftId', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         try {
@@ -67,16 +55,10 @@ async function shiftsRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.post('/v1/admin/shifts/bulk', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        try {
-            const body = BulkCreateSchema.parse(request.body);
-            const result = await (0, shiftService_1.bulkCreateShifts)(body.shifts, request.staff.staffId);
-            return reply.status(201).send(result);
-        }
-        catch (e) {
-            request.log.error(e, 'Failed to bulk create shifts');
-            return reply.status(400).send({ error: 'Bulk create failed' });
-        }
+    fastify.post('/v1/admin/shifts/bulk', { schema: { body: BulkCreateSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        const body = request.body;
+        const result = await (0, shiftService_1.bulkCreateShifts)(body.shifts, request.staff.staffId);
+        return reply.status(201).send(result);
     });
     fastify.get('/v1/admin/shifts/weekly-summary', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         try {

@@ -173,7 +173,7 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
             activeBlockEndsAt = activeVisitResult.rows[0].ends_at.toISOString();
         }
     }
-    let assignedResourceType = session.assigned_resource_type;
+    const assignedResourceType = session.assigned_resource_type;
     const assignedResourceNumber = await fetchAssignedResourceNumber(client, assignedResourceType, session.assigned_resource_id);
     let paymentIntent;
     if (session.payment_intent_id) {
@@ -191,11 +191,9 @@ async function buildFullSessionUpdatedPayload(client, sessionId) {
     const paymentTotal = paymentTotalRaw ?? undefined;
     const paymentLineItems = extractPaymentLineItems(session.price_quote_json) ??
         extractPaymentLineItems(paymentIntent?.quote_json);
-    let ledgerLineItems;
-    let ledgerTotal;
     const { ledgerItems, total } = await buildLedgerLineItems(client, session, customer, pastDueBalance, paymentLineItems, blockForSession?.visit_id || activeVisitId);
-    ledgerLineItems = ledgerItems.length > 0 ? ledgerItems : undefined;
-    ledgerTotal = total > 0 ? total : undefined;
+    const ledgerLineItems = ledgerItems.length > 0 ? ledgerItems : undefined;
+    const ledgerTotal = total > 0 ? total : undefined;
     const membershipValidUntilRaw = customer?.membership_valid_until;
     let customerMembershipValidUntil;
     if (membershipValidUntilRaw instanceof Date) {

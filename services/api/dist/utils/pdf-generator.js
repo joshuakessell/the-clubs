@@ -38,14 +38,14 @@ function base64ToUint8Array(base64) {
 function decodeHtmlEntities(input) {
     // Minimal entity decoding for our agreement content.
     const replaced = input
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>');
+        .replaceAll(/&nbsp;/gi, ' ')
+        .replaceAll(/&amp;/gi, '&')
+        .replaceAll(/&quot;/gi, '"')
+        .replaceAll(/&#39;/g, "'")
+        .replaceAll(/&lt;/gi, '<')
+        .replaceAll(/&gt;/gi, '>');
     // Numeric entities: &#123; or &#x1F600;
-    return replaced.replace(/&#(x?[0-9a-fA-F]+);/g, (_m, raw) => {
+    return replaced.replaceAll(/&#(x?[0-9a-fA-F]+);/g, (_m, raw) => {
         try {
             const s = String(raw);
             const codePoint = s.startsWith('x') || s.startsWith('X') ? parseInt(s.slice(1), 16) : parseInt(s, 10);
@@ -76,9 +76,9 @@ function normalizeRuns(runs) {
 function stripDangerousHtml(html) {
     // Remove scripts/styles entirely (defense-in-depth, even though agreement HTML is server-controlled).
     return html
-        .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
-        .replace(/<!--[\s\S]*?-->/g, '');
+        .replaceAll(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+        .replaceAll(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
+        .replaceAll(/<!--[\s\S]*?-->/g, '');
 }
 function parseAgreementHtmlToBlocks(inputHtml) {
     const html = stripDangerousHtml(inputHtml || '');
@@ -95,7 +95,7 @@ function parseAgreementHtmlToBlocks(inputHtml) {
         if (current.type !== type) {
             // Close the previous block and start a new one.
             const finalized = normalizeRuns(current.runs);
-            if (finalized.some((r) => r.text.replace(/\s+/g, '').length > 0))
+            if (finalized.some((r) => r.text.replaceAll(/\s+/g, '').length > 0))
                 blocks.push({ ...current, runs: finalized });
             current = { type, runs: [] };
         }
@@ -104,7 +104,7 @@ function parseAgreementHtmlToBlocks(inputHtml) {
         if (!current)
             return;
         const finalized = normalizeRuns(current.runs);
-        if (finalized.some((r) => r.text.replace(/\s+/g, '').length > 0))
+        if (finalized.some((r) => r.text.replaceAll(/\s+/g, '').length > 0))
             blocks.push({ ...current, runs: finalized });
         current = null;
     };
@@ -134,7 +134,7 @@ function parseAgreementHtmlToBlocks(inputHtml) {
             appendText(token);
             continue;
         }
-        const raw = token.replace(/\s+/g, ' ').trim();
+        const raw = token.replaceAll(/\s+/g, ' ').trim();
         const m = raw.match(/^<\/?\s*([a-zA-Z0-9]+)\b/);
         if (!m)
             continue;
@@ -196,7 +196,7 @@ function parseAgreementHtmlToBlocks(inputHtml) {
     closeBlock();
     // If there were no HTML blocks at all, fall back to treating the whole thing as plaintext paragraphs.
     if (blocks.length === 0) {
-        const raw = (inputHtml || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const raw = (inputHtml || '').replaceAll(/\r\n/g, '\n').replaceAll(/\r/g, '\n');
         return raw
             .split('\n')
             .map((line) => line.trimEnd())
@@ -321,7 +321,7 @@ async function generateAgreementPdf(params) {
             for (let i = 0; i < parts.length; i++) {
                 const part = parts[i];
                 if (part.length > 0) {
-                    const collapsed = part.replace(/\s+/g, ' ');
+                    const collapsed = part.replaceAll(/\s+/g, ' ');
                     const split = collapsed.split(/(\s)/).filter((p) => p.length > 0);
                     for (const s of split) {
                         tokens.push({ text: s, style: run.style });

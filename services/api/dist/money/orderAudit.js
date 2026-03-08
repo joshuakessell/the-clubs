@@ -41,7 +41,7 @@ function normalizeKind(value) {
     return undefined;
 }
 function buildReceiptNumber(order) {
-    const date = order.created_at.toISOString().slice(0, 10).replace(/-/g, '');
+    const date = order.created_at.toISOString().slice(0, 10).replaceAll(/-/g, '');
     return `R-${date}-${order.id}`;
 }
 function parseQuote(raw) {

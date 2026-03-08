@@ -43,7 +43,7 @@ describe('Customers manual identity endpoints', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     await app.register(customerRoutes);
     await app.ready();
   });

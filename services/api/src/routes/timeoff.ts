@@ -94,7 +94,6 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/v1/schedule/time-off-requests',
     {
-      schema: { body: CreateTimeOffRequestSchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {
@@ -207,7 +206,6 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/v1/admin/time-off-requests/:requestId',
     {
-      schema: { body: AdminDecisionSchema },
       preHandler: [requireAuth, requireAdmin],
     },
     async (request, reply) => {

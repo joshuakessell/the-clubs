@@ -61,7 +61,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { requestId: string }; Body: MarkFeePaidInput }>(
     '/v1/checkout/:requestId/mark-fee-paid',
-    { schema: { body: MarkFeePaidSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 

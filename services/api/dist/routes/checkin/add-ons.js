@@ -6,6 +6,7 @@ const payload_1 = require("../../checkin/payload");
 const schemas_1 = require("../../checkin/schemas");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const HttpError_1 = require("../../errors/HttpError");
 function registerCheckinAddOnRoutes(fastify) {
     /**
      * POST /v1/checkin/lane/:laneId/add-ons
@@ -31,24 +32,24 @@ function registerCheckinAddOnRoutes(fastify) {
                  ORDER BY created_at DESC
                  LIMIT 1`, [laneId]);
                 if (sessionResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'No active session found' };
+                    throw new HttpError_1.HttpError(404, 'No active session found');
                 }
                 const session = sessionResult.rows[0];
                 const resolvedLaneId = session.lane_id || laneId;
                 if (!session.payment_intent_id) {
-                    throw { statusCode: 400, message: 'No payment intent for session' };
+                    throw new HttpError_1.HttpError(400, 'No payment intent for session');
                 }
                 const intentResult = await client.query(`SELECT * FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]);
                 const paymentIntent = intentResult.rows[0];
                 if (!paymentIntent) {
-                    throw { statusCode: 404, message: 'Payment intent not found' };
+                    throw new HttpError_1.HttpError(404, 'Payment intent not found');
                 }
                 if (paymentIntent.status !== 'DUE') {
-                    throw { statusCode: 409, message: 'Payment intent is not payable' };
+                    throw new HttpError_1.HttpError(409, 'Payment intent is not payable');
                 }
                 const baseQuote = (0, utils_1.parsePriceQuote)(session.price_quote_json) ?? (0, utils_1.parsePriceQuote)(paymentIntent.quote_json);
                 if (!baseQuote) {
-                    throw { statusCode: 400, message: 'No price quote available for session' };
+                    throw new HttpError_1.HttpError(400, 'No price quote available for session');
                 }
                 const addLineItems = items.map((item) => ({
                     description: item.quantity > 1 ? `${item.label} x${item.quantity}` : item.label,

@@ -134,7 +134,7 @@ describe('Cleaning Batch Endpoint', () => {
     }
 
     // Create Fastify instance
-    fastify = Fastify();
+    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
 
     // Create broadcaster that captures events
     broadcastedEvents = [];

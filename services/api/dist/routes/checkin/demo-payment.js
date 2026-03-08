@@ -7,6 +7,7 @@ const payload_1 = require("../../checkin/payload");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
 const customerActivityLog_1 = require("../../activity/customerActivityLog");
+const HttpError_1 = require("../../errors/HttpError");
 const SPLIT_CARD_LINE_ITEM = 'Card Payment';
 /**
  * Recalculate a price quote after a split-card payment.
@@ -19,7 +20,7 @@ function recalculateSplitQuote(baseQuote, splitAmount) {
     const baseTotal = (0, utils_1.roundToWhole)(baseQuote.total - cardLineTotal);
     const roundedSplit = (0, utils_1.roundToWhole)(splitAmount);
     if (roundedSplit <= 0 || roundedSplit >= baseTotal) {
-        throw { statusCode: 400, message: 'Split card amount must be less than the total' };
+        throw new HttpError_1.HttpError(400, 'Split card amount must be less than the total');
     }
     const remainingTotal = (0, utils_1.roundToWhole)(baseTotal - roundedSplit);
     const nextLineItems = [
@@ -59,28 +60,28 @@ function registerCheckinDemoPaymentRoutes(fastify) {
            ORDER BY created_at DESC
            LIMIT 1`, [laneId]);
                 if (sessionResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'No active session found' };
+                    throw new HttpError_1.HttpError(404, 'No active session found');
                 }
                 const session = sessionResult.rows[0];
                 if (!session.selection_confirmed) {
-                    throw { statusCode: 400, message: 'Selection must be confirmed before payment' };
+                    throw new HttpError_1.HttpError(400, 'Selection must be confirmed before payment');
                 }
                 if (!session.payment_intent_id) {
-                    throw { statusCode: 400, message: 'Payment intent must be created first' };
+                    throw new HttpError_1.HttpError(400, 'Payment intent must be created first');
                 }
                 const intentResult = await client.query(`SELECT * FROM payment_intents WHERE id = $1`, [session.payment_intent_id]);
                 if (intentResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'Payment intent not found' };
+                    throw new HttpError_1.HttpError(404, 'Payment intent not found');
                 }
                 const intent = intentResult.rows[0];
                 const normalizedSplitAmount = outcome === 'CREDIT_SUCCESS' ? (0, utils_1.toNumber)(splitCardAmount) : undefined;
                 if (outcome === 'CREDIT_SUCCESS' && normalizedSplitAmount !== undefined) {
                     if (intent.status !== 'DUE') {
-                        throw { statusCode: 409, message: 'Payment intent is not payable' };
+                        throw new HttpError_1.HttpError(409, 'Payment intent is not payable');
                     }
                     const baseQuote = (0, utils_1.parsePriceQuote)(session.price_quote_json) ?? (0, utils_1.parsePriceQuote)(intent.quote_json);
                     if (!baseQuote) {
-                        throw { statusCode: 400, message: 'No price quote available for session' };
+                        throw new HttpError_1.HttpError(400, 'No price quote available for session');
                     }
                     const { nextQuote, remainingTotal } = recalculateSplitQuote(baseQuote, normalizedSplitAmount);
                     await client.query(`UPDATE payment_intents

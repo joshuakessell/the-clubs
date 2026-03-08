@@ -16,7 +16,7 @@ async function loadMigrationNames() {
     return files
         .filter((f) => f.endsWith('.sql'))
         .sort()
-        .map((f) => f.replace('.sql', ''));
+        .map((f) => f.replaceAll('.sql', ''));
 }
 async function getExecutedMigrations(client) {
     const exists = await client.query(`SELECT to_regclass('public.${MIGRATIONS_TABLE}') as exists`);

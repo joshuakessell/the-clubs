@@ -30,7 +30,7 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
   const UpdateSchema = z.object({ pastDueBalance: z.number().min(0).optional() }).refine((b) => b.pastDueBalance !== undefined, { message: 'At least one field is required' });
 
   fastify.patch<{ Params: { id: string }; Body: z.infer<typeof UpdateSchema> }>(
-    '/v1/admin/customers/:id', { schema: { body: UpdateSchema }, preHandler: [requireReauthForAdmin] },
+    '/v1/admin/customers/:id', { preHandler: [requireReauthForAdmin] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const body = request.body as z.infer<typeof UpdateSchema>;

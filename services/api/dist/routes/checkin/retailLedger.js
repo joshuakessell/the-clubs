@@ -22,20 +22,11 @@ function registerRetailLedgerRoutes(fastify) {
      * appear on the check-in ledger. The order stays OPEN (unpaid) — the
      * customer pays for everything during the normal check-in payment step.
      */
-    fastify.post('/v1/checkin/lane/:laneId/add-retail-items', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/checkin/lane/:laneId/add-retail-items', { schema: { body: AddRetailItemsSchema }, preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const { laneId } = request.params;
-        let body;
-        try {
-            body = AddRetailItemsSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         try {
             // Find the active lane session
             const sessionResult = await (0, db_1.transaction)(async (client) => {

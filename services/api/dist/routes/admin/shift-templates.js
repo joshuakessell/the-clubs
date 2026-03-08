@@ -58,8 +58,8 @@ function registerShiftTemplateRoutes(fastify) {
     /**
      * POST /v1/admin/shift-templates
      */
-    fastify.post('/v1/admin/shift-templates', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        const body = CreateTemplateSchema.parse(request.body);
+    fastify.post('/v1/admin/shift-templates', { schema: { body: CreateTemplateSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        const body = request.body;
         try {
             const result = await (0, db_1.query)(`INSERT INTO shift_templates (label, default_start_time, default_end_time, color, created_by)
            VALUES ($1, $2, $3, $4, $5)
@@ -74,8 +74,8 @@ function registerShiftTemplateRoutes(fastify) {
     /**
      * PATCH /v1/admin/shift-templates/:id
      */
-    fastify.patch('/v1/admin/shift-templates/:id', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        const body = UpdateTemplateSchema.parse(request.body);
+    fastify.patch('/v1/admin/shift-templates/:id', { schema: { body: UpdateTemplateSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        const body = request.body;
         const updates = [];
         const params = [];
         let idx = 1;

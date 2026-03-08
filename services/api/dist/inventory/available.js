@@ -3,7 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.computeInventoryAvailable = computeInventoryAvailable;
 const shared_1 = require("@the-clubs/shared");
 function getRoomTier(roomNumber) {
-    const num = parseInt(roomNumber, 10);
+    const num = Number.parseInt(roomNumber, 10);
     return (0, shared_1.getRoomTierFromNumber)(num);
 }
 /**
@@ -62,7 +62,7 @@ async function computeInventoryAvailable(queryFn) {
         const tier = getRoomTier(row.number);
         rawRooms[tier]++;
     }
-    const lockers = parseInt(lockerResult.rows[0]?.count ?? '0', 10);
+    const lockers = Number.parseInt(lockerResult.rows[0]?.count ?? '0', 10);
     const waitlistDemandRows = await queryFn(`SELECT w.desired_tier::text as tier, COUNT(*) as count
      FROM waitlist w
      JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
@@ -79,7 +79,7 @@ async function computeInventoryAvailable(queryFn) {
     for (const row of waitlistDemandRows.rows) {
         const tier = row.tier;
         if (tier === 'SPECIAL' || tier === 'DOUBLE' || tier === 'STANDARD') {
-            waitlistDemand[tier] = parseInt(row.count, 10);
+            waitlistDemand[tier] = Number.parseInt(row.count, 10);
         }
     }
     const rooms = {

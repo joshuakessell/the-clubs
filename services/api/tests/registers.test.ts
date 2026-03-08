@@ -21,7 +21,7 @@ describe('Register Routes', () => {
 
     await initializeDatabase();
 
-    fastify = Fastify({ logger: false });
+    fastify = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     // registerRoutes expects a broadcaster decoration for websocket events
     fastify.decorate('broadcaster', {
       broadcastRegisterSessionUpdated: () => {},

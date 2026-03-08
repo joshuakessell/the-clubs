@@ -44,7 +44,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof ManualResolveSchema> }>(
     '/v1/checkout/manual-resolve',
-    { schema: { body: ManualResolveSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -72,7 +72,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof ManualCompleteSchema> }>(
     '/v1/checkout/manual-complete',
-    { schema: { body: ManualCompleteSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const staffId = request.staff.staffId;

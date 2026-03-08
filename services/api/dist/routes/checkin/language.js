@@ -6,6 +6,7 @@ const kioskToken_1 = require("../../auth/kioskToken");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
 const payload_1 = require("../../checkin/payload");
+const HttpError_1 = require("../../errors/HttpError");
 function isFlowCommandsEnabled() {
     return process.env.FLOW_COMMANDS === 'true';
 }
@@ -32,15 +33,15 @@ async function setLanguageForLaneSession(fastify, params) {
          ORDER BY created_at DESC LIMIT 1`, [laneId]);
         }
         if (sessionResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError_1.HttpError(404, 'No active session found');
         }
         const session = sessionResult.rows[0];
         const resolvedLaneId = session.lane_id || laneId;
         if (session.status === 'COMPLETED' || session.status === 'CANCELLED') {
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError_1.HttpError(404, 'No active session found');
         }
         if (!session.customer_id) {
-            throw { statusCode: 400, message: 'Session has no customer' };
+            throw new HttpError_1.HttpError(400, 'Session has no customer');
         }
         await client.query(`UPDATE customers SET primary_language = $1, updated_at = NOW() WHERE id = $2`, [language, session.customer_id]);
         if (isFlowCommandsEnabled()) {

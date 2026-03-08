@@ -19,6 +19,7 @@ exports.buildSessionPayload = buildSessionPayload;
 const db_1 = require("../db");
 const payload_1 = require("../checkin/payload");
 const types_1 = require("../checkin/types");
+const HttpError_1 = require("../errors/HttpError");
 // ── Shared helpers ──
 function isFlowCommandsEnabled() {
     return process.env.FLOW_COMMANDS === 'true';
@@ -29,7 +30,7 @@ async function checkPastDueBlocked(client, customerId, sessionBypassed) {
     const customerResult = await client.query(`SELECT past_due_balance FROM customers WHERE id = $1`, [customerId]);
     if (customerResult.rows.length === 0)
         return { blocked: false, balance: 0 };
-    const balance = parseFloat(String(customerResult.rows[0].past_due_balance || 0));
+    const balance = Number.parseFloat(String(customerResult.rows[0].past_due_balance || 0));
     return { blocked: balance > 0 && !sessionBypassed, balance };
 }
 function normalizeDesiredTypes(desiredTypes) {
@@ -44,7 +45,7 @@ async function selectRental(input) {
     return (0, db_1.transaction)(async (client) => {
         const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`, [input.laneId]);
         if (sessionResult.rows.length === 0)
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError_1.HttpError(404, 'No active session found');
         const session = sessionResult.rows[0];
         if (isFlowCommandsEnabled()) {
             const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -86,13 +87,13 @@ async function proposeSelection(input) {
     return (0, db_1.transaction)(async (client) => {
         const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [input.laneId]);
         if (sessionResult.rows.length === 0)
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError_1.HttpError(404, 'No active session found');
         const session = sessionResult.rows[0];
         const { blocked } = await checkPastDueBlocked(client, session.customer_id, session.past_due_bypassed || false);
         if (blocked && input.proposedBy === 'CUSTOMER')
-            throw { statusCode: 403, message: 'Past due balance must be cleared before selection' };
+            throw new HttpError_1.HttpError(403, 'Past due balance must be cleared before selection');
         if (session.selection_confirmed)
-            throw { statusCode: 400, message: 'Selection is already locked' };
+            throw new HttpError_1.HttpError(400, 'Selection is already locked');
         const normalizedDesiredTypes = normalizeDesiredTypes(input.waitlistDesiredTypes);
         await client.query(`UPDATE lane_sessions SET proposed_rental_type = $1, proposed_by = $2,
        waitlist_desired_type = COALESCE($3, waitlist_desired_type),
@@ -117,7 +118,7 @@ async function setWaitlistDesired(input) {
            AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
            ORDER BY created_at DESC LIMIT 1`, [input.laneId]);
         if (sessionResult.rows.length === 0)
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError_1.HttpError(404, 'No active session found');
         const session = sessionResult.rows[0];
         const desired = input.waitlistDesiredType === null || (typeof input.waitlistDesiredType === 'string' && !input.waitlistDesiredType.trim()) ? null : input.waitlistDesiredType;
         const normalizedDesiredTypes = normalizeDesiredTypes(input.waitlistDesiredTypes);
@@ -138,13 +139,13 @@ async function confirmSelection(laneId, confirmedBy) {
     return (0, db_1.transaction)(async (client) => {
         const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
         if (sessionResult.rows.length === 0)
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError_1.HttpError(404, 'No active session found');
         const session = sessionResult.rows[0];
         const { blocked } = await checkPastDueBlocked(client, session.customer_id, session.past_due_bypassed || false);
         if (blocked && confirmedBy === 'CUSTOMER')
-            throw { statusCode: 403, message: 'Past due balance must be cleared before confirmation' };
+            throw new HttpError_1.HttpError(403, 'Past due balance must be cleared before confirmation');
         if (!session.proposed_rental_type)
-            throw { statusCode: 400, message: 'No selection proposed yet' };
+            throw new HttpError_1.HttpError(400, 'No selection proposed yet');
         // Idempotent: if already locked, return current state
         if (session.selection_confirmed) {
             return {
@@ -177,10 +178,10 @@ async function acknowledgeSelection(laneId, acknowledgedBy) {
     return (0, db_1.transaction)(async (client) => {
         const sessionResult = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
         if (sessionResult.rows.length === 0)
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError_1.HttpError(404, 'No active session found');
         const session = sessionResult.rows[0];
         if (!session.selection_confirmed)
-            throw { statusCode: 400, message: 'Selection is not locked yet' };
+            throw new HttpError_1.HttpError(400, 'Selection is not locked yet');
         return { sessionId: session.id, acknowledgedBy };
     });
 }

@@ -122,7 +122,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
    */
   fastify.post(
     '/v1/admin/products',
-    { schema: { body: CreateProductSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -148,7 +148,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
    */
   fastify.patch<{ Params: { id: string } }>(
     '/v1/admin/products/:id',
-    { schema: { body: UpdateProductSchema }, preHandler: [requireAuth] },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 

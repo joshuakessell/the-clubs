@@ -15,6 +15,7 @@ const payload_1 = require("../checkin/payload");
 const utils_1 = require("../checkin/utils");
 const customerActivityLog_1 = require("../activity/customerActivityLog");
 const clubEventLog_1 = require("../activity/clubEventLog");
+const HttpError_1 = require("../errors/HttpError");
 // ── Service Methods ──
 async function startLaneSession(input, staff) {
     const { laneId, customerId: requestedCustomerId, idScanValue, membershipScanValue, visitId, renewalHours } = input;
@@ -28,7 +29,7 @@ async function startLaneSession(input, staff) {
             const customerResult = await client.query(`SELECT id, name, dob, id_expiration_date, membership_number, membership_card_type, membership_valid_until, banned_until, id_scan_hash
          FROM customers WHERE id = $1 LIMIT 1`, [requestedCustomerId]);
             if (customerResult.rows.length === 0)
-                throw { statusCode: 404, message: 'Customer not found' };
+                throw new HttpError_1.HttpError(404, 'Customer not found');
             const customer = customerResult.rows[0];
             customerId = customer.id;
             customerName = customer.name;
@@ -37,7 +38,7 @@ async function startLaneSession(input, staff) {
             idScanIssue = (0, identity_1.getIdScanIssue)({ dob: customer.dob, idExpirationDate: customer.id_expiration_date ?? null });
             const bannedUntil = (0, utils_1.toDate)(customer.banned_until);
             if (bannedUntil && new Date() < bannedUntil)
-                throw { statusCode: 403, message: 'Customer is banned until ' + bannedUntil.toISOString() };
+                throw new HttpError_1.HttpError(403, 'Customer is banned until ' + bannedUntil.toISOString());
         }
         else {
             if (membershipNumber) {
@@ -51,7 +52,7 @@ async function startLaneSession(input, staff) {
                     idScanIssue = (0, identity_1.getIdScanIssue)({ dob: customer.dob, idExpirationDate: customer.id_expiration_date ?? null });
                     const bannedUntil = (0, utils_1.toDate)(customer.banned_until);
                     if (bannedUntil && new Date() < bannedUntil)
-                        throw { statusCode: 403, message: 'Customer is banned until ' + bannedUntil.toISOString() };
+                        throw new HttpError_1.HttpError(403, 'Customer is banned until ' + bannedUntil.toISOString());
                 }
             }
             if (!customerId) {
@@ -96,26 +97,26 @@ async function startLaneSession(input, staff) {
             }
         };
         if (renewalHours && !visitId)
-            throw { statusCode: 400, message: 'renewalHours requires an explicit visitId' };
+            throw new HttpError_1.HttpError(400, 'renewalHours requires an explicit visitId');
         if (visitId) {
             const visitResult = await client.query(`SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = $1`, [visitId]);
             if (visitResult.rows.length === 0)
-                throw { statusCode: 404, message: 'Visit not found' };
+                throw new HttpError_1.HttpError(404, 'Visit not found');
             const visit = visitResult.rows[0];
             if (customerId && visit.customer_id !== customerId)
-                throw { statusCode: 403, message: 'Visit does not belong to this customer' };
+                throw new HttpError_1.HttpError(403, 'Visit does not belong to this customer');
             visitIdForSession = visit.id;
             computedMode = 'RENEWAL';
             await resolveVisitBlocks(visit.id);
             await resolveActiveAssignment(visit.id);
             const requestedRenewalHours = renewalHours ?? 6;
             if (!blockEndsAtDate)
-                throw { statusCode: 400, message: 'Cannot determine checkout time for renewal' };
+                throw new HttpError_1.HttpError(400, 'Cannot determine checkout time for renewal');
             const diffMs = Math.abs(blockEndsAtDate.getTime() - Date.now());
             if (diffMs > 60 * 60 * 1000)
-                throw { statusCode: 400, message: 'Renewal is only available within 1 hour of checkout' };
+                throw new HttpError_1.HttpError(400, 'Renewal is only available within 1 hour of checkout');
             if (currentTotalHours + requestedRenewalHours > 14)
-                throw { statusCode: 400, message: `Renewal would exceed 14-hour maximum. Current total: ${currentTotalHours} hours, renewal would add ${requestedRenewalHours} hours.` };
+                throw new HttpError_1.HttpError(400, `Renewal would exceed 14-hour maximum. Current total: ${currentTotalHours} hours, renewal would add ${requestedRenewalHours} hours.`);
             renewalHoursForSession = requestedRenewalHours;
         }
         else if (customerId) {
@@ -131,26 +132,25 @@ async function startLaneSession(input, staff) {
                 const assignedResourceNumber = block?.room_number ?? block?.locker_number ?? null;
                 const waitlistResult = await client.query(`SELECT id, desired_tier, backup_tier, status FROM waitlist WHERE visit_id = $1 AND status IN ('ACTIVE', 'OFFERED') ORDER BY created_at DESC LIMIT 1`, [activeVisitId]);
                 const wl = waitlistResult.rows[0];
-                throw {
-                    statusCode: 409, code: 'ALREADY_CHECKED_IN', message: 'Customer is currently checked in',
-                    activeCheckin: {
-                        visitId: activeVisitId,
-                        rentalType: block?.rental_type ?? null,
-                        assignedResourceType, assignedResourceNumber,
-                        checkinAt: block?.starts_at ? block.starts_at.toISOString() : null,
-                        checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
-                        overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
-                        currentTotalHours,
-                        waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
-                    },
+                const err = new HttpError_1.HttpError(409, 'Customer is currently checked in', { code: 'ALREADY_CHECKED_IN' });
+                err.activeCheckin = {
+                    visitId: activeVisitId,
+                    rentalType: block?.rental_type ?? null,
+                    assignedResourceType, assignedResourceNumber,
+                    checkinAt: block?.starts_at ? block.starts_at.toISOString() : null,
+                    checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
+                    overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
+                    currentTotalHours,
+                    waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
                 };
+                throw err;
             }
         }
         // Create or update lane session
         const existingSession = await client.query(`SELECT id, status FROM lane_sessions WHERE lane_id = $1 AND status IN ('IDLE', 'ACTIVE', 'AWAITING_CUSTOMER') ORDER BY created_at DESC LIMIT 1`, [laneId]);
         let session;
         if (computedMode === 'RENEWAL' && !activeRentalType)
-            throw { statusCode: 400, message: 'Unable to determine rental type for renewal' };
+            throw new HttpError_1.HttpError(400, 'Unable to determine rental type for renewal');
         const desiredRentalTypeForSession = computedMode === 'RENEWAL' && activeRentalType ? activeRentalType : null;
         const selectionConfirmedForSession = computedMode === 'RENEWAL';
         const selectionConfirmedByForSession = computedMode === 'RENEWAL' ? 'EMPLOYEE' : null;
@@ -191,7 +191,7 @@ async function startLaneSession(input, staff) {
             const customerInfo = await client.query(`SELECT past_due_balance, membership_card_type, membership_valid_until FROM customers WHERE id = $1`, [session.customer_id]);
             if (customerInfo.rows.length > 0) {
                 const cust = customerInfo.rows[0];
-                pastDueBalance = parseFloat(String(cust.past_due_balance || 0));
+                pastDueBalance = Number.parseFloat(String(cust.past_due_balance || 0));
                 pastDueBlocked = pastDueBalance > 0 && !(session.past_due_bypassed || false);
                 const mCardType = cust.membership_card_type;
                 const mValidUntil = (0, utils_1.toDate)(cust.membership_valid_until);

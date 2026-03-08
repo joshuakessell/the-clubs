@@ -6,7 +6,7 @@ const utils_1 = require("../checkin/utils");
 function toDollars(value) {
     if (value === null || value === undefined)
         return undefined;
-    const n = typeof value === 'number' ? value : parseFloat(String(value));
+    const n = typeof value === 'number' ? value : Number.parseFloat(String(value));
     if (!Number.isFinite(n))
         return undefined;
     return Math.round(n);
