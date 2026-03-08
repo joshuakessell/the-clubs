@@ -120,7 +120,7 @@ export async function registerRoutes(
   );
 
   // POST /v1/auth/verify-pin
-  fastify.post('/v1/auth/verify-pin', {}, async (request: FastifyRequest<{ Body: z.infer<typeof VerifyPinSchema> }>, reply: FastifyReply) => {
+  fastify.post('/v1/auth/verify-pin', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request: FastifyRequest<{ Body: z.infer<typeof VerifyPinSchema> }>, reply: FastifyReply) => {
     const body = request.body;
 
     try {
