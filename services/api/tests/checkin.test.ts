@@ -53,6 +53,7 @@ describe('Check-in Flow', () => {
 
     app = Fastify({
       logger: false,
+      ajv: { customOptions: { strict: false, allowUnionTypes: true } },
     });
 
     await app.register(cors);

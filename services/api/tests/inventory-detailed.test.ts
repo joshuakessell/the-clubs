@@ -43,7 +43,7 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
 
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     await app.register(inventoryRoutes);
     await app.ready();
   });

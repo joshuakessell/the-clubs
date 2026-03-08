@@ -38,7 +38,7 @@ describe('processUpgradeHoldsTick (locking + expiry)', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     app.decorate('broadcaster', createBroadcaster());
     await app.ready();
   });

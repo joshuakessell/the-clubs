@@ -42,7 +42,7 @@ describe('Check-in Flow Commands', () => {
       return;
     }
 
-    app = Fastify({ logger: true });
+    app = Fastify({ logger: true, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     await app.register(cors);
     await app.register(websocket);
 

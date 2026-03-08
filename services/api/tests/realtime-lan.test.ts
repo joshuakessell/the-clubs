@@ -34,7 +34,7 @@ describe('LAN realtime websocket', () => {
     process.env.LAN_FALLBACK = 'true';
     process.env.KIOSK_TOKEN = process.env.KIOSK_TOKEN ?? 'test-kiosk-token';
 
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     app.decorate('localLaneSockets', new LocalLaneSockets());
 
     await app.register(websocket);

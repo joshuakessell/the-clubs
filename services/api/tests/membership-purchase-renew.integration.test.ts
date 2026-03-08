@@ -51,7 +51,7 @@ describe('Membership purchase/renew integration', () => {
       return;
     }
 
-    fastify = Fastify({ logger: false });
+    fastify = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     fastify.decorate('broadcaster', broadcaster);
     await fastify.register(checkinRoutes);

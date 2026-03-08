@@ -88,7 +88,7 @@ describe('Upgrade payment flow attaches charges', () => {
     await truncateAllTables(pool.query.bind(pool));
     events = [];
 
-    app = Fastify({ logger: true });
+    app = Fastify({ logger: true, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     const originalBroadcast = broadcaster.broadcast.bind(broadcaster);
     broadcaster.broadcast = (evt: any) => {

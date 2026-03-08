@@ -86,7 +86,7 @@ describe('GET /v1/waitlist (offered room details)', () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
 
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     app.decorate('broadcaster', broadcaster);
     await app.register(waitlistRoutes);

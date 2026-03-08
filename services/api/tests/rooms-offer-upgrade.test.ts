@@ -86,7 +86,7 @@ describe('Offer Upgrade API flow', () => {
     await truncateAllTables(pool.query.bind(pool));
     events = [];
 
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     const originalBroadcast = broadcaster.broadcast.bind(broadcaster);
     broadcaster.broadcast = (evt: any) => {
