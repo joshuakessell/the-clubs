@@ -26,6 +26,15 @@ import { SeedProgress } from './progress';
 
 loadEnvFromDotEnvIfPresent();
 
+// Fallback defaults for local dev (matching docker-compose.yml: 5433->5432)
+if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+  process.env.DB_HOST = 'localhost';
+  process.env.DB_PORT = '5433';
+  process.env.DB_NAME = 'club_operations';
+  process.env.DB_USER = 'clubops';
+  process.env.DB_PASSWORD = 'club-ops-dev';
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

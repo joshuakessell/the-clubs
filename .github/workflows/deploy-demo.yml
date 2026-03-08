@@ -238,6 +238,12 @@ jobs:
           script: |
             set -e
 
+            # Free disk space before loading new image
+            echo "Cleaning up old Docker artifacts..."
+            docker image prune -af --filter "until=24h" 2>/dev/null || true
+            docker container prune -f 2>/dev/null || true
+            docker builder prune -af 2>/dev/null || true
+
             # Load pre-built image
             echo "Loading Docker image..."
             docker load < /home/ec2-user/api-image.tar.gz

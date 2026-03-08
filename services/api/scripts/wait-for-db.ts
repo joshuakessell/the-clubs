@@ -6,7 +6,7 @@ loadEnvFromDotEnvIfPresent();
 
 const DEFAULT_CONFIG: ClientConfig = {
   host: 'localhost',
-  port: 5432,
+  port: 5433,
   // Keep defaults aligned with docker-compose.yml + local dev expectations.
   user: 'clubops',
   password: 'club-ops-dev',
