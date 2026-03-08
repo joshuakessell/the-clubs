@@ -53,7 +53,11 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       rateLimit: { max: 10, timeWindow: '1 minute' },
     },
   }, async (request, reply) => {
-    const body = request.body as LoginPinInput;
+    const parseResult = LoginPinSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.status(400).send({ error: 'Validation failed', details: parseResult.error.errors });
+    }
+    const body = parseResult.data;
 
     try {
       const isDemoMode = process.env.DEMO_MODE === 'true';
