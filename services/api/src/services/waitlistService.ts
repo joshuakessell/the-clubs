@@ -7,6 +7,7 @@ import { query, transaction, serializableTransaction } from '../db';
 import { insertAuditLog } from '../audit/auditLog';
 import type { FastifyInstance } from 'fastify';
 import { expireWaitlistEntries } from '../waitlist/expireWaitlist';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -54,26 +55,26 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
     const waitlistResult = await client.query<WaitlistRow & { visit_ended_at: Date | null; block_ends_at: Date }>(
       `SELECT w.*, v.ended_at as visit_ended_at, cb.ends_at as block_ends_at FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.id = $1 FOR UPDATE`, [waitlistId]
     );
-    if (waitlistResult.rows.length === 0) throw { statusCode: 404, message: 'Waitlist entry not found' };
+    if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
     const waitlist = waitlistResult.rows[0]!;
-    if (waitlist.status !== 'ACTIVE' && waitlist.status !== 'OFFERED') throw { statusCode: 409, message: `Waitlist entry must be ACTIVE or OFFERED (current status: ${waitlist.status})` };
-    if (waitlist.status === 'OFFERED' && waitlist.room_id && waitlist.room_id !== roomId) throw { statusCode: 409, message: 'Waitlist entry already has an active hold for a different room' };
-    if (waitlist.visit_ended_at) throw { statusCode: 409, message: 'Waitlist entry is no longer valid (visit ended)' };
-    if (new Date(waitlist.block_ends_at).getTime() <= Date.now()) throw { statusCode: 409, message: 'Waitlist entry is no longer valid (block ended)' };
+    if (waitlist.status !== 'ACTIVE' && waitlist.status !== 'OFFERED') throw new HttpError(409, `Waitlist entry must be ACTIVE or OFFERED (current status: ${waitlist.status})`);
+    if (waitlist.status === 'OFFERED' && waitlist.room_id && waitlist.room_id !== roomId) throw new HttpError(409, 'Waitlist entry already has an active hold for a different room');
+    if (waitlist.visit_ended_at) throw new HttpError(409, 'Waitlist entry is no longer valid (visit ended)');
+    if (new Date(waitlist.block_ends_at).getTime() <= Date.now()) throw new HttpError(409, 'Waitlist entry is no longer valid (block ended)');
 
     const roomResult = await client.query<RoomRow>(`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [roomId]);
-    if (roomResult.rows.length === 0) throw { statusCode: 404, message: 'Room not found' };
+    if (roomResult.rows.length === 0) throw new HttpError(404, 'Room not found');
     const room = roomResult.rows[0]!;
-    if (room.status !== 'CLEAN') throw { statusCode: 409, message: `Room ${room.number} is not available (status: ${room.status})` };
-    if (room.assigned_to_customer_id) throw { statusCode: 409, message: `Room ${room.number} is already assigned` };
+    if (room.status !== 'CLEAN') throw new HttpError(409, `Room ${room.number} is not available (status: ${room.status})`);
+    if (room.assigned_to_customer_id) throw new HttpError(409, `Room ${room.number} is already assigned`);
 
     const reservationConflict = await client.query<{ id: string }>(`SELECT id FROM inventory_reservations WHERE resource_type = 'room' AND resource_id = $1 AND released_at IS NULL AND (waitlist_id IS NULL OR waitlist_id <> $2) LIMIT 1`, [roomId, waitlistId]);
-    if (reservationConflict.rows.length > 0) throw { statusCode: 409, message: `Room ${room.number} is reserved` };
+    if (reservationConflict.rows.length > 0) throw new HttpError(409, `Room ${room.number} is reserved`);
 
-    if (String(room.type) !== String(waitlist.desired_tier)) throw { statusCode: 409, message: `Room ${room.number} is ${room.type}, but waitlist is for ${waitlist.desired_tier}` };
+    if (String(room.type) !== String(waitlist.desired_tier)) throw new HttpError(409, `Room ${room.number} is ${room.type}, but waitlist is for ${waitlist.desired_tier}`);
 
     const reserved = await client.query<{ id: string }>(`SELECT w.id FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.status = 'OFFERED' AND w.room_id = $1 AND w.id <> $2 AND v.ended_at IS NULL AND cb.ends_at > NOW() LIMIT 1`, [roomId, waitlistId]);
-    if (reserved.rows.length > 0) throw { statusCode: 409, message: `Room ${room.number} is reserved for another offer` };
+    if (reserved.rows.length > 0) throw new HttpError(409, `Room ${room.number} is reserved for another offer`);
 
     const desiredExpiryRes = await client.query<{ offer_expires_at: Date | null }>(`SELECT offer_expires_at FROM waitlist WHERE id = $1 FOR UPDATE`, [waitlistId]);
     const existingExpiresAt = desiredExpiryRes.rows[0]?.offer_expires_at ?? null;
@@ -94,9 +95,9 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
 export async function cancelWaitlistEntry(waitlistId: string, staffId: string, reason?: string) {
   return transaction(async (client) => {
     const waitlistResult = await client.query<WaitlistRow>(`SELECT * FROM waitlist WHERE id = $1 FOR UPDATE`, [waitlistId]);
-    if (waitlistResult.rows.length === 0) throw { statusCode: 404, message: 'Waitlist entry not found' };
+    if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
     const waitlist = waitlistResult.rows[0]!;
-    if (waitlist.status === 'COMPLETED' || waitlist.status === 'CANCELLED') throw { statusCode: 400, message: `Cannot cancel waitlist entry with status ${waitlist.status}` };
+    if (waitlist.status === 'COMPLETED' || waitlist.status === 'CANCELLED') throw new HttpError(400, `Cannot cancel waitlist entry with status ${waitlist.status}`);
 
     await client.query(`UPDATE waitlist SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by_staff_id = $1, updated_at = NOW() WHERE id = $2`, [staffId, waitlistId]);
     await insertAuditLog(client, { staffId, action: 'WAITLIST_CANCELLED', entityType: 'waitlist', entityId: waitlistId, oldValue: { status: waitlist.status }, newValue: { status: 'CANCELLED', reason: reason || 'Cancelled by staff' } });

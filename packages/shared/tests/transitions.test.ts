@@ -8,11 +8,11 @@ describe('isAdjacentTransition', () => {
     expect(isAdjacentTransition(RoomStatus.OCCUPIED, RoomStatus.OCCUPIED)).toBe(true);
   });
 
-  it('should allow DIRTY → CLEANING', () => {
-    expect(isAdjacentTransition(RoomStatus.DIRTY, RoomStatus.CLEANING)).toBe(true);
+  it('should allow DIRTY → CLEAN (single-step cleaning)', () => {
+    expect(isAdjacentTransition(RoomStatus.DIRTY, RoomStatus.CLEAN)).toBe(true);
   });
 
-  it('should allow CLEANING → CLEAN', () => {
+  it('should allow CLEANING → CLEAN (legacy compat)', () => {
     expect(isAdjacentTransition(RoomStatus.CLEANING, RoomStatus.CLEAN)).toBe(true);
   });
 
@@ -25,26 +25,26 @@ describe('isAdjacentTransition', () => {
     expect(isAdjacentTransition(RoomStatus.OCCUPIED, RoomStatus.DIRTY)).toBe(true);
   });
 
-  it('should NOT allow DIRTY → CLEAN (skips step)', () => {
-    expect(isAdjacentTransition(RoomStatus.DIRTY, RoomStatus.CLEAN)).toBe(false);
+  it('should NOT allow DIRTY → OUT_OF_SERVICE (non-adjacent)', () => {
+    expect(isAdjacentTransition(RoomStatus.DIRTY, RoomStatus.OUT_OF_SERVICE)).toBe(false);
   });
 });
 
 describe('validateTransition', () => {
   it('should return ok for adjacent transitions', () => {
-    const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEANING);
+    const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEAN);
     expect(result.ok).toBe(true);
     expect(result.needsOverride).toBeUndefined();
   });
 
   it('should require override for non-adjacent transitions', () => {
-    const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEAN, false);
+    const result = validateTransition(RoomStatus.DIRTY, RoomStatus.OUT_OF_SERVICE, false);
     expect(result.ok).toBe(false);
     expect(result.needsOverride).toBe(true);
   });
 
   it('should allow non-adjacent transitions with override', () => {
-    const result = validateTransition(RoomStatus.DIRTY, RoomStatus.CLEAN, true);
+    const result = validateTransition(RoomStatus.DIRTY, RoomStatus.OUT_OF_SERVICE, true);
     expect(result.ok).toBe(true);
   });
 

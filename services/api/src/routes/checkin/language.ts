@@ -5,6 +5,7 @@ import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { transaction } from '../../db';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
+import { HttpError } from '../../errors/HttpError';
 
 function isFlowCommandsEnabled(): boolean {
   return process.env.FLOW_COMMANDS === 'true';
@@ -51,18 +52,18 @@ async function setLanguageForLaneSession(
     }
 
     if (sessionResult.rows.length === 0) {
-      throw { statusCode: 404, message: 'No active session found' };
+      throw new HttpError(404, 'No active session found');
     }
 
     const session = sessionResult.rows[0]!;
     const resolvedLaneId = session.lane_id || laneId;
 
     if (session.status === 'COMPLETED' || session.status === 'CANCELLED') {
-      throw { statusCode: 404, message: 'No active session found' };
+      throw new HttpError(404, 'No active session found');
     }
 
     if (!session.customer_id) {
-      throw { statusCode: 400, message: 'Session has no customer' };
+      throw new HttpError(400, 'Session has no customer');
     }
 
     await client.query(

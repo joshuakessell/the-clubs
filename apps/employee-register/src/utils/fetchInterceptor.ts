@@ -36,10 +36,10 @@ export function setupFetchInterceptor() {
       }
 
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const duration = Math.round(performance.now() - startTime);
       if (url.includes('/api/')) {
-        logger.error(`[API] <= ${method} ERROR ${url} +${duration}ms`, error.message || error);
+        logger.error(`[API] <= ${method} ERROR ${url} +${duration}ms`, error instanceof Error ? error.message : error);
       }
       throw error;
     }

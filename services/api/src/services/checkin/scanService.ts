@@ -128,14 +128,12 @@ function extractStoredIdNumberForMatch(value: string | null): string | null {
   return trimmed;
 }
 
+import { HttpError } from '../../errors/HttpError';
+
 function checkBanned(row: CustomerIdentityRow): void {
   const bannedUntil = toDate(row.banned_until);
   if (bannedUntil && bannedUntil > new Date()) {
-    throw {
-      statusCode: 403,
-      code: 'BANNED',
-      message: `Customer is banned until ${bannedUntil.toISOString()}`,
-    };
+    throw new HttpError(403, `Customer is banned until ${bannedUntil.toISOString()}`, { code: 'BANNED' });
   }
 }
 

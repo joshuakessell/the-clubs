@@ -579,7 +579,7 @@ async function simulateVisits(params: {
 
     for (let j = 0; j < visitCount && created < maxVisits; j++) {
       const offsetMs = Math.floor(rng() * Math.max(1, slotEnd.getTime() - slotStart.getTime()));
-      let start = ceilTo15Min(new Date(slotStart.getTime() + offsetMs));
+      const start = ceilTo15Min(new Date(slotStart.getTime() + offsetMs));
       if (start > to) continue;
 
       // Scheduled checkout: always 6 hours from checkin, rounded up to nearest 15 min
@@ -1252,7 +1252,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
     if (staffRes.rows.length === 0) { progress.log('❌ No active staff found.'); return; }
 
     // If no register sessions, create temporary ones for the sim
-    let registerSessions = registerRes.rows;
+    const registerSessions = registerRes.rows;
     if (registerSessions.length === 0) {
       progress.log('⚠️  No register sessions found. Creating temporary ones...');
       for (const emp of staffRes.rows.slice(0, 3)) {

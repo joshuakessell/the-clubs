@@ -13,7 +13,8 @@ vi.mock('../src/auth/middleware.js', () => ({
     request.staff = { staffId: testStaffId, role: 'STAFF' };
   },
   optionalAuth: async (request: any, _reply: any) => {
-    request.staff = request.staff;
+    // optionalAuth is a no-op: keep request.staff as-is (may be undefined for kiosk)
+    void request.staff;
   },
   requireAdmin: async (_request: any, _reply: any) => {},
   requireReauth: async (request: any, _reply: any) => {

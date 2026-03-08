@@ -4,6 +4,7 @@ import { requireAuth } from '../auth/middleware';
 import { idempotencyKey } from '../middleware/idempotency';
 import { transaction } from '../db';
 import { insertClubEvent } from '../activity/clubEventLog';
+import { HttpError } from '../errors/HttpError';
 
 const StartBreakSchema = z.object({
   breakType: z.enum(['MEAL', 'REST', 'OTHER']),
@@ -46,7 +47,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
           [request.staff!.staffId]
         );
         if (openBreak.rows.length > 0) {
-          throw { statusCode: 409, message: 'Break already in progress' };
+          throw new HttpError(409, 'Break already in progress');
         }
 
         const timeclock = await client.query<{ id: string }>(
@@ -57,7 +58,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
           [request.staff!.staffId]
         );
         if (timeclock.rows.length === 0) {
-          throw { statusCode: 400, message: 'No active timeclock session' };
+          throw new HttpError(400, 'No active timeclock session');
         }
 
         const insert = await client.query<StaffBreakRow>(
@@ -129,7 +130,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
           [request.staff!.staffId]
         );
         if (openBreak.rows.length === 0) {
-          throw { statusCode: 404, message: 'No active break found' };
+          throw new HttpError(404, 'No active break found');
         }
 
         const current = openBreak.rows[0]!;

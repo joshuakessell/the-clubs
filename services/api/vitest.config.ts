@@ -24,5 +24,11 @@ export default defineConfig({
         teardownTimeout: 10000,
         forceExit: true,
         reporters: process.env.CI ? ['default', 'hanging-process'] : ['default'],
+        coverage: {
+            provider: 'v8',
+            reporter: ['text', 'text-summary'],
+            include: ['src/**'],
+            exclude: ['src/**/*.test.ts', 'src/**/*.d.ts'],
+        },
     },
 });

@@ -17,7 +17,8 @@
     "seed:demo": "DEMO_MODE=true pnpm exec tsx src/db/seed-demo/simulator.ts",
     "seed:all": "pnpm -s run seed && pnpm -s run seed:demo",
     "offline:replay": "pnpm exec tsx scripts/replay-offline-outbox.ts",
-    "test": "TMPDIR=/tmp vitest run"
+    "test": "TMPDIR=/tmp vitest run",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@faker-js/faker": "^9.3.0",
@@ -40,6 +41,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.3",
     "@fastify/websocket": "^11.2.0",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20.10.0",
@@ -48,10 +50,13 @@
     "@types/ws": "^8.5.10",
     "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.9",
+    "eslint": "^9.39.3",
+    "globals": "^16.5.0",
     "node-pg-migrate": "^7.7.0",
     "pdf-parse": "^1.1.1",
     "tsx": "^4.6.2",
     "typescript": "^5.3.3",
+    "typescript-eslint": "^8.56.0",
     "vitest": "^4.0.0",
     "ws": "^8.18.3"
   }

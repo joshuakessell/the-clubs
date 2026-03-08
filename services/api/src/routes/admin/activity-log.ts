@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { getHttpError } from '../../checkin/utils';
 import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../../auth/middleware';
 import { listActivityEvents, getCustomerActivityLog, listAuditLog, getActivityStats, type ListActivityInput } from '../../services/activityQueryService';
@@ -25,8 +26,9 @@ export function registerAdminActivityLogRoutes(fastify: FastifyInstance): void {
       try {
         const result = await getCustomerActivityLog({ customerId: request.params.customerId, centerEventId: request.query.centerEventId, limit });
         return reply.send(result);
-      } catch (error: any) {
-        if (error?.statusCode) return reply.status(error.statusCode).send({ error: error.message });
+      } catch (error: unknown) {
+        const httpErr = getHttpError(error);
+        if (httpErr) return reply.status(httpErr.statusCode).send({ error: httpErr.message });
         request.log.error(error, 'Failed to fetch customer activity log'); return reply.status(500).send({ error: 'Internal server error' });
       }
     }

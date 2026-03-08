@@ -203,7 +203,7 @@ describe('Cleaning Batch Endpoint', () => {
     await testFn();
   };
 
-  const injectAsStaff = (opts: Parameters<FastifyInstance['inject']>[0]) =>
+  const injectAsStaff = (opts: import('fastify').InjectOptions) =>
     fastify.inject({
       ...opts,
       headers: { ...(opts.headers ?? {}), Authorization: `Bearer ${staffToken}` },

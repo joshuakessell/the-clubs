@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
+import { getHttpError } from '../../checkin/utils';
 import { z } from 'zod';
 import { query, transaction } from '../../db';
 import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/middleware';
 import { insertAuditLog } from '../../audit/auditLog';
+import { HttpError } from '../../errors/HttpError';
 
 // Admin customer search and update delegates to inline service-like functions below.
 // The agreements endpoint is also included. These could be further extracted into
@@ -36,7 +38,7 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
       try {
         const result = await transaction(async (client) => {
           const existing = await client.query<{ id: string; past_due_balance: string | number | null; name: string; membership_number: string | null; primary_language: string | null }>(`SELECT id, name, membership_number, primary_language, past_due_balance FROM customers WHERE id = $1 FOR UPDATE`, [request.params.id]);
-          if (existing.rows.length === 0) throw { statusCode: 404, message: 'Customer not found' };
+          if (existing.rows.length === 0) throw new HttpError(404, 'Customer not found');
           const before = existing.rows[0]!;
           const updates: string[] = []; const params: unknown[] = []; let idx = 1;
           if (body.pastDueBalance !== undefined) { updates.push(`past_due_balance = $${idx}`); params.push(body.pastDueBalance); idx++; }
@@ -47,8 +49,9 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
           return after;
         });
         return reply.send({ id: result.id, name: result.name, membershipNumber: result.membership_number, primaryLanguage: (result.primary_language as 'EN' | 'ES' | null) || null, pastDueBalance: Number.parseFloat(String(result.past_due_balance || 0)) });
-      } catch (error: any) {
-        if (error?.statusCode) return reply.status(error.statusCode).send({ error: error.message ?? 'Failed to update customer' });
+      } catch (error: unknown) {
+        const httpErr = getHttpError(error);
+        if (httpErr) return reply.status(httpErr.statusCode).send({ error: httpErr.message ?? 'Failed to update customer' });
         request.log.error(error, 'Failed to update customer'); return reply.status(500).send({ error: 'Internal server error' });
       }
     }

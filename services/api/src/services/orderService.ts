@@ -7,6 +7,7 @@ import { query, transaction } from '../db';
 import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
 import { insertCustomerSpendLedgerEntry } from '../ledger/customerSpendLedger';
 import { insertClubEvent } from '../activity/clubEventLog';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -52,9 +53,9 @@ export async function createOrder(input: CreateOrderInput, staffId: string) {
 export async function addLineItems(orderId: string, items: LineItemInput[]) {
   return transaction(async (client) => {
     const orderResult = await client.query<OrderRow>(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
-    if (orderResult.rows.length === 0) throw { statusCode: 404, message: 'Order not found' };
+    if (orderResult.rows.length === 0) throw new HttpError(404, 'Order not found');
     const order = orderResult.rows[0]!;
-    if (order.status !== 'OPEN') throw { statusCode: 409, message: 'Order is not open' };
+    if (order.status !== 'OPEN') throw new HttpError(409, 'Order is not open');
 
     const inserted: LineItemRow[] = [];
     for (const item of items) {
@@ -83,9 +84,9 @@ export interface StaffContext { staffId: string; name: string; }
 export async function markOrderPaid(orderId: string, staff: StaffContext) {
   return transaction(async (client) => {
     const orderResult = await client.query<OrderRow>(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
-    if (orderResult.rows.length === 0) throw { statusCode: 404, message: 'Order not found' };
+    if (orderResult.rows.length === 0) throw new HttpError(404, 'Order not found');
     const order = orderResult.rows[0]!;
-    if (order.status !== 'OPEN') throw { statusCode: 409, message: `Order is ${order.status}` };
+    if (order.status !== 'OPEN') throw new HttpError(409, `Order is ${order.status}`);
 
     const totalsResult = await client.query<{ subtotal: number; discount: number; tax: number; total: number }>(
       `SELECT COALESCE(SUM(quantity * unit_price), 0) as subtotal, COALESCE(SUM(discount), 0) as discount, COALESCE(SUM(tax), 0) as tax, COALESCE(SUM(total), 0) as total FROM order_line_items WHERE order_id = $1`, [order.id]
@@ -153,9 +154,9 @@ export async function markOrderPaid(orderId: string, staff: StaffContext) {
 export async function issueReceipt(orderId: string) {
   return transaction(async (client) => {
     const orderResult = await client.query<OrderRow>(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency FROM orders WHERE id = $1 FOR UPDATE`, [orderId]);
-    if (orderResult.rows.length === 0) throw { statusCode: 404, message: 'Order not found' };
+    if (orderResult.rows.length === 0) throw new HttpError(404, 'Order not found');
     const order = orderResult.rows[0]!;
-    if (order.status !== 'PAID') throw { statusCode: 409, message: 'Order must be paid before issuing receipt' };
+    if (order.status !== 'PAID') throw new HttpError(409, 'Order must be paid before issuing receipt');
 
     const existingReceipt = await client.query<{ id: string; receipt_number: string; issued_at: Date; receipt_json: unknown }>(
       `SELECT id, receipt_number, issued_at, receipt_json FROM receipts WHERE order_id = $1 LIMIT 1`, [order.id]

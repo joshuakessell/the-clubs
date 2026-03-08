@@ -5,6 +5,7 @@ import type { CustomerRow, LaneSessionRow } from '../../checkin/types';
 import { transaction } from '../../db';
 import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
 import { insertClubEvent } from '../../activity/clubEventLog';
+import { HttpError } from '../../errors/HttpError';
 
 export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
   /**
@@ -41,13 +42,13 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
           );
 
           if (sessionResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError(404, 'No active session found');
           }
 
           const session = sessionResult.rows[0]!;
 
           if (!session.customer_id) {
-            throw { statusCode: 400, message: 'Session has no customer' };
+            throw new HttpError(400, 'Session has no customer');
           }
 
           const customerResult = await client.query<CustomerRow>(
@@ -56,7 +57,7 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
           );
 
           if (customerResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'Customer not found' };
+            throw new HttpError(404, 'Customer not found');
           }
 
           const trimmed = note.trim();

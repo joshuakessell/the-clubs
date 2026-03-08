@@ -4,6 +4,7 @@
  * Extracted from routes/cash-drawers.ts. Zero HTTP/Fastify concepts.
  */
 import { transaction } from '../db';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -23,10 +24,10 @@ export interface OpenDrawerInput { registerSessionId: string; openingFloat: numb
 export async function openDrawerSession(input: OpenDrawerInput, staffId: string) {
   return transaction(async (client) => {
     const registerResult = await client.query<{ id: string; signed_out_at: Date | null }>(`SELECT id, signed_out_at FROM register_sessions WHERE id = $1`, [input.registerSessionId]);
-    if (registerResult.rows.length === 0) throw { statusCode: 404, message: 'Register session not found' };
+    if (registerResult.rows.length === 0) throw new HttpError(404, 'Register session not found');
 
     const activeDrawer = await client.query<{ id: string }>(`SELECT id FROM cash_drawer_sessions WHERE register_session_id = $1 AND status = 'OPEN' LIMIT 1`, [input.registerSessionId]);
-    if (activeDrawer.rows.length > 0) throw { statusCode: 409, message: 'Cash drawer session already open' };
+    if (activeDrawer.rows.length > 0) throw new HttpError(409, 'Cash drawer session already open');
 
     const insertResult = await client.query<CashDrawerSessionRow>(
       `INSERT INTO cash_drawer_sessions (register_session_id, opened_by_staff_id, opening_float, notes, status) VALUES ($1, $2, $3, $4, 'OPEN') RETURNING *`,
@@ -47,8 +48,8 @@ export interface RecordEventInput { type: DrawerEventType; amount?: number | nul
 export async function recordDrawerEvent(sessionId: string, input: RecordEventInput, staffId: string) {
   return transaction(async (client) => {
     const sessionResult = await client.query<{ id: string; status: string }>(`SELECT id, status FROM cash_drawer_sessions WHERE id = $1 FOR UPDATE`, [sessionId]);
-    if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'Cash drawer session not found' };
-    if (sessionResult.rows[0]!.status !== 'OPEN') throw { statusCode: 409, message: 'Cash drawer session is closed' };
+    if (sessionResult.rows.length === 0) throw new HttpError(404, 'Cash drawer session not found');
+    if (sessionResult.rows[0]!.status !== 'OPEN') throw new HttpError(409, 'Cash drawer session is closed');
 
     const insertResult = await client.query<{ id: string; occurred_at: Date; type: string; amount: number | null }>(
       `INSERT INTO cash_drawer_events (cash_drawer_session_id, type, amount, reason, created_by_staff_id, metadata_json) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, occurred_at, type, amount`,
@@ -64,9 +65,9 @@ export interface CloseDrawerInput { countedCash: number; notes?: string | null; 
 export async function closeDrawerSession(sessionId: string, input: CloseDrawerInput, staffId: string) {
   return transaction(async (client) => {
     const sessionResult = await client.query<CashDrawerSessionRow>(`SELECT * FROM cash_drawer_sessions WHERE id = $1 FOR UPDATE`, [sessionId]);
-    if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'Cash drawer session not found' };
+    if (sessionResult.rows.length === 0) throw new HttpError(404, 'Cash drawer session not found');
     const session = sessionResult.rows[0]!;
-    if (session.status !== 'OPEN') throw { statusCode: 409, message: 'Cash drawer session is already closed' };
+    if (session.status !== 'OPEN') throw new HttpError(409, 'Cash drawer session is already closed');
 
     const sums = await client.query<CashDrawerEventSumRow>(`SELECT type, SUM(amount) as amount FROM cash_drawer_events WHERE cash_drawer_session_id = $1 GROUP BY type`, [session.id]);
     const sumByType = new Map<string, number>();

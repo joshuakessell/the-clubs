@@ -204,6 +204,15 @@ export function DataTable<T>({
             const isOdd = idx % 2 === 1;
             const clickable = onRowClick || hasSelection;
 
+            let rowBg: string;
+            if (isHighlighted) {
+              rowBg = 'color-mix(in oklch, var(--color-accent-primary) 10%, transparent)';
+            } else if (isOdd) {
+              rowBg = 'var(--color-surface-overlay)';
+            } else {
+              rowBg = 'var(--color-surface-card, var(--color-surface-raised))';
+            }
+
             return (
               <tr
                 key={key}
@@ -213,11 +222,7 @@ export function DataTable<T>({
                 }}
                 style={{
                   cursor: clickable ? 'pointer' : undefined,
-                  backgroundColor: isHighlighted
-                    ? 'color-mix(in oklch, var(--color-accent-primary) 10%, transparent)'
-                    : isOdd
-                      ? 'var(--color-surface-overlay)'
-                      : 'var(--color-surface-card, var(--color-surface-raised))',
+                  backgroundColor: rowBg,
                   borderBottom: '1px solid var(--color-border-default)',
                   borderLeft: isActive
                     ? '2px solid var(--color-accent-primary)'

@@ -21,6 +21,7 @@ import type {
   ResolvedCheckoutKey,
 } from '@the-clubs/shared';
 import { calculateLateFee } from '../../checkout/utils';
+import { HttpError } from '../../errors/HttpError';
 
 export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
   /**
@@ -208,7 +209,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
           );
 
           if (blockResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'Active occupancy not found' };
+            throw new HttpError(404, 'Active occupancy not found');
           }
 
           const block = blockResult.rows[0]!;
@@ -221,10 +222,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
           );
 
           if (existingRequest.rows.length > 0) {
-            throw {
-              statusCode: 409,
-              message: 'Checkout request already exists for this occupancy',
-            };
+            throw new HttpError(409, 'Checkout request already exists for this occupancy');
           }
 
           // 3. Calculate lateness (same as resolve-key)

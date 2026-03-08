@@ -7,6 +7,7 @@ import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { transaction } from '../../db';
 import { insertClubEvent } from '../../activity/clubEventLog';
+import { HttpError } from '../../errors/HttpError';
 
 export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
   /**
@@ -41,7 +42,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
           );
 
           if (sessionResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError(404, 'No active session found');
           }
 
           const session = sessionResult.rows[0]!;
@@ -135,17 +136,17 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
           }>(`SELECT id, role, pin_hash FROM staff WHERE id = $1 AND active = true`, [managerId]);
 
           if (managerResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'Manager not found' };
+            throw new HttpError(404, 'Manager not found');
           }
 
           const manager = managerResult.rows[0]!;
 
           if (manager.role !== 'ADMIN') {
-            throw { statusCode: 403, message: 'Only admins can bypass past-due balance' };
+            throw new HttpError(403, 'Only admins can bypass past-due balance');
           }
 
           if (!manager.pin_hash || !(await verifyPin(managerPin, manager.pin_hash))) {
-            throw { statusCode: 401, message: 'Invalid PIN' };
+            throw new HttpError(401, 'Invalid PIN');
           }
 
           // Get session
@@ -158,7 +159,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
           );
 
           if (sessionResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError(404, 'No active session found');
           }
 
           const session = sessionResult.rows[0]!;

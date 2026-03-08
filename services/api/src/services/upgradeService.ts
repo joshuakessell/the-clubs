@@ -8,6 +8,7 @@ import { getRoomTierFromNumber } from '@the-clubs/shared';
 import { insertAuditLog } from '../audit/auditLog';
 import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
 import { insertClubEvent } from '../activity/clubEventLog';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -80,14 +81,14 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
       id: string; visit_id: string; checkin_block_id: string; desired_tier: string; backup_tier: string; status: string;
       locker_or_room_assigned_initially: string | null; created_at: Date; updated_at: Date;
     }>(`SELECT * FROM waitlist WHERE id = $1 FOR UPDATE`, [waitlistId]);
-    if (waitlistResult.rows.length === 0) throw { statusCode: 404, message: 'Waitlist entry not found' };
+    if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
     const waitlist = waitlistResult.rows[0]!;
-    if (waitlist.status !== 'OFFERED') throw { statusCode: 400, message: `Waitlist entry must be OFFERED (current: ${waitlist.status})` };
+    if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Waitlist entry must be OFFERED (current: ${waitlist.status})`);
 
     const blockResult = await client.query<{
       id: string; visit_id: string; room_id: string | null; locker_id: string | null; rental_type: string; ends_at: Date; session_id: string | null;
     }>(`SELECT id, visit_id, room_id, locker_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = $1 FOR UPDATE`, [waitlist.checkin_block_id]);
-    if (blockResult.rows.length === 0) throw { statusCode: 404, message: 'Check-in block not found' };
+    if (blockResult.rows.length === 0) throw new HttpError(404, 'Check-in block not found');
     const block = blockResult.rows[0]!;
 
     let originalLineItems: Array<{ description: string; amount: number }> | undefined;
@@ -110,13 +111,13 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     }
 
     const newRoomResult = await client.query<RoomRow>(`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [roomId]);
-    if (newRoomResult.rows.length === 0) throw { statusCode: 404, message: 'Room not found' };
+    if (newRoomResult.rows.length === 0) throw new HttpError(404, 'Room not found');
     const newRoom = newRoomResult.rows[0]!;
-    if (newRoom.status !== 'CLEAN') throw { statusCode: 400, message: `Room ${newRoom.number} is not available (status: ${newRoom.status})` };
-    if (newRoom.assigned_to_customer_id) throw { statusCode: 409, message: `Room ${newRoom.number} is already assigned` };
+    if (newRoom.status !== 'CLEAN') throw new HttpError(400, `Room ${newRoom.number} is not available (status: ${newRoom.status})`);
+    if (newRoom.assigned_to_customer_id) throw new HttpError(409, `Room ${newRoom.number} is already assigned`);
 
     const newRoomTier = getRoomTier(newRoom.number);
-    if (newRoomTier !== waitlist.desired_tier) throw { statusCode: 400, message: `Room ${newRoom.number} is ${newRoomTier}, but desired tier is ${waitlist.desired_tier}` };
+    if (newRoomTier !== waitlist.desired_tier) throw new HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but desired tier is ${waitlist.desired_tier}`);
 
     const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
     const intentResult = await client.query<{ id: string; amount: number | string }>(
@@ -159,30 +160,30 @@ export async function logUpgradeStarted(result: Awaited<ReturnType<typeof fulfil
 export async function completeUpgrade(waitlistId: string, paymentIntentId: string, staff: StaffContext) {
   return serializableTransaction(async (client) => {
     const intentResult = await client.query<{ id: string; amount: number | string; status: string; quote_json: unknown }>(`SELECT id, amount, status, quote_json FROM payment_intents WHERE id = $1`, [paymentIntentId]);
-    if (intentResult.rows.length === 0) throw { statusCode: 404, message: 'Payment intent not found' };
+    if (intentResult.rows.length === 0) throw new HttpError(404, 'Payment intent not found');
     const intent = intentResult.rows[0]!;
-    if (intent.status !== 'PAID') throw { statusCode: 400, message: `Payment must be PAID (current: ${intent.status})` };
+    if (intent.status !== 'PAID') throw new HttpError(400, `Payment must be PAID (current: ${intent.status})`);
 
     const waitlistResult = await client.query<{
       id: string; visit_id: string; checkin_block_id: string; desired_tier: string; backup_tier: string; status: string;
     }>(`SELECT id, visit_id, checkin_block_id, desired_tier, backup_tier, status FROM waitlist WHERE id = $1 FOR UPDATE`, [waitlistId]);
-    if (waitlistResult.rows.length === 0) throw { statusCode: 404, message: 'Waitlist entry not found' };
+    if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
     const waitlist = waitlistResult.rows[0]!;
-    if (waitlist.status !== 'OFFERED') throw { statusCode: 400, message: `Waitlist entry must be OFFERED (current: ${waitlist.status})` };
+    if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Waitlist entry must be OFFERED (current: ${waitlist.status})`);
 
     const blockResult = await client.query<{
       id: string; visit_id: string; room_id: string | null; locker_id: string | null; rental_type: string; ends_at: Date; session_id: string | null;
     }>(`SELECT id, visit_id, room_id, locker_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = $1 FOR UPDATE`, [waitlist.checkin_block_id]);
-    if (blockResult.rows.length === 0) throw { statusCode: 404, message: 'Check-in block not found' };
+    if (blockResult.rows.length === 0) throw new HttpError(404, 'Check-in block not found');
     const block = blockResult.rows[0]!;
 
     const upgradeAmount = toNumber(intent.amount);
     const quote = intent.quote_json as { newRoomId?: string; newRoomNumber?: string; newRoomTier?: string; waitlistId?: string };
-    if (!quote.newRoomId) throw { statusCode: 400, message: 'Room ID not found in payment intent (upgrade must be fulfilled first)' };
+    if (!quote.newRoomId) throw new HttpError(400, 'Room ID not found in payment intent (upgrade must be fulfilled first)');
 
     const newRoomId = quote.newRoomId;
     const newRoomResult = await client.query<RoomRow>(`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [newRoomId]);
-    if (newRoomResult.rows.length === 0) throw { statusCode: 404, message: 'New room not found' };
+    if (newRoomResult.rows.length === 0) throw new HttpError(404, 'New room not found');
     const newRoom = newRoomResult.rows[0]!;
 
     const oldResourceId = block.room_id || block.locker_id;

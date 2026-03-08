@@ -1,6 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { RoomStatusSchema } from '@the-clubs/shared';
 import type { Broadcaster } from '../realtime/broadcaster';
 import { broadcastInventoryUpdate } from '../inventory/broadcast';
 import { requireAuth } from '../auth/middleware';
@@ -9,7 +8,7 @@ import { processCleaningBatch, listCleaningBatches } from '../services/cleaningS
 
 const CleaningBatchSchema = z.object({
   roomIds: z.array(z.string().uuid()).min(1).max(50),
-  targetStatus: RoomStatusSchema,
+  targetStatus: z.enum(['DIRTY', 'CLEANING', 'CLEAN', 'OCCUPIED', 'OUT_OF_SERVICE']),
   staffId: z.string().min(1).optional(),
   override: z.boolean().default(false),
   overrideReason: z.string().optional(),
@@ -30,9 +29,13 @@ export async function cleaningRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.post(
     '/v1/cleaning/batch',
-    { schema: { body: CleaningBatchSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const body = request.body as z.infer<typeof CleaningBatchSchema>;
+      const parsed = CleaningBatchSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
+      }
+      const body = parsed.data;
 
       if (body.override && !body.overrideReason) {
         return reply.status(400).send({ error: 'Override requires a reason' });

@@ -9,6 +9,7 @@ import { staff, employeeShifts, timeclockSessions } from '../db/schema/schema';
 import { eq, and, sql, desc, asc, gte, lte, lt, gt } from 'drizzle-orm';
 import { insertAuditLogDrizzle } from '../audit/auditLog';
 import { computeCompliance } from '../services/compliance';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -60,7 +61,6 @@ export async function listShiftsWithCompliance(filters: ShiftFilters) {
       updated_by: shift.updatedBy,
     };
     
-    // @ts-ignore - mapping for compliance module compatibility
     const compliance = await computeCompliance(mappedShift, shift.employeeId);
     return {
       id: shift.id, employeeId: shift.employeeId, employeeName,
@@ -110,8 +110,8 @@ export async function updateShift(shiftId: string, input: UpdateShiftInput, staf
     if (input.starts_at !== undefined) setClause.startsAt = input.starts_at;
     if (input.ends_at !== undefined) setClause.endsAt = input.ends_at;
     if (input.employee_id !== undefined) setClause.employeeId = input.employee_id;
-    if (input.status !== undefined) setClause.status = input.status;
-    else setClause.status = 'UPDATED';
+    if (input.status === undefined) setClause.status = 'UPDATED';
+    else setClause.status = input.status;
     if (input.notes !== undefined) setClause.notes = input.notes;
     if (input.shift_code !== undefined) setClause.shiftCode = input.shift_code;
     if (input.color !== undefined) setClause.color = input.color;
@@ -135,7 +135,7 @@ export async function updateShift(shiftId: string, input: UpdateShiftInput, staf
       
     if (!updated.length) throw new Error('Shift not found');
     
-    const r = updated[0]!;
+    const r = updated[0];
     return {
       ...r.shift,
       employee_name: r.employee_name,
@@ -178,8 +178,8 @@ export async function createShift(input: CreateShiftInput, staffId: string) {
       createdBy: staffId
     }).returning();
     
-    await insertAuditLogDrizzle(tx, { staffId, action: 'SHIFT_CREATED', entityType: 'employee_shift', entityId: created[0]!.id });
-    return created[0]!;
+    await insertAuditLogDrizzle(tx, { staffId, action: 'SHIFT_CREATED', entityType: 'employee_shift', entityId: created[0].id });
+    return created[0];
   });
 
   const emp = await db.query.staff.findFirst({
@@ -218,7 +218,7 @@ export async function cancelShift(shiftId: string, staffId: string) {
       
     if (updated.length === 0) return null;
     await insertAuditLogDrizzle(tx, { staffId, action: 'SHIFT_CANCELED', entityType: 'employee_shift', entityId: shiftId });
-    return updated[0]!;
+    return updated[0];
   });
 }
 
@@ -229,7 +229,7 @@ export async function bulkCreateShifts(shifts: CreateShiftInput[], staffId: stri
   
   await db.transaction(async (tx) => {
     for (let i = 0; i < shifts.length; i++) {
-      const shift = shifts[i]!;
+      const shift = shifts[i];
       if (new Date(shift.starts_at) >= new Date(shift.ends_at)) { conflicts.push({ index: i, error: 'Start must be before end' }); continue; }
       
       const overlap = await tx.select({ id: employeeShifts.id })
@@ -256,7 +256,7 @@ export async function bulkCreateShifts(shifts: CreateShiftInput[], staffId: stri
         createdBy: staffId
       }).returning({ id: employeeShifts.id });
       
-      created.push(result[0]!.id);
+      created.push(result[0].id);
     }
   });
   return { created: created.length, conflicts, shiftIds: created };
@@ -337,7 +337,7 @@ export async function updateTimeclockSession(sessionId: string, input: UpdateTim
       .where(eq(timeclockSessions.id, sessionId));
       
     if (updated.length === 0) throw new Error('Session not found');
-    const r = updated[0]!;
+    const r = updated[0];
     return {
       ...r.session,
       employee_name: r.employee_name,
@@ -374,7 +374,7 @@ export async function closeTimeclockSession(sessionId: string, staffId: string, 
       .innerJoin(staff, eq(staff.id, timeclockSessions.employeeId))
       .where(eq(timeclockSessions.id, sessionId));
       
-    const r = updated[0]!;
+    const r = updated[0];
     return {
       ...r.session,
       employee_name: r.employee_name,
@@ -426,24 +426,24 @@ export async function createTradeRequest(staffId: string, role: string, requeste
       where: (es, { eq, and, ne }) => and(eq(es.id, requesterShiftId), ne(es.status, 'CANCELED')),
       columns: { employeeId: true }
     });
-    if (!reqShift || reqShift.employeeId !== staffId) throw { statusCode: 403, message: 'You do not own the requester shift.' };
+    if (!reqShift || reqShift?.employeeId !== staffId) throw new HttpError(403, 'You do not own the requester shift.');
     
     const tgtShift = await tx.query.employeeShifts.findFirst({
       where: (es, { eq, and, ne }) => and(eq(es.id, targetShiftId), ne(es.status, 'CANCELED')),
       columns: { employeeId: true }
     });
-    if (!tgtShift) throw { statusCode: 404, message: 'Target shift not found.' };
+    if (!tgtShift) throw new HttpError(404, 'Target shift not found.');
     
     const targetId = tgtShift.employeeId;
-    if (targetId === staffId) throw { statusCode: 400, message: 'Cannot trade with yourself.' };
+    if (targetId === staffId) throw new HttpError(400, 'Cannot trade with yourself.');
     
     const res = await tx.execute<{ id: string }>(sql`
       INSERT INTO shift_trade_requests (requester_id, requester_shift_id, target_id, target_shift_id) 
       VALUES (${staffId}, ${requesterShiftId}, ${targetId}, ${targetShiftId}) RETURNING id
     `);
     
-    await insertAuditLogDrizzle(tx, { staffId, action: 'CREATE', entityType: 'shift_trade_request', entityId: res.rows[0]!.id, newValue: { requesterShiftId, targetShiftId, targetId } });
-    return res.rows[0]!.id;
+    await insertAuditLogDrizzle(tx, { staffId, action: 'CREATE', entityType: 'shift_trade_request', entityId: res.rows[0].id, newValue: { requesterShiftId, targetShiftId, targetId } });
+    return res.rows[0].id;
   });
 }
 
@@ -477,8 +477,8 @@ export async function decideTradeRequest(tradeId: string, status: 'APPROVED' | '
     `);
     
     if (current.rows.length === 0) return null;
-    const trade = current.rows[0]!;
-    if (trade.status !== 'PENDING') throw { statusCode: 409, message: `Trade already ${trade.status.toLowerCase()}.` };
+    const trade = current.rows[0];
+    if (trade.status !== 'PENDING') throw new HttpError(409, `Trade already ${trade.status.toLowerCase()}.`);
     
     await tx.execute(sql`
       UPDATE shift_trade_requests 

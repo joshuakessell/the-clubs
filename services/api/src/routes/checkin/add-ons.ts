@@ -5,6 +5,7 @@ import { AddOnsSchema } from '../../checkin/schemas';
 import type { LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
 import { getHttpError, parsePriceQuote, roundToWhole } from '../../checkin/utils';
 import { transaction } from '../../db';
+import { HttpError } from '../../errors/HttpError';
 
 export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
   /**
@@ -46,14 +47,14 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
             );
 
         if (sessionResult.rows.length === 0) {
-          throw { statusCode: 404, message: 'No active session found' };
+          throw new HttpError(404, 'No active session found');
         }
 
         const session = sessionResult.rows[0]!;
         const resolvedLaneId = session.lane_id || laneId;
 
         if (!session.payment_intent_id) {
-          throw { statusCode: 400, message: 'No payment intent for session' };
+          throw new HttpError(400, 'No payment intent for session');
         }
 
         const intentResult = await client.query<PaymentIntentRow>(
@@ -62,16 +63,16 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
         );
         const paymentIntent = intentResult.rows[0];
         if (!paymentIntent) {
-          throw { statusCode: 404, message: 'Payment intent not found' };
+          throw new HttpError(404, 'Payment intent not found');
         }
         if (paymentIntent.status !== 'DUE') {
-          throw { statusCode: 409, message: 'Payment intent is not payable' };
+          throw new HttpError(409, 'Payment intent is not payable');
         }
 
         const baseQuote =
           parsePriceQuote(session.price_quote_json) ?? parsePriceQuote(paymentIntent.quote_json);
         if (!baseQuote) {
-          throw { statusCode: 400, message: 'No price quote available for session' };
+          throw new HttpError(400, 'No price quote available for session');
         }
 
         const addLineItems = items.map((item) => ({

@@ -179,9 +179,10 @@ function DetailPanel({
           </span>
         </DetailRow>
 
-        {resolving ? (
+        {resolving && (
           <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Calculating fees…</div>
-        ) : isOverdue ? (
+        )}
+        {!resolving && isOverdue && (
           <>
             <DetailRow label="Late">
               <span className="font-semibold" style={{ color: 'var(--color-status-error)' }}>
@@ -206,7 +207,8 @@ function DetailPanel({
               </div>
             ) : null}
           </>
-        ) : (
+        )}
+        {!resolving && !isOverdue && (
           <div className="text-sm" style={{ color: 'var(--color-status-success)' }}>✓ No late fee</div>
         )}
       </div>

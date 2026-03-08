@@ -13,6 +13,7 @@ import type { CustomerRow, LaneSessionRow } from '../checkin/types';
 import { toDate } from '../checkin/utils';
 import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
 import { insertClubEvent } from '../activity/clubEventLog';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -74,7 +75,7 @@ export async function startLaneSession(
          FROM customers WHERE id = $1 LIMIT 1`,
         [requestedCustomerId]
       );
-      if (customerResult.rows.length === 0) throw { statusCode: 404, message: 'Customer not found' };
+      if (customerResult.rows.length === 0) throw new HttpError(404, 'Customer not found');
       const customer = customerResult.rows[0]!;
       customerId = customer.id;
       customerName = customer.name;
@@ -83,7 +84,7 @@ export async function startLaneSession(
       idScanIssue = getIdScanIssue({ dob: customer.dob, idExpirationDate: customer.id_expiration_date ?? null });
 
       const bannedUntil = toDate(customer.banned_until);
-      if (bannedUntil && new Date() < bannedUntil) throw { statusCode: 403, message: 'Customer is banned until ' + bannedUntil.toISOString() };
+      if (bannedUntil && new Date() < bannedUntil) throw new HttpError(403, 'Customer is banned until ' + bannedUntil.toISOString());
     } else {
       if (membershipNumber) {
         const customerResult = await client.query<CustomerRow>(
@@ -98,7 +99,7 @@ export async function startLaneSession(
           customerHasEncryptedLookupMarker = Boolean(customer.id_scan_hash);
           idScanIssue = getIdScanIssue({ dob: customer.dob, idExpirationDate: customer.id_expiration_date ?? null });
           const bannedUntil = toDate(customer.banned_until);
-          if (bannedUntil && new Date() < bannedUntil) throw { statusCode: 403, message: 'Customer is banned until ' + bannedUntil.toISOString() };
+          if (bannedUntil && new Date() < bannedUntil) throw new HttpError(403, 'Customer is banned until ' + bannedUntil.toISOString());
         }
       }
       if (!customerId) {
@@ -151,25 +152,25 @@ export async function startLaneSession(
       else if (row.locker_id && row.locker_number) { activeAssignedResourceType = 'locker'; activeAssignedResourceNumber = row.locker_number; }
     };
 
-    if (renewalHours && !visitId) throw { statusCode: 400, message: 'renewalHours requires an explicit visitId' };
+    if (renewalHours && !visitId) throw new HttpError(400, 'renewalHours requires an explicit visitId');
 
     if (visitId) {
       const visitResult = await client.query<{ id: string; customer_id: string; started_at: Date; ended_at: Date | null }>(
         `SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = $1`, [visitId]
       );
-      if (visitResult.rows.length === 0) throw { statusCode: 404, message: 'Visit not found' };
+      if (visitResult.rows.length === 0) throw new HttpError(404, 'Visit not found');
       const visit = visitResult.rows[0]!;
-      if (customerId && visit.customer_id !== customerId) throw { statusCode: 403, message: 'Visit does not belong to this customer' };
+      if (customerId && visit.customer_id !== customerId) throw new HttpError(403, 'Visit does not belong to this customer');
       visitIdForSession = visit.id;
       computedMode = 'RENEWAL';
       await resolveVisitBlocks(visit.id);
       await resolveActiveAssignment(visit.id);
 
       const requestedRenewalHours = renewalHours ?? 6;
-      if (!blockEndsAtDate) throw { statusCode: 400, message: 'Cannot determine checkout time for renewal' };
+      if (!blockEndsAtDate) throw new HttpError(400, 'Cannot determine checkout time for renewal');
       const diffMs = Math.abs((blockEndsAtDate as Date).getTime() - Date.now());
-      if (diffMs > 60 * 60 * 1000) throw { statusCode: 400, message: 'Renewal is only available within 1 hour of checkout' };
-      if (currentTotalHours + requestedRenewalHours > 14) throw { statusCode: 400, message: `Renewal would exceed 14-hour maximum. Current total: ${currentTotalHours} hours, renewal would add ${requestedRenewalHours} hours.` };
+      if (diffMs > 60 * 60 * 1000) throw new HttpError(400, 'Renewal is only available within 1 hour of checkout');
+      if (currentTotalHours + requestedRenewalHours > 14) throw new HttpError(400, `Renewal would exceed 14-hour maximum. Current total: ${currentTotalHours} hours, renewal would add ${requestedRenewalHours} hours.`);
       renewalHoursForSession = requestedRenewalHours;
     } else if (customerId) {
       const activeVisit = await client.query<{ id: string }>(
@@ -199,9 +200,8 @@ export async function startLaneSession(
         );
         const wl = waitlistResult.rows[0];
 
-        throw {
-          statusCode: 409, code: 'ALREADY_CHECKED_IN', message: 'Customer is currently checked in',
-          activeCheckin: {
+        const err = new HttpError(409, 'Customer is currently checked in', { code: 'ALREADY_CHECKED_IN' });
+        (err as HttpError & { activeCheckin: unknown }).activeCheckin = {
             visitId: activeVisitId,
             rentalType: block?.rental_type ?? null,
             assignedResourceType, assignedResourceNumber,
@@ -210,8 +210,8 @@ export async function startLaneSession(
             overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
             currentTotalHours,
             waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
-          },
         };
+        throw err;
       }
     }
 
@@ -222,7 +222,7 @@ export async function startLaneSession(
     );
 
     let session: LaneSessionRow;
-    if (computedMode === 'RENEWAL' && !activeRentalType) throw { statusCode: 400, message: 'Unable to determine rental type for renewal' };
+    if (computedMode === 'RENEWAL' && !activeRentalType) throw new HttpError(400, 'Unable to determine rental type for renewal');
 
     const desiredRentalTypeForSession = computedMode === 'RENEWAL' && activeRentalType ? activeRentalType : null;
     const selectionConfirmedForSession = computedMode === 'RENEWAL';

@@ -149,7 +149,7 @@ function deriveLaneIdFromUrl(): string {
   // If path looks like "register-N", use it directly
   if (/^register-\d+$/.test(path)) return path;
   // Fallback: use VITE_LANE_ID or default
-  return (import.meta as any).env?.VITE_LANE_ID || 'register-1';
+  return import.meta.env?.VITE_LANE_ID || 'register-1';
 }
 
 /* ── Search debounce ────────────────────────── */
@@ -187,7 +187,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       searchTimer = setTimeout(async () => {
         try {
           const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          const token = authToken || (window as any).__authToken;
+          const token = authToken || globalThis.__authToken;
           if (token) headers['Authorization'] = `Bearer ${token}`;
 
           const res = await fetch(
@@ -198,7 +198,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
             const data = await res.json();
             set({
               customerSearchLoading: false,
-              customerSuggestions: (data.suggestions ?? []).map((s: any) => ({
+              customerSuggestions: (data.suggestions ?? []).map((s: Record<string, string | undefined>) => ({
                 id: s.id,
                 firstName: s.firstName ?? s.name?.split(' ')[0] ?? '',
                 lastName: s.lastName ?? s.name?.split(' ').slice(1).join(' ') ?? '',
@@ -239,11 +239,11 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
           if (res.ok) {
             const data = await res.json();
             const allItems = [
-              ...(data.rooms ?? []).map((r: any) => ({ ...r, resourceType: 'room' as const })),
-              ...(data.lockers ?? []).map((l: any) => ({ ...l, resourceType: 'locker' as const })),
+              ...(data.rooms ?? []).map((r: Record<string, unknown>) => ({ ...r, resourceType: 'room' as const })),
+              ...(data.lockers ?? []).map((l: Record<string, unknown>) => ({ ...l, resourceType: 'locker' as const })),
             ];
             const match = allItems.find(
-              (item: any) => item.assignedTo === id && item.status === 'OCCUPIED' && item.occupancyId
+              (item) => (item as Record<string, unknown>).assignedTo === id && (item as Record<string, unknown>).status === 'OCCUPIED' && (item as Record<string, unknown>).occupancyId
             );
             if (match) {
               const checkinInfo = {
@@ -392,7 +392,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     } = get();
 
     try {
-      const token = (window as any).__authToken;
+      const token = globalThis.__authToken;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -500,7 +500,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     if (!sp?.sessionId) return;
     const { laneId } = state;
     try {
-      const token = (window as any).__authToken;
+      const token = globalThis.__authToken;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -576,7 +576,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
 
       // Immediately fetch snapshot so step transitions happen without waiting for SSE
       try {
-        const token = (window as any).__authToken;
+        const token = globalThis.__authToken;
         const snapHeaders: Record<string, string> = {};
         if (token) snapHeaders['Authorization'] = `Bearer ${token}`;
         const snapRes = await fetch(
@@ -607,7 +607,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       successToastMessage: 'Check-in cancelled',
     });
     try {
-      const token = (window as any).__authToken;
+      const token = globalThis.__authToken;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -648,7 +648,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       successToastMessage: `${customerName ?? 'Customer'} checked in successfully`,
     });
     try {
-      const token = (window as any).__authToken;
+      const token = globalThis.__authToken;
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -661,7 +661,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       if (customerId) {
         const { openCustomerAccount } = get();
         // Passing activeCheckin skips the slow /inventory/detailed fetch for immediate feedback
-        const opts: any = { authToken: token };
+        const opts: { authToken: string | null | undefined; activeCheckin?: typeof optimisticCheckin } = { authToken: token };
         if (optimisticCheckin) opts.activeCheckin = optimisticCheckin;
         openCustomerAccount(customerId, customerName ?? '', opts);
       }
@@ -702,7 +702,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       const { clubLog } = get();
       set((s) => ({ clubLog: { ...s.clubLog, loading: true, error: null, items: [], nextCursor: null } }));
       try {
-        const token = (window as any).__authToken;
+        const token = globalThis.__authToken;
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -723,8 +723,8 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
             nextCursor: data.nextCursor ?? null,
           },
         }));
-      } catch (err: any) {
-        set((s) => ({ clubLog: { ...s.clubLog, loading: false, error: err.message ?? 'Failed to load' } }));
+      } catch (err: unknown) {
+        set((s) => ({ clubLog: { ...s.clubLog, loading: false, error: err instanceof Error ? err.message : 'Failed to load' } }));
       }
     },
     loadMore: async () => {
@@ -732,7 +732,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       if (!clubLog.nextCursor) return;
       set((s) => ({ clubLog: { ...s.clubLog, loading: true } }));
       try {
-        const token = (window as any).__authToken;
+        const token = globalThis.__authToken;
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -753,8 +753,8 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
             nextCursor: data.nextCursor ?? null,
           },
         }));
-      } catch (err: any) {
-        set((s) => ({ clubLog: { ...s.clubLog, loading: false, error: err.message ?? 'Failed to load' } }));
+      } catch (err: unknown) {
+        set((s) => ({ clubLog: { ...s.clubLog, loading: false, error: err instanceof Error ? err.message : 'Failed to load' } }));
       }
     },
   },

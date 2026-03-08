@@ -20,6 +20,7 @@ import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
 import { insertClubEvent } from '../activity/clubEventLog';
 import { insertCustomerSpendLedgerEntry } from '../ledger/customerSpendLedger';
 import { computeOrderTotals, ensureOrderWithReceipt } from '../money/orderAudit';
+import { HttpError } from '../errors/HttpError';
 
 // ── Shared context (passed from route layer) ──
 
@@ -271,14 +272,14 @@ export async function completeManualCheckout(
       [occupancyId]
     );
 
-    if (occRes.rows.length === 0) throw { statusCode: 404, message: 'Occupancy not found' };
+    if (occRes.rows.length === 0) throw new HttpError(404, 'Occupancy not found');
     const row = occRes.rows[0]!;
 
     const scheduledCheckoutAt = row.scheduled_checkout_at instanceof Date ? row.scheduled_checkout_at : new Date(row.scheduled_checkout_at);
     const resourceType = row.locker_id ? 'LOCKER' as const : 'ROOM' as const;
     const number = resourceType === 'LOCKER' ? row.locker_number : row.room_number;
 
-    if (!number) throw { statusCode: 500, message: 'Resource not found for occupancy' };
+    if (!number) throw new HttpError(500, 'Resource not found for occupancy');
 
     if (row.visit_ended_at) {
       const lateMinutes = Math.max(0, Math.floor((Date.now() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
@@ -470,17 +471,17 @@ export async function claimCheckoutRequest(
       [requestId]
     );
 
-    if (requestResult.rows.length === 0) throw { statusCode: 404, message: 'Checkout request not found' };
+    if (requestResult.rows.length === 0) throw new HttpError(404, 'Checkout request not found');
     const checkoutRequest = requestResult.rows[0]!;
 
     if (checkoutRequest.status !== 'SUBMITTED') {
       if (checkoutRequest.status === 'CLAIMED' && checkoutRequest.claim_expires_at) {
         if (new Date() <= checkoutRequest.claim_expires_at) {
-          throw { statusCode: 409, message: 'Checkout request already claimed' };
+          throw new HttpError(409, 'Checkout request already claimed');
         }
         // Claim expired — allow re-claim
       } else {
-        throw { statusCode: 409, message: `Checkout request is ${checkoutRequest.status}` };
+        throw new HttpError(409, `Checkout request is ${checkoutRequest.status}`);
       }
     }
 
@@ -524,14 +525,14 @@ export async function markFeePaid(
       [requestId]
     );
 
-    if (requestResult.rows.length === 0) throw { statusCode: 404, message: 'Checkout request not found' };
+    if (requestResult.rows.length === 0) throw new HttpError(404, 'Checkout request not found');
     const checkoutRequest = requestResult.rows[0]!;
 
     if (checkoutRequest.claimed_by_staff_id !== staff.staffId) {
-      throw { statusCode: 403, message: 'Not authorized to update this checkout request' };
+      throw new HttpError(403, 'Not authorized to update this checkout request');
     }
     if (checkoutRequest.status !== 'CLAIMED') {
-      throw { statusCode: 409, message: `Checkout request is ${checkoutRequest.status}` };
+      throw new HttpError(409, `Checkout request is ${checkoutRequest.status}`);
     }
 
     const updateResult = await client.query<CheckoutRequestRow>(
@@ -700,14 +701,14 @@ export async function confirmItems(
       [requestId]
     );
 
-    if (requestResult.rows.length === 0) throw { statusCode: 404, message: 'Checkout request not found' };
+    if (requestResult.rows.length === 0) throw new HttpError(404, 'Checkout request not found');
     const checkoutRequest = requestResult.rows[0]!;
 
     if (checkoutRequest.claimed_by_staff_id !== staff.staffId) {
-      throw { statusCode: 403, message: 'Not authorized to update this checkout request' };
+      throw new HttpError(403, 'Not authorized to update this checkout request');
     }
     if (checkoutRequest.status !== 'CLAIMED') {
-      throw { statusCode: 409, message: `Checkout request is ${checkoutRequest.status}` };
+      throw new HttpError(409, `Checkout request is ${checkoutRequest.status}`);
     }
 
     const updateResult = await client.query<CheckoutRequestRow>(
@@ -742,20 +743,20 @@ export async function completeStaffCheckout(
       [requestId]
     );
 
-    if (requestResult.rows.length === 0) throw { statusCode: 404, message: 'Checkout request not found' };
+    if (requestResult.rows.length === 0) throw new HttpError(404, 'Checkout request not found');
     const checkoutRequest = requestResult.rows[0]!;
 
     if (checkoutRequest.claimed_by_staff_id !== staff.staffId) {
-      throw { statusCode: 403, message: 'Not authorized to complete this checkout request' };
+      throw new HttpError(403, 'Not authorized to complete this checkout request');
     }
     if (checkoutRequest.status !== 'CLAIMED') {
-      throw { statusCode: 409, message: `Checkout request is ${checkoutRequest.status}` };
+      throw new HttpError(409, `Checkout request is ${checkoutRequest.status}`);
     }
     if (!checkoutRequest.items_confirmed) {
-      throw { statusCode: 400, message: 'Items must be confirmed before completing checkout' };
+      throw new HttpError(400, 'Items must be confirmed before completing checkout');
     }
     if (checkoutRequest.late_fee_amount > 0 && !checkoutRequest.fee_paid) {
-      throw { statusCode: 400, message: 'Late fee must be paid before completing checkout' };
+      throw new HttpError(400, 'Late fee must be paid before completing checkout');
     }
 
     // Get the checkin block
@@ -769,7 +770,7 @@ export async function completeStaffCheckout(
       [checkoutRequest.occupancy_id]
     );
 
-    if (blockResult.rows.length === 0) throw { statusCode: 404, message: 'Occupancy not found' };
+    if (blockResult.rows.length === 0) throw new HttpError(404, 'Occupancy not found');
     const block = blockResult.rows[0]!;
 
     // Cancel active waitlist entries

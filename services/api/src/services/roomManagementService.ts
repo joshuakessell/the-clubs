@@ -4,6 +4,7 @@
  * Extracted from routes/admin/room-management.ts. No HTTP/Fastify concepts.
  */
 import { query, transaction } from '../db';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -34,16 +35,16 @@ export async function updateRoom(roomId: string, type?: string, floor?: number) 
   if (floor !== undefined) { setClauses.push(`floor = $${idx++}`); params.push(floor); }
   setClauses.push(`updated_at = NOW()`); params.push(roomId);
   const result = await query<RoomRow>(`UPDATE rooms SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING id, number, type, status, floor, created_at, updated_at, assigned_to_customer_id`, params);
-  if (result.rows.length === 0) throw { statusCode: 404, message: 'Room not found' };
+  if (result.rows.length === 0) throw new HttpError(404, 'Room not found');
   return result.rows[0]!;
 }
 
 export async function setRoomStatus(roomId: string, status: string) {
   return transaction(async (client) => {
     const current = await client.query<RoomRow>(`SELECT id, number, type, status, floor, created_at, updated_at, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [roomId]);
-    if (current.rows.length === 0) throw { statusCode: 404, message: 'Room not found' };
+    if (current.rows.length === 0) throw new HttpError(404, 'Room not found');
     const room = current.rows[0]!;
-    if (room.status === 'OCCUPIED' && status === 'OUT_OF_SERVICE') throw { statusCode: 409, message: 'Cannot set an occupied room to Out of Service. Check out the customer first.' };
+    if (room.status === 'OCCUPIED' && status === 'OUT_OF_SERVICE') throw new HttpError(409, 'Cannot set an occupied room to Out of Service. Check out the customer first.');
     if (room.status === status) return room;
     const updated = await client.query<RoomRow>(`UPDATE rooms SET status = $1, updated_at = NOW(), last_status_change = NOW() WHERE id = $2 RETURNING id, number, type, status, floor, created_at, updated_at, assigned_to_customer_id`, [status, room.id]);
     return updated.rows[0]!;
@@ -58,9 +59,9 @@ export async function createLocker(number: string) {
 export async function setLockerStatus(lockerId: string, status: string) {
   return transaction(async (client) => {
     const current = await client.query<LockerRow>(`SELECT id, number, status, created_at, updated_at, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`, [lockerId]);
-    if (current.rows.length === 0) throw { statusCode: 404, message: 'Locker not found' };
+    if (current.rows.length === 0) throw new HttpError(404, 'Locker not found');
     const locker = current.rows[0]!;
-    if (locker.status === 'OCCUPIED' && status === 'OUT_OF_SERVICE') throw { statusCode: 409, message: 'Cannot set an occupied locker to Out of Service. Check out the customer first.' };
+    if (locker.status === 'OCCUPIED' && status === 'OUT_OF_SERVICE') throw new HttpError(409, 'Cannot set an occupied locker to Out of Service. Check out the customer first.');
     if (locker.status === status) return locker;
     const updated = await client.query<LockerRow>(`UPDATE lockers SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, number, status, created_at, updated_at, assigned_to_customer_id`, [status, locker.id]);
     return updated.rows[0]!;

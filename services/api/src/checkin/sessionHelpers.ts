@@ -1,4 +1,5 @@
 import type { PoolClient, LaneSessionRow } from './types';
+import { HttpError } from '../errors/HttpError';
 
 /**
  * Active lane-session statuses used for typical "find the current session" lookups.
@@ -47,7 +48,7 @@ export async function resolveActiveSession(
   );
 
   if (result.rows.length === 0) {
-    throw { statusCode: 404, message: 'No active session found' };
+    throw new HttpError(404, 'No active session found');
   }
 
   return result.rows[0]!;
@@ -84,25 +85,19 @@ export async function validateAndLockResource(
   );
 
   if (result.rows.length === 0) {
-    throw { statusCode: 404, message: `${label} not found` };
+    throw new HttpError(404, `${label} not found`);
   }
 
   const resource = result.rows[0]!;
 
   // 2. Room-specific: must be CLEAN.
   if (resourceType === 'room' && resource.status !== 'CLEAN') {
-    throw {
-      statusCode: 400,
-      message: `${label} ${resource.number} is not available (status: ${resource.status})`,
-    };
+    throw new HttpError(400, `${label} ${resource.number} is not available (status: ${resource.status})`);
   }
 
   // 3. Already assigned to a customer?
   if (resource.assigned_to_customer_id) {
-    throw {
-      statusCode: 409,
-      message: `${label} ${resource.number} is already assigned (race condition)`,
-    };
+    throw new HttpError(409, `${label} ${resource.number} is already assigned (race condition)`);
   }
 
   // 4. Already selected by another in-progress lane session?
@@ -126,10 +121,7 @@ export async function validateAndLockResource(
   );
 
   if (selectedByOther.rows.length > 0) {
-    throw {
-      statusCode: 409,
-      message: `${label} ${resource.number} is already selected by another lane session (race condition)`,
-    };
+    throw new HttpError(409, `${label} ${resource.number} is already selected by another lane session (race condition)`);
   }
 
   return { resourceRow: resource };

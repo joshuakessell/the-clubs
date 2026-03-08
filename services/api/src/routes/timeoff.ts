@@ -123,9 +123,10 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
         });
 
         return reply.status(201).send({ id: inserted });
-      } catch (err: any) {
+      } catch (err: unknown) {
         // Unique violation: one per employee per day
-        if (err?.code === '23505') {
+        const dbErr = err as { code?: string };
+        if (dbErr?.code === '23505') {
           return reply
             .status(409)
             .send({ error: 'A time off request already exists for that day.' });

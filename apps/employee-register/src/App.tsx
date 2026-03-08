@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { ErrorBoundary, LockScreen, ChangePinScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
-import { getApiUrl, useSessionPollingFallback } from '@the-clubs/shared';
+import { getApiUrl, useSessionPollingFallback, type SessionUpdatedPayload } from '@the-clubs/shared';
 import { AppLayout } from './layout/AppLayout';
 import { useRegisterSSE } from './hooks/useRegisterSSE';
 import { useRegisterStore } from './stores/useRegisterStore';
@@ -22,10 +22,10 @@ export default function App() {
 
   // Bridge: Expose auth token for store-level API calls (Zustand doesn't have React context)
   useEffect(() => {
-    (window as any).__authToken = session?.sessionToken ?? null;
+    globalThis.__authToken = session?.sessionToken ?? null;
   }, [session?.sessionToken]);
 
-  const onSessionUpdated = useCallback((event: any) => {
+  const onSessionUpdated = useCallback((event: { type?: string; payload?: SessionUpdatedPayload | null }) => {
     if (import.meta.env.DEV) console.log('[register-sse] SESSION_UPDATED', event);
     // Update store with SSE session payload
     if (event?.payload) {

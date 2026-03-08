@@ -16,6 +16,7 @@ import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { toDate, toNumber } from '../checkin/utils';
 import { calculateAge } from '../checkin/identity';
 import { insertAuditLog } from '../audit/auditLog';
+import { HttpError } from '../errors/HttpError';
 import {
   buildLineItemsFromQuote,
   computeOrderTotals,
@@ -54,11 +55,11 @@ export async function createPaymentIntent(laneId: string) {
       `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`,
       [laneId]
     );
-    if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };
+    if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
     const session = sessionResult.rows[0]!;
 
-    if (!session.selection_confirmed || !session.selection_locked_at) throw { statusCode: 400, message: 'Selection must be confirmed/locked before creating payment intent' };
-    if (!session.desired_rental_type && !session.backup_rental_type) throw { statusCode: 400, message: 'No desired rental type set on session' };
+    if (!session.selection_confirmed || !session.selection_locked_at) throw new HttpError(400, 'Selection must be confirmed/locked before creating payment intent');
+    if (!session.desired_rental_type && !session.backup_rental_type) throw new HttpError(400, 'No desired rental type set on session');
 
     // Customer info for pricing
     let customerAge: number | undefined;
@@ -81,7 +82,7 @@ export async function createPaymentIntent(laneId: string) {
     const rentalType = (session.desired_rental_type || session.backup_rental_type || 'LOCKER') as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
     const isRenewal = session.checkin_mode === 'RENEWAL';
     const renewalHours = session.renewal_hours === 2 || session.renewal_hours === 6 ? session.renewal_hours : null;
-    if (isRenewal && !renewalHours) throw { statusCode: 400, message: 'Renewal hours not set for this session' };
+    if (isRenewal && !renewalHours) throw new HttpError(400, 'Renewal hours not set for this session');
 
     const pricingInput: PricingInput = {
       rentalType, customerAge, checkInTime: new Date(),
@@ -155,7 +156,7 @@ export async function markPaymentPaid(input: MarkPaidInput) {
       square_transaction_id?: string | null; paid_at?: Date | null;
       lane_session_id?: string | null; tip?: number | null; paid_by_staff_id?: string | null;
     }>(`SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1`, [input.paymentIntentId]);
-    if (intentResult.rows.length === 0) throw { statusCode: 404, message: 'Payment intent not found' };
+    if (intentResult.rows.length === 0) throw new HttpError(404, 'Payment intent not found');
     const intent = intentResult.rows[0]!;
 
     const resolveOrderContext = async (intentRow: typeof intent, quote: { type?: string; waitlistId?: string; visitId?: string; blockId?: string }) => {

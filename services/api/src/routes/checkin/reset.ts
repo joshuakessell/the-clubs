@@ -6,6 +6,7 @@ import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { transaction } from '../../db';
 import { insertClubEvent } from '../../activity/clubEventLog';
+import { HttpError } from '../../errors/HttpError';
 
 export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
   /**
@@ -41,7 +42,7 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
           );
 
           if (sessionResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError(404, 'No active session found');
           }
 
           const session = sessionResult.rows[0]!;
@@ -152,7 +153,7 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
           );
 
           if (sessionResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'No session found' };
+            throw new HttpError(404, 'No session found');
           }
 
           const session = sessionResult.rows[0]!;

@@ -714,12 +714,13 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
           flowVersion: result.session.flow_version ?? 0,
           session: result.session,
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         request.log.error(err, 'Failed to apply flow command');
-        return reply.status(err.statusCode ?? 500).send({
+        const isFlowErr = err instanceof FlowCommandError;
+        return reply.status(isFlowErr ? err.statusCode : 500).send({
           applied: false,
-          error: err.error ?? 'InternalServerError',
-          message: err.message ?? 'An unexpected error occurred',
+          error: isFlowErr ? err.error : 'InternalServerError',
+          message: err instanceof Error ? err.message : 'An unexpected error occurred',
         });
       }
     }

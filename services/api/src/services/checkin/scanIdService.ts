@@ -12,6 +12,7 @@ import {
 import { getAllowedRentals } from '../../checkin/payload';
 import { toDate } from '../../checkin/utils';
 import type { IdScanPayload } from '@the-clubs/shared';
+import { HttpError } from '../../errors/HttpError';
 
 // ── Helpers ____________________________________________________
 
@@ -108,7 +109,7 @@ export async function processScanId(
     customerName = `Customer ${body.idNumber}`;
   }
   if (!customerName) {
-    throw { statusCode: 400, message: 'Unable to determine customer name from ID scan' };
+    throw new HttpError(400, 'Unable to determine customer name from ID scan');
   }
 
   // ── Step 3: Parse dates ──
@@ -153,11 +154,7 @@ export async function processScanId(
 
   // ── Step 5: Check ID issues (after customer created, so record exists for retry) ──
   if (idScanIssue) {
-    throw {
-      statusCode: 403,
-      code: idScanIssue,
-      message: getIdScanIssueMessage(idScanIssue),
-    };
+    throw new HttpError(403, getIdScanIssueMessage(idScanIssue), { code: idScanIssue });
   }
 
   // ── Step 6: Check ban status ──
@@ -167,10 +164,7 @@ export async function processScanId(
   );
   const bannedUntil = toDate(customerCheck.rows[0]?.banned_until);
   if (bannedUntil && bannedUntil > new Date()) {
-    throw {
-      statusCode: 403,
-      message: `Customer is banned until ${bannedUntil.toISOString()}`,
-    };
+    throw new HttpError(403, `Customer is banned until ${bannedUntil.toISOString()}`);
   }
 
   // ── Step 7: Check for active visit ──
@@ -350,11 +344,8 @@ async function assertNoActiveVisit(client: PoolClient, customerId: string): Prom
   );
   const wl = waitlistResult.rows[0];
 
-  throw {
-    statusCode: 409,
-    code: 'ALREADY_CHECKED_IN',
-    message: 'Customer is currently checked in',
-    activeCheckin: {
+  const err = new HttpError(409, 'Customer is currently checked in', { code: 'ALREADY_CHECKED_IN' });
+  (err as HttpError & { activeCheckin: unknown }).activeCheckin = {
       visitId: activeVisitId,
       rentalType: block?.rental_type ?? null,
       assignedResourceType,
@@ -363,8 +354,8 @@ async function assertNoActiveVisit(client: PoolClient, customerId: string): Prom
       checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
       overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
       waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
-    },
   };
+  throw err;
 }
 
 async function fetchCustomerInfoForResponse(

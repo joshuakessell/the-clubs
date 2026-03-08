@@ -616,12 +616,11 @@ export function RetailPanel() {
               disabled={cartLines.length === 0 || submitting}
               onClick={() => void handleCompleteSale()}
             >
-              {submitting
-                ? 'Processing…'
-                : selectedGuest?.laneSessionId
-                  ? '📋 Add to Ledger'
-                  : 'Complete Sale'
-              }
+              {(() => {
+                if (submitting) return 'Processing…';
+                if (selectedGuest?.laneSessionId) return '📋 Add to Ledger';
+                return 'Complete Sale';
+              })()}
             </Button>
 
             {cartLines.length > 0 ? (

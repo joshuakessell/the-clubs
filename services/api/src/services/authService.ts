@@ -103,7 +103,7 @@ export async function loginWithPin(
             orderBy: (s, { sql, asc }) => [asc(sql`ABS(EXTRACT(EPOCH FROM (starts_at - ${now.toISOString()}::timestamptz)))`)]
           });
           shiftId = shift?.id ?? null;
-        } catch {}
+        } catch { /* best-effort shift lookup */ }
 
         if (!activeTimeclock) {
           await tx.insert(timeclockSessions).values({
@@ -118,7 +118,7 @@ export async function loginWithPin(
             .where(eq(timeclockSessions.id, activeTimeclock.id));
         }
       }
-    } catch {}
+    } catch { /* best-effort auto-clock-in; never block login */ }
 
     return {
       staffId: staffRow.id,
@@ -220,7 +220,7 @@ export async function logoutSession(tokenHash: string): Promise<void> {
           .set({ clockOutAt: new Date().toISOString() })
           .where(and(eq(timeclockSessions.employeeId, session.staffId), isNull(timeclockSessions.clockOutAt)));
       }
-    } catch {}
+    } catch { /* best-effort auto-clock-out; never block logout */ }
   });
 }
 

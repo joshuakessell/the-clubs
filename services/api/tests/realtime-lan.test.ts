@@ -39,7 +39,7 @@ describe('LAN realtime websocket', () => {
 
     await app.register(websocket);
     await app.register(realtimeLanRoutes);
-    readyPromise = app.ready();
+    readyPromise = Promise.resolve(app.ready()).then(() => {});
 
     await app.listen({ port: 0, host: '127.0.0.1' });
     const address = app.server.address();

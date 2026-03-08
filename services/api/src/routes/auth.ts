@@ -142,12 +142,13 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         await changeStaffPin(request.staff.staffId, body.currentPin, body.newPin);
         return reply.send({ success: true });
-      } catch (error: any) {
-        if (error.message === 'Unauthorized' || error.message === 'Current PIN is incorrect') {
-          return reply.status(401).send({ error: error.message });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : '';
+        if (msg === 'Unauthorized' || msg === 'Current PIN is incorrect') {
+          return reply.status(401).send({ error: msg });
         }
-        if (error.message === 'Current PIN is required' || error.message === 'New PIN must be different from current PIN') {
-          return reply.status(400).send({ error: error.message });
+        if (msg === 'Current PIN is required' || msg === 'New PIN must be different from current PIN') {
+          return reply.status(400).send({ error: msg });
         }
         request.log.error(error, 'Failed to change PIN');
         return reply.status(500).send({ error: 'Internal server error' });
@@ -258,11 +259,12 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           success: true,
           reauthOkUntil: reauthOkUntil.toISOString(),
         });
-      } catch (error: any) {
-        if (error.message === 'Invalid credentials' || error.message === 'Session not found') {
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : '';
+        if (msg === 'Invalid credentials' || msg === 'Session not found') {
           return reply.status(401).send({
             error: 'Unauthorized',
-            message: error.message,
+            message: msg,
           });
         }
         request.log.error(error, 'Re-auth error');
@@ -295,9 +297,10 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         const deviceId = (request.headers['x-device-id'] as string) || 'reauth-device';
         const options = await getReauthWebauthnOptions(request.staff.staffId, deviceId);
         return reply.send(options);
-      } catch (error: any) {
-        if (error.message === 'No passkeys registered for this staff member') {
-          return reply.status(400).send({ error: error.message });
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : '';
+        if (msg === 'No passkeys registered for this staff member') {
+          return reply.status(400).send({ error: msg });
         }
         request.log.error(error, 'Failed to generate reauth WebAuthn options');
         return reply.status(500).send({
@@ -352,8 +355,8 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
           success: true,
           reauthOkUntil: reauthOkUntil.toISOString(),
         });
-      } catch (error: any) {
-        const msg = error.message;
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : '';
         if (msg === 'Session not found') {
           return reply.status(401).send({ error: 'Unauthorized', message: msg });
         }

@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { getHttpError } from '../../checkin/utils';
 import { z } from 'zod';
 import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/middleware';
 import { searchStaff, createStaffMember, updateStaffMember, resetStaffPin, type CreateStaffInput, type UpdateStaffInput } from '../../services/staffAdminService';
@@ -23,7 +24,7 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body;
     try { return reply.send(await updateStaffMember(request.params.id, body as UpdateStaffInput, request.staff.staffId)); }
-    catch (e: any) { if (e?.statusCode) { return reply.status(e.statusCode).send({ error: e.message }); } request.log.error(e, 'Failed to update staff'); return reply.status(500).send({ error: 'Internal server error' }); }
+    catch (e: unknown) { const httpErr = getHttpError(e); if (httpErr) { return reply.status(httpErr.statusCode).send({ error: httpErr.message }); } request.log.error(e, 'Failed to update staff'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
   fastify.post<{ Params: { id: string } }>('/v1/admin/staff/:id/pin-reset', { 
@@ -39,6 +40,6 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
   }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     try { return reply.send(await resetStaffPin(request.params.id, request.staff.staffId)); }
-    catch (e: any) { if (e?.statusCode) { return reply.status(e.statusCode).send({ error: e.message }); } request.log.error(e, 'Failed to reset PIN'); return reply.status(500).send({ error: 'Internal server error' }); }
+    catch (e: unknown) { const httpErr = getHttpError(e); if (httpErr) { return reply.status(httpErr.statusCode).send({ error: httpErr.message }); } request.log.error(e, 'Failed to reset PIN'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 }

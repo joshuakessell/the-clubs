@@ -21,6 +21,20 @@ describe('Auth enforcement (unauthenticated mutations)', () => {
 
     app = Fastify({ logger: false });
 
+    // Add Zod-aware validator compiler so Zod schemas in route `schema.body` work
+    app.setValidatorCompiler(({ schema }: any) => {
+      if (schema && typeof schema.safeParse === 'function') {
+        // It's a Zod schema — use it directly
+        return (data: unknown) => {
+          const result = schema.safeParse(data);
+          if (result.success) return { value: result.data };
+          return { error: result.error };
+        };
+      }
+      // Fall back to default AJV behavior for plain JSON schemas
+      return () => ({ value: true });
+    });
+
     const broadcaster = createBroadcaster();
     app.decorate('broadcaster', broadcaster);
 

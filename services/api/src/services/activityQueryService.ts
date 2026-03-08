@@ -4,6 +4,7 @@
  * Extracted from routes/admin/activity-log.ts. No HTTP/Fastify concepts.
  */
 import { query } from '../db';
+import { HttpError } from '../errors/HttpError';
 
 // ── Cursor helpers ──
 
@@ -90,7 +91,7 @@ export async function getCustomerActivityLog(input: CustomerActivityInput) {
 
   const half = Math.floor(input.limit / 2);
   const center = await query<{ id: string; occurred_at: Date }>(`SELECT id, occurred_at FROM customer_activity_events WHERE id = $1 AND customer_id = $2`, [input.centerEventId, input.customerId]);
-  if (center.rows.length === 0) throw { statusCode: 404, message: 'Center event not found' };
+  if (center.rows.length === 0) throw new HttpError(404, 'Center event not found');
   const centerRow = center.rows[0]!;
 
   const before = await query<any>(`SELECT id, occurred_at, action_type, action_category, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata FROM customer_activity_events WHERE customer_id = $1 AND (occurred_at > $2 OR (occurred_at = $2 AND id > $3)) ORDER BY occurred_at ASC, id ASC LIMIT $4`, [input.customerId, centerRow.occurred_at, centerRow.id, half]);

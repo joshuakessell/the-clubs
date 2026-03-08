@@ -11,6 +11,7 @@ import {
   getIdScanIssueMessage,
 } from '../checkin/identity';
 import { insertCustomerActivityEvent, type CustomerActivitySourceApp } from '../activity/customerActivityLog';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -203,7 +204,7 @@ export async function createCustomerNote(
   opts: { isImportant?: boolean; sourceApp?: CustomerActivitySourceApp }
 ) {
   const trimmed = noteText.trim();
-  if (!trimmed) throw { statusCode: 400, message: 'note is required' };
+  if (!trimmed) throw new HttpError(400, 'note is required');
 
   return transaction(async (client) => {
     const inserted = await client.query<{ id: string; created_at: Date }>(
@@ -284,25 +285,25 @@ export interface CreateFromScanInput {
 
 export async function createFromScan(input: CreateFromScanInput) {
   const idScanValue = normalizeScanText(input.idScanValue || input.rawScanText || '');
-  if (!idScanValue) throw { statusCode: 400, message: 'Invalid scan input' };
+  if (!idScanValue) throw new HttpError(400, 'Invalid scan input');
 
   const idScanHash =
     computeIdScanIdentityHash({ firstName: input.firstName, lastName: input.lastName, fullName: input.fullName, dob: input.dob }) ||
     input.idScanHash || computeSha256Hex(idScanValue);
 
   const dob = toDateOnly(input.dob);
-  if (!dob) throw { statusCode: 400, message: 'Invalid dob; expected YYYY-MM-DD' };
+  if (!dob) throw new HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
   const idExpirationDate = input.idExpirationDate ? toDateOnly(input.idExpirationDate) : null;
-  if (input.idExpirationDate && !idExpirationDate) throw { statusCode: 400, message: 'Invalid idExpirationDate; expected YYYY-MM-DD' };
+  if (input.idExpirationDate && !idExpirationDate) throw new HttpError(400, 'Invalid idExpirationDate; expected YYYY-MM-DD');
 
   const idType = input.idType ?? null;
   const idTypeOther = idType === 'OTHER' ? (input.idTypeOther?.trim() || null) : null;
 
   const idScanIssue = getIdScanIssue({ dob, idExpirationDate });
-  if (idScanIssue) throw { statusCode: 403, message: getIdScanIssueMessage(idScanIssue), code: idScanIssue };
+  if (idScanIssue) throw new HttpError(403, getIdScanIssueMessage(idScanIssue), { code: idScanIssue });
 
   const name = (input.fullName?.trim() || `${input.firstName} ${input.lastName}`.trim()).slice(0, 255);
-  if (!name) throw { statusCode: 400, message: 'Invalid name' };
+  if (!name) throw new HttpError(400, 'Invalid name');
 
   // Check for existing customer
   const existing = await query<{
@@ -315,7 +316,7 @@ export async function createFromScan(input: CreateFromScanInput) {
 
   if (existing.rows.length > 0) {
     const row = existing.rows[0]!;
-    if (row.banned_until && row.banned_until > new Date()) throw { statusCode: 403, message: 'Customer is banned' };
+    if (row.banned_until && row.banned_until > new Date()) throw new HttpError(403, 'Customer is banned');
 
     const needsScanUpdate = !row.id_scan_hash || !row.id_scan_value || row.id_scan_hash !== idScanHash || row.id_scan_value !== idScanValue;
     if (needsScanUpdate || input.idNumber || input.state || idType || idTypeOther) {
@@ -359,10 +360,10 @@ export async function createFromScan(input: CreateFromScanInput) {
 
 export async function matchIdentity(input: { firstName: string; lastName: string; dob: string; idNumber?: string }) {
   const dob = toDateOnly(input.dob);
-  if (!dob) throw { statusCode: 400, message: 'Invalid dob; expected YYYY-MM-DD' };
+  if (!dob) throw new HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
 
   const inputParts = splitNamePartsForMatch(`${input.firstName} ${input.lastName}`);
-  if (!inputParts) throw { statusCode: 400, message: 'Invalid name' };
+  if (!inputParts) throw new HttpError(400, 'Invalid name');
 
   // Check by ID number first
   if (input.idNumber?.trim()) {
@@ -412,18 +413,18 @@ export async function createManual(input: {
   idExpirationDate: string; idType: string; idTypeOther?: string; idNumber?: string;
 }) {
   const dob = toDateOnly(input.dob);
-  if (!dob) throw { statusCode: 400, message: 'Invalid dob; expected YYYY-MM-DD' };
+  if (!dob) throw new HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
   const idExpirationDate = toDateOnly(input.idExpirationDate);
-  if (!idExpirationDate) throw { statusCode: 400, message: 'Invalid idExpirationDate; expected YYYY-MM-DD' };
+  if (!idExpirationDate) throw new HttpError(400, 'Invalid idExpirationDate; expected YYYY-MM-DD');
 
   const idType = input.idType;
   const idTypeOther = idType === 'OTHER' ? input.idTypeOther?.trim() || null : null;
   const name = `${input.firstName} ${input.lastName}`.trim().slice(0, 255);
-  if (!name) throw { statusCode: 400, message: 'Invalid name' };
+  if (!name) throw new HttpError(400, 'Invalid name');
   const idScanValue = input.idNumber?.trim() || null;
 
   const idScanIssue = getIdScanIssue({ dob, idExpirationDate });
-  if (idScanIssue) throw { statusCode: 403, message: getIdScanIssueMessage(idScanIssue), code: idScanIssue };
+  if (idScanIssue) throw new HttpError(403, getIdScanIssueMessage(idScanIssue), { code: idScanIssue });
 
   // Dedup: check ID number
   if (idScanValue) {

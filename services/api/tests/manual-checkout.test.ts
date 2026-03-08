@@ -265,7 +265,7 @@ describe('Manual Checkout APIs', () => {
       payload: { occupancyId: testBlockId },
     });
     if (first.statusCode !== 200) {
-      // eslint-disable-next-line no-console
+       
       console.error('Manual checkout complete failed:', first.statusCode, first.body);
     }
     expect(first.statusCode).toBe(200);

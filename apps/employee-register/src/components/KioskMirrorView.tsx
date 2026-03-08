@@ -566,7 +566,7 @@ function AgreementMirrorScreen({ sessionId, laneId }: Readonly<{ sessionId: stri
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const authToken = (globalThis as any).__authToken as string | null;
+      const authToken = globalThis.__authToken as string | null;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
@@ -879,7 +879,7 @@ function WaitlistDisclaimerOverlay({ sessionId, laneId }: Readonly<{ sessionId: 
     setLoading(true);
     try {
       const kioskToken = (import.meta.env.VITE_KIOSK_TOKEN as string) || '';
-      const authToken = (globalThis as any).__authToken as string | null;
+      const authToken = globalThis.__authToken as string | null;
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (kioskToken) headers['x-kiosk-token'] = kioskToken;
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;

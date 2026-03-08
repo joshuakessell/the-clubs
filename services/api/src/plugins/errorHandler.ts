@@ -57,18 +57,20 @@ export async function errorHandlerPlugin(fastify: FastifyInstance): Promise<void
       });
     }
 
-    // ── Ad-hoc thrown objects with statusCode (legacy pattern) ──
-    // Many existing handlers throw `{ statusCode, message, code? }`.
-    // Catch them here during the migration period so we don't break anything.
+    // ── Legacy ad-hoc thrown objects with statusCode ──
+    // NOTE: All 175 throw { statusCode } patterns have been migrated to
+    // HttpError (caught above). This block is kept as a safety net during
+    // the transition period but should never fire.
+    const errObj = error as { statusCode?: unknown; code?: unknown; message?: unknown };
     if (
       error &&
       typeof error === 'object' &&
       'statusCode' in error &&
-      typeof (error as any).statusCode === 'number'
+      typeof errObj.statusCode === 'number'
     ) {
-      const statusCode = (error as any).statusCode as number;
-      const code = (error as any).code as string | undefined;
-      const message = (error as any).message as string || 'Request failed';
+      const statusCode = errObj.statusCode;
+      const code = typeof errObj.code === 'string' ? errObj.code : undefined;
+      const message = typeof errObj.message === 'string' ? errObj.message : 'Request failed';
 
       if (statusCode >= 500) {
         request.log.error(error, message);

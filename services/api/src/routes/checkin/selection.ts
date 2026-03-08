@@ -9,6 +9,7 @@ import type {
   SelectionLockedPayload,
   SelectionProposedPayload,
 } from '@the-clubs/shared';
+import { HttpError } from '../../errors/HttpError';
 import {
   selectRental,
   proposeSelection,
@@ -71,7 +72,7 @@ export function registerCheckinSelectionRoutes(fastify: FastifyInstance): void {
             `SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`,
             [laneId]
           );
-          if (r.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };
+          if (r.rows.length === 0) throw new HttpError(404, 'No active session found');
           return r.rows[0]!;
         });
 
@@ -127,7 +128,7 @@ export function registerCheckinSelectionRoutes(fastify: FastifyInstance): void {
           const sessionResult = request.body.sessionId
             ? await client.query<LaneSessionRow>(`SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2 LIMIT 1`, [request.body.sessionId, laneId])
             : await client.query<LaneSessionRow>(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE') ORDER BY created_at DESC LIMIT 1`, [laneId]);
-          if (sessionResult.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };
+          if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
           return sessionResult.rows[0]!;
         });
 
@@ -178,7 +179,7 @@ export function registerCheckinSelectionRoutes(fastify: FastifyInstance): void {
         try {
           const session = await transaction(async (client) => {
             const r = await client.query<LaneSessionRow>(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
-            if (r.rows.length === 0) throw { statusCode: 404, message: 'No active session found' };
+            if (r.rows.length === 0) throw new HttpError(404, 'No active session found');
             return r.rows[0]!;
           });
           const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `conf-${Date.now()}-${Math.random().toString(16).slice(2)}`;

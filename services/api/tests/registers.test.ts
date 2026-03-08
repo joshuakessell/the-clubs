@@ -25,8 +25,8 @@ describe('Register Routes', () => {
     // registerRoutes expects a broadcaster decoration for websocket events
     fastify.decorate('broadcaster', {
       broadcastRegisterSessionUpdated: () => {},
-    });
-    await fastify.register(registerRoutes as any);
+    } as unknown as import('../src/realtime/broadcaster.js').Broadcaster);
+    await fastify.register(registerRoutes as unknown as Parameters<typeof fastify.register>[0]);
     await fastify.ready();
   });
 

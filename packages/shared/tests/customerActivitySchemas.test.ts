@@ -136,8 +136,8 @@ describe('CustomerActivityMetadataSchemas', () => {
 
   it('PAST_DUE_WAIVED accepts valid metadata', () => {
     const result = CustomerActivityMetadataSchemas.PAST_DUE_WAIVED.safeParse({
-      previousPastDueCents: 5000,
-      newPastDueCents: 0,
+      previousPastDue: 5000,
+      newPastDue: 0,
       reason: 'Manager discretion',
     });
     expect(result.success).toBe(true);

@@ -222,7 +222,7 @@ export async function buildFullSessionUpdatedPayload(
     }
   }
 
-  let assignedResourceType = session.assigned_resource_type as 'room' | 'locker' | null;
+  const assignedResourceType = session.assigned_resource_type as 'room' | 'locker' | null;
   const assignedResourceNumber = await fetchAssignedResourceNumber(client, assignedResourceType, session.assigned_resource_id);
 
   let paymentIntent: PaymentIntentRow | undefined;
@@ -249,10 +249,6 @@ export async function buildFullSessionUpdatedPayload(
     extractPaymentLineItems(session.price_quote_json) ??
     extractPaymentLineItems(paymentIntent?.quote_json);
 
-  let ledgerLineItems: Array<{ description: string; amount: number }> | undefined;
-  let ledgerTotal: number | undefined;
-
-
   const { ledgerItems, total } = await buildLedgerLineItems(
     client,
     session,
@@ -261,8 +257,8 @@ export async function buildFullSessionUpdatedPayload(
     paymentLineItems,
     blockForSession?.visit_id || activeVisitId
   );
-  ledgerLineItems = ledgerItems.length > 0 ? ledgerItems : undefined;
-  ledgerTotal = total > 0 ? total : undefined;
+  const ledgerLineItems = ledgerItems.length > 0 ? ledgerItems : undefined;
+  const ledgerTotal = total > 0 ? total : undefined;
 
 
   const membershipValidUntilRaw = (customer as any)?.membership_valid_until as unknown;

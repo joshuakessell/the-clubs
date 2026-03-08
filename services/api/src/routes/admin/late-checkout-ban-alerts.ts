@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/middleware';
+import { getHttpError } from '../../checkin/utils';
 import { query, transaction } from '../../db';
 import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
 
@@ -103,8 +104,9 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
         });
 
         return reply.send({ success: true });
-      } catch (error: any) {
-        if (error?.statusCode) return reply.status(error.statusCode).send({ error: error.message });
+      } catch (error: unknown) {
+        const httpErr = getHttpError(error);
+        if (httpErr) return reply.status(httpErr.statusCode).send({ error: httpErr.message });
         request.log.error(error, 'Failed to remove ban');
         return reply.status(500).send({ error: 'Internal server error' });
       }
@@ -174,8 +176,9 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
         });
 
         return reply.send({ success: true, bannedUntil: newBannedUntil.toISOString() });
-      } catch (error: any) {
-        if (error?.statusCode) return reply.status(error.statusCode).send({ error: error.message });
+      } catch (error: unknown) {
+        const httpErr = getHttpError(error);
+        if (httpErr) return reply.status(httpErr.statusCode).send({ error: httpErr.message });
         request.log.error(error, 'Failed to extend ban');
         return reply.status(500).send({ error: 'Internal server error' });
       }

@@ -8,6 +8,7 @@ import { insertAuditLog } from '../audit/auditLog';
 import { serializableTransaction, transaction } from '../db';
 import { getUpgradeFee, type RentalType } from '../pricing/engine';
 import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
+import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
@@ -73,31 +74,31 @@ export async function switchResource(input: SwitchResourceInput) {
       `SELECT id, customer_id, ended_at FROM visits WHERE id = $1 FOR UPDATE`,
       [input.visitId]
     );
-    if (visitResult.rows.length === 0) throw { statusCode: 404, message: 'Visit not found' } satisfies SwitchHttpError;
+    if (visitResult.rows.length === 0) throw new HttpError(404, 'Visit not found') satisfies SwitchHttpError;
     const visit = visitResult.rows[0]!;
-    if (visit.ended_at) throw { statusCode: 409, message: 'Visit is already completed' } satisfies SwitchHttpError;
+    if (visit.ended_at) throw new HttpError(409, 'Visit is already completed') satisfies SwitchHttpError;
 
     const blockResult = await client.query<{ id: string; room_id: string | null; locker_id: string | null; rental_type: string }>(
       `SELECT id, room_id, locker_id, rental_type::text FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC LIMIT 1 FOR UPDATE`,
       [input.visitId]
     );
-    if (blockResult.rows.length === 0) throw { statusCode: 404, message: 'No active check-in block found' } satisfies SwitchHttpError;
+    if (blockResult.rows.length === 0) throw new HttpError(404, 'No active check-in block found') satisfies SwitchHttpError;
     const block = blockResult.rows[0]!;
 
     const currentResourceType: 'room' | 'locker' | null = block.room_id ? 'room' : block.locker_id ? 'locker' : null;
     const currentResourceId = block.room_id || block.locker_id;
-    if (!currentResourceType || !currentResourceId) throw { statusCode: 400, message: 'Current visit has no assigned room/locker' } satisfies SwitchHttpError;
-    if (currentResourceType === input.targetResourceType && String(currentResourceId) === String(input.targetResourceId)) throw { statusCode: 400, message: 'Selected resource is already assigned' } satisfies SwitchHttpError;
+    if (!currentResourceType || !currentResourceId) throw new HttpError(400, 'Current visit has no assigned room/locker') satisfies SwitchHttpError;
+    if (currentResourceType === input.targetResourceType && String(currentResourceId) === String(input.targetResourceId)) throw new HttpError(400, 'Selected resource is already assigned') satisfies SwitchHttpError;
 
     // Get current resource number
     let currentResourceNumber = '';
     if (currentResourceType === 'room') {
       const r = await client.query<{ id: string; number: string }>(`SELECT id, number FROM rooms WHERE id = $1 FOR UPDATE`, [currentResourceId]);
-      if (r.rows.length === 0) throw { statusCode: 404, message: 'Current room not found' } satisfies SwitchHttpError;
+      if (r.rows.length === 0) throw new HttpError(404, 'Current room not found') satisfies SwitchHttpError;
       currentResourceNumber = r.rows[0]!.number;
     } else {
       const r = await client.query<{ id: string; number: string }>(`SELECT id, number FROM lockers WHERE id = $1 FOR UPDATE`, [currentResourceId]);
-      if (r.rows.length === 0) throw { statusCode: 404, message: 'Current locker not found' } satisfies SwitchHttpError;
+      if (r.rows.length === 0) throw new HttpError(404, 'Current locker not found') satisfies SwitchHttpError;
       currentResourceNumber = r.rows[0]!.number;
     }
 
@@ -108,18 +109,18 @@ export async function switchResource(input: SwitchResourceInput) {
       const r = await client.query<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
         `SELECT id, number, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [input.targetResourceId]
       );
-      if (r.rows.length === 0) throw { statusCode: 404, message: 'Target room not found' } satisfies SwitchHttpError;
+      if (r.rows.length === 0) throw new HttpError(404, 'Target room not found') satisfies SwitchHttpError;
       const room = r.rows[0]!;
-      if (room.status !== 'CLEAN' || room.assigned_to_customer_id) throw { statusCode: 409, message: `Room ${room.number} is not available` } satisfies SwitchHttpError;
+      if (room.status !== 'CLEAN' || room.assigned_to_customer_id) throw new HttpError(409, `Room ${room.number} is not available`) satisfies SwitchHttpError;
       targetResourceNumber = room.number;
       targetRentalType = getTierFromRoomNumber(room.number);
     } else {
       const r = await client.query<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
         `SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`, [input.targetResourceId]
       );
-      if (r.rows.length === 0) throw { statusCode: 404, message: 'Target locker not found' } satisfies SwitchHttpError;
+      if (r.rows.length === 0) throw new HttpError(404, 'Target locker not found') satisfies SwitchHttpError;
       const locker = r.rows[0]!;
-      if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id) throw { statusCode: 409, message: `Locker ${locker.number} is not available` } satisfies SwitchHttpError;
+      if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id) throw new HttpError(409, `Locker ${locker.number} is not available`) satisfies SwitchHttpError;
       targetResourceNumber = locker.number;
       targetRentalType = 'LOCKER';
     }
@@ -131,15 +132,18 @@ export async function switchResource(input: SwitchResourceInput) {
 
     if (additionalFee > 0) {
       if (!input.paymentOutcome) {
-        throw { statusCode: 409, code: 'PAYMENT_REQUIRED', message: 'Additional payment required for this switch', additionalFee, currentRentalType, targetRentalType } satisfies SwitchHttpError;
+        const payErr = new HttpError(409, 'Additional payment required for this switch', { code: 'PAYMENT_REQUIRED' });
+        Object.assign(payErr, { additionalFee, currentRentalType, targetRentalType });
+        throw payErr;
       }
       if (input.paymentOutcome === 'CREDIT_DECLINE') {
-        throw {
-          statusCode: 402, code: 'PAYMENT_DECLINED', message: input.declineReason ?? 'Credit declined',
+        const declineErr = new HttpError(402, input.declineReason ?? 'Credit declined', { code: 'PAYMENT_DECLINED' });
+        Object.assign(declineErr, {
           additionalFee, currentRentalType, targetRentalType,
           visitId: input.visitId, checkinBlockId: block.id,
           targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber,
-        } satisfies SwitchHttpError;
+        });
+        throw declineErr;
       }
 
       const pr = await client.query<{ id: string }>(

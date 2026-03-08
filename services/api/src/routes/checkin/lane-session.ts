@@ -14,13 +14,17 @@ import {
 
 export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void {
   // POST /v1/checkin/lane/:laneId/start
-  fastify.post<{ Params: { laneId: string }; Body: z.infer<typeof StartLaneSessionBodySchema> }>(
+  fastify.post<{ Params: { laneId: string } }>(
     '/v1/checkin/lane/:laneId/start',
-    { schema: { body: StartLaneSessionBodySchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
-      const body = request.body as z.infer<typeof StartLaneSessionBodySchema>;
+      const parsed = StartLaneSessionBodySchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
+      }
+      const body = parsed.data;
 
       const { laneId } = request.params;
       const staffId = request.staff.staffId;

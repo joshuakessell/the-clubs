@@ -6,6 +6,7 @@ import type { LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
 import { getHttpError, parsePriceQuote, roundToWhole, toNumber } from '../../checkin/utils';
 import { transaction } from '../../db';
 import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
+import { HttpError } from '../../errors/HttpError';
 
 const SPLIT_CARD_LINE_ITEM = 'Card Payment';
 
@@ -24,7 +25,7 @@ function recalculateSplitQuote(
 
   const roundedSplit = roundToWhole(splitAmount);
   if (roundedSplit <= 0 || roundedSplit >= baseTotal) {
-    throw { statusCode: 400, message: 'Split card amount must be less than the total' };
+    throw new HttpError(400, 'Split card amount must be less than the total');
   }
 
   const remainingTotal = roundToWhole(baseTotal - roundedSplit);
@@ -89,17 +90,17 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
               );
 
           if (sessionResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'No active session found' };
+            throw new HttpError(404, 'No active session found');
           }
 
           const session = sessionResult.rows[0]!;
 
           if (!session.selection_confirmed) {
-            throw { statusCode: 400, message: 'Selection must be confirmed before payment' };
+            throw new HttpError(400, 'Selection must be confirmed before payment');
           }
 
           if (!session.payment_intent_id) {
-            throw { statusCode: 400, message: 'Payment intent must be created first' };
+            throw new HttpError(400, 'Payment intent must be created first');
           }
 
           const intentResult = await client.query<PaymentIntentRow>(
@@ -108,7 +109,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
           );
 
           if (intentResult.rows.length === 0) {
-            throw { statusCode: 404, message: 'Payment intent not found' };
+            throw new HttpError(404, 'Payment intent not found');
           }
 
           const intent = intentResult.rows[0]!;
@@ -118,13 +119,13 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
 
           if (outcome === 'CREDIT_SUCCESS' && normalizedSplitAmount !== undefined) {
             if (intent.status !== 'DUE') {
-              throw { statusCode: 409, message: 'Payment intent is not payable' };
+              throw new HttpError(409, 'Payment intent is not payable');
             }
 
             const baseQuote =
               parsePriceQuote(session.price_quote_json) ?? parsePriceQuote(intent.quote_json);
             if (!baseQuote) {
-              throw { statusCode: 400, message: 'No price quote available for session' };
+              throw new HttpError(400, 'No price quote available for session');
             }
 
             const { nextQuote, remainingTotal } = recalculateSplitQuote(baseQuote, normalizedSplitAmount);
