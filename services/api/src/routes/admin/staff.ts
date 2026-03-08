@@ -13,14 +13,14 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
     catch (e) { request.log.error(e, 'Failed to fetch staff list'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
-  fastify.post<{ Body: z.infer<typeof CreateStaffSchema> }>('/v1/admin/staff', { schema: { body: CreateStaffSchema }, preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
+  fastify.post<{ Body: z.infer<typeof CreateStaffSchema> }>('/v1/admin/staff', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body;
     try { return reply.status(201).send(await createStaffMember(body as CreateStaffInput, request.staff.staffId)); }
     catch (e) { request.log.error(e, 'Failed to create staff'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
-  fastify.patch<{ Params: { id: string }; Body: z.infer<typeof UpdateStaffSchema> }>('/v1/admin/staff/:id', { schema: { body: UpdateStaffSchema }, preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
+  fastify.patch<{ Params: { id: string }; Body: z.infer<typeof UpdateStaffSchema> }>('/v1/admin/staff/:id', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body;
     try { return reply.send(await updateStaffMember(request.params.id, body as UpdateStaffInput, request.staff.staffId)); }

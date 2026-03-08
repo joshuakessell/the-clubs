@@ -76,7 +76,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Generate registration options for enrolling a new passkey.
    */
-  fastify.post('/v1/auth/webauthn/registration/options', { schema: { body: RegistrationOptionsSchema } }, async (request, reply) => {
+  fastify.post('/v1/auth/webauthn/registration/options', {}, async (request, reply) => {
     const body = request.body as RegistrationOptionsInput;
 
     try {
@@ -139,7 +139,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Verify and store a new passkey credential.
    */
-  fastify.post('/v1/auth/webauthn/registration/verify', { schema: { body: RegistrationVerifySchema } }, async (request, reply) => {
+  fastify.post('/v1/auth/webauthn/registration/verify', {}, async (request, reply) => {
     const body = request.body as RegistrationVerifyInput;
 
     try {
@@ -245,7 +245,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Generate authentication options for signing in with a passkey.
    */
-  fastify.post('/v1/auth/webauthn/authentication/options', { schema: { body: AuthenticationOptionsSchema } }, async (request, reply) => {
+  fastify.post('/v1/auth/webauthn/authentication/options', {}, async (request, reply) => {
     const body = request.body as AuthenticationOptionsInput;
 
     try {
@@ -315,7 +315,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Verify authentication response and issue session token.
    */
-  fastify.post('/v1/auth/webauthn/authentication/verify', { schema: { body: AuthenticationVerifySchema } }, async (request, reply) => {
+  fastify.post('/v1/auth/webauthn/authentication/verify', {}, async (request, reply) => {
     const body = request.body as AuthenticationVerifyInput;
 
     try {

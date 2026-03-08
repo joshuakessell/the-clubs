@@ -44,7 +44,6 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ResolveKeyInput }>(
     '/v1/keys/resolve',
     {
-      schema: { body: ResolveKeySchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {

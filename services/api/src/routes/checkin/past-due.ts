@@ -113,7 +113,6 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
   }>(
     '/v1/checkin/lane/:laneId/past-due/bypass',
     {
-      schema: { body: PastDueBypassSchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {

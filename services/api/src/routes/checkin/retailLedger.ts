@@ -27,7 +27,7 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
     Params: { laneId: string };
   }>(
     '/v1/checkin/lane/:laneId/add-retail-items',
-    { schema: { body: AddRetailItemsSchema }, preHandler: [requireAuth] },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 

@@ -117,7 +117,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // POST /v1/customers/:customerId/notes
   fastify.post<{ Params: { customerId: string }; Body: z.infer<typeof CreateCustomerNoteSchema> }>(
-    '/v1/customers/:customerId/notes', { schema: { body: CreateCustomerNoteSchema }, preHandler: [requireAuth, idempotencyKey] },
+    '/v1/customers/:customerId/notes', { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const parsed = request.body as z.infer<typeof CreateCustomerNoteSchema>;
@@ -157,7 +157,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // POST /v1/customers/create-from-scan
-  fastify.post('/v1/customers/create-from-scan', { schema: { body: CreateFromScanSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/create-from-scan', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof CreateFromScanSchema>;
 
@@ -175,7 +175,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/customers/match-identity
-  fastify.post('/v1/customers/match-identity', { schema: { body: MatchIdentitySchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/match-identity', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof MatchIdentitySchema>;
 
@@ -193,7 +193,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/customers/create-manual
-  fastify.post('/v1/customers/create-manual', { schema: { body: CreateManualSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/create-manual', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof CreateManualSchema>;
 

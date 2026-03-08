@@ -30,7 +30,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
    * Public endpoint for checkout kiosk to resolve a scanned key QR code.
    * Returns customer info, scheduled checkout time, and computed late fees.
    */
-  fastify.post<{ Body: ResolveKeyInput }>('/v1/checkout/resolve-key', { schema: { body: ResolveKeySchema } }, async (request, reply) => {
+  fastify.post<{ Body: ResolveKeyInput }>('/v1/checkout/resolve-key', {}, async (request, reply) => {
     const body = request.body as ResolveKeyInput;
 
     try {
@@ -191,7 +191,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: CreateCheckoutRequestInput }>(
     '/v1/checkout/request',
-    { schema: { body: CreateCheckoutRequestSchema } },
+    {},
     async (request, reply) => {
       const body = request.body as CreateCheckoutRequestInput;
 

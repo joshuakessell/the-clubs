@@ -32,7 +32,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Start a break for the authenticated staff member.
    */
-  fastify.post('/v1/breaks/start', { schema: { body: StartBreakSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/breaks/start', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
     const body = request.body as z.infer<typeof StartBreakSchema>;
@@ -114,7 +114,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * End the currently open break for the authenticated staff member.
    */
-  fastify.post('/v1/breaks/end', { schema: { body: EndBreakSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/breaks/end', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
     const body = request.body as z.infer<typeof EndBreakSchema>;

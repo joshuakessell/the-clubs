@@ -31,7 +31,7 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.patch<{ Params: { shiftId: string }; Body: z.infer<typeof UpdateShiftSchema> }>(
-    '/v1/admin/shifts/:shiftId', { schema: { body: UpdateShiftSchema }, preHandler: [requireAuth, requireAdmin] },
+    '/v1/admin/shifts/:shiftId', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const body = request.body as z.infer<typeof UpdateShiftSchema>;
       const result = await updateShift(request.params.shiftId, body as UpdateShiftInput, request.staff!.staffId);
@@ -40,7 +40,7 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.post<{ Body: z.infer<typeof CreateShiftSchema> }>(
-    '/v1/admin/shifts', { schema: { body: CreateShiftSchema }, preHandler: [requireAuth, requireAdmin] },
+    '/v1/admin/shifts', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const body = request.body as z.infer<typeof CreateShiftSchema>;
       if (new Date(body.starts_at) >= new Date(body.ends_at)) return reply.status(400).send({ error: 'Shift start must be before end' });
@@ -63,7 +63,7 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.post<{ Body: z.infer<typeof BulkCreateSchema> }>(
-    '/v1/admin/shifts/bulk', { schema: { body: BulkCreateSchema }, preHandler: [requireAuth, requireAdmin] },
+    '/v1/admin/shifts/bulk', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const body = request.body as z.infer<typeof BulkCreateSchema>;
       const result = await bulkCreateShifts(body.shifts as CreateShiftInput[], request.staff!.staffId);
