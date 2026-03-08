@@ -121,7 +121,8 @@ export async function registerRoutes(
 
   // POST /v1/auth/verify-pin
   // Rate-limited via @fastify/rate-limit registered globally in index.ts; per-route config override below.
-  fastify.post('/v1/auth/verify-pin', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request: FastifyRequest<{ Body: z.infer<typeof VerifyPinSchema> }>, reply: FastifyReply) => { // lgtm[js/missing-rate-limiting]
+  // lgtm[js/missing-rate-limiting]
+  fastify.post('/v1/auth/verify-pin', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request: FastifyRequest<{ Body: z.infer<typeof VerifyPinSchema> }>, reply: FastifyReply) => {
     const body = request.body;
 
     try {

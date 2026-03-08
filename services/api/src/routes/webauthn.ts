@@ -140,7 +140,8 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    * Verify and store a new passkey credential.
    */
   // Rate-limited via @fastify/rate-limit registered globally in index.ts; per-route config override below.
-  fastify.post('/v1/auth/webauthn/registration/verify', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => { // lgtm[js/missing-rate-limiting]
+  // lgtm[js/missing-rate-limiting]
+  fastify.post('/v1/auth/webauthn/registration/verify', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as RegistrationVerifyInput;
 
     try {
@@ -247,7 +248,8 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    * Generate authentication options for signing in with a passkey.
    */
   // Rate-limited via @fastify/rate-limit registered globally in index.ts; per-route config override below.
-  fastify.post('/v1/auth/webauthn/authentication/options', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => { // lgtm[js/missing-rate-limiting]
+  // lgtm[js/missing-rate-limiting]
+  fastify.post('/v1/auth/webauthn/authentication/options', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as AuthenticationOptionsInput;
 
     try {
@@ -318,7 +320,8 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    * Verify authentication response and issue session token.
    */
   // Rate-limited via @fastify/rate-limit registered globally in index.ts; per-route config override below.
-  fastify.post('/v1/auth/webauthn/authentication/verify', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => { // lgtm[js/missing-rate-limiting]
+  // lgtm[js/missing-rate-limiting]
+  fastify.post('/v1/auth/webauthn/authentication/verify', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = request.body as AuthenticationVerifyInput;
 
     try {
