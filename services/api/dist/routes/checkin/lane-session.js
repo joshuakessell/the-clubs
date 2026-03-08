@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinLaneSessionRoutes = registerCheckinLaneSessionRoutes;
-const zod_1 = require("zod");
 const kioskToken_1 = require("../../auth/kioskToken");
 const middleware_1 = require("../../auth/middleware");
 const identity_1 = require("../../checkin/identity");
@@ -13,13 +12,11 @@ function registerCheckinLaneSessionRoutes(fastify) {
     fastify.post('/v1/checkin/lane/:laneId/start', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = schemas_1.StartLaneSessionBodySchema.parse(request.body);
+        const parsed = schemas_1.StartLaneSessionBodySchema.safeParse(request.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
         }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+        const body = parsed.data;
         const { laneId } = request.params;
         const staffId = request.staff.staffId;
         try {

@@ -81,8 +81,8 @@ function parseDatabaseUrl(urlString) {
             return {};
         }
         const host = url.hostname || undefined;
-        const port = url.port ? parseInt(url.port, 10) : undefined;
-        const databaseFromPath = url.pathname.replace(/^\/+/, '');
+        const port = url.port ? Number.parseInt(url.port, 10) : undefined;
+        const databaseFromPath = url.pathname.replaceAll(/^\/+/, '');
         const database = databaseFromPath ? databaseFromPath : undefined;
         const user = url.username || undefined;
         const password = url.password || undefined;
@@ -131,7 +131,7 @@ function loadDatabaseConfig() {
             ...(parsed.user ? { user: parsed.user } : {}),
             ...(parsed.password ? { password: parsed.password } : {}),
             ssl,
-            max: parseInt(process.env.DB_POOL_MAX || '20', 10),
+            max: Number.parseInt(process.env.DB_POOL_MAX || '20', 10),
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis,
         };
@@ -142,12 +142,12 @@ function loadDatabaseConfig() {
     }
     return {
         host: process.env.DB_HOST.trim(),
-        port: parseInt(process.env.DB_PORT || '5432', 10),
+        port: Number.parseInt(process.env.DB_PORT || '5432', 10),
         database: process.env.DB_NAME || 'club_operations',
         user: process.env.DB_USER || 'clubops',
         password: process.env.DB_PASSWORD || 'clubops_dev',
         ssl,
-        max: parseInt(process.env.DB_POOL_MAX || '20', 10),
+        max: Number.parseInt(process.env.DB_POOL_MAX || '20', 10),
         idleTimeoutMillis: 30000,
         connectionTimeoutMillis,
     };

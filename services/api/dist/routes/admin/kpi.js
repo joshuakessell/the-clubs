@@ -29,11 +29,11 @@ function registerAdminKpiRoutes(fastify) {
          WHERE assigned_to_customer_id IS NOT NULL`);
             // Get total lockers and available lockers
             const totalLockersResult = await (0, db_1.query)(`SELECT COUNT(*) as count FROM lockers`);
-            const totalLockers = parseInt(totalLockersResult.rows[0]?.count || '0', 10);
-            const lockersOccupied = parseInt(lockersInUseResult.rows[0]?.count || '0', 10);
+            const totalLockers = Number.parseInt(totalLockersResult.rows[0]?.count || '0', 10);
+            const lockersOccupied = Number.parseInt(lockersInUseResult.rows[0]?.count || '0', 10);
             const lockersAvailable = totalLockers - lockersOccupied;
             const kpi = {
-                roomsOccupied: parseInt(occupiedResult.rows[0]?.count || '0', 10),
+                roomsOccupied: Number.parseInt(occupiedResult.rows[0]?.count || '0', 10),
                 roomsUnoccupied: 0,
                 roomsDirty: 0,
                 roomsCleaning: 0,
@@ -43,7 +43,7 @@ function registerAdminKpiRoutes(fastify) {
                 waitingListCount: 0, // Placeholder for future implementation
             };
             for (const row of roomStatusResult.rows) {
-                const count = parseInt(row.count, 10);
+                const count = Number.parseInt(row.count, 10);
                 const status = row.status.toLowerCase();
                 if (status === 'dirty')
                     kpi.roomsDirty = count;

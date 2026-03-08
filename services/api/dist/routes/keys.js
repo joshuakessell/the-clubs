@@ -22,18 +22,10 @@ async function keysRoutes(fastify) {
      * Returns room information for a single token.
      */
     fastify.post('/v1/keys/resolve', {
+        schema: { body: ResolveKeySchema },
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
-        let body;
-        try {
-            body = ResolveKeySchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         try {
             // Find matching key tag
             const tagResult = await (0, db_1.query)(`SELECT id, room_id, tag_code, tag_type, is_active

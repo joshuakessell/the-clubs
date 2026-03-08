@@ -4,7 +4,7 @@ exports.getRoomTier = getRoomTier;
 exports.computeWaitlistInfo = computeWaitlistInfo;
 const shared_1 = require("@the-clubs/shared");
 function getRoomTier(roomNumber) {
-    return (0, shared_1.getRoomTierFromNumber)(parseInt(roomNumber, 10));
+    return (0, shared_1.getRoomTierFromNumber)(Number.parseInt(roomNumber, 10));
 }
 /**
  * Compute waitlist position and ETA for a desired tier.
@@ -14,7 +14,7 @@ async function computeWaitlistInfo(client, desiredTier) {
     // Count active waitlist entries for this tier (position = count + 1)
     const waitlistCountResult = await client.query(`SELECT COUNT(*) as count FROM waitlist 
      WHERE desired_tier = $1 AND status = 'ACTIVE'`, [desiredTier]);
-    const position = parseInt(waitlistCountResult.rows[0]?.count || '0', 10) + 1;
+    const position = Number.parseInt(waitlistCountResult.rows[0]?.count || '0', 10) + 1;
     // ETA: Find the Nth upcoming ROOM block that could free inventory for the desired tier.
     //
     // IMPORTANT: We must filter by tier. A naive "Nth block by end time" is wrong when multiple
@@ -32,7 +32,7 @@ async function computeWaitlistInfo(client, desiredTier) {
     // Find the (position)th block of the desired tier.
     const matches = [];
     for (const row of blocksResult.rows) {
-        const n = parseInt(String(row.room_number), 10);
+        const n = Number.parseInt(String(row.room_number), 10);
         if (!Number.isFinite(n))
             continue;
         if (getRoomTier(String(n)) !== desiredTier)

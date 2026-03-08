@@ -97,7 +97,7 @@ function extractUpSql(content) {
         upSql = content.substring(0, downIdx);
     }
     // Strip the leading `-- up migration` marker if present
-    upSql = upSql.replace(/^-- up migration\s*/im, '');
+    upSql = upSql.replaceAll(/^-- up migration\s*/im, '');
     return upSql.trim();
 }
 /**

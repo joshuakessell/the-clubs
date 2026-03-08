@@ -2,14 +2,13 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.cleaningRoutes = cleaningRoutes;
 const zod_1 = require("zod");
-const shared_1 = require("@the-clubs/shared");
 const broadcast_1 = require("../inventory/broadcast");
 const middleware_1 = require("../auth/middleware");
 const idempotency_1 = require("../middleware/idempotency");
 const cleaningService_1 = require("../services/cleaningService");
 const CleaningBatchSchema = zod_1.z.object({
     roomIds: zod_1.z.array(zod_1.z.string().uuid()).min(1).max(50),
-    targetStatus: shared_1.RoomStatusSchema,
+    targetStatus: zod_1.z.enum(['DIRTY', 'CLEANING', 'CLEAN', 'OCCUPIED', 'OUT_OF_SERVICE']),
     staffId: zod_1.z.string().min(1).optional(),
     override: zod_1.z.boolean().default(false),
     overrideReason: zod_1.z.string().optional(),
@@ -22,16 +21,11 @@ async function cleaningRoutes(fastify) {
      * POST /v1/cleaning/batch - Batch update room statuses
      */
     fastify.post('/v1/cleaning/batch', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
-        let body;
-        try {
-            body = CleaningBatchSchema.parse(request.body);
+        const parsed = CleaningBatchSchema.safeParse(request.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
         }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = parsed.data;
         if (body.override && !body.overrideReason) {
             return reply.status(400).send({ error: 'Override requires a reason' });
         }
@@ -92,7 +86,7 @@ async function cleaningRoutes(fastify) {
     fastify.get('/v1/cleaning/batches', async (request, reply) => {
         try {
             const batches = await (0, cleaningService_1.listCleaningBatches)({
-                limit: request.query.limit ? parseInt(request.query.limit, 10) : undefined,
+                limit: request.query.limit ? Number.parseInt(request.query.limit, 10) : undefined,
                 staffId: request.query.staffId,
             });
             return reply.send({ batches });

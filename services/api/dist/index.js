@@ -43,6 +43,7 @@ const websocket_1 = __importDefault(require("@fastify/websocket"));
 const helmet_1 = __importDefault(require("@fastify/helmet"));
 const loadEnv_1 = require("./env/loadEnv");
 const routes_1 = require("./routes");
+const errorHandler_1 = require("./plugins/errorHandler");
 const broadcaster_1 = require("./realtime/broadcaster");
 const localSockets_1 = require("./realtime/localSockets");
 const localSSE_1 = require("./realtime/localSSE");
@@ -293,7 +294,7 @@ function startSubsystems(fastify, abortSignal) {
     if (process.env.EDGE_STACK === 'true' && process.env.CLOUD_API_BASE_URL) {
         (0, autoReplayOutbox_1.startAutoReplayOutbox)({
             pool: (0, db_1.getPool)(),
-            cloudApiBase: process.env.CLOUD_API_BASE_URL.replace(/\/$/, ''),
+            cloudApiBase: process.env.CLOUD_API_BASE_URL.replaceAll(/\/$/, ''),
             kioskToken: process.env.KIOSK_TOKEN,
             signal: abortSignal,
             log: (...args) => fastify.log.info(String(args.map(String).join(' '))),
@@ -367,6 +368,7 @@ async function main() {
     await setupSecurityAndCors(fastify);
     await setupRateLimiting(fastify);
     setupHooks(fastify);
+    await fastify.register(errorHandler_1.errorHandlerPlugin);
     await fastify.register(websocket_1.default);
     const localLaneSockets = new localSockets_1.LocalLaneSockets();
     const localLaneSSE = new localSSE_1.LocalLaneSSEClients();

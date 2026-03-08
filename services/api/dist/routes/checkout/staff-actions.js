@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckoutStaffRoutes = registerCheckoutStaffRoutes;
-const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const idempotency_1 = require("../../middleware/idempotency");
 const schemas_1 = require("../../checkout/schemas");
@@ -45,19 +44,10 @@ function registerCheckoutStaffRoutes(fastify) {
     /**
      * POST /v1/checkout/:requestId/mark-fee-paid
      */
-    fastify.post('/v1/checkout/:requestId/mark-fee-paid', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/checkout/:requestId/mark-fee-paid', { schema: { body: schemas_1.MarkFeePaidSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = schemas_1.MarkFeePaidSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         try {
             const result = await (0, checkoutService_1.markFeePaid)(request.params.requestId, body, {
                 staffId: request.staff.staffId,

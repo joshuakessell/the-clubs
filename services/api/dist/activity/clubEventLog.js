@@ -58,7 +58,7 @@ function buildClubEventSearchBlob(input) {
     }
     return parts
         .join(' ')
-        .replace(/\s+/g, ' ')
+        .replaceAll(/\s+/g, ' ')
         .trim();
 }
 // ---------------------------------------------------------------------------

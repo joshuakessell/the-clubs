@@ -13,7 +13,7 @@ function toNumber(value) {
         return undefined;
     if (typeof value === 'number')
         return value;
-    const n = parseFloat(String(value));
+    const n = Number.parseFloat(String(value));
     return Number.isFinite(n) ? n : undefined;
 }
 function roundToWhole(value) {

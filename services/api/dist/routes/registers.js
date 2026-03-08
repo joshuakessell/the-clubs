@@ -55,16 +55,10 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/closeout/start
-    fastify.post('/v1/registers/closeout/start', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/registers/closeout/start', { schema: { body: CloseoutStartSchema }, preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = CloseoutStartSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+        const body = request.body;
         try {
             const result = await (0, registerService_1.startCloseout)(body.registerSessionId, request.staff.staffId);
             return reply.send(result);
@@ -79,16 +73,10 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/closeout/finalize
-    fastify.post('/v1/registers/closeout/finalize', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/registers/closeout/finalize', { schema: { body: CloseoutFinalizeSchema }, preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = CloseoutFinalizeSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+        const body = request.body;
         try {
             const result = await (0, registerService_1.finalizeCloseout)(body.registerSessionId, body.countedCash, body.notes, request.staff.staffId);
             return reply.send(result);
@@ -103,14 +91,8 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/auth/verify-pin
-    fastify.post('/v1/auth/verify-pin', async (request, reply) => {
-        let body;
-        try {
-            body = VerifyPinSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+    fastify.post('/v1/auth/verify-pin', { schema: { body: VerifyPinSchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             const result = await (0, registerService_1.verifyEmployeePin)(body.employeeId, body.pin, body.deviceId);
             if (!result.verified)
@@ -126,14 +108,8 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/assign
-    fastify.post('/v1/registers/assign', async (request, reply) => {
-        let body;
-        try {
-            body = AssignRegisterSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+    fastify.post('/v1/registers/assign', { schema: { body: AssignRegisterSchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             const result = await (0, registerService_1.assignRegister)(body.employeeId, body.deviceId, body.registerNumber);
             return reply.send(result);
@@ -147,14 +123,8 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/confirm
-    fastify.post('/v1/registers/confirm', async (request, reply) => {
-        let body;
-        try {
-            body = ConfirmRegisterSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+    fastify.post('/v1/registers/confirm', { schema: { body: ConfirmRegisterSchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             const result = await (0, registerService_1.confirmRegister)(body.employeeId, body.deviceId, body.registerNumber);
             fastify.broadcaster.broadcastRegisterSessionUpdated(result.broadcastPayload);
@@ -174,14 +144,8 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/heartbeat
-    fastify.post('/v1/registers/heartbeat', async (request, reply) => {
-        let body;
-        try {
-            body = HeartbeatSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+    fastify.post('/v1/registers/heartbeat', { schema: { body: HeartbeatSchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             const result = await (0, registerService_1.heartbeat)(body.deviceId);
             if (!result)
@@ -197,14 +161,8 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/activity
-    fastify.post('/v1/registers/activity', async (request, reply) => {
-        let body;
-        try {
-            body = HeartbeatSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({ error: 'Validation failed', details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input' });
-        }
+    fastify.post('/v1/registers/activity', { schema: { body: HeartbeatSchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             const result = await (0, registerService_1.recordActivity)(body.deviceId);
             if (!result)

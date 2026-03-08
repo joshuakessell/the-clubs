@@ -101,7 +101,7 @@ async function loginWithPin(staffLookup, pin, deviceId, deviceType, isDemoMode) 
                     });
                     shiftId = shift?.id ?? null;
                 }
-                catch { }
+                catch { /* best-effort shift lookup */ }
                 if (!activeTimeclock) {
                     await tx.insert(schema_1.timeclockSessions).values({
                         employeeId: staffRow.id,
@@ -117,7 +117,7 @@ async function loginWithPin(staffLookup, pin, deviceId, deviceType, isDemoMode) 
                 }
             }
         }
-        catch { }
+        catch { /* best-effort auto-clock-in; never block login */ }
         return {
             staffId: staffRow.id,
             name: staffRow.name,
@@ -190,7 +190,7 @@ async function logoutSession(tokenHash) {
                     .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.timeclockSessions.employeeId, session.staffId), (0, drizzle_orm_1.isNull)(schema_1.timeclockSessions.clockOutAt)));
             }
         }
-        catch { }
+        catch { /* best-effort auto-clock-out; never block logout */ }
     });
 }
 async function reauthWithPin(staffId, pin, tokenHash) {

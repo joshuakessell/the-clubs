@@ -48,7 +48,7 @@ function buildSearchBlob(input) {
     }
     return parts
         .join(' ')
-        .replace(/\s+/g, ' ')
+        .replaceAll(/\s+/g, ' ')
         .trim();
 }
 async function insertCustomerActivityEvent(client, input) {

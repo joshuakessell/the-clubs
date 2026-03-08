@@ -34,19 +34,10 @@ function registerCheckoutManualRoutes(fastify) {
     /**
      * POST /v1/checkout/manual-resolve
      */
-    fastify.post('/v1/checkout/manual-resolve', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/checkout/manual-resolve', { schema: { body: ManualResolveSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
-        let body;
-        try {
-            body = ManualResolveSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         try {
             const result = await (0, checkoutService_1.resolveManualCheckout)(body);
             if (!result)
@@ -66,20 +57,11 @@ function registerCheckoutManualRoutes(fastify) {
     /**
      * POST /v1/checkout/manual-complete
      */
-    fastify.post('/v1/checkout/manual-complete', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/checkout/manual-complete', { schema: { body: ManualCompleteSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const staffId = request.staff.staffId;
-        let body;
-        try {
-            body = ManualCompleteSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+        const body = request.body;
         try {
             const result = await (0, checkoutService_1.completeManualCheckout)(body.occupancyId, body.payAtCheckout, body.paymentMethod, { staffId, staffName: request.staff.name });
             // Broadcast inventory updates

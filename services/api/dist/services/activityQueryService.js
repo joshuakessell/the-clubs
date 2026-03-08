@@ -10,6 +10,7 @@ exports.getActivityStats = getActivityStats;
  * Extracted from routes/admin/activity-log.ts. No HTTP/Fastify concepts.
  */
 const db_1 = require("../db");
+const HttpError_1 = require("../errors/HttpError");
 function parseCursor(raw) {
     if (!raw)
         return null;
@@ -66,7 +67,7 @@ async function getCustomerActivityLog(input) {
     const half = Math.floor(input.limit / 2);
     const center = await (0, db_1.query)(`SELECT id, occurred_at FROM customer_activity_events WHERE id = $1 AND customer_id = $2`, [input.centerEventId, input.customerId]);
     if (center.rows.length === 0)
-        throw { statusCode: 404, message: 'Center event not found' };
+        throw new HttpError_1.HttpError(404, 'Center event not found');
     const centerRow = center.rows[0];
     const before = await (0, db_1.query)(`SELECT id, occurred_at, action_type, action_category, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata FROM customer_activity_events WHERE customer_id = $1 AND (occurred_at > $2 OR (occurred_at = $2 AND id > $3)) ORDER BY occurred_at ASC, id ASC LIMIT $4`, [input.customerId, centerRow.occurred_at, centerRow.id, half]);
     const after = await (0, db_1.query)(`SELECT id, occurred_at, action_type, action_category, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata FROM customer_activity_events WHERE customer_id = $1 AND (occurred_at < $2 OR (occurred_at = $2 AND id < $3)) ORDER BY occurred_at DESC, id DESC LIMIT $4`, [input.customerId, centerRow.occurred_at, centerRow.id, half]);

@@ -21,7 +21,7 @@ const db_1 = require("../../db");
 function normalizeIdNumberForMatch(value) {
     if (!value)
         return null;
-    const normalized = value.replace(/[^a-z0-9]/gi, '').toUpperCase();
+    const normalized = value.replaceAll(/[^a-z0-9]/gi, '').toUpperCase();
     return normalized || null;
 }
 function extractStoredIdNumberForMatch(value) {
@@ -36,14 +36,11 @@ function extractStoredIdNumberForMatch(value) {
     }
     return trimmed;
 }
+const HttpError_1 = require("../../errors/HttpError");
 function checkBanned(row) {
     const bannedUntil = (0, utils_1.toDate)(row.banned_until);
     if (bannedUntil && bannedUntil > new Date()) {
-        throw {
-            statusCode: 403,
-            code: 'BANNED',
-            message: `Customer is banned until ${bannedUntil.toISOString()}`,
-        };
+        throw new HttpError_1.HttpError(403, `Customer is banned until ${bannedUntil.toISOString()}`, { code: 'BANNED' });
     }
 }
 function formatCustomer(row) {

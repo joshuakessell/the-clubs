@@ -11,6 +11,7 @@ exports.cancelWaitlistEntry = cancelWaitlistEntry;
 const db_1 = require("../db");
 const auditLog_1 = require("../audit/auditLog");
 const expireWaitlist_1 = require("../waitlist/expireWaitlist");
+const HttpError_1 = require("../errors/HttpError");
 // ── Service Methods ──
 async function listWaitlistEntries(status, fastifyInstance) {
     // Best-effort: expire stale entries first
@@ -42,32 +43,32 @@ async function offerUpgrade(waitlistId, roomId, staffId) {
     return (0, db_1.serializableTransaction)(async (client) => {
         const waitlistResult = await client.query(`SELECT w.*, v.ended_at as visit_ended_at, cb.ends_at as block_ends_at FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.id = $1 FOR UPDATE`, [waitlistId]);
         if (waitlistResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Waitlist entry not found' };
+            throw new HttpError_1.HttpError(404, 'Waitlist entry not found');
         const waitlist = waitlistResult.rows[0];
         if (waitlist.status !== 'ACTIVE' && waitlist.status !== 'OFFERED')
-            throw { statusCode: 409, message: `Waitlist entry must be ACTIVE or OFFERED (current status: ${waitlist.status})` };
+            throw new HttpError_1.HttpError(409, `Waitlist entry must be ACTIVE or OFFERED (current status: ${waitlist.status})`);
         if (waitlist.status === 'OFFERED' && waitlist.room_id && waitlist.room_id !== roomId)
-            throw { statusCode: 409, message: 'Waitlist entry already has an active hold for a different room' };
+            throw new HttpError_1.HttpError(409, 'Waitlist entry already has an active hold for a different room');
         if (waitlist.visit_ended_at)
-            throw { statusCode: 409, message: 'Waitlist entry is no longer valid (visit ended)' };
+            throw new HttpError_1.HttpError(409, 'Waitlist entry is no longer valid (visit ended)');
         if (new Date(waitlist.block_ends_at).getTime() <= Date.now())
-            throw { statusCode: 409, message: 'Waitlist entry is no longer valid (block ended)' };
+            throw new HttpError_1.HttpError(409, 'Waitlist entry is no longer valid (block ended)');
         const roomResult = await client.query(`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [roomId]);
         if (roomResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Room not found' };
+            throw new HttpError_1.HttpError(404, 'Room not found');
         const room = roomResult.rows[0];
         if (room.status !== 'CLEAN')
-            throw { statusCode: 409, message: `Room ${room.number} is not available (status: ${room.status})` };
+            throw new HttpError_1.HttpError(409, `Room ${room.number} is not available (status: ${room.status})`);
         if (room.assigned_to_customer_id)
-            throw { statusCode: 409, message: `Room ${room.number} is already assigned` };
+            throw new HttpError_1.HttpError(409, `Room ${room.number} is already assigned`);
         const reservationConflict = await client.query(`SELECT id FROM inventory_reservations WHERE resource_type = 'room' AND resource_id = $1 AND released_at IS NULL AND (waitlist_id IS NULL OR waitlist_id <> $2) LIMIT 1`, [roomId, waitlistId]);
         if (reservationConflict.rows.length > 0)
-            throw { statusCode: 409, message: `Room ${room.number} is reserved` };
+            throw new HttpError_1.HttpError(409, `Room ${room.number} is reserved`);
         if (String(room.type) !== String(waitlist.desired_tier))
-            throw { statusCode: 409, message: `Room ${room.number} is ${room.type}, but waitlist is for ${waitlist.desired_tier}` };
+            throw new HttpError_1.HttpError(409, `Room ${room.number} is ${room.type}, but waitlist is for ${waitlist.desired_tier}`);
         const reserved = await client.query(`SELECT w.id FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.status = 'OFFERED' AND w.room_id = $1 AND w.id <> $2 AND v.ended_at IS NULL AND cb.ends_at > NOW() LIMIT 1`, [roomId, waitlistId]);
         if (reserved.rows.length > 0)
-            throw { statusCode: 409, message: `Room ${room.number} is reserved for another offer` };
+            throw new HttpError_1.HttpError(409, `Room ${room.number} is reserved for another offer`);
         const desiredExpiryRes = await client.query(`SELECT offer_expires_at FROM waitlist WHERE id = $1 FOR UPDATE`, [waitlistId]);
         const existingExpiresAt = desiredExpiryRes.rows[0]?.offer_expires_at ?? null;
         const tenFromNow = new Date(Date.now() + 10 * 60 * 1000);
@@ -83,10 +84,10 @@ async function cancelWaitlistEntry(waitlistId, staffId, reason) {
     return (0, db_1.transaction)(async (client) => {
         const waitlistResult = await client.query(`SELECT * FROM waitlist WHERE id = $1 FOR UPDATE`, [waitlistId]);
         if (waitlistResult.rows.length === 0)
-            throw { statusCode: 404, message: 'Waitlist entry not found' };
+            throw new HttpError_1.HttpError(404, 'Waitlist entry not found');
         const waitlist = waitlistResult.rows[0];
         if (waitlist.status === 'COMPLETED' || waitlist.status === 'CANCELLED')
-            throw { statusCode: 400, message: `Cannot cancel waitlist entry with status ${waitlist.status}` };
+            throw new HttpError_1.HttpError(400, `Cannot cancel waitlist entry with status ${waitlist.status}`);
         await client.query(`UPDATE waitlist SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by_staff_id = $1, updated_at = NOW() WHERE id = $2`, [staffId, waitlistId]);
         await (0, auditLog_1.insertAuditLog)(client, { staffId, action: 'WAITLIST_CANCELLED', entityType: 'waitlist', entityId: waitlistId, oldValue: { status: waitlist.status }, newValue: { status: 'CANCELLED', reason: reason || 'Cancelled by staff' } });
         return { waitlistId, status: 'CANCELLED' };

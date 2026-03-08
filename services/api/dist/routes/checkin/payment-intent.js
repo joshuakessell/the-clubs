@@ -38,8 +38,7 @@ function registerCheckinPaymentIntentRoutes(fastify) {
                 const { payload } = await (0, paymentService_1.getSessionPayload)(result.laneSessionToBroadcast.sessionId);
                 fastify.broadcaster.broadcastSessionUpdated(payload, result.laneSessionToBroadcast.laneId);
             }
-            const { laneSessionToBroadcast, ...apiResult } = result;
-            void laneSessionToBroadcast;
+            const { laneSessionToBroadcast: _laneSessionToBroadcast, ...apiResult } = result;
             return reply.send(apiResult);
         }
         catch (error) {

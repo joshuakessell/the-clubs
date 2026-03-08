@@ -209,7 +209,7 @@ function planVisitsForCustomer(customerId, now, rooms, lockers, activeSlots, wee
         const gapHours = randomInt(12, 72);
         const start = addHours(cursor, gapHours);
         // Respect 3-starts-per-week invariant by moving to next week if needed
-        let adjustedStart = new Date(start);
+        const adjustedStart = new Date(start);
         while (weekCounts.get(getWeekKey(adjustedStart)) &&
             weekCounts.get(getWeekKey(adjustedStart)) >= 3) {
             // Move to next Monday 9am

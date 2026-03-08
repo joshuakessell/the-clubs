@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckoutKioskRoutes = registerCheckoutKioskRoutes;
-const zod_1 = require("zod");
 const db_1 = require("../../db");
 const schemas_1 = require("../../checkout/schemas");
 const clubEventLog_1 = require("../../activity/clubEventLog");
 const utils_1 = require("../../checkout/utils");
+const HttpError_1 = require("../../errors/HttpError");
 function registerCheckoutKioskRoutes(fastify) {
     /**
      * POST /v1/checkout/resolve-key - Resolve a key tag to checkout information
@@ -13,17 +13,8 @@ function registerCheckoutKioskRoutes(fastify) {
      * Public endpoint for checkout kiosk to resolve a scanned key QR code.
      * Returns customer info, scheduled checkout time, and computed late fees.
      */
-    fastify.post('/v1/checkout/resolve-key', async (request, reply) => {
-        let body;
-        try {
-            body = schemas_1.ResolveKeySchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+    fastify.post('/v1/checkout/resolve-key', { schema: { body: schemas_1.ResolveKeySchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             // 1. Find the key tag
             const tagResult = await (0, db_1.query)(`SELECT id, room_id, locker_id, tag_code, is_active
@@ -137,17 +128,8 @@ function registerCheckoutKioskRoutes(fastify) {
      * Public endpoint for checkout kiosk to submit a checkout request.
      * Triggers CHECKOUT_REQUESTED realtime event.
      */
-    fastify.post('/v1/checkout/request', async (request, reply) => {
-        let body;
-        try {
-            body = schemas_1.CreateCheckoutRequestSchema.parse(request.body);
-        }
-        catch (error) {
-            return reply.status(400).send({
-                error: 'Validation failed',
-                details: error instanceof zod_1.z.ZodError ? error.errors : 'Invalid input',
-            });
-        }
+    fastify.post('/v1/checkout/request', { schema: { body: schemas_1.CreateCheckoutRequestSchema } }, async (request, reply) => {
+        const body = request.body;
         try {
             const result = await (0, db_1.serializableTransaction)(async (client) => {
                 // 1. Verify the block exists and is active
@@ -158,17 +140,14 @@ function registerCheckoutKioskRoutes(fastify) {
            JOIN visits v ON cb.visit_id = v.id
            WHERE cb.id = $1 AND v.ended_at IS NULL`, [body.occupancyId]);
                 if (blockResult.rows.length === 0) {
-                    throw { statusCode: 404, message: 'Active occupancy not found' };
+                    throw new HttpError_1.HttpError(404, 'Active occupancy not found');
                 }
                 const block = blockResult.rows[0];
                 // 2. Check for existing active request
                 const existingRequest = await client.query(`SELECT id FROM checkout_requests
            WHERE occupancy_id = $1 AND status IN ('SUBMITTED', 'CLAIMED')`, [body.occupancyId]);
                 if (existingRequest.rows.length > 0) {
-                    throw {
-                        statusCode: 409,
-                        message: 'Checkout request already exists for this occupancy',
-                    };
+                    throw new HttpError_1.HttpError(409, 'Checkout request already exists for this occupancy');
                 }
                 // 3. Calculate lateness (same as resolve-key)
                 const now = new Date();

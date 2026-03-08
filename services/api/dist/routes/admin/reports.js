@@ -24,7 +24,7 @@ function registerAdminReportRoutes(fastify) {
     });
     fastify.get('/v1/admin/reports/revenue-trend', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         try {
-            return reply.send(await (0, reportService_1.getRevenueTrend)(parseInt(request.query.days ?? '30', 10)));
+            return reply.send(await (0, reportService_1.getRevenueTrend)(Number.parseInt(request.query.days ?? '30', 10)));
         }
         catch (e) {
             request.log.error(e, 'Failed to build revenue trend');
@@ -64,7 +64,7 @@ function registerAdminReportRoutes(fastify) {
     });
     fastify.get('/v1/admin/reports/hourly-heatmap', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         try {
-            return reply.send(await (0, reportService_1.getHourlyHeatmap)(parseInt(request.query.weeks ?? '4', 10)));
+            return reply.send(await (0, reportService_1.getHourlyHeatmap)(Number.parseInt(request.query.weeks ?? '4', 10)));
         }
         catch (e) {
             request.log.error(e, 'Failed to build hourly heatmap');
@@ -84,7 +84,7 @@ function registerAdminReportRoutes(fastify) {
     fastify.get('/v1/admin/reports/labor-cost', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         try {
             const today = new Date().toISOString().split('T')[0];
-            return reply.send(await (0, reportService_1.getLaborCost)(request.query.from ?? today, request.query.to ?? today, parseFloat(request.query.hourlyRate ?? '15')));
+            return reply.send(await (0, reportService_1.getLaborCost)(request.query.from ?? today, request.query.to ?? today, Number.parseFloat(request.query.hourlyRate ?? '15')));
         }
         catch (e) {
             request.log.error(e, 'Failed to build labor cost report');

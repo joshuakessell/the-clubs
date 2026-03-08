@@ -15,6 +15,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runSimulator = runSimulator;
 const node_crypto_1 = require("node:crypto");
+const pdf_lib_1 = require("pdf-lib");
 const shared_1 = require("@the-clubs/shared");
 const loadEnv_1 = require("../../env/loadEnv");
 const index_1 = require("../index");
@@ -454,7 +455,7 @@ async function simulateVisits(params) {
         const visitCount = clamp(samplePoisson(rng, lambda), 0, 70);
         for (let j = 0; j < visitCount && created < maxVisits; j++) {
             const offsetMs = Math.floor(rng() * Math.max(1, slotEnd.getTime() - slotStart.getTime()));
-            let start = ceilTo15Min(new Date(slotStart.getTime() + offsetMs));
+            const start = ceilTo15Min(new Date(slotStart.getTime() + offsetMs));
             if (start > to)
                 continue;
             // Scheduled checkout: always 6 hours from checkin, rounded up to nearest 15 min
@@ -959,7 +960,7 @@ async function runSimulator(options = {}) {
             return;
         }
         // If no register sessions, create temporary ones for the sim
-        let registerSessions = registerRes.rows;
+        const registerSessions = registerRes.rows;
         if (registerSessions.length === 0) {
             progress.log('⚠️  No register sessions found. Creating temporary ones...');
             for (const emp of staffRes.rows.slice(0, 3)) {
@@ -999,6 +1000,11 @@ async function runSimulator(options = {}) {
             await syncClubEvents(client);
             return visitCount;
         });
+        // Backfill fake agreement PDFs for all checkin blocks that are missing one
+        progress.log('📄 Generating placeholder agreement PDFs...');
+        const fakePdf = await generateFakeDemoPdf();
+        const pdfResult = await (0, index_1.query)(`UPDATE checkin_blocks SET agreement_pdf = $1 WHERE agreement_pdf IS NULL AND agreement_signed = true`, [fakePdf]);
+        progress.log(`📄 Backfilled ${pdfResult.rowCount ?? 0} agreement PDFs.`);
         await saveSimState(now, anchor);
         progress.log(`✅ Simulation complete: ${created} visits generated.`);
         progress.done('Simulation complete');
@@ -1114,6 +1120,40 @@ async function seedActiveWaitlist(client, p) {
        VALUES ($1, $2, $3, $4::rental_type, 'LOCKER'::rental_type, $5,
                'ACTIVE', $6, $6, NULL, NULL, NULL, 0)`, [wlId, visitId, blockId, desiredTier, lockerId, createdAt]);
     }
+}
+// ---------------------------------------------------------------------------
+// Fake Agreement PDF for demo data
+// ---------------------------------------------------------------------------
+async function generateFakeDemoPdf() {
+    const pdfDoc = await pdf_lib_1.PDFDocument.create();
+    const helv = await pdfDoc.embedFont(pdf_lib_1.StandardFonts.Helvetica);
+    const helvBold = await pdfDoc.embedFont(pdf_lib_1.StandardFonts.HelveticaBold);
+    const page = pdfDoc.addPage([612, 792]);
+    const black = (0, pdf_lib_1.rgb)(0, 0, 0);
+    const gray = (0, pdf_lib_1.rgb)(0.5, 0.5, 0.5);
+    // Letterhead
+    page.drawText('Club Dallas', { x: 54, y: 738, size: 16, font: helvBold, color: black });
+    page.drawLine({ start: { x: 54, y: 720 }, end: { x: 558, y: 720 }, thickness: 1, color: (0, pdf_lib_1.rgb)(0.75, 0.75, 0.75) });
+    // Title
+    page.drawText('Agreement', { x: 54, y: 690, size: 14, font: helvBold, color: black });
+    // Body placeholder
+    const lines = [
+        'This is a demo agreement generated for testing purposes.',
+        'The actual agreement PDF is generated during the check-in process',
+        'and contains the full legal text, customer information, and signature.',
+        '',
+        'Customer signed agreement at check-in.',
+    ];
+    let y = 660;
+    for (const line of lines) {
+        if (line)
+            page.drawText(line, { x: 54, y, size: 10, font: helv, color: gray });
+        y -= 16;
+    }
+    // Demo watermark
+    page.drawText('DEMO', { x: 220, y: 350, size: 60, font: helvBold, color: (0, pdf_lib_1.rgb)(0.9, 0.9, 0.9) });
+    const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
+    return Buffer.from(pdfBytes);
 }
 // ---------------------------------------------------------------------------
 // CLI Entrypoint

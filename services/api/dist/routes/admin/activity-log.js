@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerAdminActivityLogRoutes = registerAdminActivityLogRoutes;
+const utils_1 = require("../../checkin/utils");
 const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const activityQueryService_1 = require("../../services/activityQueryService");
@@ -28,21 +29,22 @@ function registerAdminActivityLogRoutes(fastify) {
         }
     });
     fastify.get('/v1/admin/customers/:customerId/activity-log', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        const limit = Math.min(Math.max(parseInt(request.query.limit || '41', 10) || 41, 5), 201);
+        const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '41', 10) || 41, 5), 201);
         try {
             const result = await (0, activityQueryService_1.getCustomerActivityLog)({ customerId: request.params.customerId, centerEventId: request.query.centerEventId, limit });
             return reply.send(result);
         }
         catch (error) {
-            if (error?.statusCode)
-                return reply.status(error.statusCode).send({ error: error.message });
+            const httpErr = (0, utils_1.getHttpError)(error);
+            if (httpErr)
+                return reply.status(httpErr.statusCode).send({ error: httpErr.message });
             request.log.error(error, 'Failed to fetch customer activity log');
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
     fastify.get('/v1/admin/activity-log/audit', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         try {
-            const limit = Math.min(Math.max(parseInt(request.query.limit ?? '50', 10), 1), 200);
+            const limit = Math.min(Math.max(Number.parseInt(request.query.limit ?? '50', 10), 1), 200);
             return reply.send(await (0, activityQueryService_1.listAuditLog)({ ...request.query, limit }));
         }
         catch (e) {

@@ -44,7 +44,7 @@ function loadOrCreateDeviceId(): string {
 
 
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>((set: (partial: Partial<AuthState>) => void, get: () => AuthState) => ({
   session: loadSession(),
   // Start in validating state if we have a stored session.
   // This prevents AppLayout from rendering with a stale token
@@ -52,7 +52,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isValidating: !!loadSession(),
   deviceId: loadOrCreateDeviceId(),
 
-  setSession: (session) => {
+  setSession: (session: StaffSession | null) => {
     if (session) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
     } else {
@@ -66,9 +66,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ session: null, isValidating: false });
   },
 
-  setValidating: (isValidating) => set({ isValidating }),
+  setValidating: (isValidating: boolean) => set({ isValidating }),
 
-  validateSession: async (opts) => {
+  validateSession: async (opts?: { silent?: boolean }) => {
     const { session } = get();
     if (!session?.sessionToken) return;
 
