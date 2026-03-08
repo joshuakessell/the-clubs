@@ -16,6 +16,7 @@ import {
   timeoffRoutes, shiftTradeRoutes, cashDrawerRoutes, breakRoutes,
   orderRoutes, retailRoutes, customerSpendLedgerRoutes,
 } from './routes';
+import { errorHandlerPlugin } from './plugins/errorHandler';
 import { createBroadcaster, type Broadcaster } from './realtime/broadcaster';
 import { LocalLaneSockets } from './realtime/localSockets';
 import { LocalLaneSSEClients } from './realtime/localSSE';
@@ -287,7 +288,7 @@ function startSubsystems(fastify: FastifyInstance, abortSignal: AbortSignal) {
   if (process.env.EDGE_STACK === 'true' && process.env.CLOUD_API_BASE_URL) {
     startAutoReplayOutbox({
       pool: getPool(),
-      cloudApiBase: process.env.CLOUD_API_BASE_URL.replace(/\/$/, ''),
+      cloudApiBase: process.env.CLOUD_API_BASE_URL.replaceAll(/\/$/, ''),
       kioskToken: process.env.KIOSK_TOKEN!,
       signal: abortSignal,
       log: (...args: unknown[]) => fastify.log.info(String(args.map(String).join(' '))),
@@ -363,6 +364,7 @@ async function main() {
   await setupRateLimiting(fastify);
   setupHooks(fastify);
 
+  await fastify.register(errorHandlerPlugin);
   await fastify.register(websocket);
 
   const localLaneSockets = new LocalLaneSockets();

@@ -5,7 +5,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function toNumber(value: unknown): number | undefined {
   if (value === null || value === undefined) return undefined;
   if (typeof value === 'number') return value;
-  const n = parseFloat(String(value));
+  const n = Number.parseFloat(String(value));
   return Number.isFinite(n) ? n : undefined;
 }
 

@@ -32,7 +32,7 @@ function computeLineTotal(item: LineItemInput) {
 }
 
 function buildReceiptNumber(order: OrderRow): string {
-  const date = order.created_at.toISOString().slice(0, 10).replace(/-/g, '');
+  const date = order.created_at.toISOString().slice(0, 10).replaceAll(/-/g, '');
   return `R-${date}-${order.id}`;
 }
 

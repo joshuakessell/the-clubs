@@ -78,12 +78,10 @@ export async function registerRoutes(
   // POST /v1/registers/closeout/start
   fastify.post<{ Body: z.infer<typeof CloseoutStartSchema> }>(
     '/v1/registers/closeout/start',
-    { preHandler: [requireAuth] },
+    { schema: { body: CloseoutStartSchema }, preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      let body: z.infer<typeof CloseoutStartSchema>;
-      try { body = CloseoutStartSchema.parse(request.body); }
-      catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+      const body = request.body as z.infer<typeof CloseoutStartSchema>;
 
       try {
         const result = await startCloseout(body.registerSessionId, request.staff.staffId);
@@ -102,12 +100,10 @@ export async function registerRoutes(
   // POST /v1/registers/closeout/finalize
   fastify.post<{ Body: z.infer<typeof CloseoutFinalizeSchema> }>(
     '/v1/registers/closeout/finalize',
-    { preHandler: [requireAuth] },
+    { schema: { body: CloseoutFinalizeSchema }, preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      let body: z.infer<typeof CloseoutFinalizeSchema>;
-      try { body = CloseoutFinalizeSchema.parse(request.body); }
-      catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+      const body = request.body as z.infer<typeof CloseoutFinalizeSchema>;
 
       try {
         const result = await finalizeCloseout(body.registerSessionId, body.countedCash, body.notes, request.staff.staffId);
@@ -124,10 +120,8 @@ export async function registerRoutes(
   );
 
   // POST /v1/auth/verify-pin
-  fastify.post('/v1/auth/verify-pin', async (request: FastifyRequest<{ Body: z.infer<typeof VerifyPinSchema> }>, reply: FastifyReply) => {
-    let body: z.infer<typeof VerifyPinSchema>;
-    try { body = VerifyPinSchema.parse(request.body); }
-    catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+  fastify.post('/v1/auth/verify-pin', { schema: { body: VerifyPinSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof VerifyPinSchema> }>, reply: FastifyReply) => {
+    const body = request.body;
 
     try {
       const result = await verifyEmployeePin(body.employeeId, body.pin, body.deviceId);
@@ -143,10 +137,8 @@ export async function registerRoutes(
   });
 
   // POST /v1/registers/assign
-  fastify.post('/v1/registers/assign', async (request: FastifyRequest<{ Body: z.infer<typeof AssignRegisterSchema> }>, reply: FastifyReply) => {
-    let body: z.infer<typeof AssignRegisterSchema>;
-    try { body = AssignRegisterSchema.parse(request.body); }
-    catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+  fastify.post('/v1/registers/assign', { schema: { body: AssignRegisterSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof AssignRegisterSchema> }>, reply: FastifyReply) => {
+    const body = request.body;
 
     try {
       const result = await assignRegister(body.employeeId, body.deviceId, body.registerNumber);
@@ -161,10 +153,8 @@ export async function registerRoutes(
   });
 
   // POST /v1/registers/confirm
-  fastify.post('/v1/registers/confirm', async (request: FastifyRequest<{ Body: z.infer<typeof ConfirmRegisterSchema> }>, reply: FastifyReply) => {
-    let body: z.infer<typeof ConfirmRegisterSchema>;
-    try { body = ConfirmRegisterSchema.parse(request.body); }
-    catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+  fastify.post('/v1/registers/confirm', { schema: { body: ConfirmRegisterSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof ConfirmRegisterSchema> }>, reply: FastifyReply) => {
+    const body = request.body;
 
     try {
       const result = await confirmRegister(body.employeeId, body.deviceId, body.registerNumber);
@@ -185,10 +175,8 @@ export async function registerRoutes(
   });
 
   // POST /v1/registers/heartbeat
-  fastify.post('/v1/registers/heartbeat', async (request: FastifyRequest<{ Body: z.infer<typeof HeartbeatSchema> }>, reply: FastifyReply) => {
-    let body: z.infer<typeof HeartbeatSchema>;
-    try { body = HeartbeatSchema.parse(request.body); }
-    catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+  fastify.post('/v1/registers/heartbeat', { schema: { body: HeartbeatSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof HeartbeatSchema> }>, reply: FastifyReply) => {
+    const body = request.body;
 
     try {
       const result = await heartbeat(body.deviceId);
@@ -204,10 +192,8 @@ export async function registerRoutes(
   });
 
   // POST /v1/registers/activity
-  fastify.post('/v1/registers/activity', async (request: FastifyRequest<{ Body: z.infer<typeof HeartbeatSchema> }>, reply: FastifyReply) => {
-    let body: z.infer<typeof HeartbeatSchema>;
-    try { body = HeartbeatSchema.parse(request.body); }
-    catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+  fastify.post('/v1/registers/activity', { schema: { body: HeartbeatSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof HeartbeatSchema> }>, reply: FastifyReply) => {
+    const body = request.body;
 
     try {
       const result = await recordActivity(body.deviceId);

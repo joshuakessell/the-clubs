@@ -94,6 +94,20 @@ function formatShortDate(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function statusBadgeColor(status: string): 'success' | 'error' | 'warning' {
+  if (status === 'APPROVED') return 'success';
+  if (status === 'DENIED') return 'error';
+  return 'warning';
+}
+
+function shiftStatusColor(status: string): 'success' | 'warning' | 'error' {
+  if (status === 'SCHEDULED') return 'success';
+  if (status === 'UPDATED') return 'warning';
+  return 'error';
+}
+
+const SHIFT_START_HOUR: Record<string, number> = { A: 0, B: 8, C: 16 };
+
 // ─── Component ────────────────────────────────────────────────────────────
 
 type Tab = 'grid' | 'summary' | 'timeoff';
@@ -174,8 +188,9 @@ export function ScheduleView() {
       if (s.status === 'CANCELED') continue;
       const day = s.scheduledStart.slice(0, 10);
       if (!map[day]) map[day] = {};
-      if (!map[day]![s.shiftCode]) map[day]![s.shiftCode] = [];
-      map[day]![s.shiftCode]!.push(s);
+      const dayMap = map[day];
+      if (!dayMap[s.shiftCode]) dayMap[s.shiftCode] = [];
+      dayMap[s.shiftCode].push(s);
     }
     return map;
   }, [shifts]);
@@ -229,7 +244,7 @@ export function ScheduleView() {
   }, [refetchAll]);
 
   const handleAssignShift = useCallback(async (employeeId: string, day: string, code: string) => {
-    const startHour = code === 'A' ? 0 : code === 'B' ? 8 : 16;
+    const startHour = SHIFT_START_HOUR[code] ?? 16;
     const d = new Date(day + 'T00:00:00');
     const startsAt = new Date(d);
     startsAt.setHours(startHour, 0, 0, 0);
@@ -448,7 +463,7 @@ export function ScheduleView() {
                               style={{
                                 backgroundColor: dayShifts.length > 0 ? SHIFT_COLORS[code] : 'transparent',
                                 border: `1px dashed ${dayShifts.length > 0 ? SHIFT_ACCENTS[code]! + '40' : 'var(--color-border-subtle)'}`,
-                                cursor: isAdmin ? 'pointer' : dayShifts.some(s => s.employeeId === myStaffId) ? 'pointer' : 'default',
+                                cursor: isAdmin || dayShifts.some(s => s.employeeId === myStaffId) ? 'pointer' : 'default',
                               }}
                               onClick={() => {
                                 if (isAdmin) {
@@ -471,8 +486,8 @@ export function ScheduleView() {
 
                                 return (
                                   <div key={s.id}
-                                    className={`flex flex-col gap-0.5${!isAdmin ? ' cursor-pointer rounded px-1 -mx-1 hover:bg-white/10' : ''}`}
-                                    onClick={!isAdmin ? (e) => {
+                                    className={`flex flex-col gap-0.5${isAdmin ? '' : ' cursor-pointer rounded px-1 -mx-1 hover:bg-white/10'}`}
+                                    onClick={isAdmin ? undefined : (e) => {
                                       e.stopPropagation();
                                       if (isMe) {
                                         // Own name → day-off request
@@ -480,22 +495,20 @@ export function ScheduleView() {
                                           setDayOffModal({ day, shiftId: s.id });
                                           setDayOffReason('');
                                         }
-                                      } else {
+                                      } else if (!tradeByShiftId[s.id]) {
                                         // Other employee → shift trade request
-                                        if (!tradeByShiftId[s.id]) {
-                                          setTradeModal({ targetShift: s, day });
-                                          setTradeSelectedShiftId('');
-                                        }
+                                        setTradeModal({ targetShift: s, day });
+                                        setTradeSelectedShiftId('');
                                       }
-                                    } : undefined}
+                                    }}
                                   >
                                     <div className="flex items-center gap-1">
                                       <span className="text-xs font-semibold"
                                         style={{
-                                          color: !isAdmin ? 'var(--color-accent-primary)' : 'var(--color-text-primary)',
-                                          textDecoration: !isAdmin ? 'underline' : 'none',
+                                          color: isAdmin ? 'var(--color-text-primary)' : 'var(--color-accent-primary)',
+                                          textDecoration: isAdmin ? 'none' : 'underline',
                                           textUnderlineOffset: '2px',
-                                          cursor: !isAdmin ? 'pointer' : 'default',
+                                          cursor: isAdmin ? 'default' : 'pointer',
                                         }}>
                                         {s.employeeName.split(' ')[0]}
                                       </span>
@@ -506,7 +519,7 @@ export function ScheduleView() {
                                     {/* Show time-off request badge below name */}
                                     {existingRequest && (
                                       <Badge
-                                        color={existingRequest.status === 'APPROVED' ? 'success' : existingRequest.status === 'DENIED' ? 'error' : 'warning'}
+                                        color={statusBadgeColor(existingRequest.status)}
                                         variant="light"
                                         size="sm"
                                       >
@@ -516,11 +529,11 @@ export function ScheduleView() {
                                     {/* Show trade request badge below name */}
                                     {tradeByShiftId[s.id] && (
                                       <Badge
-                                        color={tradeByShiftId[s.id]!.status === 'APPROVED' ? 'success' : tradeByShiftId[s.id]!.status === 'DENIED' ? 'error' : 'warning'}
+                                        color={statusBadgeColor(tradeByShiftId[s.id]?.status ?? 'PENDING')}
                                         variant="light"
                                         size="sm"
                                       >
-                                        {tradeByShiftId[s.id]!.status === 'PENDING' ? 'Trade Req.' : `Trade ${tradeByShiftId[s.id]!.status}`}
+                                        {tradeByShiftId[s.id]?.status === 'PENDING' ? 'Trade Req.' : `Trade ${tradeByShiftId[s.id]?.status}`}
                                       </Badge>
                                     )}
                                   </div>
@@ -575,7 +588,7 @@ export function ScheduleView() {
                               {s.notes && <span className="ml-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>— {s.notes}</span>}
                             </div>
                             <div className="flex items-center gap-2">
-                              <Badge color={s.status === 'SCHEDULED' ? 'success' : s.status === 'UPDATED' ? 'warning' : 'error'} variant="light" size="sm">
+                              <Badge color={shiftStatusColor(s.status)} variant="light" size="sm">
                                 {s.status}
                               </Badge>
                               <button type="button" className="text-xs font-semibold"
@@ -611,7 +624,7 @@ export function ScheduleView() {
             </span>
           </div>
           <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            {myShifts.length} shift{myShifts.length !== 1 ? 's' : ''} scheduled
+            {myShifts.length} shift{myShifts.length === 1 ? '' : 's'} scheduled
           </p>
         </div>
       )}
@@ -677,7 +690,7 @@ export function ScheduleView() {
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>{r.reason || '—'}</td>
                   <td className="px-4 py-3">
                     <Badge
-                      color={r.status === 'APPROVED' ? 'success' : r.status === 'DENIED' ? 'error' : 'warning'}
+                      color={statusBadgeColor(r.status)}
                       variant="light" size="sm">{r.status}</Badge>
                   </td>
                   <td className="px-4 py-3">
@@ -723,7 +736,7 @@ export function ScheduleView() {
                   <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t.targetName}'s shift</td>
                   <td className="px-4 py-3">
                     <Badge
-                      color={t.status === 'APPROVED' ? 'success' : t.status === 'DENIED' ? 'error' : 'warning'}
+                      color={statusBadgeColor(t.status)}
                       variant="light" size="sm">{t.status}</Badge>
                   </td>
                   <td className="px-4 py-3">
@@ -889,13 +902,13 @@ export function ScheduleView() {
 
 // ─── Edit Shift Modal ─────────────────────────────────────────────────────
 
-function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: {
+function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readonly<{
   shift: ShiftEntry;
   onSave: (id: string, updates: Record<string, unknown>) => void;
   onCancel: () => void;
   onDelete: (id: string) => void;
   staffList: StaffMember[];
-}) {
+}>) {
   const [employeeId, setEmployeeId] = useState(shift.employeeId);
   const [notes, setNotes] = useState(shift.notes ?? '');
   const [shiftCode, setShiftCode] = useState(shift.shiftCode);

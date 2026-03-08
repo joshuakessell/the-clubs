@@ -54,7 +54,7 @@ export function ManualEntryPanel() {
     (manualIdType === 'OTHER' && !manualIdTypeOther.trim());
 
   return (
-    <PanelShell as="form" align="top" onSubmit={(e: React.FormEvent) => void handleManualSubmit(e)}>
+    <PanelShell as="form" align="top" onSubmit={(e: React.FormEvent<HTMLFormElement>) => void handleManualSubmit(e)}>
       <PanelHeader
         title="First Time Customer"
         subtitle="Enter customer details from alternate ID."

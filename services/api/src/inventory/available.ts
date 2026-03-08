@@ -17,7 +17,7 @@ export type QueryFn = <T extends pg.QueryResultRow = pg.QueryResultRow>(
 ) => Promise<{ rows: T[] }>;
 
 function getRoomTier(roomNumber: string): RoomTier {
-  const num = parseInt(roomNumber, 10);
+  const num = Number.parseInt(roomNumber, 10);
   return getRoomTierFromNumber(num);
 }
 
@@ -91,7 +91,7 @@ export async function computeInventoryAvailable(
     rawRooms[tier]++;
   }
 
-  const lockers = parseInt(lockerResult.rows[0]?.count ?? '0', 10);
+  const lockers = Number.parseInt(lockerResult.rows[0]?.count ?? '0', 10);
 
   const waitlistDemandRows = await queryFn<{ tier: string; count: string }>(
     `SELECT w.desired_tier::text as tier, COUNT(*) as count
@@ -113,7 +113,7 @@ export async function computeInventoryAvailable(
   for (const row of waitlistDemandRows.rows) {
     const tier = row.tier as RoomTier;
     if (tier === 'SPECIAL' || tier === 'DOUBLE' || tier === 'STANDARD') {
-      waitlistDemand[tier] = parseInt(row.count, 10);
+      waitlistDemand[tier] = Number.parseInt(row.count, 10);
     }
   }
 

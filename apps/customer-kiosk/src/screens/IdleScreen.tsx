@@ -49,11 +49,11 @@ export function IdleScreen() {
 
   // Theme detection for logo variant
   const [activeTheme, setActiveTheme] = useState(() =>
-    document.documentElement.getAttribute('data-theme') ?? '',
+    document.documentElement.dataset.theme ?? '',
   );
   useEffect(() => {
     const obs = new MutationObserver(() =>
-      setActiveTheme(document.documentElement.getAttribute('data-theme') ?? ''),
+      setActiveTheme(document.documentElement.dataset.theme ?? ''),
     );
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => obs.disconnect();

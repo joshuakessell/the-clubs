@@ -257,7 +257,7 @@ export function RoomManagementView() {
                   type="text"
                   maxLength={3}
                   value={newRoomNumber}
-                  onChange={(e) => setNewRoomNumber(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  onChange={(e) => setNewRoomNumber(e.target.value.replaceAll(/\D/g, '').slice(0, 3))}
                   placeholder="101"
                   style={{
                     width: '100%',
@@ -487,7 +487,7 @@ export function RoomManagementView() {
                   type="text"
                   maxLength={3}
                   value={newLockerNumber}
-                  onChange={(e) => setNewLockerNumber(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                  onChange={(e) => setNewLockerNumber(e.target.value.replaceAll(/\D/g, '').slice(0, 3))}
                   placeholder="001"
                   style={{
                     width: '100%',

@@ -53,17 +53,9 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
    */
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof RemoveBanSchema> }>(
     '/v1/admin/late-checkout-ban-alerts/:id/remove-ban',
-    { preHandler: [requireReauthForAdmin] },
+    { schema: { body: RemoveBanSchema }, preHandler: [requireReauthForAdmin] },
     async (request, reply) => {
-      let parsed: z.infer<typeof RemoveBanSchema>;
-      try {
-        parsed = RemoveBanSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const parsed = request.body as z.infer<typeof RemoveBanSchema>;
 
       try {
         await transaction(async (client) => {
@@ -126,17 +118,9 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
    */
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof ExtendBanSchema> }>(
     '/v1/admin/late-checkout-ban-alerts/:id/extend-ban',
-    { preHandler: [requireReauthForAdmin] },
+    { schema: { body: ExtendBanSchema }, preHandler: [requireReauthForAdmin] },
     async (request, reply) => {
-      let parsed: z.infer<typeof ExtendBanSchema>;
-      try {
-        parsed = ExtendBanSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const parsed = request.body as z.infer<typeof ExtendBanSchema>;
 
       const newBannedUntil = new Date(parsed.bannedUntil);
       if (newBannedUntil <= new Date()) {

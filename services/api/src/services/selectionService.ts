@@ -28,7 +28,7 @@ export async function checkPastDueBlocked(
     `SELECT past_due_balance FROM customers WHERE id = $1`, [customerId]
   );
   if (customerResult.rows.length === 0) return { blocked: false, balance: 0 };
-  const balance = parseFloat(String(customerResult.rows[0]!.past_due_balance || 0));
+  const balance = Number.parseFloat(String(customerResult.rows[0]!.past_due_balance || 0));
   return { blocked: balance > 0 && !sessionBypassed, balance };
 }
 

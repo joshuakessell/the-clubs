@@ -14,7 +14,7 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
   });
 
   fastify.get<{ Querystring: { days?: string } }>('/v1/admin/reports/revenue-trend', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
-    try { return reply.send(await getRevenueTrend(parseInt(request.query.days ?? '30', 10))); }
+    try { return reply.send(await getRevenueTrend(Number.parseInt(request.query.days ?? '30', 10))); }
     catch (e) { request.log.error(e, 'Failed to build revenue trend'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
@@ -39,7 +39,7 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
   });
 
   fastify.get<{ Querystring: { weeks?: string } }>('/v1/admin/reports/hourly-heatmap', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
-    try { return reply.send(await getHourlyHeatmap(parseInt(request.query.weeks ?? '4', 10))); }
+    try { return reply.send(await getHourlyHeatmap(Number.parseInt(request.query.weeks ?? '4', 10))); }
     catch (e) { request.log.error(e, 'Failed to build hourly heatmap'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
@@ -53,7 +53,7 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
   fastify.get<{ Querystring: { from?: string; to?: string; hourlyRate?: string } }>('/v1/admin/reports/labor-cost', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     try {
       const today = new Date().toISOString().split('T')[0]!;
-      return reply.send(await getLaborCost(request.query.from ?? today, request.query.to ?? today, parseFloat(request.query.hourlyRate ?? '15')));
+      return reply.send(await getLaborCost(request.query.from ?? today, request.query.to ?? today, Number.parseFloat(request.query.hourlyRate ?? '15')));
     } catch (e) { request.log.error(e, 'Failed to build labor cost report'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 }

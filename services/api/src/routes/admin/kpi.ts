@@ -42,8 +42,8 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
         const totalLockersResult = await query<{ count: string }>(
           `SELECT COUNT(*) as count FROM lockers`
         );
-        const totalLockers = parseInt(totalLockersResult.rows[0]?.count || '0', 10);
-        const lockersOccupied = parseInt(lockersInUseResult.rows[0]?.count || '0', 10);
+        const totalLockers = Number.parseInt(totalLockersResult.rows[0]?.count || '0', 10);
+        const lockersOccupied = Number.parseInt(lockersInUseResult.rows[0]?.count || '0', 10);
         const lockersAvailable = totalLockers - lockersOccupied;
 
         type AdminKpi = {
@@ -58,7 +58,7 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
         };
 
         const kpi: AdminKpi = {
-          roomsOccupied: parseInt(occupiedResult.rows[0]?.count || '0', 10),
+          roomsOccupied: Number.parseInt(occupiedResult.rows[0]?.count || '0', 10),
           roomsUnoccupied: 0,
           roomsDirty: 0,
           roomsCleaning: 0,
@@ -69,7 +69,7 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
         };
 
         for (const row of roomStatusResult.rows) {
-          const count = parseInt(row.count, 10);
+          const count = Number.parseInt(row.count, 10);
           const status = row.status.toLowerCase();
           if (status === 'dirty') kpi.roomsDirty = count;
           else if (status === 'cleaning') kpi.roomsCleaning = count;

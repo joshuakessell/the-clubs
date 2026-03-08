@@ -68,7 +68,7 @@ function normalizeDesiredTiers(raw: string[] | string | null | undefined): strin
   if (Array.isArray(raw)) return raw;
   if (typeof raw !== 'string' || raw.trim() === '') return [];
   if (raw.startsWith('{')) {
-    return raw.replace(/^\{|\}$/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+    return raw.replaceAll(/^\{|\}$/g, '').split(',').map((s) => s.trim()).filter(Boolean);
   }
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -90,8 +90,8 @@ function computeSpan(
     .filter((i) => i >= 0)
     .sort((a, b) => a - b);
   if (indices.length === 0) return { startCol: 0, span: 1 };
-  const min = indices[0]!;
-  const max = indices.at(-1)!;
+  const min = indices[0] ?? 0;
+  const max = indices.at(-1) ?? 0;
   return { startCol: min, span: max - min + 1 };
 }
 

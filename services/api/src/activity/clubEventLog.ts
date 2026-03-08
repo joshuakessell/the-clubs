@@ -79,7 +79,7 @@ export function buildClubEventSearchBlob(input: InsertClubEventInput): string {
 
   return parts
     .join(' ')
-    .replace(/\s+/g, ' ')
+    .replaceAll(/\s+/g, ' ')
     .trim();
 }
 

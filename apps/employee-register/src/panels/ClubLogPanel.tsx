@@ -45,7 +45,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 };
 
 function humanizeEventType(raw: string): string {
-  return EVENT_TYPE_LABELS[raw] ?? raw.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  return EVENT_TYPE_LABELS[raw] ?? raw.replaceAll('_', ' ').replaceAll(/\b\w/g, (c) => c.toUpperCase());
 }
 
 /* ── Types ──────────────────────────────────────────── */
@@ -137,7 +137,7 @@ export function ClubLogPanel() {
       numeric: true,
       render: (it) => (
         <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
-          {it.amount != null ? formatCurrency(it.amount) : ''}
+          {it.amount == null ? '' : formatCurrency(it.amount)}
         </span>
       ),
     },
@@ -192,7 +192,7 @@ export function ClubLogPanel() {
               onChange={(e) => setDomain(e.target.value)}
             >
               {DOMAIN_OPTIONS.map((d) => (
-                <option key={d || 'ALL'} value={d}>{d ? d : 'All Domains'}</option>
+                <option key={d || 'ALL'} value={d}>{d || 'All Domains'}</option>
               ))}
             </select>
           </div>

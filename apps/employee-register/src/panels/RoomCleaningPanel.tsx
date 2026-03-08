@@ -53,7 +53,7 @@ const COLUMNS: DataTableColumn<Room>[] = [
     header: 'Floor',
     render: (r) => (
       <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-        {r.floor != null ? `Floor ${r.floor}` : '—'}
+        {r.floor == null ? '—' : `Floor ${r.floor}`}
       </span>
     ),
   },
@@ -145,6 +145,16 @@ export function RoomCleaningPanel() {
   const selectionCount = selected.size;
   const isEmpty = useMemo(() => rooms.length === 0 && !loading, [rooms, loading]);
 
+  const statusLabel = selectionCount === 0
+    ? `${rooms.length} dirty room${rooms.length === 1 ? '' : 's'}`
+    : `${selectionCount} of ${rooms.length} selected`;
+
+  const buttonLabel = cleaning
+    ? 'Cleaning…'
+    : selectionCount === 0
+      ? 'Select rooms'
+      : `Clean ${selectionCount} Room${selectionCount === 1 ? '' : 's'}`;
+
   // ── Render ──────────────────────────────────────────────────────────
 
   return (
@@ -183,7 +193,16 @@ export function RoomCleaningPanel() {
       ) : null}
 
       {/* Table */}
-      {!isEmpty ? (
+      {isEmpty ? (
+        loading ? null : (
+          <div className="flex flex-col items-center justify-center gap-2 py-12">
+            <span className="text-3xl">✨</span>
+            <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+              All rooms are clean
+            </p>
+          </div>
+        )
+      ) : (
         <>
           <div className="mt-4">
             <DataTable
@@ -213,9 +232,7 @@ export function RoomCleaningPanel() {
             }}
           >
             <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-              {selectionCount === 0
-                ? `${rooms.length} dirty room${rooms.length !== 1 ? 's' : ''}`
-                : `${selectionCount} of ${rooms.length} selected`}
+              {statusLabel}
             </span>
             <Button
               size="sm"
@@ -223,22 +240,11 @@ export function RoomCleaningPanel() {
               disabled={selectionCount === 0 || cleaning}
               onClick={() => void handleCleanSelected()}
             >
-              {cleaning
-                ? 'Cleaning…'
-                : selectionCount === 0
-                  ? 'Select rooms'
-                  : `Clean ${selectionCount} Room${selectionCount !== 1 ? 's' : ''}`}
+              {buttonLabel}
             </Button>
           </div>
         </>
-      ) : !loading ? (
-        <div className="flex flex-col items-center justify-center gap-2 py-12">
-          <span className="text-3xl">✨</span>
-          <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
-            All rooms are clean
-          </p>
-        </div>
-      ) : null}
+      )}
     </PanelShell>
   );
 }

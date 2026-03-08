@@ -44,19 +44,11 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: ResolveKeyInput }>(
     '/v1/keys/resolve',
     {
+      schema: { body: ResolveKeySchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {
-      let body: ResolveKeyInput;
-
-      try {
-        body = ResolveKeySchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as ResolveKeyInput;
 
       try {
         // Find matching key tag

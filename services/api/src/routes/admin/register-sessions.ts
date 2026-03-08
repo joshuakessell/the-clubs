@@ -118,7 +118,7 @@ export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): vo
       preHandler: [requireAuth, requireAdmin],
     },
     async (request, reply) => {
-      const registerNumber = parseInt(request.params.registerNumber, 10);
+      const registerNumber = Number.parseInt(request.params.registerNumber, 10);
 
       if (registerNumber !== 1 && registerNumber !== 2 && registerNumber !== 3) {
         return reply.status(400).send({

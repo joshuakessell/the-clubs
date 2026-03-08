@@ -94,10 +94,11 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/v1/schedule/time-off-requests',
     {
+      schema: { body: CreateTimeOffRequestSchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {
-      const body = CreateTimeOffRequestSchema.parse(request.body);
+      const body = request.body as z.infer<typeof CreateTimeOffRequestSchema>;
 
       try {
         const inserted = await transaction(async (client) => {
@@ -205,11 +206,12 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/v1/admin/time-off-requests/:requestId',
     {
+      schema: { body: AdminDecisionSchema },
       preHandler: [requireAuth, requireAdmin],
     },
     async (request, reply) => {
       const { requestId } = request.params;
-      const body = AdminDecisionSchema.parse(request.body);
+      const body = request.body as z.infer<typeof AdminDecisionSchema>;
 
       try {
         const updated = await transaction(async (client) => {

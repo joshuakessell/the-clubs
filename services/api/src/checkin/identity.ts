@@ -55,8 +55,8 @@ export function computeIdScanIdentityHash(params: {
 export function normalizeScanText(raw: string): string {
   // Normalize line endings and whitespace while preserving line breaks.
   // Honeywell scanners often emit already-decoded PDF417 text that may include \r\n or \r.
-  const lf = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = lf.split('\n').map((line) => line.replace(/[ \t]+/g, ' ').trimEnd());
+  const lf = raw.replaceAll(/\r\n/g, '\n').replaceAll(/\r/g, '\n');
+  const lines = lf.split('\n').map((line) => line.replaceAll(/[ \t]+/g, ' ').trimEnd());
   return lines.join('\n').trim();
 }
 
@@ -134,7 +134,7 @@ function extractAamvaFieldMap(raw: string): Record<string, string> {
     const cur = hits[i]!;
     const nextIdx = hits[i + 1]?.idx ?? s.length;
     const rawValue = s.slice(cur.idx + 3, nextIdx);
-    const value = rawValue.replace(/\s+/g, ' ').trim();
+    const value = rawValue.replaceAll(/\s+/g, ' ').trim();
     if (!value) continue;
 
     const existing = out[cur.code];
@@ -163,7 +163,7 @@ function inferAamvaIdType(fieldMap: Record<string, string>): 'STATE_ID' | 'DRIVE
 
 function parseAamvaDateToISO(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const digits = value.replace(/\D/g, '');
+  const digits = value.replaceAll(/\D/g, '');
   if (!/^\d{8}$/.test(digits)) return undefined;
 
   const tryYyyyMmDd = () => {
@@ -268,8 +268,8 @@ export function normalizePersonNameForMatch(input: string): string {
   // - collapse whitespace
   // - remove common suffix tokens at end: jr, sr, ii, iii, iv
   const lowered = input.toLowerCase().trim();
-  const noPunct = lowered.replace(/[^a-z0-9 ]+/g, ' ');
-  const collapsed = noPunct.replace(/\s+/g, ' ').trim();
+  const noPunct = lowered.replaceAll(/[^a-z0-9 ]+/g, ' ');
+  const collapsed = noPunct.replaceAll(/\s+/g, ' ').trim();
   if (!collapsed) return '';
   const tokens = collapsed.split(' ').filter(Boolean);
   const suffixes = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);

@@ -31,27 +31,23 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.patch<{ Params: { shiftId: string }; Body: z.infer<typeof UpdateShiftSchema> }>(
-    '/v1/admin/shifts/:shiftId', { preHandler: [requireAuth, requireAdmin] },
+    '/v1/admin/shifts/:shiftId', { schema: { body: UpdateShiftSchema }, preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      try {
-        const body = UpdateShiftSchema.parse(request.body);
-        const result = await updateShift(request.params.shiftId, body as UpdateShiftInput, request.staff!.staffId);
-        return reply.send({ id: result.id, employeeId: result.employee_id, employeeName: result.employee_name, shiftCode: result.shift_code, scheduledStart: result.starts_at.toISOString(), scheduledEnd: result.ends_at.toISOString(), status: result.status, notes: result.notes });
-      } catch (e) { request.log.error(e, 'Failed to update shift'); return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to update shift' }); }
+      const body = request.body as z.infer<typeof UpdateShiftSchema>;
+      const result = await updateShift(request.params.shiftId, body as UpdateShiftInput, request.staff!.staffId);
+      return reply.send({ id: result.id, employeeId: result.employee_id, employeeName: result.employee_name, shiftCode: result.shift_code, scheduledStart: result.starts_at.toISOString(), scheduledEnd: result.ends_at.toISOString(), status: result.status, notes: result.notes });
     }
   );
 
   fastify.post<{ Body: z.infer<typeof CreateShiftSchema> }>(
-    '/v1/admin/shifts', { preHandler: [requireAuth, requireAdmin] },
+    '/v1/admin/shifts', { schema: { body: CreateShiftSchema }, preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      try {
-        const body = CreateShiftSchema.parse(request.body);
-        if (new Date(body.starts_at) >= new Date(body.ends_at)) return reply.status(400).send({ error: 'Shift start must be before end' });
-        const result = await createShift(body as CreateShiftInput, request.staff!.staffId);
-        if (result.conflict) return reply.status(409).send({ error: 'Shift overlaps with existing shift', conflictingShiftIds: result.conflictingShiftIds });
-        const s = result.shift!;
-        return reply.status(201).send({ id: s.id, employeeId: s.employee_id, employeeName: s.employee_name, shiftCode: s.shift_code, scheduledStart: s.starts_at.toISOString(), scheduledEnd: s.ends_at.toISOString(), color: s.color, templateId: s.template_id, breakMinutes: s.break_minutes, status: s.status, notes: s.notes });
-      } catch (e) { request.log.error(e, 'Failed to create shift'); return reply.status(400).send({ error: e instanceof Error ? e.message : 'Failed to create shift' }); }
+      const body = request.body as z.infer<typeof CreateShiftSchema>;
+      if (new Date(body.starts_at) >= new Date(body.ends_at)) return reply.status(400).send({ error: 'Shift start must be before end' });
+      const result = await createShift(body as CreateShiftInput, request.staff!.staffId);
+      if (result.conflict) return reply.status(409).send({ error: 'Shift overlaps with existing shift', conflictingShiftIds: result.conflictingShiftIds });
+      const s = result.shift!;
+      return reply.status(201).send({ id: s.id, employeeId: s.employee_id, employeeName: s.employee_name, shiftCode: s.shift_code, scheduledStart: s.starts_at.toISOString(), scheduledEnd: s.ends_at.toISOString(), color: s.color, templateId: s.template_id, breakMinutes: s.break_minutes, status: s.status, notes: s.notes });
     }
   );
 
@@ -67,13 +63,11 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.post<{ Body: z.infer<typeof BulkCreateSchema> }>(
-    '/v1/admin/shifts/bulk', { preHandler: [requireAuth, requireAdmin] },
+    '/v1/admin/shifts/bulk', { schema: { body: BulkCreateSchema }, preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      try {
-        const body = BulkCreateSchema.parse(request.body);
-        const result = await bulkCreateShifts(body.shifts as CreateShiftInput[], request.staff!.staffId);
-        return reply.status(201).send(result);
-      } catch (e) { request.log.error(e, 'Failed to bulk create shifts'); return reply.status(400).send({ error: 'Bulk create failed' }); }
+      const body = request.body as z.infer<typeof BulkCreateSchema>;
+      const result = await bulkCreateShifts(body.shifts as CreateShiftInput[], request.staff!.staffId);
+      return reply.status(201).send(result);
     }
   );
 

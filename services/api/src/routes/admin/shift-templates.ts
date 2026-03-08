@@ -79,9 +79,9 @@ export function registerShiftTemplateRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof CreateTemplateSchema> }>(
     '/v1/admin/shift-templates',
-    { preHandler: [requireAuth, requireAdmin] },
+    { schema: { body: CreateTemplateSchema }, preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      const body = CreateTemplateSchema.parse(request.body);
+      const body = request.body as z.infer<typeof CreateTemplateSchema>;
 
       try {
         const result = await query<{ id: string }>(
@@ -104,9 +104,9 @@ export function registerShiftTemplateRoutes(fastify: FastifyInstance): void {
    */
   fastify.patch<{ Params: { id: string }; Body: z.infer<typeof UpdateTemplateSchema> }>(
     '/v1/admin/shift-templates/:id',
-    { preHandler: [requireAuth, requireAdmin] },
+    { schema: { body: UpdateTemplateSchema }, preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      const body = UpdateTemplateSchema.parse(request.body);
+      const body = request.body as z.infer<typeof UpdateTemplateSchema>;
       const updates: string[] = [];
       const params: unknown[] = [];
       let idx = 1;

@@ -14,7 +14,7 @@ async function loadMigrationNames(): Promise<string[]> {
   return files
     .filter((f) => f.endsWith('.sql'))
     .sort()
-    .map((f) => f.replace('.sql', ''));
+    .map((f) => f.replaceAll('.sql', ''));
 }
 
 async function getExecutedMigrations(client: pg.PoolClient): Promise<Set<string>> {

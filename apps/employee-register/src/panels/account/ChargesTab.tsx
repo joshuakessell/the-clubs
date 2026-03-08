@@ -54,7 +54,7 @@ export function ChargesTab() {
 
         const entries: LedgerEntry[] = (data.entries ?? []).map((e: Record<string, unknown>) => ({
           description: e.summary ?? e.entryType ?? 'Charge',
-          amount: typeof e.amount === 'number' ? e.amount : (typeof e.amount === 'string' ? parseInt(e.amount, 10) : 0),
+          amount: typeof e.amount === 'number' ? e.amount : (typeof e.amount === 'string' ? Number.parseInt(e.amount, 10) : 0),
         }));
 
         const total = data.totals?.net ?? entries.reduce((sum, e) => sum + e.amount, 0);

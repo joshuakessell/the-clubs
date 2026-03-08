@@ -49,11 +49,11 @@ function SelectAllCheckbox({
   checked,
   indeterminate,
   onChange,
-}: {
+}: Readonly<{
   checked: boolean;
   indeterminate: boolean;
   onChange: () => void;
-}) {
+}>) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.indeterminate = indeterminate;
@@ -115,7 +115,7 @@ export function DataTable<T>({
   bare = false,
   emptyMessage = 'No data',
   emptyIcon = '📋',
-}: DataTableProps<T>) {
+}: Readonly<DataTableProps<T>>) {
   const hasSelection = selectedKeys !== undefined && onSelectionChange !== undefined;
 
   // ── Selection handlers ────────────────────────────────────────────────

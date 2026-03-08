@@ -160,18 +160,9 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Creates a new visit and initial 6-hour block.
    */
-  fastify.post<{ Body: CreateVisitInput }>('/v1/visits', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post<{ Body: CreateVisitInput }>('/v1/visits', { schema: { body: CreateVisitSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-    let body: CreateVisitInput;
-
-    try {
-      body = CreateVisitSchema.parse(request.body);
-    } catch (error) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-      });
-    }
+    const body = request.body as CreateVisitInput;
 
     try {
       const result = await createVisit({
@@ -208,16 +199,7 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      let body: RenewVisitInput;
-
-      try {
-        body = RenewVisitSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as RenewVisitInput;
 
       try {
         const result = await renewVisit({

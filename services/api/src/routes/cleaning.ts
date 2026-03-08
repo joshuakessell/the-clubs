@@ -30,18 +30,9 @@ export async function cleaningRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.post(
     '/v1/cleaning/batch',
-    { preHandler: [requireAuth, idempotencyKey] },
+    { schema: { body: CleaningBatchSchema }, preHandler: [requireAuth, idempotencyKey] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      let body: z.infer<typeof CleaningBatchSchema>;
-
-      try {
-        body = CleaningBatchSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as z.infer<typeof CleaningBatchSchema>;
 
       if (body.override && !body.overrideReason) {
         return reply.status(400).send({ error: 'Override requires a reason' });
@@ -118,7 +109,7 @@ export async function cleaningRoutes(fastify: FastifyInstance): Promise<void> {
     ) => {
       try {
         const batches = await listCleaningBatches({
-          limit: request.query.limit ? parseInt(request.query.limit, 10) : undefined,
+          limit: request.query.limit ? Number.parseInt(request.query.limit, 10) : undefined,
           staffId: request.query.staffId,
         });
         return reply.send({ batches });

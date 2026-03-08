@@ -29,7 +29,7 @@ export interface TenderPaymentInput {
 
 function toDollars(value: number | string | null | undefined): number | undefined {
   if (value === null || value === undefined) return undefined;
-  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  const n = typeof value === 'number' ? value : Number.parseFloat(String(value));
   if (!Number.isFinite(n)) return undefined;
   return Math.round(n);
 }

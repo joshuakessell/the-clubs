@@ -70,7 +70,7 @@ export async function customerSpendLedgerRoutes(fastify: FastifyInstance): Promi
     { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      const limit = Math.min(Math.max(parseInt(request.query.limit || '200', 10) || 200, 1), 500);
+      const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '200', 10) || 200, 1), 500);
 
       try {
         const result = await transaction((client) =>

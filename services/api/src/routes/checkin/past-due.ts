@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
 import { verifyPin } from '../../auth/utils';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
@@ -113,6 +112,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
   }>(
     '/v1/checkin/lane/:laneId/past-due/bypass',
     {
+      schema: { body: PastDueBypassSchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {
@@ -121,15 +121,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
       }
 
       const { laneId } = request.params;
-      let body: { managerId: string; managerPin: string };
-      try {
-        body = PastDueBypassSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as { managerId: string; managerPin: string };
 
       const { managerId, managerPin } = body;
 

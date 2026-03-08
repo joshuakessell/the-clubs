@@ -30,7 +30,7 @@ interface StatusDotProps {
   size?: 'sm' | 'md';
 }
 
-export function StatusDot({ status, color, label, size = 'sm' }: StatusDotProps) {
+export function StatusDot({ status, color, label, size = 'sm' }: Readonly<StatusDotProps>) {
   const dotColor = color ?? STATUS_COLORS[status] ?? 'var(--color-text-muted)';
   const displayLabel = label ?? status.charAt(0) + status.slice(1).toLowerCase();
   const dotSize = size === 'sm' ? 8 : 10;

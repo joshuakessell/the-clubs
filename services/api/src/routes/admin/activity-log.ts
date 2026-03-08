@@ -21,7 +21,7 @@ export function registerAdminActivityLogRoutes(fastify: FastifyInstance): void {
   fastify.get<{ Params: { customerId: string }; Querystring: { centerEventId?: string; limit?: string } }>(
     '/v1/admin/customers/:customerId/activity-log', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      const limit = Math.min(Math.max(parseInt(request.query.limit || '41', 10) || 41, 5), 201);
+      const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '41', 10) || 41, 5), 201);
       try {
         const result = await getCustomerActivityLog({ customerId: request.params.customerId, centerEventId: request.query.centerEventId, limit });
         return reply.send(result);
@@ -36,7 +36,7 @@ export function registerAdminActivityLogRoutes(fastify: FastifyInstance): void {
     '/v1/admin/activity-log/audit', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       try {
-        const limit = Math.min(Math.max(parseInt(request.query.limit ?? '50', 10), 1), 200);
+        const limit = Math.min(Math.max(Number.parseInt(request.query.limit ?? '50', 10), 1), 200);
         return reply.send(await listAuditLog({ ...request.query, limit }));
       } catch (e) { request.log.error(e, 'Failed to fetch audit log'); return reply.status(500).send({ error: 'Internal server error' }); }
     }

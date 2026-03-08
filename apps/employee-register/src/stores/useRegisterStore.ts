@@ -90,7 +90,7 @@ interface RegisterState {
   setManualIdTypeOther: (v: string) => void;
   setManualIdNumber: (v: string) => void;
   setManualEntry: (v: boolean) => void;
-  handleManualSubmit: (e: React.FormEvent) => Promise<void>;
+  handleManualSubmit: (e: React.FormEvent<HTMLFormElement>) => Promise<void>;
 
   /* ── Flow Commands ─────────────────────────── */
   sendFlowCommand: (cmd: {
@@ -145,7 +145,7 @@ function dobDigitsToIso(digits: string): string | null {
 
 /** Derive lane ID from the URL pathname. e.g. /register-1 → register-1 */
 function deriveLaneIdFromUrl(): string {
-  const path = window.location.pathname.replace(/^\//, '').replace(/\/$/, '');
+  const path = globalThis.location.pathname.replaceAll(/^\//, '').replaceAll(/\/$/, '');
   // If path looks like "register-N", use it directly
   if (/^register-\d+$/.test(path)) return path;
   // Fallback: use VITE_LANE_ID or default
@@ -288,10 +288,26 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
           if (res.ok) {
             const data = await res.json();
             if (data.alreadyCheckedIn) {
+              const ac = data.activeCheckin as {
+                visitId?: string; assignedResourceType?: string;
+                assignedResourceNumber?: string; checkinAt?: string;
+                checkoutAt?: string; overdue?: boolean;
+              } | undefined;
+              const checkinInfo: ActiveCheckinInfo | null = ac ? {
+                visitId: ac.visitId ?? '',
+                occupancyId: ac.visitId ?? '',
+                resourceType: ac.assignedResourceType ?? 'room',
+                resourceNumber: ac.assignedResourceNumber ?? '?',
+                checkinAt: ac.checkinAt ?? null,
+                checkoutAt: ac.checkoutAt ?? null,
+                overdue: ac.overdue ?? false,
+              } : null;
               set({
                 isSubmitting: false,
+                activeCheckinInfo: checkinInfo,
                 successToastMessage: `${label} is already checked in`,
               });
+              get().selectNavTab('account');
             } else {
               set({
                 currentSessionId: data.sessionId,
@@ -720,7 +736,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const params = new URLSearchParams({ limit: '50', cursor: clubLog.nextCursor! });
+        const params = new URLSearchParams({ limit: '50', cursor: clubLog.nextCursor ?? '' });
         if (clubLog.q) params.set('search', clubLog.q);
         if (clubLog.domain) params.set('domain', clubLog.domain);
         if (clubLog.category) params.set('eventType', clubLog.category);

@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import { query, serializableTransaction, transaction } from '../../db';
 import {
   ResolveKeySchema,
@@ -30,17 +29,8 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
    * Public endpoint for checkout kiosk to resolve a scanned key QR code.
    * Returns customer info, scheduled checkout time, and computed late fees.
    */
-  fastify.post<{ Body: ResolveKeyInput }>('/v1/checkout/resolve-key', async (request, reply) => {
-    let body: ResolveKeyInput;
-
-    try {
-      body = ResolveKeySchema.parse(request.body);
-    } catch (error) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-      });
-    }
+  fastify.post<{ Body: ResolveKeyInput }>('/v1/checkout/resolve-key', { schema: { body: ResolveKeySchema } }, async (request, reply) => {
+    const body = request.body as ResolveKeyInput;
 
     try {
       // 1. Find the key tag
@@ -200,17 +190,9 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: CreateCheckoutRequestInput }>(
     '/v1/checkout/request',
+    { schema: { body: CreateCheckoutRequestSchema } },
     async (request, reply) => {
-      let body: CreateCheckoutRequestInput;
-
-      try {
-        body = CreateCheckoutRequestSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as CreateCheckoutRequestInput;
 
       try {
         const result = await serializableTransaction(async (client) => {

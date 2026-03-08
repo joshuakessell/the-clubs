@@ -27,21 +27,13 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
     Params: { laneId: string };
   }>(
     '/v1/checkin/lane/:laneId/add-retail-items',
-    { preHandler: [requireAuth] },
+    { schema: { body: AddRetailItemsSchema }, preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
       const { laneId } = request.params;
 
-      let body: z.infer<typeof AddRetailItemsSchema>;
-      try {
-        body = AddRetailItemsSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as z.infer<typeof AddRetailItemsSchema>;
 
       try {
         // Find the active lane session

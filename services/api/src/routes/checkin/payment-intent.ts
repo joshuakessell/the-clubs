@@ -49,8 +49,7 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
         fastify.broadcaster.broadcastSessionUpdated(payload, result.laneSessionToBroadcast.laneId);
       }
 
-      const { laneSessionToBroadcast, ...apiResult } = result;
-      void laneSessionToBroadcast;
+      const { laneSessionToBroadcast: _laneSessionToBroadcast, ...apiResult } = result;
       return reply.send(apiResult);
     } catch (error: unknown) {
       request.log.error(error, 'Failed to mark payment as paid');

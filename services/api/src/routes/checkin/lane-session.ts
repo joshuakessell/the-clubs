@@ -16,13 +16,11 @@ export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void
   // POST /v1/checkin/lane/:laneId/start
   fastify.post<{ Params: { laneId: string }; Body: z.infer<typeof StartLaneSessionBodySchema> }>(
     '/v1/checkin/lane/:laneId/start',
-    { preHandler: [requireAuth, idempotencyKey] },
+    { schema: { body: StartLaneSessionBodySchema }, preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
-      let body: z.infer<typeof StartLaneSessionBodySchema>;
-      try { body = StartLaneSessionBodySchema.parse(request.body); }
-      catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+      const body = request.body as z.infer<typeof StartLaneSessionBodySchema>;
 
       const { laneId } = request.params;
       const staffId = request.staff.staffId;

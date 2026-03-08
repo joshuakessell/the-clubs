@@ -42,14 +42,21 @@ function extractPaymentLineItems(raw: unknown): Array<{ description: string; amo
 }
 
 function getRoomTier(roomNumber: string): 'SPECIAL' | 'DOUBLE' | 'STANDARD' {
-  return getRoomTierFromNumber(parseInt(roomNumber, 10));
+  return getRoomTierFromNumber(Number.parseInt(roomNumber, 10));
 }
 
 function calculateUpgradeFee(fromTier: string, toTier: 'STANDARD' | 'DOUBLE' | 'SPECIAL'): number {
   const from = fromTier === 'LOCKER' || fromTier === 'GYM_LOCKER' ? 'LOCKER' : fromTier;
-  if (from === 'LOCKER') { if (toTier === 'STANDARD') return 8; if (toTier === 'DOUBLE') return 17; if (toTier === 'SPECIAL') return 27; }
-  else if (from === 'STANDARD') { if (toTier === 'DOUBLE') return 9; if (toTier === 'SPECIAL') return 19; }
-  else if (from === 'DOUBLE') { if (toTier === 'SPECIAL') return 9; }
+  if (from === 'LOCKER') {
+    if (toTier === 'STANDARD') { return 8; }
+    if (toTier === 'DOUBLE') { return 17; }
+    if (toTier === 'SPECIAL') { return 27; }
+  } else if (from === 'STANDARD') {
+    if (toTier === 'DOUBLE') { return 9; }
+    if (toTier === 'SPECIAL') { return 19; }
+  } else if (from === 'DOUBLE') {
+    if (toTier === 'SPECIAL') { return 9; }
+  }
   throw new Error(`Invalid upgrade path: ${from} -> ${toTier}`);
 }
 
@@ -128,7 +135,7 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
 
     return {
       waitlistId, paymentIntentId: paymentIntent.id,
-      upgradeFee: typeof paymentIntent.amount === 'string' ? parseFloat(paymentIntent.amount) : paymentIntent.amount,
+      upgradeFee: typeof paymentIntent.amount === 'string' ? Number.parseFloat(paymentIntent.amount) : paymentIntent.amount,
       newRoomId: roomId, newRoomNumber: newRoom.number, newRoomTier, fromTier: block.rental_type,
       originalCharges: originalLineItems || [], originalTotal: originalTotal ?? null,
       visitId: waitlist.visit_id, customerId,

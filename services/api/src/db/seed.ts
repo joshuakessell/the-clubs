@@ -1,6 +1,5 @@
 import { query, initializeDatabase, closeDatabase } from './index';
-import { RoomStatus, RoomType, AGREEMENT_LEGAL_BODY_HTML_BY_LANG } from '@the-clubs/shared';
-import { LOCKER_NUMBERS, ROOMS } from '@the-clubs/shared';
+import { RoomStatus, RoomType, AGREEMENT_LEGAL_BODY_HTML_BY_LANG, LOCKER_NUMBERS, ROOMS } from '@the-clubs/shared';
 import { hashQrToken, hashPin } from '../auth/utils';
 import { loadEnvFromDotEnvIfPresent } from '../env/loadEnv';
 
@@ -65,9 +64,9 @@ async function seed() {
        SELECT COUNT(*)::text as count FROM del`,
       [desiredRoomNumbers]
     );
-    if (parseInt(deletedRooms.rows[0]?.count || '0', 10) > 0) {
+    if (Number.parseInt(deletedRooms.rows[0]?.count || '0', 10) > 0) {
       console.log(
-        `🧹 Removed ${deletedRooms.rows[0]!.count} invalid legacy room(s) from inventory`
+        `🧹 Removed ${deletedRooms.rows[0]?.count ?? '0'} invalid legacy room(s) from inventory`
       );
     }
 
@@ -83,7 +82,7 @@ async function seed() {
         [roomSeed.number, roomSeed.type, RoomStatus.CLEAN, roomSeed.floor]
       );
 
-      const roomId = roomResult.rows[0]!.id;
+      const roomId = roomResult.rows[0]?.id ?? '';
 
       await query(
         `INSERT INTO key_tags (room_id, tag_type, tag_code, is_active)
@@ -110,9 +109,9 @@ async function seed() {
        SELECT COUNT(*)::text as count FROM del`,
       [desiredLockerNumbers]
     );
-    if (parseInt(deletedLockers.rows[0]?.count || '0', 10) > 0) {
+    if (Number.parseInt(deletedLockers.rows[0]?.count || '0', 10) > 0) {
       console.log(
-        `🧹 Removed ${deletedLockers.rows[0]!.count} invalid legacy locker(s) from inventory`
+        `🧹 Removed ${deletedLockers.rows[0]?.count ?? '0'} invalid legacy locker(s) from inventory`
       );
     }
 
@@ -126,7 +125,7 @@ async function seed() {
         [lockerSeed.number, RoomStatus.CLEAN]
       );
 
-      const lockerId = lockerResult.rows[0]!.id;
+      const lockerId = lockerResult.rows[0]?.id ?? '';
 
       await query(
         `INSERT INTO key_tags (locker_id, tag_type, tag_code, is_active)
@@ -174,7 +173,7 @@ async function seed() {
     // Check if staff already exist
     const existingStaff = await query<{ count: string }>('SELECT COUNT(*) as count FROM staff');
 
-    if (parseInt(existingStaff.rows[0]?.count || '0', 10) > 0) {
+    if (Number.parseInt(existingStaff.rows[0]?.count || '0', 10) > 0) {
       console.log('⚠️  Staff users already exist. Updating existing staff to match seed data...');
 
       // Update existing staff if they match old names or create new ones
@@ -198,9 +197,9 @@ async function seed() {
             `UPDATE staff 
              SET name = $1, role = $2, qr_token_hash = $3, pin_hash = $4, active = true
              WHERE id = $5`,
-            [staff.name, staff.role, qrTokenHash, pinHash, existing.rows[0]!.id]
+            [staff.name, staff.role, qrTokenHash, pinHash, existing.rows[0]?.id ?? '']
           );
-          console.log(`✓ Updated staff: ${existing.rows[0]!.name} → ${staff.name} (${staff.role})`);
+          console.log(`✓ Updated staff: ${existing.rows[0]?.name ?? 'Unknown'} → ${staff.name} (${staff.role})`);
         } else {
           // Create new staff if doesn't exist
           await query(
@@ -253,7 +252,7 @@ async function seed() {
         [device.deviceId]
       );
 
-      if (parseInt(existing.rows[0]?.count || '0', 10) === 0) {
+      if (Number.parseInt(existing.rows[0]?.count || '0', 10) === 0) {
         await query(
           `INSERT INTO devices (device_id, display_name, enabled)
            VALUES ($1, $2, true)`,
@@ -281,7 +280,7 @@ async function seed() {
 
     const agreementBodyText = AGREEMENT_LEGAL_BODY_HTML_BY_LANG.EN;
 
-    if (parseInt(existingAgreement.rows[0]?.count || '0', 10) > 0) {
+    if (Number.parseInt(existingAgreement.rows[0]?.count || '0', 10) > 0) {
       // Update existing active agreement if body_text is empty
       const activeAgreement = await query<{ body_text: string }>(
         'SELECT body_text FROM agreements WHERE active = true LIMIT 1'

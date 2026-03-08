@@ -49,20 +49,12 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
    * Creates a session and returns session token.
    */
   fastify.post('/v1/auth/login-pin', {
+    schema: { body: LoginPinSchema },
     config: {
       rateLimit: { max: 10, timeWindow: '1 minute' },
     },
   }, async (request, reply) => {
-    let body: LoginPinInput;
-
-    try {
-      body = LoginPinSchema.parse(request.body);
-    } catch (error) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-      });
-    }
+    const body = request.body as LoginPinInput;
 
     try {
       const isDemoMode = process.env.DEMO_MODE === 'true';
@@ -133,6 +125,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/v1/auth/change-pin',
     {
+      schema: { body: ChangePinSchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {
@@ -140,15 +133,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         return reply.status(401).send({ error: 'Unauthorized' });
       }
 
-      let body: z.infer<typeof ChangePinSchema>;
-      try {
-        body = ChangePinSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as z.infer<typeof ChangePinSchema>;
 
       if (body.newPin !== body.confirmPin) {
         return reply.status(400).send({ error: 'New PIN and confirmation do not match' });
@@ -182,7 +167,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     },
     async (request, reply) => {
       const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader?.startsWith('Bearer ')) {
         return reply.status(401).send({
           error: 'Unauthorized',
         });
@@ -244,6 +229,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/v1/auth/reauth-pin',
     {
+      schema: { body: ReauthPinSchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {
@@ -253,18 +239,10 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
         });
       }
 
-      let body: z.infer<typeof ReauthPinSchema>;
-      try {
-        body = ReauthPinSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as z.infer<typeof ReauthPinSchema>;
 
       const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader?.startsWith('Bearer ')) {
         return reply.status(401).send({
           error: 'Unauthorized',
         });
@@ -350,7 +328,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const authHeader = request.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader?.startsWith('Bearer ')) {
         return reply.status(401).send({
           error: 'Unauthorized',
         });

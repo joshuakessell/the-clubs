@@ -113,8 +113,8 @@ async function maybeCloseTimeclock(client: Queryable, employeeId: string): Promi
     [employeeId]
   );
   if (
-    parseInt(otherRegister.rows[0]?.count || '0', 10) === 0 &&
-    parseInt(otherStaff.rows[0]?.count || '0', 10) === 0
+    Number.parseInt(otherRegister.rows[0]?.count || '0', 10) === 0 &&
+    Number.parseInt(otherStaff.rows[0]?.count || '0', 10) === 0
   ) {
     await (client as any).query(
       `UPDATE timeclock_sessions SET clock_out_at = NOW() WHERE employee_id = $1 AND clock_out_at IS NULL`,

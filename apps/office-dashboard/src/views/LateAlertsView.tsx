@@ -59,7 +59,7 @@ export function LateAlertsView() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Banned Customers</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{alerts.length} active ban{alerts.length !== 1 ? 's' : ''}</p>
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{alerts.length} active ban{alerts.length === 1 ? '' : 's'}</p>
           </div>
           <Button size="sm" variant="outline" onClick={() => refetch()}>Refresh</Button>
         </div>
@@ -100,7 +100,7 @@ export function LateAlertsView() {
                       <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                         {a.membershipNumber ? `#${a.membershipNumber} · ` : ''}
                         Banned until {formatBanDate(a.bannedUntil)}
-                        <span className="font-semibold" style={{ color: 'var(--color-status-error)' }}> ({days} day{days !== 1 ? 's' : ''} remaining)</span>
+                        <span className="font-semibold" style={{ color: 'var(--color-status-error)' }}> ({days} day{days === 1 ? '' : 's'} remaining)</span>
                       </p>
                     </div>
                   </div>

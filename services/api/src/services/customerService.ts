@@ -44,8 +44,8 @@ interface CustomerProfileRow {
 // ── Utility Functions ──
 
 function normalizeScanText(raw: string): string {
-  const lf = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = lf.split('\n').map((line) => line.replace(/[ \t]+/g, ' ').trimEnd());
+  const lf = raw.replaceAll(/\r\n/g, '\n').replaceAll(/\r/g, '\n');
+  const lines = lf.split('\n').map((line) => line.replaceAll(/[ \t]+/g, ' ').trimEnd());
   return lines.join('\n').trim();
 }
 
@@ -89,8 +89,8 @@ type NormalizedNameParts = { normalizedFull: string; firstToken: string; lastTok
 
 function normalizePersonNameForMatch(input: string): string {
   const lowered = input.toLowerCase().trim();
-  const noPunct = lowered.replace(/[^a-z0-9 ]+/g, ' ');
-  const collapsed = noPunct.replace(/\s+/g, ' ').trim();
+  const noPunct = lowered.replaceAll(/[^a-z0-9 ]+/g, ' ');
+  const collapsed = noPunct.replaceAll(/\s+/g, ' ').trim();
   if (!collapsed) return '';
   const tokens = collapsed.split(' ').filter(Boolean);
   const suffixes = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
@@ -252,7 +252,7 @@ export async function getCustomerProfile(customerId: string) {
     [row.id]
   );
   const lastVisitAt = lastVisitResult.rows.length > 0 ? toIsoTimestamp(lastVisitResult.rows[0]!.starts_at) : null;
-  const pastDueBalance = typeof row.past_due_balance === 'string' ? parseInt(row.past_due_balance, 10) || 0 : (row.past_due_balance ?? 0);
+  const pastDueBalance = typeof row.past_due_balance === 'string' ? Number.parseInt(row.past_due_balance, 10) || 0 : (row.past_due_balance ?? 0);
 
   return {
     id: row.id, name: row.name, firstName, lastName,

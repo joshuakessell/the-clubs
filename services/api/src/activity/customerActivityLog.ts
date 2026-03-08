@@ -70,7 +70,7 @@ export function buildSearchBlob(input: InsertCustomerActivityEventInput): string
 
   return parts
     .join(' ')
-    .replace(/\s+/g, ' ')
+    .replaceAll(/\s+/g, ' ')
     .trim();
 }
 

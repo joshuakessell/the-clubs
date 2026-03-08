@@ -71,8 +71,10 @@ export function KioskPiP() {
 
       {/* ── Expanded modal ── */}
       {expanded && (
-        <div
+        <dialog
+          open
           onClick={() => setExpanded(false)}
+          onKeyDown={(e) => { if (e.key === 'Escape') setExpanded(false); }}
           style={{
             position: 'fixed',
             inset: 0,
@@ -83,10 +85,18 @@ export function KioskPiP() {
             justifyContent: 'center',
             cursor: 'pointer',
             backdropFilter: 'blur(4px)',
+            border: 'none',
+            width: '100vw',
+            height: '100vh',
+            maxWidth: '100vw',
+            maxHeight: '100vh',
+            padding: 0,
+            margin: 0,
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
             style={{
               borderRadius: 16,
               overflow: 'hidden',
@@ -114,7 +124,7 @@ export function KioskPiP() {
           >
             Tap anywhere to close
           </div>
-        </div>
+        </dialog>
       )}
 
       <style>{`

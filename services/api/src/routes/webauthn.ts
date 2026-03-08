@@ -76,17 +76,8 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Generate registration options for enrolling a new passkey.
    */
-  fastify.post('/v1/auth/webauthn/registration/options', async (request, reply) => {
-    let body: RegistrationOptionsInput;
-
-    try {
-      body = RegistrationOptionsSchema.parse(request.body);
-    } catch (error) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-      });
-    }
+  fastify.post('/v1/auth/webauthn/registration/options', { schema: { body: RegistrationOptionsSchema } }, async (request, reply) => {
+    const body = request.body as RegistrationOptionsInput;
 
     try {
       // Verify staff exists and is active
@@ -148,17 +139,8 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Verify and store a new passkey credential.
    */
-  fastify.post('/v1/auth/webauthn/registration/verify', async (request, reply) => {
-    let body: RegistrationVerifyInput;
-
-    try {
-      body = RegistrationVerifySchema.parse(request.body);
-    } catch (error) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-      });
-    }
+  fastify.post('/v1/auth/webauthn/registration/verify', { schema: { body: RegistrationVerifySchema } }, async (request, reply) => {
+    const body = request.body as RegistrationVerifyInput;
 
     try {
       const origin = getRpOrigin(request.headers.origin);
@@ -263,17 +245,8 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Generate authentication options for signing in with a passkey.
    */
-  fastify.post('/v1/auth/webauthn/authentication/options', async (request, reply) => {
-    let body: AuthenticationOptionsInput;
-
-    try {
-      body = AuthenticationOptionsSchema.parse(request.body);
-    } catch (error) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-      });
-    }
+  fastify.post('/v1/auth/webauthn/authentication/options', { schema: { body: AuthenticationOptionsSchema } }, async (request, reply) => {
+    const body = request.body as AuthenticationOptionsInput;
 
     try {
       // Find staff by ID or name (must be active)
@@ -342,17 +315,8 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
    *
    * Verify authentication response and issue session token.
    */
-  fastify.post('/v1/auth/webauthn/authentication/verify', async (request, reply) => {
-    let body: AuthenticationVerifyInput;
-
-    try {
-      body = AuthenticationVerifySchema.parse(request.body);
-    } catch (error) {
-      return reply.status(400).send({
-        error: 'Validation failed',
-        details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-      });
-    }
+  fastify.post('/v1/auth/webauthn/authentication/verify', { schema: { body: AuthenticationVerifySchema } }, async (request, reply) => {
+    const body = request.body as AuthenticationVerifyInput;
 
     try {
       const origin = getRpOrigin(request.headers.origin);
@@ -454,7 +418,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
       );
 
       // If not signed into register, assume cleaning station sign-in
-      if (parseInt(registerSession.rows[0]?.count || '0', 10) === 0) {
+      if (Number.parseInt(registerSession.rows[0]?.count || '0', 10) === 0) {
         const now = new Date();
         // Find nearest scheduled shift
         const shiftResult = await query<{
@@ -492,16 +456,14 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
              VALUES ($1, $2, $3, 'OFFICE_DASHBOARD', NULL)`,
             [staff.id, shiftId, now]
           );
-        } else {
+        } else if (shiftId) {
           // Update existing session to attach shift if not already attached
-          if (shiftId) {
             await query(
               `UPDATE timeclock_sessions
                SET shift_id = $1
                WHERE id = $2 AND shift_id IS NULL`,
               [shiftId, existingTimeclock.rows[0]!.id]
             );
-          }
         }
       }
 

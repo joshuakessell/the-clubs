@@ -117,12 +117,10 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // POST /v1/customers/:customerId/notes
   fastify.post<{ Params: { customerId: string }; Body: z.infer<typeof CreateCustomerNoteSchema> }>(
-    '/v1/customers/:customerId/notes', { preHandler: [requireAuth, idempotencyKey] },
+    '/v1/customers/:customerId/notes', { schema: { body: CreateCustomerNoteSchema }, preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      let parsed: z.infer<typeof CreateCustomerNoteSchema>;
-      try { parsed = CreateCustomerNoteSchema.parse(request.body); }
-      catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+      const parsed = request.body as z.infer<typeof CreateCustomerNoteSchema>;
 
       try {
         const result = await createCustomerNote(
@@ -159,11 +157,9 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   // POST /v1/customers/create-from-scan
-  fastify.post('/v1/customers/create-from-scan', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/create-from-scan', { schema: { body: CreateFromScanSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-    let body: z.infer<typeof CreateFromScanSchema>;
-    try { body = CreateFromScanSchema.parse(request.body); }
-    catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+    const body = request.body as z.infer<typeof CreateFromScanSchema>;
 
     try {
       const result = await createFromScan(body);
@@ -179,11 +175,9 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/customers/match-identity
-  fastify.post('/v1/customers/match-identity', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/match-identity', { schema: { body: MatchIdentitySchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-    let body: z.infer<typeof MatchIdentitySchema>;
-    try { body = MatchIdentitySchema.parse(request.body); }
-    catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+    const body = request.body as z.infer<typeof MatchIdentitySchema>;
 
     try {
       const result = await matchIdentity(body);
@@ -199,11 +193,9 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/customers/create-manual
-  fastify.post('/v1/customers/create-manual', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/create-manual', { schema: { body: CreateManualSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-    let body: z.infer<typeof CreateManualSchema>;
-    try { body = CreateManualSchema.parse(request.body); }
-    catch (error) { return reply.status(400).send({ error: 'Validation failed', details: error instanceof z.ZodError ? error.errors : 'Invalid input' }); }
+    const body = request.body as z.infer<typeof CreateManualSchema>;
 
     try {
       const result = await createManual(body);

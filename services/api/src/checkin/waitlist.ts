@@ -2,7 +2,7 @@ import { getRoomTierFromNumber } from '@the-clubs/shared';
 import type { PoolClient } from './types';
 
 export function getRoomTier(roomNumber: string): 'SPECIAL' | 'DOUBLE' | 'STANDARD' {
-  return getRoomTierFromNumber(parseInt(roomNumber, 10));
+  return getRoomTierFromNumber(Number.parseInt(roomNumber, 10));
 }
 
 /**
@@ -19,7 +19,7 @@ export async function computeWaitlistInfo(
      WHERE desired_tier = $1 AND status = 'ACTIVE'`,
     [desiredTier]
   );
-  const position = parseInt(waitlistCountResult.rows[0]?.count || '0', 10) + 1;
+  const position = Number.parseInt(waitlistCountResult.rows[0]?.count || '0', 10) + 1;
 
   // ETA: Find the Nth upcoming ROOM block that could free inventory for the desired tier.
   //
@@ -45,7 +45,7 @@ export async function computeWaitlistInfo(
   // Find the (position)th block of the desired tier.
   const matches: Array<{ endsAt: Date }> = [];
   for (const row of blocksResult.rows) {
-    const n = parseInt(String(row.room_number), 10);
+    const n = Number.parseInt(String(row.room_number), 10);
     if (!Number.isFinite(n)) continue;
     if (getRoomTier(String(n)) !== desiredTier) continue;
     matches.push({ endsAt: row.ends_at });

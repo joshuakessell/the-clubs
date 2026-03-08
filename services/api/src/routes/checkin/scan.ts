@@ -15,12 +15,10 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
   /**
    * POST /v1/checkin/scan — Server-side scan normalization and customer matching.
    */
-  fastify.post('/v1/checkin/scan', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/checkin/scan', { schema: { body: CheckinScanBodySchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
-    let body: z.infer<typeof CheckinScanBodySchema>;
-    try { body = CheckinScanBodySchema.parse(request.body); }
-    catch (e) { return reply.status(400).send({ error: 'Validation failed', details: e instanceof z.ZodError ? e.errors : 'Invalid input' }); }
+    const body = request.body as z.infer<typeof CheckinScanBodySchema>;
 
     try {
       const result = await processCheckinScan({
@@ -49,13 +47,11 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { laneId: string }; Body: IdScanPayload }>(
     '/v1/checkin/lane/:laneId/scan-id',
-    { preHandler: [requireAuth, idempotencyKey] },
+    { schema: { body: IdScanPayloadSchema }, preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
-      let body: IdScanPayload;
-      try { body = IdScanPayloadSchema.parse(request.body); }
-      catch (e) { return reply.status(400).send({ error: 'Validation failed', details: e instanceof z.ZodError ? e.errors : 'Invalid input' }); }
+      const body = request.body as IdScanPayload;
 
       try {
         const result = await transaction(async (client) =>

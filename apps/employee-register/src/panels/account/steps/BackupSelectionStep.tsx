@@ -95,11 +95,17 @@ export function BackupSelectionStep() {
           const isUnavailable = typeof count === 'number' && count === 0;
           const isSelected = selectedBackup === type;
 
+          const availabilityColor = isUnavailable
+            ? 'var(--color-status-error)'
+            : available <= 3 && available > 0
+              ? 'var(--color-status-warning)'
+              : 'var(--color-text-muted)';
+
           return (
             <button
               key={type}
               disabled={loading || isUnavailable}
-              onClick={() => void handleSelectBackup(type)}
+              onClick={() => { handleSelectBackup(type); }}
               className="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
               style={{
                 backgroundColor: isSelected
@@ -117,13 +123,7 @@ export function BackupSelectionStep() {
                 {label}
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-xs tabular-nums" style={{
-                  color: isUnavailable
-                    ? 'var(--color-status-error)'
-                    : available <= 3 && available > 0
-                      ? 'var(--color-status-warning)'
-                      : 'var(--color-text-muted)',
-                }}>
+                <span className="text-xs tabular-nums" style={{ color: availabilityColor }}>
                   {isUnavailable ? 'Unavailable' : `${count} available`}
                 </span>
                 {isSelected && (
@@ -141,7 +141,7 @@ export function BackupSelectionStep() {
       {selectedBackup && (
         <button
           disabled={loading}
-          onClick={() => void handleSendDisclaimer()}
+          onClick={() => { handleSendDisclaimer(); }}
           className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
           style={{
             backgroundColor: 'var(--color-accent-primary)',
@@ -155,7 +155,7 @@ export function BackupSelectionStep() {
       {/* Back button */}
       <button
         disabled={loading}
-        onClick={() => void handleBack()}
+        onClick={() => { handleBack(); }}
         className="self-start text-xs font-semibold"
         style={{ color: 'var(--color-text-muted)' }}
       >

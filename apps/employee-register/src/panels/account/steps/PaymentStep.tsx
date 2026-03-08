@@ -114,21 +114,23 @@ export function PaymentStep() {
           <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Split Payment</span>
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-status-success)' }}>Cash ($)</label>
+              <label htmlFor="split-cash" className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-status-success)' }}>Cash ($)</label>
               <input
+                id="split-cash"
                 type="number"
                 min={0}
                 max={totalDollars}
                 step={1}
                 value={splitCashDollars}
-                onChange={(e) => setSplitCashDollars(Math.round(parseFloat(e.target.value || '0')))}
+                onChange={(e) => setSplitCashDollars(Math.round(Number.parseFloat(e.target.value || '0')))}
                 className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-semibold"
                 style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               />
             </div>
             <div className="flex-1">
-              <label className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-accent-primary)' }}>Credit ($)</label>
+              <label htmlFor="split-credit" className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-accent-primary)' }}>Credit ($)</label>
               <div
+                id="split-credit"
                 className="mt-1 flex h-10 items-center rounded-lg border px-3 text-sm font-semibold"
                 style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               >
@@ -144,7 +146,7 @@ export function PaymentStep() {
           <div className="flex gap-2">
             <button
               disabled={loading || splitCreditDollars < 0}
-              onClick={() => void handleSplitPaid()}
+              onClick={() => { handleSplitPaid(); }}
               className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition-colors"
               style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', opacity: loading || splitCreditDollars < 0 ? 0.5 : 1 }}
             >
@@ -165,7 +167,7 @@ export function PaymentStep() {
           <div className="flex gap-3">
             <button
               disabled={loading}
-              onClick={() => void handleMarkPaid('CASH')}
+              onClick={() => { handleMarkPaid('CASH'); }}
               className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition-colors"
               style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)' }}
             >
@@ -173,7 +175,7 @@ export function PaymentStep() {
             </button>
             <button
               disabled={loading}
-              onClick={() => void handleMarkPaid('CREDIT')}
+              onClick={() => { handleMarkPaid('CREDIT'); }}
               className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition-colors"
               style={{ borderColor: 'var(--color-accent-primary)', color: 'var(--color-accent-primary)', backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 5%, transparent)' }}
             >
@@ -190,7 +192,7 @@ export function PaymentStep() {
           </button>
           <button
             disabled={loading}
-            onClick={() => void handleCreditFailure()}
+            onClick={() => { handleCreditFailure(); }}
             className="w-full rounded-lg border px-4 py-2 text-xs font-medium transition-colors"
             style={{ borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)', backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)' }}
           >
@@ -201,7 +203,7 @@ export function PaymentStep() {
 
       {/* Back button */}
       <button
-        onClick={() => void sendFlowCommand({ type: 'SET_STEP', payload: { step: 'RENTAL' } })}
+        onClick={() => { sendFlowCommand({ type: 'SET_STEP', payload: { step: 'RENTAL' } }); }}
         className="self-start text-xs font-semibold"
         style={{ color: 'var(--color-text-muted)' }}
       >

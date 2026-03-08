@@ -20,20 +20,13 @@ export async function waitlistRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof OfferUpgradeSchema> }>(
-    '/v1/waitlist/:id/offer', { preHandler: [requireAuth] },
+    '/v1/waitlist/:id/offer', { schema: { body: OfferUpgradeSchema }, preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      let body: z.infer<typeof OfferUpgradeSchema>;
-      try { body = OfferUpgradeSchema.parse(request.body); } catch (e) { return reply.status(400).send({ error: 'Validation failed', details: e instanceof z.ZodError ? e.errors : 'Invalid input' }); }
-      try {
-        const result = await offerUpgrade(request.params.id, body.roomId, request.staff.staffId);
-        if (fastify.broadcaster) fastify.broadcaster.broadcast({ type: 'WAITLIST_UPDATED', payload: { waitlistId: result.waitlistId, status: 'OFFERED', roomId: result.roomId, roomNumber: result.roomNumber }, timestamp: new Date().toISOString() });
-        return reply.send(result);
-      } catch (error: unknown) {
-        request.log.error(error, 'Failed to offer upgrade');
-        if (error && typeof error === 'object' && 'statusCode' in error) { const err = error as { statusCode: number; message?: string }; return reply.status(err.statusCode).send({ error: err.message || 'Failed to offer upgrade' }); }
-        return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to offer upgrade' });
-      }
+      const body = request.body as z.infer<typeof OfferUpgradeSchema>;
+      const result = await offerUpgrade(request.params.id, body.roomId, request.staff.staffId);
+      if (fastify.broadcaster) fastify.broadcaster.broadcast({ type: 'WAITLIST_UPDATED', payload: { waitlistId: result.waitlistId, status: 'OFFERED', roomId: result.roomId, roomNumber: result.roomNumber }, timestamp: new Date().toISOString() });
+      return reply.send(result);
     }
   );
 
@@ -43,20 +36,13 @@ export async function waitlistRoutes(fastify: FastifyInstance): Promise<void> {
   );
 
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof CancelWaitlistSchema> }>(
-    '/v1/waitlist/:id/cancel', { preHandler: [requireAuth] },
+    '/v1/waitlist/:id/cancel', { schema: { body: CancelWaitlistSchema }, preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      let body: z.infer<typeof CancelWaitlistSchema>;
-      try { body = CancelWaitlistSchema.parse(request.body); } catch (e) { return reply.status(400).send({ error: 'Validation failed', details: e instanceof z.ZodError ? e.errors : 'Invalid input' }); }
-      try {
-        const result = await cancelWaitlistEntry(request.params.id, request.staff.staffId, body.reason);
-        if (fastify.broadcaster) fastify.broadcaster.broadcast({ type: 'WAITLIST_UPDATED', payload: { waitlistId: result.waitlistId, status: 'CANCELLED' }, timestamp: new Date().toISOString() });
-        return reply.send(result);
-      } catch (error: unknown) {
-        request.log.error(error, 'Failed to cancel waitlist');
-        if (error && typeof error === 'object' && 'statusCode' in error) { const err = error as { statusCode: number; message?: string }; return reply.status(err.statusCode).send({ error: err.message || 'Failed to cancel waitlist' }); }
-        return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to cancel waitlist' });
-      }
+      const body = request.body as z.infer<typeof CancelWaitlistSchema>;
+      const result = await cancelWaitlistEntry(request.params.id, request.staff.staffId, body.reason);
+      if (fastify.broadcaster) fastify.broadcaster.broadcast({ type: 'WAITLIST_UPDATED', payload: { waitlistId: result.waitlistId, status: 'CANCELLED' }, timestamp: new Date().toISOString() });
+      return reply.send(result);
     }
   );
 }

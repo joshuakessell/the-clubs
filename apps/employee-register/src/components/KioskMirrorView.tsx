@@ -670,7 +670,22 @@ function AgreementMirrorScreen({ sessionId, laneId }: Readonly<{ sessionId: stri
             borderTop: '1px solid var(--color-border-default, #374151)',
           }}
         >
-          {!signed ? (
+          {signed ? (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                borderRadius: 8,
+                padding: '6px 10px',
+                backgroundColor: 'color-mix(in oklch, var(--color-status-success) 12%, transparent)',
+                border: '1px solid color-mix(in oklch, var(--color-status-success) 30%, transparent)',
+              }}
+            >
+              <span style={{ color: 'var(--color-status-success, #16a34a)', fontSize: 14 }}>✓</span>
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-status-success, #15803d)' }}>Signature Captured</span>
+            </div>
+          ) : (
             <button
               type="button"
               onClick={() => { clearCanvas(); setShowSignCanvas(true); }}
@@ -689,21 +704,6 @@ function AgreementMirrorScreen({ sessionId, laneId }: Readonly<{ sessionId: stri
             >
               ✦ Tap to Sign
             </button>
-          ) : (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                borderRadius: 8,
-                padding: '6px 10px',
-                backgroundColor: 'color-mix(in oklch, var(--color-status-success) 12%, transparent)',
-                border: '1px solid color-mix(in oklch, var(--color-status-success) 30%, transparent)',
-              }}
-            >
-              <span style={{ color: 'var(--color-status-success, #16a34a)', fontSize: 14 }}>✓</span>
-              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--color-status-success, #15803d)' }}>Signature Captured</span>
-            </div>
           )}
         </div>
       </div>
@@ -721,10 +721,10 @@ function AgreementMirrorScreen({ sessionId, laneId }: Readonly<{ sessionId: stri
             fontSize: 12,
             fontWeight: 700,
             border: 'none',
-            cursor: !signed || submitting ? 'not-allowed' : 'pointer',
+            cursor: signed && !submitting ? 'pointer' : 'not-allowed',
             backgroundColor: signed ? 'var(--color-status-success, #16a34a)' : 'color-mix(in oklch, var(--color-text-primary) 10%, transparent)',
             color: signed ? '#fff' : 'var(--color-text-muted, #6b7280)',
-            opacity: !signed || submitting ? 0.5 : 1,
+            opacity: signed && !submitting ? 1 : 0.5,
             transition: 'all 0.15s',
           }}
         >
@@ -954,7 +954,7 @@ function WaitlistDisclaimerOverlay({ sessionId, laneId }: Readonly<{ sessionId: 
         {/* Body — procedure steps */}
         <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           {WAITLIST_PROCEDURES.map((text, i) => (
-            <div key={`wl-${i}`} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+            <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <div
                 style={{
                   width: 20,

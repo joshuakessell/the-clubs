@@ -1,5 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
 import { idempotencyKey } from '../../middleware/idempotency';
 import { MarkFeePaidSchema, type MarkFeePaidInput } from '../../checkout/schemas';
@@ -62,19 +61,11 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { requestId: string }; Body: MarkFeePaidInput }>(
     '/v1/checkout/:requestId/mark-fee-paid',
-    { preHandler: [requireAuth, idempotencyKey] },
+    { schema: { body: MarkFeePaidSchema }, preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
-      let body: MarkFeePaidInput;
-      try {
-        body = MarkFeePaidSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as MarkFeePaidInput;
 
       try {
         const result = await markFeePaid(request.params.requestId, body, {

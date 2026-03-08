@@ -44,19 +44,11 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof ManualResolveSchema> }>(
     '/v1/checkout/manual-resolve',
-    { preHandler: [requireAuth, idempotencyKey] },
+    { schema: { body: ManualResolveSchema }, preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
-      let body: z.infer<typeof ManualResolveSchema>;
-      try {
-        body = ManualResolveSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as z.infer<typeof ManualResolveSchema>;
 
       try {
         const result = await resolveManualCheckout(body);
@@ -80,20 +72,12 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof ManualCompleteSchema> }>(
     '/v1/checkout/manual-complete',
-    { preHandler: [requireAuth, idempotencyKey] },
+    { schema: { body: ManualCompleteSchema }, preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const staffId = request.staff.staffId;
 
-      let body: z.infer<typeof ManualCompleteSchema>;
-      try {
-        body = ManualCompleteSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as z.infer<typeof ManualCompleteSchema>;
 
       try {
         const result = await completeManualCheckout(

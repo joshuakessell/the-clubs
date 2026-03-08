@@ -122,19 +122,11 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
    */
   fastify.post(
     '/v1/admin/products',
-    { preHandler: [requireAuth, idempotencyKey] },
+    { schema: { body: CreateProductSchema }, preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
-      let body: z.infer<typeof CreateProductSchema>;
-      try {
-        body = CreateProductSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as z.infer<typeof CreateProductSchema>;
 
       try {
         const result = await query<ProductRow>(
@@ -156,19 +148,11 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
    */
   fastify.patch<{ Params: { id: string } }>(
     '/v1/admin/products/:id',
-    { preHandler: [requireAuth] },
+    { schema: { body: UpdateProductSchema }, preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
-      let body: z.infer<typeof UpdateProductSchema>;
-      try {
-        body = UpdateProductSchema.parse(request.body);
-      } catch (error) {
-        return reply.status(400).send({
-          error: 'Validation failed',
-          details: error instanceof z.ZodError ? error.errors : 'Invalid input',
-        });
-      }
+      const body = request.body as z.infer<typeof UpdateProductSchema>;
 
       const sets: string[] = [];
       const params: unknown[] = [];

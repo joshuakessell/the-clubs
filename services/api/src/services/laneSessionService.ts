@@ -276,7 +276,7 @@ export async function startLaneSession(
       );
       if (customerInfo.rows.length > 0) {
         const cust = customerInfo.rows[0]!;
-        pastDueBalance = parseFloat(String(cust.past_due_balance || 0));
+        pastDueBalance = Number.parseFloat(String(cust.past_due_balance || 0));
         pastDueBlocked = pastDueBalance > 0 && !(session.past_due_bypassed || false);
         const mCardType = cust.membership_card_type as string | undefined;
         const mValidUntil = toDate(cust.membership_valid_until);

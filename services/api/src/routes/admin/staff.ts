@@ -12,18 +12,18 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
     catch (e) { request.log.error(e, 'Failed to fetch staff list'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
-  fastify.post<{ Body: z.infer<typeof CreateStaffSchema> }>('/v1/admin/staff', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
+  fastify.post<{ Body: z.infer<typeof CreateStaffSchema> }>('/v1/admin/staff', { schema: { body: CreateStaffSchema }, preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-    let body: z.infer<typeof CreateStaffSchema>; try { body = CreateStaffSchema.parse(request.body); } catch (e) { return reply.status(400).send({ error: 'Validation failed', details: e instanceof z.ZodError ? e.errors : 'Invalid input' }); }
+    const body = request.body;
     try { return reply.status(201).send(await createStaffMember(body as CreateStaffInput, request.staff.staffId)); }
     catch (e) { request.log.error(e, 'Failed to create staff'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
-  fastify.patch<{ Params: { id: string }; Body: z.infer<typeof UpdateStaffSchema> }>('/v1/admin/staff/:id', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
+  fastify.patch<{ Params: { id: string }; Body: z.infer<typeof UpdateStaffSchema> }>('/v1/admin/staff/:id', { schema: { body: UpdateStaffSchema }, preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-    let body: z.infer<typeof UpdateStaffSchema>; try { body = UpdateStaffSchema.parse(request.body); } catch (e) { return reply.status(400).send({ error: 'Validation failed', details: e instanceof z.ZodError ? e.errors : 'Invalid input' }); }
+    const body = request.body;
     try { return reply.send(await updateStaffMember(request.params.id, body as UpdateStaffInput, request.staff.staffId)); }
-    catch (e: any) { if (e?.statusCode) return reply.status(e.statusCode).send({ error: e.message }); request.log.error(e, 'Failed to update staff'); return reply.status(500).send({ error: 'Internal server error' }); }
+    catch (e: any) { if (e?.statusCode) { return reply.status(e.statusCode).send({ error: e.message }); } request.log.error(e, 'Failed to update staff'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
   fastify.post<{ Params: { id: string } }>('/v1/admin/staff/:id/pin-reset', { 
@@ -39,6 +39,6 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
   }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     try { return reply.send(await resetStaffPin(request.params.id, request.staff.staffId)); }
-    catch (e: any) { if (e?.statusCode) return reply.status(e.statusCode).send({ error: e.message }); request.log.error(e, 'Failed to reset PIN'); return reply.status(500).send({ error: 'Internal server error' }); }
+    catch (e: any) { if (e?.statusCode) { return reply.status(e.statusCode).send({ error: e.message }); } request.log.error(e, 'Failed to reset PIN'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 }

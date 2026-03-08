@@ -17,7 +17,7 @@ import type { IdScanPayload } from '@the-clubs/shared';
 
 function normalizeIdNumberForMatch(value: string | null | undefined): string | null {
   if (!value) return null;
-  const normalized = value.replace(/[^a-z0-9]/gi, '').toUpperCase();
+  const normalized = value.replaceAll(/[^a-z0-9]/gi, '').toUpperCase();
   return normalized || null;
 }
 
@@ -394,7 +394,7 @@ async function fetchCustomerInfoForResponse(
   }
 
   const customer = customerInfo.rows[0]!;
-  const pastDueBalance = parseFloat(String(customer.past_due_balance || 0));
+  const pastDueBalance = Number.parseFloat(String(customer.past_due_balance || 0));
   const pastDueBlocked = pastDueBalance > 0 && !(session.past_due_bypassed || false);
   const customerPrimaryLanguage = customer.primary_language as 'EN' | 'ES' | undefined;
 

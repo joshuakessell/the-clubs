@@ -113,7 +113,7 @@ export interface ProcessCheckinScanInput {
 
 function normalizeIdNumberForMatch(value: string | null | undefined): string | null {
   if (!value) return null;
-  const normalized = value.replace(/[^a-z0-9]/gi, '').toUpperCase();
+  const normalized = value.replaceAll(/[^a-z0-9]/gi, '').toUpperCase();
   return normalized || null;
 }
 

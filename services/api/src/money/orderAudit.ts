@@ -113,7 +113,7 @@ function normalizeKind(value: unknown): OrderLineItemKind | undefined {
 }
 
 export function buildReceiptNumber(order: { id: string; created_at: Date }): string {
-  const date = order.created_at.toISOString().slice(0, 10).replace(/-/g, '');
+  const date = order.created_at.toISOString().slice(0, 10).replaceAll(/-/g, '');
   return `R-${date}-${order.id}`;
 }
 

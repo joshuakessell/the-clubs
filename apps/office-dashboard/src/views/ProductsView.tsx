@@ -28,14 +28,14 @@ export function ProductsView() {
 
   /** Auto-generate SKU from name: lowercase, dashes between words */
   const autoSku = (name: string) =>
-    name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    name.trim().toLowerCase().replaceAll(/\s+/g, '-').replaceAll(/[^a-z0-9-]/g, '');
 
   const handleCreate = useCallback(async () => {
     if (!newName || !newPrice) return;
     try {
       await dashboardMutate('/api/v1/admin/products', 'POST', {
         name: newName,
-        price: parseFloat(newPrice),
+        price: Number.parseFloat(newPrice),
         sku: autoSku(newName),
         category: 'RETAIL',
       });
