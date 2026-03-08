@@ -9,7 +9,7 @@ import { query } from '../../db';
 // ---------------------------------------------------------------------------
 const CreateProductSchema = z.object({
   name: z.string().min(1).max(200),
-  price: z.number().nonnegative(),
+  price: z.number().int().nonnegative(),
   sku: z.string().max(100).optional().nullable(),
   category: z.string().max(50).optional().default('RETAIL'),
   sortOrder: z.number().int().optional().default(0),
@@ -17,7 +17,7 @@ const CreateProductSchema = z.object({
 
 const UpdateProductSchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  price: z.number().nonnegative().optional(),
+  price: z.number().int().nonnegative().optional(),
   sku: z.string().max(100).optional().nullable(),
   category: z.string().max(50).optional(),
   sortOrder: z.number().int().optional(),
@@ -57,7 +57,7 @@ function formatRow(r: ProductRow) {
     id: r.id,
     sku: r.sku,
     name: r.name,
-    price: toNumber(r.price) / 100,
+    price: toNumber(r.price),
     category: r.category,
     isActive: r.is_active,
     sortOrder: toNumber(r.sort_order),
@@ -141,7 +141,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
           `INSERT INTO products (name, price, sku, category, sort_order)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING *`,
-          [body.name, Math.round(body.price * 100), body.sku ?? null, body.category, body.sortOrder]
+          [body.name, body.price, body.sku ?? null, body.category, body.sortOrder]
         );
         return reply.status(201).send({ product: formatRow(result.rows[0]!) });
       } catch (error) {
@@ -180,7 +180,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       }
       if (body.price !== undefined) {
         sets.push(`price = $${idx++}`);
-        params.push(Math.round(body.price * 100));
+        params.push(body.price);
       }
       if (body.sku !== undefined) {
         sets.push(`sku = $${idx++}`);
