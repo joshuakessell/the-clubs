@@ -211,7 +211,7 @@ describe('Manual Checkout APIs', () => {
       [testCustomerId, testBlockId]
     );
 
-    fastify = Fastify();
+    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     fastify.decorate('broadcaster', broadcaster);
     await fastify.register(checkoutRoutes);
