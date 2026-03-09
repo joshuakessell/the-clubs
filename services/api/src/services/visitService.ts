@@ -45,18 +45,18 @@ interface CheckinBlockForCalc {
 function formatVisit(visit: {
   id: string;
   customerId: string;
-  startedAt: string;
-  endedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }, overrideUpdatedAt?: Date) {
   return {
     id: visit.id,
     customerId: visit.customerId,
-    startedAt: visit.startedAt,
-    endedAt: visit.endedAt,
-    createdAt: visit.createdAt,
-    updatedAt: overrideUpdatedAt?.toISOString() ?? visit.updatedAt,
+    startedAt: visit.startedAt.toISOString(),
+    endedAt: visit.endedAt?.toISOString() ?? null,
+    createdAt: visit.createdAt.toISOString(),
+    updatedAt: overrideUpdatedAt?.toISOString() ?? visit.updatedAt.toISOString(),
   };
 }
 
@@ -64,29 +64,29 @@ function formatBlock(block: {
   id: string;
   visitId: string;
   blockType: string;
-  startsAt: string;
-  endsAt: string;
+  startsAt: Date;
+  endsAt: Date;
   rentalType: string;
   roomId: string | null;
   lockerId: string | null;
   sessionId: string | null;
   agreementSigned: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
 }) {
   return {
     id: block.id,
     visitId: block.visitId,
     blockType: block.blockType,
-    startsAt: block.startsAt,
-    endsAt: block.endsAt,
+    startsAt: block.startsAt.toISOString(),
+    endsAt: block.endsAt.toISOString(),
     rentalType: block.rentalType,
     roomId: block.roomId,
     lockerId: block.lockerId,
     sessionId: block.sessionId,
     agreementSigned: block.agreementSigned,
-    createdAt: block.createdAt,
-    updatedAt: block.updatedAt,
+    createdAt: block.createdAt.toISOString(),
+    updatedAt: block.updatedAt.toISOString(),
   };
 }
 
@@ -169,7 +169,7 @@ export async function createVisit(input: CreateVisitInput) {
       .insert(visits)
       .values({
         customerId: input.customerId,
-        startedAt: now.toISOString(),
+        startedAt: now,
       })
       .returning();
 
@@ -181,8 +181,8 @@ export async function createVisit(input: CreateVisitInput) {
       .values({
         visitId: visit.id,
         blockType: 'INITIAL',
-        startsAt: now.toISOString(),
-        endsAt: initialBlockEndsAt.toISOString(),
+        startsAt: now,
+        endsAt: initialBlockEndsAt,
         rentalType: input.rentalType,
         roomId: assignedRoomId,
         lockerId: assignedLockerId,
@@ -302,8 +302,8 @@ export async function renewVisit(input: RenewVisitInput) {
       .values({
         visitId: visit.id,
         blockType: requestedRenewalHours === 2 ? 'FINAL2H' : 'RENEWAL',
-        startsAt: renewalStartsAt.toISOString(),
-        endsAt: renewalEndsAt.toISOString(),
+        startsAt: renewalStartsAt,
+        endsAt: renewalEndsAt,
         rentalType: input.rentalType,
         roomId: assignedRoomId,
         lockerId: assignedLockerId,
@@ -416,8 +416,8 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       .values({
         visitId: visit.id,
         blockType: 'FINAL2H',
-        startsAt: extensionStartsAt.toISOString(),
-        endsAt: extensionEndsAt.toISOString(),
+        startsAt: extensionStartsAt,
+        endsAt: extensionEndsAt,
         rentalType: input.rentalType,
         roomId: assignedRoomId,
         lockerId: assignedLockerId,

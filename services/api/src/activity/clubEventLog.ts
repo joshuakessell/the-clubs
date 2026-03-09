@@ -173,7 +173,7 @@ export async function insertClubEventDrizzle(
   tx: DrizzleTx,
   input: InsertClubEventInput,
 ): Promise<{ id: string; deduped: boolean }> {
-  const occurredAt = (input.occurredAt ?? new Date()).toISOString();
+  const occurredAt = input.occurredAt ?? new Date();
   const metadata = input.metadata ?? {};
   const searchBlob = buildClubEventSearchBlob(input);
 

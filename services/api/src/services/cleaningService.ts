@@ -267,9 +267,9 @@ export async function listCleaningBatches(opts?: {
   return rows.map((row) => ({
     id: row.id,
     staffId: row.staffId,
-    startedAt: new Date(row.startedAt),
-    completedAt: row.completedAt ? new Date(row.completedAt) : null,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt ?? null,
     roomCount: row.roomCount,
-    createdAt: new Date(row.createdAt),
+    createdAt: row.createdAt,
   }));
 }

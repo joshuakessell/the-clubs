@@ -53,15 +53,15 @@ export async function computeCompliance(
         eq(timeclockSessions.employeeId, employeeId),
         or(
           and(
-            lte(timeclockSessions.clockInAt, shift.ends_at.toISOString()),
+            lte(timeclockSessions.clockInAt, shift.ends_at),
             or(
               isNull(timeclockSessions.clockOutAt),
-              gte(timeclockSessions.clockOutAt, shift.starts_at.toISOString())
+              gte(timeclockSessions.clockOutAt, shift.starts_at)
             )
           ),
           and(
-            gte(timeclockSessions.clockInAt, shift.starts_at.toISOString()),
-            lte(timeclockSessions.clockInAt, shift.ends_at.toISOString())
+            gte(timeclockSessions.clockInAt, shift.starts_at),
+            lte(timeclockSessions.clockInAt, shift.ends_at)
           )
         )
       )
@@ -103,8 +103,8 @@ export async function computeCompliance(
       const overlap = calculateOverlap(
         shift.starts_at,
         shift.ends_at,
-        new Date(session.clockInAt),
-        session.clockOutAt ? new Date(session.clockOutAt) : new Date()
+        session.clockInAt,
+        session.clockOutAt ?? new Date()
       );
       if (overlap > maxOverlap) {
         maxOverlap = overlap;
@@ -129,8 +129,8 @@ export async function computeCompliance(
     };
   }
 
-  const clockInDate = new Date(matchingSession.clockInAt);
-  const clockOutDate = matchingSession.clockOutAt ? new Date(matchingSession.clockOutAt) : null;
+  const clockInDate = matchingSession.clockInAt;
+  const clockOutDate = matchingSession.clockOutAt ?? null;
 
   // Calculate worked minutes within shift window
   const workedMinutesInWindow = calculateOverlap(

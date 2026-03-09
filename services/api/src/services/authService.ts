@@ -63,7 +63,7 @@ export async function loginWithPin(
       deviceId,
       deviceType: deviceType || 'tablet',
       sessionToken: tokenHash,
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: expiresAt,
     }).returning({ id: staffSessions.id });
 
     if (!session) throw new Error("Failed to create session");
@@ -109,7 +109,7 @@ export async function loginWithPin(
           await tx.insert(timeclockSessions).values({
             employeeId: staffRow.id,
             shiftId,
-            clockInAt: now.toISOString(),
+            clockInAt: now,
             source: 'OFFICE_DASHBOARD',
           });
         } else if (shiftId && !activeTimeclock.shiftId) {
@@ -162,7 +162,7 @@ export async function changeStaffPin(
     const newPinHash = await hashPin(newPin);
 
     await tx.update(staff)
-      .set({ pinHash: newPinHash, forcePinChange: false, updatedAt: new Date().toISOString() })
+      .set({ pinHash: newPinHash, forcePinChange: false, updatedAt: new Date() })
       .where(eq(staff.id, staffId));
       
     await insertAuditLogDrizzle(tx, {
@@ -189,7 +189,7 @@ export async function logoutSession(tokenHash: string): Promise<void> {
     if (!session) return;
     
     await tx.update(staffSessions)
-      .set({ revokedAt: new Date().toISOString() })
+      .set({ revokedAt: new Date() })
       .where(eq(staffSessions.id, session.id));
       
     await insertAuditLogDrizzle(tx, {
@@ -211,13 +211,13 @@ export async function logoutSession(tokenHash: string): Promise<void> {
         where: (s, { eq, and, isNull, gt }) => and(
           eq(s.staffId, session.staffId),
           isNull(s.revokedAt),
-          gt(s.expiresAt, new Date().toISOString())
+          gt(s.expiresAt, new Date())
         )
       });
       
       if (!otherRegister && !otherStaffSession) {
         await tx.update(timeclockSessions)
-          .set({ clockOutAt: new Date().toISOString() })
+          .set({ clockOutAt: new Date() })
           .where(and(eq(timeclockSessions.employeeId, session.staffId), isNull(timeclockSessions.clockOutAt)));
       }
     } catch { /* best-effort auto-clock-out; never block logout */ }
@@ -258,7 +258,7 @@ export async function reauthWithPin(
     const reauthOkUntil = new Date(Date.now() + 5 * 60 * 1000);
     
     await tx.update(staffSessions)
-      .set({ reauthOkUntil: reauthOkUntil.toISOString() })
+      .set({ reauthOkUntil: reauthOkUntil })
       .where(eq(staffSessions.id, session.id));
       
     await insertAuditLogDrizzle(tx, {
@@ -318,7 +318,7 @@ export async function verifyReauthWebauthn(
         eq(c.staffId, staffId),
         eq(c.deviceId, deviceId),
         eq(c.type, 'reauth'),
-        gt(c.expiresAt, new Date().toISOString())
+        gt(c.expiresAt, new Date())
       ),
       orderBy: (c, { desc }) => [desc(c.createdAt)]
     });
@@ -359,7 +359,7 @@ export async function verifyReauthWebauthn(
     const reauthOkUntil = new Date(Date.now() + 5 * 60 * 1000);
     
     await tx.update(staffSessions)
-      .set({ reauthOkUntil: reauthOkUntil.toISOString() })
+      .set({ reauthOkUntil: reauthOkUntil })
       .where(eq(staffSessions.id, session.id));
 
     await insertAuditLogDrizzle(tx, {
