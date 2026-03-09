@@ -126,3 +126,66 @@ export async function insertCustomerActivityEvent(
   return { id: existing.rows[0]!.id, deduped: true };
 }
 
+// ── Drizzle-native version ──
+
+import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { customerActivityEvents } from '../db/schema';
+import { eq, sql } from 'drizzle-orm';
+
+type DrizzleTx = PgTransaction<any, any, any>;
+
+/**
+ * Drizzle-native version of insertCustomerActivityEvent.
+ * Accepts a Drizzle transaction instead of pg.PoolClient.
+ */
+export async function insertCustomerActivityEventDrizzle(
+  tx: DrizzleTx,
+  input: InsertCustomerActivityEventInput
+): Promise<{ id: string; deduped: boolean }> {
+  const occurredAt = input.occurredAt ?? new Date();
+  const metadata = input.metadata ?? {};
+  const searchBlob = buildSearchBlob(input);
+
+  const result = await tx
+    .insert(customerActivityEvents)
+    .values({
+      occurredAt,
+      customerId: input.customerId,
+      actionType: input.actionType,
+      actionCategory: input.actionCategory,
+      sourceApp: input.sourceApp,
+      actorType: input.actorType,
+      actorStaffId: input.actorStaffId ?? null,
+      actorStaffName: input.actorStaffName ?? null,
+      summary: input.summary,
+      metadata,
+      searchBlob,
+      dedupeKey: input.dedupeKey ?? null,
+    })
+    .onConflictDoNothing({
+      target: customerActivityEvents.dedupeKey,
+      where: sql`dedupe_key IS NOT NULL`,
+    })
+    .returning({ id: customerActivityEvents.id });
+
+  if (result.length > 0) {
+    return { id: result[0]!.id, deduped: false };
+  }
+
+  if (!input.dedupeKey) {
+    throw new Error('Failed to insert customer activity event');
+  }
+
+  const existing = await tx
+    .select({ id: customerActivityEvents.id })
+    .from(customerActivityEvents)
+    .where(eq(customerActivityEvents.dedupeKey, input.dedupeKey))
+    .limit(1);
+
+  if (existing.length === 0) {
+    throw new Error('Customer activity event insert deduped but row not found');
+  }
+  return { id: existing[0]!.id, deduped: true };
+}
+
+
