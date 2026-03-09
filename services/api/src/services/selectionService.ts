@@ -11,7 +11,6 @@ import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import type { LaneSessionRow } from '../checkin/types';
-import { LANE_SESSION_COLS } from '../checkin/types';
 import { HttpError } from '../errors/HttpError';
 
 // ── Shared helpers ──
