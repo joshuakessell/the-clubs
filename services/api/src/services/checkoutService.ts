@@ -225,7 +225,7 @@ export async function resolveManualCheckout(input: {
 
   if (!row) return null;
 
-  const scheduledCheckoutAt = row.scheduled_checkout_at instanceof Date ? row.scheduled_checkout_at : new Date(row.scheduled_checkout_at);
+  const scheduledCheckoutAt = row.scheduled_checkout_at;
   const lateMinutes = Math.max(0, Math.floor((Date.now() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
   const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
   const resourceType = row.locker_id ? 'LOCKER' as const : 'ROOM' as const;
@@ -275,7 +275,7 @@ export async function completeManualCheckout(
     if (occRes.rows.length === 0) throw new HttpError(404, 'Occupancy not found');
     const row = occRes.rows[0]!;
 
-    const scheduledCheckoutAt = row.scheduled_checkout_at instanceof Date ? row.scheduled_checkout_at : new Date(row.scheduled_checkout_at);
+    const scheduledCheckoutAt = row.scheduled_checkout_at;
     const resourceType = row.locker_id ? 'LOCKER' as const : 'ROOM' as const;
     const number = resourceType === 'LOCKER' ? row.locker_number : row.room_number;
 

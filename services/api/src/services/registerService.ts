@@ -293,7 +293,7 @@ export async function assignRegister(employeeId: string, deviceId: string, reque
     );
     if (existingDevice.rows.length > 0) {
       const session = existingDevice.rows[0]!;
-      const ageMinutes = session.last_activity_at instanceof Date
+      const ageMinutes = session.last_activity_at
         ? (Date.now() - session.last_activity_at.getTime()) / 60000 : 0;
       if (ageMinutes >= 2) {
         await client.query(`UPDATE register_sessions SET signed_out_at = NOW() WHERE id = $1 AND signed_out_at IS NULL`, [session.id]);
@@ -359,7 +359,7 @@ export async function confirmRegister(
     );
     if (existingDevice.rows.length > 0) {
       const session = existingDevice.rows[0]!;
-      const ageMinutes = session.last_activity_at instanceof Date
+      const ageMinutes = session.last_activity_at
         ? (Date.now() - session.last_activity_at.getTime()) / 60000 : 0;
       if (ageMinutes >= 2) {
         await client.query(`UPDATE register_sessions SET signed_out_at = NOW() WHERE id = $1 AND signed_out_at IS NULL`, [session.id]);
