@@ -72,7 +72,7 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
 
         // Broadcast full session update
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId),
+          buildFullSessionUpdatedPayload(result.sessionId),
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
 

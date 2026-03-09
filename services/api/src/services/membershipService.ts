@@ -162,5 +162,5 @@ export async function completeMembershipPurchase(
 }
 
 export async function buildSessionPayload(sessionId: string) {
-  return transaction((client) => buildFullSessionUpdatedPayload(client, sessionId));
+  return buildFullSessionUpdatedPayload(sessionId);
 }

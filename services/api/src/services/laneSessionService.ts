@@ -352,7 +352,7 @@ export async function logCheckinStarted(
  * Build the full session snapshot payload for broadcasting.
  */
 export async function getSessionSnapshot(sessionId: string) {
-  return transaction((client) => buildFullSessionUpdatedPayload(client, sessionId));
+  return buildFullSessionUpdatedPayload(sessionId);
 }
 
 /**
@@ -371,7 +371,7 @@ export async function getLaneSessionSnapshot(laneId: string) {
     )).rows[0];
 
     if (!completedRow) return { session: null as null | unknown };
-    const { payload } = await buildFullSessionUpdatedPayload(client, completedRow.id);
+    const { payload } = await buildFullSessionUpdatedPayload(completedRow.id);
     return { session: payload };
   });
 }

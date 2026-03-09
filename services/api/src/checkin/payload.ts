@@ -1,8 +1,10 @@
 import type { CustomerIdType, SessionUpdatedPayload } from '@the-clubs/shared';
 import { getIdScanIssue } from './identity';
-import type { CustomerRow, LaneSessionRow, PaymentIntentRow, PoolClient } from './types';
+import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from './types';
 import { toDate, toNumber } from './utils';
 import { calculatePriceQuote, type RentalType } from '../pricing/engine';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -114,33 +116,35 @@ export function getAllowedRentals(membershipNumber: string | null | undefined): 
   return allowed;
 }
 
+/**
+ * Build the full session snapshot payload for broadcasting.
+ *
+ * Standalone — uses db.execute(sql) internally (no PoolClient needed).
+ */
 export async function buildFullSessionUpdatedPayload(
-  client: PoolClient,
   sessionId: string
 ): Promise<{ laneId: string; payload: SessionUpdatedPayload }> {
-  const sessionResult = await client.query<LaneSessionRow>(
-    `SELECT * FROM lane_sessions WHERE id = $1 LIMIT 1`,
-    [sessionId]
+  const sessionResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT * FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
   );
 
   if (sessionResult.rows.length === 0) {
     throw new Error(`Lane session not found: ${sessionId}`);
   }
 
-  const session = sessionResult.rows[0];
+  const session = sessionResult.rows[0] as unknown as LaneSessionRow;
   const laneId = session.lane_id;
 
-  const customer = session.customer_id
-    ? (
-        await client.query<CustomerRow>(
-          `SELECT id, name, dob, membership_number, membership_card_type, membership_valid_until, id_number, id_expiration_date, id_type, id_type_other, past_due_balance, primary_language, id_scan_hash
-             FROM customers
-             WHERE id = $1
-             LIMIT 1`,
-          [session.customer_id]
-        )
-      ).rows[0]
-    : undefined;
+  let customer: CustomerRow | undefined;
+  if (session.customer_id) {
+    const custResult = await db.execute<Record<string, unknown>>(
+      sql`SELECT id, name, dob, membership_number, membership_card_type, membership_valid_until, id_number, id_expiration_date, id_type, id_type_other, past_due_balance, primary_language, id_scan_hash
+           FROM customers
+           WHERE id = ${session.customer_id}
+           LIMIT 1`
+    );
+    customer = custResult.rows[0] as unknown as CustomerRow | undefined;
+  }
 
   const membershipNumber = customer?.membership_number || session.membership_number || undefined;
 
@@ -160,14 +164,13 @@ export async function buildFullSessionUpdatedPayload(
 
   let customerLastVisitAt: string | undefined;
   if (session.customer_id) {
-    const lastVisitResult = await client.query<{ starts_at: Date }>(
-      `SELECT cb.starts_at
+    const lastVisitResult = await db.execute<{ starts_at: Date }>(
+      sql`SELECT cb.starts_at
        FROM checkin_blocks cb
        JOIN visits v ON v.id = cb.visit_id
-       WHERE v.customer_id = $1
+       WHERE v.customer_id = ${session.customer_id}
        ORDER BY cb.starts_at DESC
-       LIMIT 1`,
-      [session.customer_id]
+       LIMIT 1`
     );
     if (lastVisitResult.rows.length > 0) {
       customerLastVisitAt = lastVisitResult.rows[0].starts_at.toISOString();
@@ -188,33 +191,30 @@ export async function buildFullSessionUpdatedPayload(
   const customerIdTypeOther = customer?.id_type_other ?? undefined;
 
   // Prefer a check-in block created by this lane session (when completed)
-  const blockForSession = (
-    await client.query<{
-      visit_id: string;
-      ends_at: Date;
-      agreement_signed: boolean;
-    }>(
-      `SELECT visit_id, ends_at, agreement_signed
+  const blockForSessionResult = await db.execute<{
+    visit_id: string;
+    ends_at: Date;
+    agreement_signed: boolean;
+  }>(
+    sql`SELECT visit_id, ends_at, agreement_signed
        FROM checkin_blocks
-       WHERE session_id = $1
+       WHERE session_id = ${session.id}
        ORDER BY created_at DESC
-       LIMIT 1`,
-      [session.id]
-    )
-  ).rows[0];
+       LIMIT 1`
+  );
+  const blockForSession = blockForSessionResult.rows[0];
 
   // Active visit info (useful for RENEWAL mode pre-completion)
   let activeVisitId: string | undefined;
   let activeBlockEndsAt: string | undefined;
   if (session.customer_id) {
-    const activeVisitResult = await client.query<{ visit_id: string; ends_at: Date }>(
-      `SELECT v.id as visit_id, cb.ends_at
+    const activeVisitResult = await db.execute<{ visit_id: string; ends_at: Date }>(
+      sql`SELECT v.id as visit_id, cb.ends_at
        FROM visits v
        JOIN checkin_blocks cb ON cb.visit_id = v.id
-       WHERE v.customer_id = $1 AND v.ended_at IS NULL
+       WHERE v.customer_id = ${session.customer_id} AND v.ended_at IS NULL
        ORDER BY cb.ends_at DESC
-       LIMIT 1`,
-      [session.customer_id]
+       LIMIT 1`
     );
     if (activeVisitResult.rows.length > 0) {
       activeVisitId = activeVisitResult.rows[0].visit_id;
@@ -223,24 +223,22 @@ export async function buildFullSessionUpdatedPayload(
   }
 
   const assignedResourceType = session.assigned_resource_type as 'room' | 'locker' | null;
-  const assignedResourceNumber = await fetchAssignedResourceNumber(client, assignedResourceType, session.assigned_resource_id);
+  const assignedResourceNumber = await fetchAssignedResourceNumber(assignedResourceType, session.assigned_resource_id);
 
   let paymentIntent: PaymentIntentRow | undefined;
   if (session.payment_intent_id) {
-    const intentResult = await client.query<PaymentIntentRow>(
-      `SELECT * FROM payment_intents WHERE id = $1 LIMIT 1`,
-      [session.payment_intent_id]
+    const intentResult = await db.execute<Record<string, unknown>>(
+      sql`SELECT * FROM payment_intents WHERE id = ${session.payment_intent_id} LIMIT 1`
     );
-    paymentIntent = intentResult.rows[0];
+    paymentIntent = intentResult.rows[0] as unknown as PaymentIntentRow | undefined;
   } else {
-    const intentResult = await client.query<PaymentIntentRow>(
-      `SELECT * FROM payment_intents
-       WHERE lane_session_id = $1
+    const intentResult = await db.execute<Record<string, unknown>>(
+      sql`SELECT * FROM payment_intents
+       WHERE lane_session_id = ${session.id}
        ORDER BY created_at DESC
-       LIMIT 1`,
-      [session.id]
+       LIMIT 1`
     );
-    paymentIntent = intentResult.rows[0];
+    paymentIntent = intentResult.rows[0] as unknown as PaymentIntentRow | undefined;
   }
 
   const paymentTotalRaw = toNumber(paymentIntent?.amount);
@@ -250,7 +248,6 @@ export async function buildFullSessionUpdatedPayload(
     extractPaymentLineItems(paymentIntent?.quote_json);
 
   const { ledgerItems, total } = await buildLedgerLineItems(
-    client,
     session,
     customer,
     pastDueBalance,
@@ -269,7 +266,7 @@ export async function buildFullSessionUpdatedPayload(
     customerMembershipValidUntil = membershipValidUntilRaw;
   }
 
-  const { waitlistPosition, waitlistEstimatedReadyAt } = await fetchWaitlistEstimates(client, session.waitlist_desired_type, session.waitlist_desired_types_json);
+  const { waitlistPosition, waitlistEstimatedReadyAt } = await fetchWaitlistEstimates(session.waitlist_desired_type, session.waitlist_desired_types_json);
 
   const payload: SessionUpdatedPayload = {
     sessionId: session.id,
@@ -360,9 +357,8 @@ export async function buildFullSessionUpdatedPayload(
 
 
 async function buildLedgerLineItems(
-  client: import('pg').PoolClient,
-  session: import('./types').LaneSessionRow,
-  customer: import('./types').CustomerRow | undefined,
+  session: LaneSessionRow,
+  customer: CustomerRow | undefined,
   pastDueBalance: number,
   paymentLineItems: Array<{ description: string; amount: number }> | undefined,
   checkinVisitId: string | undefined
@@ -372,19 +368,18 @@ async function buildLedgerLineItems(
 
   if (session.checkin_mode === 'RENEWAL') {
     if (checkinVisitId) {
-      const paidIntents = await client.query<{
+      const paidIntents = await db.execute<{
         quote_json: unknown;
         amount: number | string;
-      }>(
-        `SELECT pi.quote_json, pi.amount
+      }>(sql`
+        SELECT pi.quote_json, pi.amount
          FROM payment_intents pi
          JOIN lane_sessions ls ON ls.id = pi.lane_session_id
          JOIN checkin_blocks cb ON cb.session_id = ls.id
-         WHERE cb.visit_id = $1
+         WHERE cb.visit_id = ${checkinVisitId}
            AND pi.status = 'PAID'
-           AND pi.paid_at >= date_trunc('day', NOW())`,
-        [checkinVisitId]
-      );
+           AND pi.paid_at >= date_trunc('day', NOW())
+      `);
 
       for (const intent of paidIntents.rows) {
         const items = extractPaymentLineItems(intent.quote_json);
@@ -402,13 +397,12 @@ async function buildLedgerLineItems(
         }
       }
 
-      const charges = await client.query<{ type: string; amount: number | string }>(
-        `SELECT type, amount
+      const charges = await db.execute<{ type: string; amount: number | string }>(sql`
+        SELECT type, amount
          FROM charges
-         WHERE visit_id = $1
-           AND created_at >= date_trunc('day', NOW())`,
-        [checkinVisitId]
-      );
+         WHERE visit_id = ${checkinVisitId}
+           AND created_at >= date_trunc('day', NOW())
+      `);
 
       for (const charge of charges.rows) {
         const amount = toNumber(charge.amount);
@@ -485,13 +479,12 @@ async function buildLedgerLineItems(
     }
 
     if (checkinVisitId) {
-      const charges = await client.query<{ type: string; amount: number | string }>(
-        `SELECT type, amount
+      const charges = await db.execute<{ type: string; amount: number | string }>(sql`
+        SELECT type, amount
          FROM charges
-         WHERE visit_id = $1
-           AND created_at >= date_trunc('day', NOW())`,
-        [checkinVisitId]
-      );
+         WHERE visit_id = ${checkinVisitId}
+           AND created_at >= date_trunc('day', NOW())
+      `);
 
       for (const charge of charges.rows) {
         const amount = toNumber(charge.amount);
@@ -502,14 +495,13 @@ async function buildLedgerLineItems(
     }
 
     // Retail items added to ledger via orders linked to this session
-    const retailItems = await client.query<{ name: string; total: number | string }>(
-      `SELECT oli.name, oli.total
+    const retailItems = await db.execute<{ name: string; total: number | string }>(sql`
+      SELECT oli.name, oli.total
        FROM order_line_items oli
        JOIN orders o ON o.id = oli.order_id
-       WHERE o.metadata_json->>'laneSessionId' = $1
-         AND o.status = 'OPEN'`,
-      [session.id]
-    );
+       WHERE o.metadata_json->>'laneSessionId' = ${session.id}
+         AND o.status = 'OPEN'
+    `);
     for (const item of retailItems.rows) {
       const amount = toNumber(item.total);
       if (amount === undefined) continue;
@@ -523,22 +515,19 @@ async function buildLedgerLineItems(
 
 
 async function fetchAssignedResourceNumber(
-  client: import('pg').PoolClient,
   resourceType: 'room' | 'locker' | null,
   resourceId: string | null
 ): Promise<string | undefined> {
   if (!resourceId || !resourceType) return undefined;
   if (resourceType === 'room') {
-    const roomResult = await client.query<{ number: string }>(
-      `SELECT number FROM rooms WHERE id = $1 LIMIT 1`,
-      [resourceId]
+    const roomResult = await db.execute<{ number: string }>(
+      sql`SELECT number FROM rooms WHERE id = ${resourceId} LIMIT 1`
     );
     return roomResult.rows[0]?.number;
   }
   if (resourceType === 'locker') {
-    const lockerResult = await client.query<{ number: string }>(
-      `SELECT number FROM lockers WHERE id = $1 LIMIT 1`,
-      [resourceId]
+    const lockerResult = await db.execute<{ number: string }>(
+      sql`SELECT number FROM lockers WHERE id = ${resourceId} LIMIT 1`
     );
     return lockerResult.rows[0]?.number;
   }
@@ -546,7 +535,6 @@ async function fetchAssignedResourceNumber(
 }
 
 async function fetchWaitlistEstimates(
-  client: import('pg').PoolClient,
   desiredType: string | null,
   desiredTypesJson: unknown
 ): Promise<{ waitlistPosition?: number; waitlistEstimatedReadyAt?: string }> {
@@ -554,13 +542,12 @@ async function fetchWaitlistEstimates(
 
   const allDesiredTypes = extractWaitlistDesiredTypes(desiredTypesJson) || [desiredType];
 
-  const queueLengthResult = await client.query<{ count: string }>(
-    `SELECT COUNT(*) as count 
+  const queueLengthResult = await db.execute<{ count: string }>(sql`
+    SELECT COUNT(*) as count 
      FROM waitlist
      WHERE status IN ('ACTIVE', 'OFFERED')
-     AND desired_tier = ANY($1::rental_type[])`,
-    [allDesiredTypes]
-  );
+     AND desired_tier = ANY(${allDesiredTypes}::rental_type[])
+  `);
 
   const baseQueueLength = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10);
   const waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries

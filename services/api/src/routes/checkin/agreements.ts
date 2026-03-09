@@ -72,7 +72,7 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
 
         // Broadcast session updated + inventory
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId)
+          buildFullSessionUpdatedPayload(result.sessionId)
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
         await broadcastInventoryUpdate(fastify.broadcaster);
@@ -133,7 +133,7 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
 
         // Broadcast session updated + inventory
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId)
+          buildFullSessionUpdatedPayload(result.sessionId)
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
         await broadcastInventoryUpdate(fastify.broadcaster);
@@ -173,7 +173,7 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
         });
 
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId)
+          buildFullSessionUpdatedPayload(result.sessionId)
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, result.laneId);
 
@@ -256,7 +256,7 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
         });
 
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, updatedSessionId)
+          buildFullSessionUpdatedPayload(updatedSessionId)
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
 

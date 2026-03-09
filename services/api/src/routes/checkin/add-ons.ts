@@ -113,7 +113,7 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
       });
 
       const { payload } = await transaction((client) =>
-        buildFullSessionUpdatedPayload(client, result.sessionId)
+        buildFullSessionUpdatedPayload(result.sessionId)
       );
       fastify.broadcaster.broadcastSessionUpdated(payload, result.laneId || laneId);
 

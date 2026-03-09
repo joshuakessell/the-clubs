@@ -99,7 +99,7 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
           ).rows[0];
 
           if (!row) return null;
-          const { payload } = await buildFullSessionUpdatedPayload(client, row.id);
+          const { payload } = await buildFullSessionUpdatedPayload(row.id);
           return payload;
         });
 

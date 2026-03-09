@@ -264,5 +264,5 @@ export async function acknowledgeSelection(laneId: string, acknowledgedBy: 'CUST
 
 /** Helper to build session update payload (reusable by routes needing broadcast). */
 export async function buildSessionPayload(sessionId: string) {
-  return transaction((client) => buildFullSessionUpdatedPayload(client, sessionId));
+  return buildFullSessionUpdatedPayload(sessionId);
 }

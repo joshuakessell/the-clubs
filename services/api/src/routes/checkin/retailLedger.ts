@@ -74,7 +74,7 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
 
         // Broadcast updated session so kiosk + register refresh ledger
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, sessionResult.id)
+          buildFullSessionUpdatedPayload(sessionResult.id)
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 

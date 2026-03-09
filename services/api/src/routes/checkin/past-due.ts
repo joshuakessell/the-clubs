@@ -81,7 +81,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
         });
 
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId)
+          buildFullSessionUpdatedPayload(result.sessionId)
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 
@@ -197,7 +197,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
         });
 
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId)
+          buildFullSessionUpdatedPayload(result.sessionId)
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 

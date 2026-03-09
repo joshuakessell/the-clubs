@@ -285,5 +285,5 @@ export async function markPaymentPaid(input: MarkPaidInput) {
 }
 
 export async function getSessionPayload(sessionId: string) {
-  return transaction((client) => buildFullSessionUpdatedPayload(client, sessionId));
+  return buildFullSessionUpdatedPayload(sessionId);
 }

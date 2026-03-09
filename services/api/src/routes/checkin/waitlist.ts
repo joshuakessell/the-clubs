@@ -147,7 +147,7 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
 
         // Broadcast full session state
         const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId),
+          buildFullSessionUpdatedPayload(result.sessionId),
         );
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 

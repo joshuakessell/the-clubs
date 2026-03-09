@@ -704,7 +704,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
         });
 
         const { laneId: sessionLaneId, payload: sessionPayload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, sessionId)
+          buildFullSessionUpdatedPayload(sessionId)
         );
         fastify.broadcaster.broadcastSessionUpdated(sessionPayload, sessionLaneId);
 
