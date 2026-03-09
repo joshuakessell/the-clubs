@@ -6,7 +6,7 @@
  * Migrated to Drizzle ORM — uses db.execute(sql) for reads, db.transaction() for writes.
  */
 import { db } from '../db';
-import { sql, eq, sum } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 import { orders, orderLineItems, receipts, registerSessions, customers } from '../db/schema';
 import { insertCustomerActivityEventDrizzle } from '../activity/customerActivityLog';
 import { insertCustomerSpendLedgerEntryDrizzle } from '../ledger/customerSpendLedger';

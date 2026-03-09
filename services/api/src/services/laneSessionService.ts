@@ -3,7 +3,7 @@
  *
  * Extracted from routes/checkin/lane-session.ts. Zero HTTP/Fastify concepts.
  */
-import { query, transaction } from '../db';
+import { transaction, db } from '../db';
 import {
   getIdScanIssue,
   parseMembershipNumber,
@@ -11,8 +11,8 @@ import {
 import { buildFullSessionUpdatedPayload, getAllowedRentals } from '../checkin/payload';
 import type { CustomerRow, LaneSessionRow } from '../checkin/types';
 import { toDate } from '../checkin/utils';
-import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
-import { insertClubEvent } from '../activity/clubEventLog';
+import { insertCustomerActivityEventDrizzle } from '../activity/customerActivityLog';
+import { insertClubEventDrizzle } from '../activity/clubEventLog';
 import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
@@ -326,8 +326,8 @@ export async function logCheckinStarted(
   laneId: string,
   staff: StaffContext
 ): Promise<void> {
-  await transaction(async (client) => {
-    await insertCustomerActivityEvent(client, {
+  await db.transaction(async (tx) => {
+    await insertCustomerActivityEventDrizzle(tx, {
       customerId, actionType: 'CHECKIN_STARTED', actionCategory: 'CHECKIN',
       sourceApp: 'EMPLOYEE_REGISTER', actorType: 'STAFF',
       actorStaffId: staff.staffId, actorStaffName: staff.staffName,
@@ -337,7 +337,7 @@ export async function logCheckinStarted(
       searchParts: [sessionId, visitId ?? ''],
     });
 
-    await insertClubEvent(client, {
+    await insertClubEventDrizzle(tx, {
       eventType: 'CHECKIN_STARTED', eventDomain: 'CHECKIN', sourceApp: 'EMPLOYEE_REGISTER',
       staffId: staff.staffId, staffName: staff.staffName,
       customerId, customerName, visitId: visitId ?? null,
