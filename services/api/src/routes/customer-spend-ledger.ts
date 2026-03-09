@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware';
-import { transaction } from '../db';
 import {
   listCustomerSpendLedgerByVisit,
   listVisitSpendLedgerEntries,
@@ -41,15 +40,13 @@ export async function customerSpendLedgerRoutes(fastify: FastifyInstance): Promi
       const to = parsed.to ? new Date(parsed.to) : null;
 
       try {
-        const result = await transaction((client) =>
-          listCustomerSpendLedgerByVisit(client, {
-            customerId: request.params.customerId,
-            from,
-            to,
-            limit: parsed.limit,
-            cursor: parsed.cursor ?? null,
-          })
-        );
+        const result = await listCustomerSpendLedgerByVisit({
+          customerId: request.params.customerId,
+          from,
+          to,
+          limit: parsed.limit,
+          cursor: parsed.cursor ?? null,
+        });
 
         return reply.send(result);
       } catch (error) {
@@ -73,13 +70,11 @@ export async function customerSpendLedgerRoutes(fastify: FastifyInstance): Promi
       const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '200', 10) || 200, 1), 500);
 
       try {
-        const result = await transaction((client) =>
-          listVisitSpendLedgerEntries(client, {
-            customerId: request.params.customerId,
-            visitId: request.params.visitId === 'unassigned' ? null : request.params.visitId,
-            limit,
-          })
-        );
+        const result = await listVisitSpendLedgerEntries({
+          customerId: request.params.customerId,
+          visitId: request.params.visitId === 'unassigned' ? null : request.params.visitId,
+          limit,
+        });
         return reply.send(result);
       } catch (error) {
         request.log.error(error, 'Failed to fetch visit spend ledger');
@@ -88,4 +83,3 @@ export async function customerSpendLedgerRoutes(fastify: FastifyInstance): Promi
     }
   );
 }
-
