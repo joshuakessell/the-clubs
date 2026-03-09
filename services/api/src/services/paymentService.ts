@@ -2,20 +2,22 @@
  * Payment service — business logic for payment intent creation and completion.
  *
  * Extracted from routes/checkin/payment-intent.ts. Zero HTTP/Fastify concepts.
+ *
+ * Migrated to Drizzle ORM — uses db.transaction() with tx.execute(sql).
  */
-import { transaction } from '../db';
-import { insertCustomerSpendLedgerEntry } from '../ledger/customerSpendLedger';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
+import { insertCustomerSpendLedgerEntryDrizzle } from '../ledger/customerSpendLedger';
 import {
   calculatePriceQuote,
   calculateRenewalQuote,
   type PricingInput,
 } from '../pricing/engine';
 import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from '../checkin/types';
-import { LANE_SESSION_COLS, PAYMENT_INTENT_COLS } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { toDate, toNumber } from '../checkin/utils';
 import { calculateAge } from '../checkin/identity';
-import { insertAuditLog } from '../audit/auditLog';
+import { insertAuditLogDrizzle } from '../audit/auditLog';
 import { HttpError } from '../errors/HttpError';
 import {
   buildLineItemsFromQuote,
@@ -23,6 +25,9 @@ import {
   ensureOrderWithReceipt,
   toDollars,
 } from '../money/orderAudit';
+import type { PgTransaction } from 'drizzle-orm/pg-core';
+
+type DrizzleTx = PgTransaction<any, any, any>;
 
 // ── Helpers ──
 
@@ -47,16 +52,39 @@ function parsePaymentIntentQuote(raw: unknown): {
   return isRecord(raw) ? raw : {};
 }
 
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the Queryable interface
+ * expected by ensureOrderWithReceipt.
+ */
+function toQueryable(tx: DrizzleTx) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      // Build parameterized sql using Drizzle's sql.raw + parameters
+      let idx = 0;
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute<Record<string, unknown>>(built);
+      return { rows: result.rows as unknown as T[] };
+    },
+  };
+}
+
 // ── Service Methods ──
 
 export async function createPaymentIntent(laneId: string) {
-  return transaction(async (client) => {
-    const sessionResult = await client.query<LaneSessionRow>(
-      `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`,
-      [laneId]
+  return db.transaction(async (tx) => {
+    const sessionResult = await tx.execute<Record<string, unknown>>(
+      sql`SELECT * FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`
     );
     if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
-    const session = sessionResult.rows[0]!;
+    const session = sessionResult.rows[0] as unknown as LaneSessionRow;
 
     if (!session.selection_confirmed || !session.selection_locked_at) throw new HttpError(400, 'Selection must be confirmed/locked before creating payment intent');
     if (!session.desired_rental_type && !session.backup_rental_type) throw new HttpError(400, 'No desired rental type set on session');
@@ -67,12 +95,11 @@ export async function createPaymentIntent(laneId: string) {
     let membershipValidUntil: Date | undefined;
 
     if (session.customer_id) {
-      const customerResult = await client.query<CustomerRow>(
-        `SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`,
-        [session.customer_id]
+      const customerResult = await tx.execute<Record<string, unknown>>(
+        sql`SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = ${session.customer_id}`
       );
       if (customerResult.rows.length > 0) {
-        const customer = customerResult.rows[0]!;
+        const customer = customerResult.rows[0] as unknown as CustomerRow;
         customerAge = calculateAge(customer.dob);
         membershipCardType = (customer.membership_card_type as 'NONE' | 'SIX_MONTH') || undefined;
         membershipValidUntil = toDate(customer.membership_valid_until) || undefined;
@@ -90,44 +117,39 @@ export async function createPaymentIntent(laneId: string) {
       includeSixMonthMembershipPurchase: !!session.membership_purchase_intent,
     };
     const quote = isRenewal ? calculateRenewalQuote({ ...pricingInput, renewalHours }) : calculatePriceQuote(pricingInput);
+    const quoteJson = JSON.stringify(quote);
 
     // Ensure at most one active DUE payment intent
-    const dueIntents = await client.query<PaymentIntentRow>(
-      `SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE lane_session_id = $1 AND status = 'DUE' ORDER BY created_at DESC`,
-      [session.id]
+    const dueIntents = await tx.execute<Record<string, unknown>>(
+      sql`SELECT * FROM payment_intents WHERE lane_session_id = ${session.id} AND status = 'DUE' ORDER BY created_at DESC`
     );
+    const dueRows = dueIntents.rows as unknown as PaymentIntentRow[];
 
     let intent: PaymentIntentRow;
-    if (dueIntents.rows.length > 0) {
-      intent = dueIntents.rows[0]!;
-      if (dueIntents.rows.length > 1) {
-        const extraIds = dueIntents.rows.slice(1).map((r) => r.id);
-        await client.query(`UPDATE payment_intents SET status = 'CANCELLED', updated_at = NOW() WHERE id = ANY($1::uuid[])`, [extraIds]);
+    if (dueRows.length > 0) {
+      intent = dueRows[0]!;
+      if (dueRows.length > 1) {
+        const extraIds = dueRows.slice(1).map((r) => r.id);
+        await tx.execute(sql`UPDATE payment_intents SET status = 'CANCELLED', updated_at = NOW() WHERE id = ANY(${extraIds}::uuid[])`);
       }
-      await client.query(`UPDATE payment_intents SET amount = $1, quote_json = $2, updated_at = NOW() WHERE id = $3`, [quote.total, JSON.stringify(quote), intent.id]);
+      await tx.execute(sql`UPDATE payment_intents SET amount = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${intent.id}`);
     } else {
-      const intentResult = await client.query<PaymentIntentRow>(
-        `INSERT INTO payment_intents (lane_session_id, amount, status, quote_json) VALUES ($1, $2, 'DUE', $3) RETURNING *`,
-        [session.id, quote.total, JSON.stringify(quote)]
+      const intentResult = await tx.execute<Record<string, unknown>>(
+        sql`INSERT INTO payment_intents (lane_session_id, amount, status, quote_json) VALUES (${session.id}, ${quote.total}, 'DUE', ${quoteJson}::jsonb) RETURNING *`
       );
-      intent = intentResult.rows[0]!;
+      intent = intentResult.rows[0] as unknown as PaymentIntentRow;
     }
 
-    await client.query(
-      `UPDATE lane_sessions SET payment_intent_id = $1, price_quote_json = $2, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = $3`,
-      [intent.id, JSON.stringify(quote), session.id]
-    );
+    await tx.execute(sql`UPDATE lane_sessions SET payment_intent_id = ${intent.id}, price_quote_json = ${quoteJson}::jsonb, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = ${session.id}`);
 
     if (isFlowCommandsEnabled()) {
       const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `pay-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      await client.query(
-        `INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (session_id, command_id) DO NOTHING`,
-        [session.id, commandId, 'EMPLOYEE', 'SET_STEP', { step: 'PAYMENT' }]
-      );
-      await client.query(
-        `UPDATE lane_sessions SET flow_step = 'PAYMENT', flow_version = COALESCE(flow_version, 0) + 1, flow_last_command_id = $1, flow_last_actor = 'EMPLOYEE', updated_at = NOW() WHERE id = $2`,
-        [commandId, session.id]
-      );
+      await tx.execute(sql`
+        INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
+        VALUES (${session.id}, ${commandId}, 'EMPLOYEE', 'SET_STEP', ${'{"step":"PAYMENT"}'}::jsonb)
+        ON CONFLICT (session_id, command_id) DO NOTHING
+      `);
+      await tx.execute(sql`UPDATE lane_sessions SET flow_step = 'PAYMENT', flow_version = COALESCE(flow_version, 0) + 1, flow_last_command_id = ${commandId}, flow_last_actor = 'EMPLOYEE', updated_at = NOW() WHERE id = ${session.id}`);
     }
 
     return { sessionId: session.id, paymentIntentId: intent.id, amount: toNumber(intent.amount), quote };
@@ -150,30 +172,34 @@ export async function markPaymentPaid(input: MarkPaidInput) {
   const resolvedRegisterNumber = typeof input.registerNumber === 'number' && Number.isFinite(input.registerNumber) ? Math.trunc(input.registerNumber) : undefined;
   const resolvedTip = typeof input.tip === 'number' && Number.isFinite(input.tip) ? Math.trunc(input.tip) : undefined;
 
-  return transaction(async (client) => {
-    const intentResult = await client.query<PaymentIntentRow & {
+  return db.transaction(async (tx) => {
+    const intentResult = await tx.execute<Record<string, unknown>>(
+      sql`SELECT * FROM payment_intents WHERE id = ${input.paymentIntentId}`
+    );
+    if (intentResult.rows.length === 0) throw new HttpError(404, 'Payment intent not found');
+    const intent = intentResult.rows[0] as unknown as PaymentIntentRow & {
       payment_method?: string | null; register_number?: number | null;
       square_transaction_id?: string | null; paid_at?: Date | null;
       lane_session_id?: string | null; tip?: number | null; paid_by_staff_id?: string | null;
-    }>(`SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1`, [input.paymentIntentId]);
-    if (intentResult.rows.length === 0) throw new HttpError(404, 'Payment intent not found');
-    const intent = intentResult.rows[0]!;
+    };
+
+    const queryable = toQueryable(tx);
 
     const resolveOrderContext = async (intentRow: typeof intent, quote: { type?: string; waitlistId?: string; visitId?: string; blockId?: string }) => {
       let customerId: string | null = null;
       if (intentRow.lane_session_id) {
-        const laneSession = await client.query<{ id: string; customer_id: string | null }>(`SELECT id, customer_id FROM lane_sessions WHERE id = $1`, [intentRow.lane_session_id]);
-        customerId = laneSession.rows[0]?.customer_id ?? null;
+        const lsResult = await tx.execute<{ id: string; customer_id: string | null }>(sql`SELECT id, customer_id FROM lane_sessions WHERE id = ${intentRow.lane_session_id}`);
+        customerId = lsResult.rows[0]?.customer_id ?? null;
       } else if (quote.type === 'UPGRADE' && quote.waitlistId) {
-        const wlc = await client.query<{ customer_id: string | null }>(`SELECT v.customer_id FROM waitlist w JOIN visits v ON v.id = w.visit_id WHERE w.id = $1`, [quote.waitlistId]);
+        const wlc = await tx.execute<{ customer_id: string | null }>(sql`SELECT v.customer_id FROM waitlist w JOIN visits v ON v.id = w.visit_id WHERE w.id = ${quote.waitlistId}`);
         customerId = wlc.rows[0]?.customer_id ?? null;
       } else if (quote.type === 'FINAL_EXTENSION' && quote.visitId) {
-        const vc = await client.query<{ customer_id: string | null }>(`SELECT customer_id FROM visits WHERE id = $1`, [quote.visitId]);
+        const vc = await tx.execute<{ customer_id: string | null }>(sql`SELECT customer_id FROM visits WHERE id = ${quote.visitId}`);
         customerId = vc.rows[0]?.customer_id ?? null;
       }
       let registerSessionId: string | null = null;
       if (intentRow.register_number) {
-        const rs = await client.query<{ id: string }>(`SELECT id FROM register_sessions WHERE register_number = $1 AND (signed_out_at IS NULL OR signed_out_at >= NOW()) ORDER BY created_at DESC LIMIT 1`, [intentRow.register_number]);
+        const rs = await tx.execute<{ id: string }>(sql`SELECT id FROM register_sessions WHERE register_number = ${intentRow.register_number} AND (signed_out_at IS NULL OR signed_out_at >= NOW()) ORDER BY created_at DESC LIMIT 1`);
         registerSessionId = rs.rows[0]?.id ?? null;
       }
       return { customerId, registerSessionId };
@@ -184,7 +210,7 @@ export async function markPaymentPaid(input: MarkPaidInput) {
       const lineItems = buildLineItemsFromQuote(intentRow.quote_json, amount);
       const totals = computeOrderTotals(lineItems.items, amount, intentRow.tip ?? 0);
       const { customerId, registerSessionId } = await resolveOrderContext(intentRow, quote);
-      await ensureOrderWithReceipt(client, {
+      await ensureOrderWithReceipt(queryable, {
         dedupeKey: { field: 'paymentIntentId', value: intentRow.id },
         customerId, registerSessionId, createdByStaffId: input.staffId, totals,
         lineItems: lineItems.items,
@@ -195,47 +221,55 @@ export async function markPaymentPaid(input: MarkPaidInput) {
 
     if (intent.status === 'PAID') {
       if (!intent.paid_by_staff_id) {
-        await client.query(`UPDATE payment_intents SET paid_by_staff_id = $1 WHERE id = $2 AND paid_by_staff_id IS NULL`, [input.staffId, intent.id]);
+        await tx.execute(sql`UPDATE payment_intents SET paid_by_staff_id = ${input.staffId} WHERE id = ${intent.id} AND paid_by_staff_id IS NULL`);
       }
       const quote = parsePaymentIntentQuote(intent.quote_json);
       if (input.squareTransactionId || intent.square_transaction_id) {
-        await client.query(`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id) VALUES ('square', 'payment', $1, $2) ON CONFLICT DO NOTHING`, [intent.id, input.squareTransactionId || intent.square_transaction_id]);
+        const extId = input.squareTransactionId || intent.square_transaction_id;
+        await tx.execute(sql`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id) VALUES ('square', 'payment', ${intent.id}, ${extId}) ON CONFLICT DO NOTHING`);
       }
       await ensureAuditTrail(intent, quote);
       return { paymentIntentId: intent.id, status: 'PAID' as const, alreadyPaid: true, laneSessionToBroadcast: null as null | { sessionId: string; laneId: string } };
     }
 
     // Mark as paid
-    const updatedIntent = await client.query<typeof intent>(
-      `UPDATE payment_intents SET status = 'PAID', paid_at = NOW(), square_transaction_id = COALESCE($1, square_transaction_id), payment_method = COALESCE($2, payment_method), register_number = COALESCE($3, register_number), tip = COALESCE($4, tip), paid_by_staff_id = COALESCE($5, paid_by_staff_id), updated_at = NOW() WHERE id = $6 RETURNING *`,
-      [input.squareTransactionId || null, resolvedPaymentMethod ?? null, resolvedRegisterNumber ?? null, resolvedTip ?? null, input.staffId, input.paymentIntentId]
+    const updatedIntent = await tx.execute<Record<string, unknown>>(
+      sql`UPDATE payment_intents SET status = 'PAID', paid_at = NOW(),
+       square_transaction_id = COALESCE(${input.squareTransactionId || null}, square_transaction_id),
+       payment_method = COALESCE(${resolvedPaymentMethod ?? null}, payment_method),
+       register_number = COALESCE(${resolvedRegisterNumber ?? null}, register_number),
+       tip = COALESCE(${resolvedTip ?? null}, tip),
+       paid_by_staff_id = COALESCE(${input.staffId}, paid_by_staff_id),
+       updated_at = NOW() WHERE id = ${input.paymentIntentId} RETURNING *`
     );
-    const paidIntent = updatedIntent.rows[0]!;
+    const paidIntent = updatedIntent.rows[0] as unknown as typeof intent;
 
     if (input.squareTransactionId || paidIntent.square_transaction_id) {
-      await client.query(`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id) VALUES ('square', 'payment', $1, $2) ON CONFLICT DO NOTHING`, [paidIntent.id, input.squareTransactionId || paidIntent.square_transaction_id]);
+      const extId = input.squareTransactionId || paidIntent.square_transaction_id;
+      await tx.execute(sql`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id) VALUES ('square', 'payment', ${paidIntent.id}, ${extId}) ON CONFLICT DO NOTHING`);
     }
 
     const quote = parsePaymentIntentQuote(paidIntent.quote_json);
     const paymentType = quote.type;
 
     if (paymentType === 'UPGRADE' && quote.waitlistId) {
-      await insertAuditLog(client, { staffId: input.staffId, action: 'UPGRADE_PAID', entityType: 'payment_intent', entityId: input.paymentIntentId, oldValue: { status: 'DUE' }, newValue: { status: 'PAID', waitlistId: quote.waitlistId } });
+      await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'UPGRADE_PAID', entityType: 'payment_intent', entityId: input.paymentIntentId, oldValue: { status: 'DUE' }, newValue: { status: 'PAID', waitlistId: quote.waitlistId } });
     } else if (paymentType === 'FINAL_EXTENSION' && quote.visitId && quote.blockId) {
-      await insertAuditLog(client, { staffId: input.staffId, action: 'FINAL_EXTENSION_PAID', entityType: 'payment_intent', entityId: input.paymentIntentId, oldValue: { status: 'DUE' }, newValue: { status: 'PAID', visitId: quote.visitId, blockId: quote.blockId } });
-      await insertAuditLog(client, { staffId: input.staffId, action: 'FINAL_EXTENSION_COMPLETED', entityType: 'visit', entityId: quote.visitId, oldValue: { paymentIntentId: input.paymentIntentId, status: 'DUE' }, newValue: { paymentIntentId: input.paymentIntentId, status: 'PAID', blockId: quote.blockId } });
+      await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'FINAL_EXTENSION_PAID', entityType: 'payment_intent', entityId: input.paymentIntentId, oldValue: { status: 'DUE' }, newValue: { status: 'PAID', visitId: quote.visitId, blockId: quote.blockId } });
+      await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'FINAL_EXTENSION_COMPLETED', entityType: 'visit', entityId: quote.visitId, oldValue: { paymentIntentId: input.paymentIntentId, status: 'DUE' }, newValue: { paymentIntentId: input.paymentIntentId, status: 'PAID', blockId: quote.blockId } });
     } else {
-      const sessionResult = await client.query<LaneSessionRow>(`SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE payment_intent_id = $1`, [paidIntent.id]);
+      const sessionResult = await tx.execute<Record<string, unknown>>(
+        sql`SELECT * FROM lane_sessions WHERE payment_intent_id = ${paidIntent.id}`
+      );
       if (sessionResult.rows.length > 0) {
-        const session = sessionResult.rows[0]!;
-        await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [session.id]);
+        const session = sessionResult.rows[0] as unknown as LaneSessionRow;
+        await tx.execute(sql`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = ${session.id}`);
         await ensureAuditTrail(paidIntent, quote);
 
         // ── Write spend ledger entries so ChargesTab can show visit charges ──
         if (session.customer_id) {
-          const visitRow = await client.query<{ visit_id: string }>(
-            `SELECT visit_id FROM checkin_blocks WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1`,
-            [session.id]
+          const visitRow = await tx.execute<{ visit_id: string }>(
+            sql`SELECT visit_id FROM checkin_blocks WHERE session_id = ${session.id} ORDER BY created_at DESC LIMIT 1`
           );
           const visitId = visitRow.rows[0]?.visit_id ?? null;
           const amount = toDollars(paidIntent.amount) ?? 0;
@@ -248,7 +282,7 @@ export async function markPaymentPaid(input: MarkPaidInput) {
 
           if (lineItems.length > 0) {
             for (const item of lineItems) {
-              await insertCustomerSpendLedgerEntry(client, {
+              await insertCustomerSpendLedgerEntryDrizzle(tx, {
                 customerId: session.customer_id,
                 visitId,
                 entryType: 'CHECKIN_CHARGE',
@@ -261,7 +295,7 @@ export async function markPaymentPaid(input: MarkPaidInput) {
               });
             }
           } else if (amount > 0) {
-            await insertCustomerSpendLedgerEntry(client, {
+            await insertCustomerSpendLedgerEntryDrizzle(tx, {
               customerId: session.customer_id,
               visitId,
               entryType: 'CHECKIN_CHARGE',
