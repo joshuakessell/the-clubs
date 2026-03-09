@@ -1,4 +1,11 @@
-import { query } from '../db';
+/**
+ * Compliance service — business logic for shift compliance metrics.
+ *
+ * Migrated to Drizzle ORM typed queries.
+ */
+import { db } from '../db';
+import { timeclockSessions } from '../db/schema';
+import { eq, and, or, lte, gte, isNull, asc } from 'drizzle-orm';
 
 export interface ComplianceMetrics {
   workedMinutesInWindow: number;
@@ -23,13 +30,6 @@ interface ShiftRow {
   status: string;
 }
 
-interface TimeclockRow {
-  id: string;
-  clock_in_at: Date;
-  clock_out_at: Date | null;
-  shift_id: string | null;
-}
-
 const GRACE_MINUTES = 5;
 
 /**
@@ -40,24 +40,40 @@ export async function computeCompliance(
   employeeId: string
 ): Promise<ComplianceMetrics> {
   // Find timeclock sessions for this employee that overlap with shift window
-  const sessions = await query<TimeclockRow>(
-    `SELECT id, clock_in_at, clock_out_at, shift_id
-     FROM timeclock_sessions
-     WHERE employee_id = $1
-     AND (
-       (clock_in_at <= $2 AND (clock_out_at IS NULL OR clock_out_at >= $3))
-       OR (clock_in_at >= $3 AND clock_in_at <= $2)
-     )
-     ORDER BY clock_in_at`,
-    [employeeId, shift.ends_at, shift.starts_at]
-  );
+  const sessions = await db
+    .select({
+      id: timeclockSessions.id,
+      clockInAt: timeclockSessions.clockInAt,
+      clockOutAt: timeclockSessions.clockOutAt,
+      shiftId: timeclockSessions.shiftId,
+    })
+    .from(timeclockSessions)
+    .where(
+      and(
+        eq(timeclockSessions.employeeId, employeeId),
+        or(
+          and(
+            lte(timeclockSessions.clockInAt, shift.ends_at.toISOString()),
+            or(
+              isNull(timeclockSessions.clockOutAt),
+              gte(timeclockSessions.clockOutAt, shift.starts_at.toISOString())
+            )
+          ),
+          and(
+            gte(timeclockSessions.clockInAt, shift.starts_at.toISOString()),
+            lte(timeclockSessions.clockInAt, shift.ends_at.toISOString())
+          )
+        )
+      )
+    )
+    .orderBy(asc(timeclockSessions.clockInAt));
 
   const scheduledMinutes = Math.floor(
     (shift.ends_at.getTime() - shift.starts_at.getTime()) / (1000 * 60)
   );
 
   // If no sessions found, it's a no-show
-  if (sessions.rows.length === 0) {
+  if (sessions.length === 0) {
     return {
       workedMinutesInWindow: 0,
       scheduledMinutes,
@@ -74,20 +90,21 @@ export async function computeCompliance(
   }
 
   // Find session that matches this shift (by shift_id or by time overlap)
-  let matchingSession: TimeclockRow | null = null;
+  type SessionRow = typeof sessions[number];
+  let matchingSession: SessionRow | null = null;
 
   // First, try to find by shift_id
-  if (sessions.rows.some((s) => s.shift_id === shift.id)) {
-    matchingSession = sessions.rows.find((s) => s.shift_id === shift.id) || null;
+  if (sessions.some((s) => s.shiftId === shift.id)) {
+    matchingSession = sessions.find((s) => s.shiftId === shift.id) || null;
   } else {
     // Find session with best overlap
     let maxOverlap = 0;
-    for (const session of sessions.rows) {
+    for (const session of sessions) {
       const overlap = calculateOverlap(
         shift.starts_at,
         shift.ends_at,
-        session.clock_in_at,
-        session.clock_out_at || new Date()
+        new Date(session.clockInAt),
+        session.clockOutAt ? new Date(session.clockOutAt) : new Date()
       );
       if (overlap > maxOverlap) {
         maxOverlap = overlap;
@@ -112,20 +129,23 @@ export async function computeCompliance(
     };
   }
 
+  const clockInDate = new Date(matchingSession.clockInAt);
+  const clockOutDate = matchingSession.clockOutAt ? new Date(matchingSession.clockOutAt) : null;
+
   // Calculate worked minutes within shift window
   const workedMinutesInWindow = calculateOverlap(
     shift.starts_at,
     shift.ends_at,
-    matchingSession.clock_in_at,
-    matchingSession.clock_out_at || new Date()
+    clockInDate,
+    clockOutDate || new Date()
   );
 
   const compliancePercent =
     scheduledMinutes > 0 ? Math.round((workedMinutesInWindow / scheduledMinutes) * 100) : 0;
 
   // Determine flags
-  const clockInTime = matchingSession.clock_in_at.getTime();
-  const clockOutTime = matchingSession.clock_out_at ? matchingSession.clock_out_at.getTime() : null;
+  const clockInTime = clockInDate.getTime();
+  const clockOutTime = clockOutDate ? clockOutDate.getTime() : null;
   const shiftStartTime = shift.starts_at.getTime();
   const shiftEndTime = shift.ends_at.getTime();
   const graceMs = GRACE_MINUTES * 60 * 1000;
@@ -144,8 +164,8 @@ export async function computeCompliance(
       missingClockOut,
       noShow: false,
     },
-    actualClockIn: matchingSession.clock_in_at,
-    actualClockOut: matchingSession.clock_out_at,
+    actualClockIn: clockInDate,
+    actualClockOut: clockOutDate,
   };
 }
 

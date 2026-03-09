@@ -4,11 +4,14 @@
  * Extracted from routes/cleaning.ts. Zero HTTP/Fastify concepts.
  * Handles status transitions (DIRTY→CLEANING→CLEAN), override validation,
  * cleaning batch records, audit logging, and club event logging.
+ * Migrated to Drizzle ORM typed queries.
  */
-import { transaction, query } from '../db';
+import { db } from '../db';
+import { cleaningBatches, cleaningBatchRooms, rooms } from '../db/schema';
+import { eq, desc, sql, inArray } from 'drizzle-orm';
 import { RoomStatus, validateTransition } from '@the-clubs/shared';
-import { insertAuditLog } from '../audit/auditLog';
-import { insertClubEvent } from '../activity/clubEventLog';
+import { insertAuditLogDrizzle } from '../audit/auditLog';
+import { insertClubEventDrizzle } from '../activity/clubEventLog';
 
 // ── Types ──
 
@@ -19,13 +22,6 @@ export interface CleaningBatchInput {
   overrideReason?: string;
   staffId: string;
   staffName: string;
-}
-
-interface RoomRow {
-  id: string;
-  number: string;
-  status: string;
-  override_flag: boolean;
 }
 
 export interface BatchResultRoom {
@@ -69,35 +65,37 @@ export interface CleaningBatchSummary {
 export async function processCleaningBatch(
   input: CleaningBatchInput
 ): Promise<CleaningBatchResult> {
-  return transaction(async (client) => {
+  return db.transaction(async (tx) => {
     // 1. Create the cleaning batch record
-    const batchResult = await client.query<{ id: string }>(
-      `INSERT INTO cleaning_batches (staff_id, room_count)
-       VALUES ($1, $2)
-       RETURNING id`,
-      [input.staffId, input.roomIds.length]
-    );
-    const batchId = batchResult.rows[0]!.id;
+    const [batch] = await tx
+      .insert(cleaningBatches)
+      .values({ staffId: input.staffId, roomCount: input.roomIds.length })
+      .returning({ id: cleaningBatches.id });
+    const batchId = batch!.id;
 
     // 2. Fetch all rooms with row locks
-    const roomResult = await client.query<RoomRow>(
-      `SELECT id, number, status, override_flag
-       FROM rooms
-       WHERE id = ANY($1)
-       FOR UPDATE`,
-      [input.roomIds]
-    );
+    const roomRows = await tx
+      .select({
+        id: rooms.id,
+        number: rooms.number,
+        status: rooms.status,
+        overrideFlag: rooms.overrideFlag,
+      })
+      .from(rooms)
+      .where(inArray(rooms.id, input.roomIds))
+      .for('update');
 
-    const roomMap = new Map(roomResult.rows.map((r) => [r.id, r]));
+    const roomMap = new Map(roomRows.map((r) => [r.id, r]));
     const results: BatchResultRoom[] = [];
     const successfulTransitions: CleaningBatchResult['successfulTransitions'] = [];
 
-    // Collect cleaning_batch_rooms rows for a single multi-row INSERT after the loop
-    const batchRoomRows: Array<{
+    // Collect cleaning_batch_rooms rows for a single multi-row INSERT
+    const batchRoomInserts: Array<{
+      batchId: string;
       roomId: string;
-      fromStatus: RoomStatus;
-      toStatus: RoomStatus;
-      isOverride: boolean;
+      statusFrom: typeof rooms.status.enumValues[number];
+      statusTo: typeof rooms.status.enumValues[number];
+      overrideFlag: boolean;
       overrideReason: string | null;
     }> = [];
 
@@ -149,31 +147,32 @@ export async function processCleaningBatch(
       }
 
       const isOverrideTransition = input.override && validation.ok;
+      const isClean = toStatus === RoomStatus.CLEAN;
 
       // 4. Update the room status
-      const isClean = toStatus === RoomStatus.CLEAN;
-      await client.query(
-        `UPDATE rooms
-         SET status = $1,
-             last_status_change = NOW(),
-             override_flag = CASE WHEN $2 THEN true ELSE override_flag END,
-             assigned_to_customer_id = CASE WHEN $4 THEN NULL ELSE assigned_to_customer_id END,
-             updated_at = NOW()
-         WHERE id = $3`,
-        [toStatus, isOverrideTransition, roomId, isClean]
-      );
+      await tx
+        .update(rooms)
+        .set({
+          status: toStatus as any,
+          lastStatusChange: sql`NOW()`,
+          overrideFlag: isOverrideTransition ? true : undefined,
+          assignedToCustomerId: isClean ? null : undefined,
+          updatedAt: sql`NOW()`,
+        })
+        .where(eq(rooms.id, roomId));
 
-      // Collect for batch INSERT (step 5 moved after loop)
-      batchRoomRows.push({
+      // Collect for batch INSERT
+      batchRoomInserts.push({
+        batchId,
         roomId,
-        fromStatus,
-        toStatus,
-        isOverride: isOverrideTransition,
+        statusFrom: fromStatus as any,
+        statusTo: toStatus as any,
+        overrideFlag: isOverrideTransition,
         overrideReason: isOverrideTransition ? (input.overrideReason ?? null) : null,
       });
 
       // 6. Audit log
-      await insertAuditLog(client, {
+      await insertAuditLogDrizzle(tx, {
         staffId: input.staffId,
         userId: input.staffId,
         userRole: 'staff',
@@ -201,7 +200,7 @@ export async function processCleaningBatch(
       });
 
       // 7. Club event for analytics
-      await insertClubEvent(client, {
+      await insertClubEventDrizzle(tx, {
         eventType: isOverrideTransition ? 'OVERRIDE_APPLIED' : 'ROOM_STATUS_CHANGED',
         eventDomain: isOverrideTransition ? 'ADMIN' : 'INVENTORY',
         sourceApp: 'EMPLOYEE_REGISTER',
@@ -223,33 +222,18 @@ export async function processCleaningBatch(
       });
     }
 
-    // 5. Batch INSERT all cleaning_batch_rooms in a single query (N rows → 1 query)
-    if (batchRoomRows.length > 0) {
-      const values: unknown[] = [];
-      const placeholders: string[] = [];
-      for (let i = 0; i < batchRoomRows.length; i++) {
-        const row = batchRoomRows[i]!;
-        const offset = i * 6;
-        placeholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`);
-        values.push(batchId, row.roomId, row.fromStatus, row.toStatus, row.isOverride, row.overrideReason);
-      }
-      await client.query(
-        `INSERT INTO cleaning_batch_rooms
-         (batch_id, room_id, status_from, status_to, override_flag, override_reason)
-         VALUES ${placeholders.join(', ')}`,
-        values,
-      );
+    // 5. Batch INSERT all cleaning_batch_rooms
+    if (batchRoomInserts.length > 0) {
+      await tx.insert(cleaningBatchRooms).values(batchRoomInserts);
     }
 
     // 8. Update batch completion if all rooms processed
     const successCount = results.filter((r) => r.success).length;
     if (successCount === input.roomIds.length) {
-      await client.query(
-        `UPDATE cleaning_batches
-         SET completed_at = NOW(), room_count = $1, updated_at = NOW()
-         WHERE id = $2`,
-        [successCount, batchId]
-      );
+      await tx
+        .update(cleaningBatches)
+        .set({ completedAt: sql`NOW()`, roomCount: successCount, updatedAt: sql`NOW()` })
+        .where(eq(cleaningBatches.id, batchId));
     }
 
     return { batchId, results, successfulTransitions };
@@ -266,35 +250,26 @@ export async function listCleaningBatches(opts?: {
   const limit = Math.min(opts?.limit ?? 20, 100);
   const staffId = opts?.staffId;
 
-  let queryText = `
-    SELECT id, staff_id, started_at, completed_at, room_count, created_at
-    FROM cleaning_batches
-  `;
-  const params: unknown[] = [];
+  const rows = await db
+    .select({
+      id: cleaningBatches.id,
+      staffId: cleaningBatches.staffId,
+      startedAt: cleaningBatches.startedAt,
+      completedAt: cleaningBatches.completedAt,
+      roomCount: cleaningBatches.roomCount,
+      createdAt: cleaningBatches.createdAt,
+    })
+    .from(cleaningBatches)
+    .where(staffId ? eq(cleaningBatches.staffId, staffId) : undefined)
+    .orderBy(desc(cleaningBatches.startedAt))
+    .limit(limit);
 
-  if (staffId) {
-    queryText += ' WHERE staff_id = $1';
-    params.push(staffId);
-  }
-
-  queryText += ' ORDER BY started_at DESC LIMIT $' + (params.length + 1);
-  params.push(limit);
-
-  const result = await query<{
-    id: string;
-    staff_id: string;
-    started_at: Date;
-    completed_at: Date | null;
-    room_count: number;
-    created_at: Date;
-  }>(queryText, params);
-
-  return result.rows.map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
-    staffId: row.staff_id,
-    startedAt: row.started_at,
-    completedAt: row.completed_at,
-    roomCount: row.room_count,
-    createdAt: row.created_at,
+    staffId: row.staffId,
+    startedAt: new Date(row.startedAt),
+    completedAt: row.completedAt ? new Date(row.completedAt) : null,
+    roomCount: row.roomCount,
+    createdAt: new Date(row.createdAt),
   }));
 }

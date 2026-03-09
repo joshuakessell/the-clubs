@@ -2,68 +2,132 @@
  * Room management service — CRUD and status transitions for rooms/lockers.
  *
  * Extracted from routes/admin/room-management.ts. No HTTP/Fastify concepts.
+ * Migrated to Drizzle ORM typed queries.
  */
-import { query, transaction } from '../db';
+import { db } from '../db';
+import { rooms, lockers } from '../db/schema';
+import { eq, asc, sql } from 'drizzle-orm';
 import { HttpError } from '../errors/HttpError';
-
-// ── Types ──
-
-interface RoomRow { id: string; number: string; type: string; status: string; floor: number; created_at: string; updated_at: string; assigned_to_customer_id: string | null; }
-interface LockerRow { id: string; number: string; status: string; created_at: string; updated_at: string; assigned_to_customer_id: string | null; }
 
 // ── Service Methods ──
 
 export async function listRoomsAndLockers() {
-  const [roomsResult, lockersResult] = await Promise.all([
-    query<RoomRow>(`SELECT id, number, type, status, floor, created_at, updated_at, assigned_to_customer_id FROM rooms ORDER BY number ASC`),
-    query<LockerRow>(`SELECT id, number, status, created_at, updated_at, assigned_to_customer_id FROM lockers ORDER BY number ASC`),
+  const [roomRows, lockerRows] = await Promise.all([
+    db
+      .select({
+        id: rooms.id,
+        number: rooms.number,
+        type: rooms.type,
+        status: rooms.status,
+        floor: rooms.floor,
+        assignedToCustomerId: rooms.assignedToCustomerId,
+      })
+      .from(rooms)
+      .orderBy(asc(rooms.number)),
+    db
+      .select({
+        id: lockers.id,
+        number: lockers.number,
+        status: lockers.status,
+        assignedToCustomerId: lockers.assignedToCustomerId,
+      })
+      .from(lockers)
+      .orderBy(asc(lockers.number)),
   ]);
+
   return {
-    rooms: roomsResult.rows.map((r) => ({ id: r.id, number: r.number, type: r.type, status: r.status, floor: r.floor, isOccupied: r.assigned_to_customer_id !== null })),
-    lockers: lockersResult.rows.map((l) => ({ id: l.id, number: l.number, status: l.status, isOccupied: l.assigned_to_customer_id !== null })),
+    rooms: roomRows.map((r) => ({
+      id: r.id,
+      number: r.number,
+      type: r.type,
+      status: r.status,
+      floor: r.floor,
+      isOccupied: r.assignedToCustomerId !== null,
+    })),
+    lockers: lockerRows.map((l) => ({
+      id: l.id,
+      number: l.number,
+      status: l.status,
+      isOccupied: l.assignedToCustomerId !== null,
+    })),
   };
 }
 
 export async function createRoom(number: string, type: string, floor: number) {
-  const result = await query<RoomRow>(`INSERT INTO rooms (number, type, floor, status) VALUES ($1, $2, $3, 'CLEAN') RETURNING id, number, type, status, floor, created_at, updated_at, assigned_to_customer_id`, [number, type, floor]);
-  return result.rows[0]!;
+  const [inserted] = await db
+    .insert(rooms)
+    .values({ number, type: type as any, floor, status: 'CLEAN' })
+    .returning();
+  return inserted!;
 }
 
 export async function updateRoom(roomId: string, type?: string, floor?: number) {
-  const setClauses: string[] = []; const params: unknown[] = []; let idx = 1;
-  if (type) { setClauses.push(`type = $${idx++}`); params.push(type); }
-  if (floor !== undefined) { setClauses.push(`floor = $${idx++}`); params.push(floor); }
-  setClauses.push(`updated_at = NOW()`); params.push(roomId);
-  const result = await query<RoomRow>(`UPDATE rooms SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING id, number, type, status, floor, created_at, updated_at, assigned_to_customer_id`, params);
-  if (result.rows.length === 0) throw new HttpError(404, 'Room not found');
-  return result.rows[0]!;
+  const updates: Record<string, unknown> = { updatedAt: sql`NOW()` };
+  if (type) updates.type = type;
+  if (floor !== undefined) updates.floor = floor;
+
+  const [updated] = await db
+    .update(rooms)
+    .set(updates)
+    .where(eq(rooms.id, roomId))
+    .returning();
+
+  if (!updated) throw new HttpError(404, 'Room not found');
+  return updated;
 }
 
 export async function setRoomStatus(roomId: string, status: string) {
-  return transaction(async (client) => {
-    const current = await client.query<RoomRow>(`SELECT id, number, type, status, floor, created_at, updated_at, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [roomId]);
-    if (current.rows.length === 0) throw new HttpError(404, 'Room not found');
-    const room = current.rows[0]!;
-    if (room.status === 'OCCUPIED' && status === 'OUT_OF_SERVICE') throw new HttpError(409, 'Cannot set an occupied room to Out of Service. Check out the customer first.');
-    if (room.status === status) return room;
-    const updated = await client.query<RoomRow>(`UPDATE rooms SET status = $1, updated_at = NOW(), last_status_change = NOW() WHERE id = $2 RETURNING id, number, type, status, floor, created_at, updated_at, assigned_to_customer_id`, [status, room.id]);
-    return updated.rows[0]!;
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(rooms)
+      .where(eq(rooms.id, roomId))
+      .for('update');
+
+    if (!current) throw new HttpError(404, 'Room not found');
+    if (current.status === 'OCCUPIED' && status === 'OUT_OF_SERVICE') {
+      throw new HttpError(409, 'Cannot set an occupied room to Out of Service. Check out the customer first.');
+    }
+    if (current.status === status) return current;
+
+    const [updated] = await tx
+      .update(rooms)
+      .set({ status: status as any, updatedAt: sql`NOW()`, lastStatusChange: sql`NOW()` })
+      .where(eq(rooms.id, roomId))
+      .returning();
+
+    return updated!;
   });
 }
 
 export async function createLocker(number: string) {
-  const result = await query<LockerRow>(`INSERT INTO lockers (number, status) VALUES ($1, 'CLEAN') RETURNING id, number, status, created_at, updated_at, assigned_to_customer_id`, [number]);
-  return result.rows[0]!;
+  const [inserted] = await db
+    .insert(lockers)
+    .values({ number, status: 'CLEAN' })
+    .returning();
+  return inserted!;
 }
 
 export async function setLockerStatus(lockerId: string, status: string) {
-  return transaction(async (client) => {
-    const current = await client.query<LockerRow>(`SELECT id, number, status, created_at, updated_at, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`, [lockerId]);
-    if (current.rows.length === 0) throw new HttpError(404, 'Locker not found');
-    const locker = current.rows[0]!;
-    if (locker.status === 'OCCUPIED' && status === 'OUT_OF_SERVICE') throw new HttpError(409, 'Cannot set an occupied locker to Out of Service. Check out the customer first.');
-    if (locker.status === status) return locker;
-    const updated = await client.query<LockerRow>(`UPDATE lockers SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING id, number, status, created_at, updated_at, assigned_to_customer_id`, [status, locker.id]);
-    return updated.rows[0]!;
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(lockers)
+      .where(eq(lockers.id, lockerId))
+      .for('update');
+
+    if (!current) throw new HttpError(404, 'Locker not found');
+    if (current.status === 'OCCUPIED' && status === 'OUT_OF_SERVICE') {
+      throw new HttpError(409, 'Cannot set an occupied locker to Out of Service. Check out the customer first.');
+    }
+    if (current.status === status) return current;
+
+    const [updated] = await tx
+      .update(lockers)
+      .set({ status: status as any, updatedAt: sql`NOW()` })
+      .where(eq(lockers.id, lockerId))
+      .returning();
+
+    return updated!;
   });
 }

@@ -5,12 +5,11 @@
  * Uses `db.select()` for type-safe reads, `db.execute(sql`...`)` for LATERAL joins.
  * This module contains ZERO HTTP/Fastify concepts.
  */
-import { db } from '../db';
-import { rooms, lockers, customers, checkinBlocks } from '../db/schema';
-import { eq, ne, or, isNotNull, count, sql } from 'drizzle-orm';
+import { db, query } from '../db';
+import { rooms, lockers, customers, checkinBlocks, waitlist } from '../db/schema';
+import { eq, ne, or, isNotNull, count, sql, inArray } from 'drizzle-orm';
 import { getRoomTierFromNumber } from '@the-clubs/shared';
 import { computeInventoryAvailable } from '../inventory/available';
-import { query } from '../db';
 
 // ── Types ──
 
@@ -49,15 +48,18 @@ export async function getInventorySummary() {
     .orderBy(lockers.status);
 
   // Count active/offered waitlist entries per desired tier
-  const waitlistResult = await query<{ desired_tier: string; cnt: string }>(
-    `SELECT desired_tier, COUNT(*)::text AS cnt
-     FROM waitlist
-     WHERE status IN ('ACTIVE', 'OFFERED')
-     GROUP BY desired_tier`
-  );
+  const waitlistRows = await db
+    .select({
+      desiredTier: waitlist.desiredTier,
+      cnt: count(),
+    })
+    .from(waitlist)
+    .where(inArray(waitlist.status, ['ACTIVE', 'OFFERED']))
+    .groupBy(waitlist.desiredTier);
+
   const waitlistByTier: Record<string, number> = {};
-  for (const row of waitlistResult.rows) {
-    waitlistByTier[row.desired_tier] = Number.parseInt(row.cnt, 10) || 0;
+  for (const row of waitlistRows) {
+    waitlistByTier[row.desiredTier] = row.cnt;
   }
 
   const byType: Record<string, { clean: number; cleaning: number; dirty: number; total: number; availableForCheckin: number }> =
