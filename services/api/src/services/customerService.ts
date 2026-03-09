@@ -2,15 +2,19 @@
  * Customer service — business logic for customer management.
  *
  * Extracted from routes/customers.ts. Zero HTTP/Fastify concepts.
+ *
+ * Migrated to Drizzle ORM — uses db.execute(sql`...`) for reads and db.transaction() for writes.
  */
-import { query, transaction } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import {
   computeIdScanIdentityHash,
   computeSha256Hex,
   getIdScanIssue,
   getIdScanIssueMessage,
 } from '../checkin/identity';
-import { insertCustomerActivityEvent, type CustomerActivitySourceApp } from '../activity/customerActivityLog';
+import { insertCustomerActivityEventDrizzle, type CustomerActivitySourceApp } from '../activity/customerActivityLog';
+import { customerNotes } from '../db/schema';
 import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
@@ -149,14 +153,14 @@ function isIdType(v: string): v is IdType { return (IdTypeValues as readonly str
 
 export async function searchCustomers(q: string, limit: number) {
   const like = `${q}%`;
-  const result = await query<CustomerRow>(
-    `SELECT id, name, membership_number, dob FROM customers
-     WHERE name ILIKE $1 OR split_part(name, ' ', 2) ILIKE $1
-     ORDER BY name LIMIT $2`,
-    [like, limit]
+  const result = await db.execute<Record<string, unknown>>(
+    sql`SELECT id, name, membership_number, dob FROM customers
+     WHERE name ILIKE ${like} OR split_part(name, ' ', 2) ILIKE ${like}
+     ORDER BY name LIMIT ${limit}`
   );
 
-  return result.rows.map((row) => {
+  return result.rows.map((r) => {
+    const row = r as unknown as CustomerRow;
     const { firstName, lastName } = splitFullName(row.name);
     const disambiguator = (row.membership_number && row.membership_number.slice(-4)) || row.id.slice(0, 8);
     return {
@@ -173,16 +177,15 @@ export async function listCustomerNotes(
   opts: { limit: number; cursor?: string }
 ) {
   const cursor = parseNotesCursor(opts.cursor);
-  const rows = await query<{
+  const rows = await db.execute<{
     id: string; customer_id: string; created_at: Date;
     created_by_staff_id: string | null; created_by_staff_name: string;
     source_app: string; note: string; is_important: boolean;
   }>(
-    `SELECT id, customer_id, created_at, created_by_staff_id, created_by_staff_name, source_app, note, is_important
-     FROM customer_notes WHERE customer_id = $1 AND deleted_at IS NULL
-     AND ($2::timestamptz IS NULL OR (created_at < $2 OR (created_at = $2 AND id < $3::uuid)))
-     ORDER BY created_at DESC, id DESC LIMIT $4`,
-    [customerId, cursor?.createdAt ?? null, cursor?.id ?? '00000000-0000-0000-0000-000000000000', opts.limit]
+    sql`SELECT id, customer_id, created_at, created_by_staff_id, created_by_staff_name, source_app, note, is_important
+     FROM customer_notes WHERE customer_id = ${customerId} AND deleted_at IS NULL
+     AND (${cursor?.createdAt ?? null}::timestamptz IS NULL OR (created_at < ${cursor?.createdAt ?? null} OR (created_at = ${cursor?.createdAt ?? null} AND id < ${cursor?.id ?? '00000000-0000-0000-0000-000000000000'}::uuid)))
+     ORDER BY created_at DESC, id DESC LIMIT ${opts.limit}`
   );
 
   const notes = rows.rows.map((r) => ({
@@ -205,16 +208,22 @@ export async function createCustomerNote(
   const trimmed = noteText.trim();
   if (!trimmed) throw new HttpError(400, 'note is required');
 
-  return transaction(async (client) => {
-    const inserted = await client.query<{ id: string; created_at: Date }>(
-      `INSERT INTO customer_notes (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
-       VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6) RETURNING id, created_at`,
-      [customerId, staff.staffId, staff.staffName, opts.sourceApp ?? 'EMPLOYEE_REGISTER', trimmed, opts.isImportant ?? false]
-    );
-    const row = inserted.rows[0]!;
+  return db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(customerNotes)
+      .values({
+        customerId,
+        createdByStaffId: staff.staffId,
+        createdByStaffName: staff.staffName,
+        sourceApp: opts.sourceApp ?? 'EMPLOYEE_REGISTER',
+        note: trimmed,
+        isImportant: opts.isImportant ?? false,
+      })
+      .returning({ id: customerNotes.id, createdAt: customerNotes.createdAt });
+    const row = inserted[0]!;
 
     const preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
-    await insertCustomerActivityEvent(client, {
+    await insertCustomerActivityEventDrizzle(tx, {
       customerId, actionType: 'NOTE_ADDED', actionCategory: 'NOTE',
       sourceApp: opts.sourceApp ?? 'EMPLOYEE_REGISTER',
       actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.staffName,
@@ -223,7 +232,7 @@ export async function createCustomerNote(
       dedupeKey: null,
     });
 
-    return { id: row.id, createdAt: row.created_at.toISOString() };
+    return { id: row.id, createdAt: row.createdAt.toISOString() };
   });
 }
 
@@ -232,22 +241,21 @@ export async function getCustomerProfile(customerId: string) {
   if (!normalizedId) return null;
 
   const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedId);
-  const result = await query<CustomerProfileRow>(
-    `SELECT id, name, dob, membership_number, membership_valid_until, id_number, id_type, id_type_other,
+  const whereClause = looksLikeUuid ? sql`id = ${normalizedId}` : sql`membership_number = ${normalizedId}`;
+  const result = await db.execute<Record<string, unknown>>(
+    sql`SELECT id, name, dob, membership_number, membership_valid_until, id_number, id_type, id_type_other,
             id_expiration_date, primary_language, id_scan_hash, past_due_balance
-     FROM customers WHERE ${looksLikeUuid ? 'id = $1' : 'membership_number = $1'} LIMIT 1`,
-    [normalizedId]
+     FROM customers WHERE ${whereClause} LIMIT 1`
   );
   if (result.rows.length === 0) return null;
-  const row = result.rows[0]!;
+  const row = result.rows[0] as unknown as CustomerProfileRow;
 
   const { firstName, lastName } = splitFullName(row.name);
   const idType = row.id_type && isIdType(row.id_type) ? row.id_type : null;
 
-  const lastVisitResult = await query<{ starts_at: Date }>(
-    `SELECT cb.starts_at FROM checkin_blocks cb JOIN visits v ON v.id = cb.visit_id
-     WHERE v.customer_id = $1 ORDER BY cb.starts_at DESC LIMIT 1`,
-    [row.id]
+  const lastVisitResult = await db.execute<{ starts_at: Date }>(
+    sql`SELECT cb.starts_at FROM checkin_blocks cb JOIN visits v ON v.id = cb.visit_id
+     WHERE v.customer_id = ${row.id} ORDER BY cb.starts_at DESC LIMIT 1`
   );
   const lastVisitAt = lastVisitResult.rows.length > 0 ? toIsoTimestamp(lastVisitResult.rows[0]!.starts_at) : null;
   const pastDueBalance = typeof row.past_due_balance === 'string' ? Number.parseInt(row.past_due_balance, 10) || 0 : (row.past_due_balance ?? 0);
@@ -303,12 +311,11 @@ export async function createFromScan(input: CreateFromScanInput) {
   if (!name) throw new HttpError(400, 'Invalid name');
 
   // Check for existing customer
-  const existing = await query<{
+  const existing = await db.execute<{
     id: string; name: string; dob: string | Date | null; membership_number: string | null;
     banned_until: Date | null; id_scan_hash: string | null; id_scan_value: string | null;
   }>(
-    `SELECT id, name, dob, membership_number, banned_until, id_scan_hash, id_scan_value FROM customers WHERE id_scan_hash = $1 OR id_scan_value = $2 LIMIT 1`,
-    [idScanHash, idScanValue]
+    sql`SELECT id, name, dob, membership_number, banned_until, id_scan_hash, id_scan_value FROM customers WHERE id_scan_hash = ${idScanHash} OR id_scan_value = ${idScanValue} LIMIT 1`
   );
 
   if (existing.rows.length > 0) {
@@ -317,20 +324,19 @@ export async function createFromScan(input: CreateFromScanInput) {
 
     const needsScanUpdate = !row.id_scan_hash || !row.id_scan_value || row.id_scan_hash !== idScanHash || row.id_scan_value !== idScanValue;
     if (needsScanUpdate || input.idNumber || input.state || idType || idTypeOther) {
-      await query(
-        `UPDATE customers SET
-         id_scan_hash = CASE WHEN id_scan_hash IS NULL OR id_scan_hash <> $1 THEN $1 ELSE id_scan_hash END,
-         id_scan_value = CASE WHEN id_scan_value IS NULL OR id_scan_value <> $2 THEN $2 ELSE id_scan_value END,
-         id_expiration_date = COALESCE(id_expiration_date, $4::date),
-         id_number = CASE WHEN $5::text IS NOT NULL THEN $5 ELSE id_number END,
-         id_state = CASE WHEN $6::text IS NOT NULL THEN $6 ELSE id_state END,
-         id_type = CASE WHEN $7::text IS NOT NULL THEN $7 ELSE id_type END,
-         id_type_other = CASE WHEN $7::text IS NOT NULL THEN $8 ELSE id_type_other END,
-         updated_at = NOW() WHERE id = $3`,
-        [idScanHash, idScanValue, row.id, idExpirationDate, input.idNumber || null, input.state || null, idType, idTypeOther]
+      await db.execute(
+        sql`UPDATE customers SET
+         id_scan_hash = CASE WHEN id_scan_hash IS NULL OR id_scan_hash <> ${idScanHash} THEN ${idScanHash} ELSE id_scan_hash END,
+         id_scan_value = CASE WHEN id_scan_value IS NULL OR id_scan_value <> ${idScanValue} THEN ${idScanValue} ELSE id_scan_value END,
+         id_expiration_date = COALESCE(id_expiration_date, ${idExpirationDate}::date),
+         id_number = CASE WHEN ${input.idNumber || null}::text IS NOT NULL THEN ${input.idNumber || null} ELSE id_number END,
+         id_state = CASE WHEN ${input.state || null}::text IS NOT NULL THEN ${input.state || null} ELSE id_state END,
+         id_type = CASE WHEN ${idType}::text IS NOT NULL THEN ${idType} ELSE id_type END,
+         id_type_other = CASE WHEN ${idType}::text IS NOT NULL THEN ${idTypeOther} ELSE id_type_other END,
+         updated_at = NOW() WHERE id = ${row.id}`
       );
     } else if (idExpirationDate) {
-      await query(`UPDATE customers SET id_expiration_date = $1::date, updated_at = NOW() WHERE id = $2`, [idExpirationDate, row.id]);
+      await db.execute(sql`UPDATE customers SET id_expiration_date = ${idExpirationDate}::date, updated_at = NOW() WHERE id = ${row.id}`);
     }
 
     return {
@@ -343,10 +349,9 @@ export async function createFromScan(input: CreateFromScanInput) {
     };
   }
 
-  const inserted = await query<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
-    `INSERT INTO customers (name, dob, id_expiration_date, id_number, id_state, id_type, id_type_other, id_scan_hash, id_scan_value, created_at, updated_at)
-     VALUES ($1, $2::date, $3::date, $4, $5, $6, $7, $8, $9, NOW(), NOW()) RETURNING id, name, dob, membership_number`,
-    [name, dob, idExpirationDate, input.idNumber || null, input.state || null, idType, idTypeOther, idScanHash, idScanValue]
+  const inserted = await db.execute<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
+    sql`INSERT INTO customers (name, dob, id_expiration_date, id_number, id_state, id_type, id_type_other, id_scan_hash, id_scan_value, created_at, updated_at)
+     VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${input.idNumber || null}, ${input.state || null}, ${idType}, ${idTypeOther}, ${idScanHash}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`
   );
   const row = inserted.rows[0]!;
   return {
@@ -364,9 +369,8 @@ export async function matchIdentity(input: { firstName: string; lastName: string
 
   // Check by ID number first
   if (input.idNumber?.trim()) {
-    const byIdNumber = await query<{ id: string; name: string; dob: string | Date | null; membership_number: string | null }>(
-      `SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER($1) LIMIT 1`,
-      [input.idNumber.trim()]
+    const byIdNumber = await db.execute<{ id: string; name: string; dob: string | Date | null; membership_number: string | null }>(
+      sql`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER(${input.idNumber.trim()}) LIMIT 1`
     );
     if (byIdNumber.rows.length > 0) {
       const row = byIdNumber.rows[0]!;
@@ -378,9 +382,8 @@ export async function matchIdentity(input: { firstName: string; lastName: string
   }
 
   // Fuzzy match by name + DOB
-  const res = await query<{ id: string; name: string; dob: string | Date | null; membership_number: string | null; created_at: Date }>(
-    `SELECT id, name, dob, membership_number, created_at FROM customers WHERE dob = $1::date ORDER BY created_at ASC LIMIT 50`,
-    [dob]
+  const res = await db.execute<{ id: string; name: string; dob: string | Date | null; membership_number: string | null; created_at: Date }>(
+    sql`SELECT id, name, dob, membership_number, created_at FROM customers WHERE dob = ${dob}::date ORDER BY created_at ASC LIMIT 50`
   );
 
   const matches = res.rows
@@ -425,9 +428,8 @@ export async function createManual(input: {
 
   // Dedup: check ID number
   if (idScanValue) {
-    const byIdNumber = await query<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
-      `SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER($1) LIMIT 1`,
-      [idScanValue]
+    const byIdNumber = await db.execute<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
+      sql`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER(${idScanValue}) LIMIT 1`
     );
     if (byIdNumber.rows.length > 0) {
       const row = byIdNumber.rows[0]!;
@@ -439,9 +441,8 @@ export async function createManual(input: {
   }
 
   // Dedup: check name + DOB
-  const byNameDob = await query<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
-    `SELECT id, name, dob, membership_number FROM customers WHERE dob = $1::date AND LOWER(name) = LOWER($2) LIMIT 1`,
-    [dob, name]
+  const byNameDob = await db.execute<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
+    sql`SELECT id, name, dob, membership_number FROM customers WHERE dob = ${dob}::date AND LOWER(name) = LOWER(${name}) LIMIT 1`
   );
   if (byNameDob.rows.length > 0) {
     const row = byNameDob.rows[0]!;
@@ -451,10 +452,9 @@ export async function createManual(input: {
     };
   }
 
-  const inserted = await query<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
-    `INSERT INTO customers (name, dob, id_expiration_date, id_type, id_type_other, id_scan_value, id_number, created_at, updated_at)
-     VALUES ($1, $2::date, $3::date, $4, $5, $6, $7, NOW(), NOW()) RETURNING id, name, dob, membership_number`,
-    [name, dob, idExpirationDate, idType, idTypeOther, idScanValue, idScanValue]
+  const inserted = await db.execute<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
+    sql`INSERT INTO customers (name, dob, id_expiration_date, id_type, id_type_other, id_scan_value, id_number, created_at, updated_at)
+     VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${idType}, ${idTypeOther}, ${idScanValue}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`
   );
   const row = inserted.rows[0]!;
   return {
