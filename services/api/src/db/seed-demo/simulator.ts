@@ -1205,6 +1205,43 @@ async function checkoutActiveVisits(client: DbClient, p: {
 }
 
 // ---------------------------------------------------------------------------
+// Close orphaned visits — active but no matching room/locker assignment
+// ---------------------------------------------------------------------------
+
+async function closeOrphanedVisits(client: DbClient, now: Date): Promise<number> {
+  // Find visits that are still open but whose customer has no room or locker
+  // assigned to them. This happens when a room/locker gets released (e.g. by
+  // the simulator's checkout logic or manual cleanup) but the visit row itself
+  // wasn't closed.
+  const res = await client.query<{ visit_id: string; customer_id: string }>(`
+    SELECT v.id AS visit_id, v.customer_id
+    FROM visits v
+    WHERE v.ended_at IS NULL
+      AND NOT EXISTS (
+        -- No room currently assigned to this customer
+        SELECT 1 FROM rooms r
+        WHERE r.assigned_to_customer_id = v.customer_id
+      )
+      AND NOT EXISTS (
+        -- No locker currently assigned to this customer
+        SELECT 1 FROM lockers l
+        WHERE l.assigned_to_customer_id = v.customer_id
+      )
+  `);
+
+  if (res.rows.length === 0) return 0;
+
+  for (const row of res.rows) {
+    await client.query(
+      `UPDATE visits SET ended_at = $1, updated_at = NOW() WHERE id = $2 AND ended_at IS NULL`,
+      [now, row.visit_id]
+    );
+  }
+
+  return res.rows.length;
+}
+
+// ---------------------------------------------------------------------------
 // Main Orchestrator
 // ---------------------------------------------------------------------------
 
@@ -1282,6 +1319,10 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       // Close out any active check-ins whose scheduled end has passed
       const closedOut = await checkoutActiveVisits(client, { now, staff: staffRes.rows });
       if (closedOut > 0) progress.log(`🔒 Closed out ${closedOut} stale active check-in(s)`);
+
+      // Close orphaned visits — open visits whose room/locker is no longer assigned to them
+      const orphaned = await closeOrphanedVisits(client, now);
+      if (orphaned > 0) progress.log(`🧹 Cleaned up ${orphaned} orphaned visit(s)`);
 
       const visitCount = await simulateVisits({
         client, from, to: now, anchor,
@@ -1376,6 +1417,10 @@ async function seedActiveWaitlist(client: DbClient, p: {
   const agreement = agreementRes.rows[0];
   const reg = p.registerSessions[0];
 
+  // First two rooms get overdue checkout times for demo visibility
+  const OVERDUE_SCHEDULE_MINS = [30, 60]; // minutes past checkout
+  let overdueIdx = 0;
+
   for (const room of p.rooms) {
     const customer = p.customers[Math.floor(rng() * p.customers.length)];
     const updated = await client.query<{ id: string }>(
@@ -1389,12 +1434,25 @@ async function seedActiveWaitlist(client: DbClient, p: {
     // Create an open visit + checkin_block so the inventory LATERAL join returns checkout_at
     const visitId = randomUUID();
     const blockId = randomUUID();
-    const minIn = 30 + Math.floor(rng() * 90); // checked in 30–120 min ago
-    const start = new Date(p.now.getTime() - minIn * 60 * 1000);
-    const hoursTotal = 2 + Math.floor(rng() * 2); // 2 or 3 hour rental
-    const scheduledEnd = ceilTo15Min(new Date(start.getTime() + hoursTotal * 60 * 60 * 1000));
-    const signedAt = new Date(start.getTime() + 3 * 60 * 1000);
+    const signedAt = new Date(p.now.getTime() - 60 * 60 * 1000); // signed 1hr ago
     const rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.type) ? room.type : 'STANDARD';
+
+    let start: Date;
+    let scheduledEnd: Date;
+
+    if (overdueIdx < OVERDUE_SCHEDULE_MINS.length) {
+      // Force overdue: checked in 4hr ago, 2hr rental → expired ~2hr ago, but we set
+      // scheduledEnd to be exactly OVERDUE_SCHEDULE_MINS[overdueIdx] minutes in the past
+      const overdueBy = OVERDUE_SCHEDULE_MINS[overdueIdx]!;
+      scheduledEnd = new Date(p.now.getTime() - overdueBy * 60 * 1000);
+      start = new Date(scheduledEnd.getTime() - 2 * 60 * 60 * 1000); // 2hr rental
+      overdueIdx++;
+    } else {
+      const minIn = 30 + Math.floor(rng() * 90); // checked in 30–120 min ago
+      start = new Date(p.now.getTime() - minIn * 60 * 1000);
+      const hoursTotal = 2 + Math.floor(rng() * 2); // 2 or 3 hour rental
+      scheduledEnd = ceilTo15Min(new Date(start.getTime() + hoursTotal * 60 * 60 * 1000));
+    }
 
     await client.query(
       `INSERT INTO visits (id, started_at, ended_at, customer_id, created_at, updated_at)
@@ -1432,10 +1490,15 @@ async function seedActiveWaitlist(client: DbClient, p: {
   // Create pending waitlist entries
   for (let i = 0; i < WAITLIST_SIZE; i++) {
     const customer = p.customers[Math.floor(rng() * p.customers.length)];
-    const tierRoll = rng();
-    let desiredTier = 'SPECIAL';
-    if (tierRoll < 0.6) desiredTier = 'STANDARD';
-    else if (tierRoll < 0.8) desiredTier = 'DOUBLE';
+    // Force first 3 entries to have one of each tier for demo variety
+    const FORCED_TIERS = ['STANDARD', 'DOUBLE', 'SPECIAL'];
+    let desiredTier: string;
+    if (i < FORCED_TIERS.length) {
+      desiredTier = FORCED_TIERS[i]!;
+    } else {
+      const tierRoll = rng();
+      desiredTier = tierRoll < 0.6 ? 'STANDARD' : tierRoll < 0.8 ? 'DOUBLE' : 'SPECIAL';
+    }
     const createdAt = new Date(p.now.getTime() - Math.floor(5 + rng() * 25) * 60 * 1000);
     const _emp = p.staff[Math.floor(rng() * p.staff.length)];
     const _reg = p.registerSessions[Math.floor(rng() * p.registerSessions.length)];

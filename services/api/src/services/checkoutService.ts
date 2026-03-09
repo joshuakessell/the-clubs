@@ -406,6 +406,20 @@ export async function completeManualCheckout(
         `INSERT INTO late_checkout_events (customer_id, occupancy_id, checkout_request_id, late_minutes, fee_amount, ban_applied) VALUES ($1, $2, NULL, $3, $4, $5)`,
         [row.customer_id, row.occupancy_id, lateMinutes, feeAmount, banApplied]
       );
+
+      // Auto-note on customer account for late checkout
+      const paymentNote = feeAmount > 0
+        ? payAtCheckout
+          ? `Fee paid at checkout.`
+          : `Fee added to past due balance.`
+        : `No fee assessed.`;
+      const noteText = `Late checkout: ${lateMinutes} minutes late. Fee assessed: $${feeAmount.toFixed(2)}. ${paymentNote}${banApplied ? ' Ban applied.' : ''}`;
+      await client.query(
+        `INSERT INTO customer_notes
+           (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
+         VALUES ($1, $2, $3, 'EMPLOYEE_REGISTER', $4, true)`,
+        [row.customer_id, looksLikeUuid(staff.staffId) ? staff.staffId : null, staff.staffName, noteText]
+      );
     }
 
     // Emit club event
@@ -851,7 +865,8 @@ export async function completeStaffCheckout(
 
       // Customer note for late checkouts >= 30 minutes
       if (checkoutRequest.late_minutes >= 30) {
-        const noteText = `Late checkout: ${checkoutRequest.late_minutes} minutes late. Fee assessed: $${feeAmount.toFixed(2)}${checkoutRequest.ban_applied ? ' (ban applied)' : ''}.`;
+        const feePaidStatus = checkoutRequest.fee_paid ? 'Fee paid at checkout.' : 'Fee added to past due balance.';
+        const noteText = `Late checkout: ${checkoutRequest.late_minutes} minutes late. Fee assessed: $${feeAmount.toFixed(2)}. ${feeAmount > 0 ? feePaidStatus : 'No fee assessed.'}${checkoutRequest.ban_applied ? ' Ban applied.' : ''}`;
         const noteResult = await client.query<{ id: string }>(
           `INSERT INTO customer_notes
              (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)

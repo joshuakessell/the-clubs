@@ -90,7 +90,7 @@ interface RegisterState {
   setManualIdTypeOther: (v: string) => void;
   setManualIdNumber: (v: string) => void;
   setManualEntry: (v: boolean) => void;
-  handleManualSubmit: (e: React.FormEvent<HTMLFormElement>) => Promise<void>;
+  handleManualSubmit: (e: { preventDefault(): void }) => Promise<void>;
 
   /* ── Flow Commands ─────────────────────────── */
   sendFlowCommand: (cmd: {
@@ -145,7 +145,7 @@ function dobDigitsToIso(digits: string): string | null {
 
 /** Derive lane ID from the URL pathname. e.g. /register-1 → register-1 */
 function deriveLaneIdFromUrl(): string {
-  const path = globalThis.location.pathname.replaceAll(/^\//, '').replaceAll(/\/$/, '');
+  const path = globalThis.location.pathname.replace(/^\//, '').replace(/\/$/, '');
   // If path looks like "register-N", use it directly
   if (/^register-\d+$/.test(path)) return path;
   // Fallback: use VITE_LANE_ID or default
@@ -493,101 +493,77 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   },
 
   /* Flow Commands */
+
   sendFlowCommand: async (cmd) => {
-    // Read latest state at call time (not stale closure)
     const state = get();
     const sp = state.sessionPayload;
     if (!sp?.sessionId) return;
     const { laneId } = state;
-    try {
-      const token = globalThis.__authToken;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(
-        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/flow-command`),
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            sessionId: sp.sessionId,
-            commandId: crypto.randomUUID(),
-            actor: 'EMPLOYEE',
-            expectedFlowVersion: sp.flowVersion ?? 0,
-            ...cmd,
-          }),
-        }
-      );
+    const token = globalThis.__authToken;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
+    const commandUrl = getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/flow-command`);
+    const snapshotUrl = getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`);
 
-        // On version mismatch, auto-resync and silently retry once
-        if (d.code === 'VersionMismatch' || d.error === 'VersionMismatch' || res.status === 409) {
-          try {
-            const snapRes = await fetch(
-              getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/session-snapshot`),
-              { headers },
-            );
-            if (snapRes.ok) {
-              const snap = await snapRes.json();
-              if (snap.session) {
-                set({ sessionPayload: snap.session });
-                // Retry once with the refreshed version
-                const retryRes = await fetch(
-                  getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/flow-command`),
-                  {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({
-                      sessionId: sp.sessionId,
-                      commandId: crypto.randomUUID(),
-                      actor: 'EMPLOYEE',
-                      expectedFlowVersion: snap.session.flowVersion ?? 0,
-                      ...cmd,
-                    }),
-                  }
-                );
-                if (retryRes.ok) {
-                  const retryData = await retryRes.json().catch(() => null);
-                  if (retryData?.flowVersion != null) {
-                    const current = get().sessionPayload;
-                    if (current) set({ sessionPayload: { ...current, flowVersion: retryData.flowVersion } });
-                  }
-                  return; // Silent success — no error toast
-                }
-              }
-            }
-          } catch { /* ignore retry failure — fall through to error toast */ }
-        }
+    const buildBody = (version: number) => JSON.stringify({
+      sessionId: sp.sessionId,
+      commandId: crypto.randomUUID(),
+      actor: 'EMPLOYEE',
+      expectedFlowVersion: version,
+      ...cmd,
+    });
 
-        set({ successToastMessage: d.error ?? `Flow command failed (${res.status})` });
-        return;
-      }
-
-      // Update local flowVersion from response for chained commands
-      const data = await res.json().catch(() => null);
+    const applyFlowVersion = (data: Record<string, unknown> | null) => {
       if (data?.flowVersion != null) {
         const current = get().sessionPayload;
-        if (current) {
-          set({ sessionPayload: { ...current, flowVersion: data.flowVersion } });
-        }
+        if (current) set({ sessionPayload: { ...current, flowVersion: data.flowVersion as number } });
       }
+    };
 
-      // Immediately fetch snapshot so step transitions happen without waiting for SSE
+    const fetchSnapshot = async () => {
       try {
-        const token = globalThis.__authToken;
         const snapHeaders: Record<string, string> = {};
         if (token) snapHeaders['Authorization'] = `Bearer ${token}`;
-        const snapRes = await fetch(
-          getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(get().laneId)}/session-snapshot`),
-          { headers: snapHeaders },
-        );
+        const snapRes = await fetch(snapshotUrl, { headers: snapHeaders });
         if (snapRes.ok) {
           const snap = await snapRes.json();
           if (snap.session) set({ sessionPayload: snap.session });
         }
       } catch { /* snapshot fetch failed — SSE will still deliver the update */ }
+    };
+
+    const resyncAndRetry = async (): Promise<boolean> => {
+      try {
+        const snapRes = await fetch(snapshotUrl, { headers });
+        if (!snapRes.ok) return false;
+        const snap = await snapRes.json();
+        if (!snap.session) return false;
+        set({ sessionPayload: snap.session });
+        const retryRes = await fetch(commandUrl, {
+          method: 'POST', headers,
+          body: buildBody(snap.session.flowVersion ?? 0),
+        });
+        if (!retryRes.ok) return false;
+        applyFlowVersion(await retryRes.json().catch(() => null));
+        return true;
+      } catch { return false; }
+    };
+
+    try {
+      const res = await fetch(commandUrl, { method: 'POST', headers, body: buildBody(sp.flowVersion ?? 0) });
+
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        const isVersionMismatch = d.code === 'VersionMismatch' || d.error === 'VersionMismatch' || res.status === 409;
+        if (isVersionMismatch && await resyncAndRetry()) return;
+        set({ successToastMessage: d.error ?? `Flow command failed (${res.status})` });
+        return;
+      }
+
+      applyFlowVersion(await res.json().catch(() => null));
+      await fetchSnapshot();
     } catch {
       set({ successToastMessage: 'Network error sending flow command' });
     }
@@ -631,7 +607,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       optimisticCheckin = {
         visitId: sessionPayload.sessionId,
         occupancyId: sessionPayload.sessionId,
-        resourceType: sessionPayload.assignedResourceType as 'room' | 'locker',
+        resourceType: sessionPayload.assignedResourceType ?? 'room',
         resourceNumber: sessionPayload.assignedResourceNumber,
         checkinAt: new Date().toISOString(),
         checkoutAt: null,

@@ -290,7 +290,8 @@ function planVisitsForCustomer(
   rooms: DemoRoom[],
   lockers: DemoLocker[],
   activeSlots: number,
-  weekCounts: Map<string, number>
+  weekCounts: Map<string, number>,
+  overdueMinutes = 0,
 ): DemoVisit[] {
   const visits: DemoVisit[] = [];
   const visitCount = randomInt(2, 6);
@@ -382,13 +383,17 @@ function planVisitsForCustomer(
   // Inject an active visit if slots remain
   if (activeSlots > 0) {
     const activeStart = addHours(now, -randomInt(2, 5));
+    // If overdueMinutes is set, shift ends_at into the past so the customer appears overdue
+    const blockDurationMs = overdueMinutes
+      ? (now.getTime() - activeStart.getTime()) - overdueMinutes * 60_000
+      : 6 * 60 * 60_000;
     const activeBlocks = [
       {
         id: randomUUID(),
         visit_id: '', // backfill
         block_type: BlockType.INITIAL,
         starts_at: activeStart,
-        ends_at: addHours(activeStart, 6),
+        ends_at: new Date(activeStart.getTime() + blockDurationMs),
         rental_type: Math.random() < 0.5 ? RentalType.STANDARD : RentalType.LOCKER,
         room_id: null,
         locker_id: null,
@@ -486,18 +491,28 @@ export function generateDemoData(options: GenerateOptions): DemoData {
   const activeTarget = Math.min(12, Math.max(6, Math.floor(customerCount * 0.08)));
   let activeRemaining = activeTarget;
 
+  // First two active slots are overdue (30min and 60min respectively)
+  const overdueSchedule = [30, 60];
+  let overdueIdx = 0;
+
   for (const customer of customers) {
+    const isOverdueSlot = activeRemaining > 0 && overdueIdx < overdueSchedule.length;
+    const overdueMinutes = isOverdueSlot ? (overdueSchedule[overdueIdx] ?? 0) : 0;
     const customerVisits = planVisitsForCustomer(
       customer.id,
       now,
       options.rooms,
       options.lockers,
       activeRemaining > 0 ? 1 : 0,
-      weekCounts
+      weekCounts,
+      overdueMinutes,
     );
     if (activeRemaining > 0) {
       const hasActive = customerVisits.some((v) => v.ended_at === null);
-      if (hasActive) activeRemaining--;
+      if (hasActive) {
+        activeRemaining--;
+        if (isOverdueSlot) overdueIdx++;
+      }
     }
     visits.push(...customerVisits);
   }

@@ -27,14 +27,14 @@ export async function listWaitlistEntries(status?: string, fastifyInstance?: Fas
     try { await expireWaitlistEntries(fastifyInstance); } catch { /* non-critical */ }
   }
 
-  let queryStr = `SELECT w.*, w.room_id AS offered_room_id, cb.room_id AS current_room_id, cb.locker_id, cb.rental_type as current_rental_type, cb.starts_at as checkin_starts_at, cb.ends_at as checkin_ends_at, offered_room.number as offered_room_number, current_room.number as current_room_number, l.number as locker_number, v.customer_id, c.name as customer_name, c.membership_number FROM waitlist w JOIN checkin_blocks cb ON w.checkin_block_id = cb.id JOIN visits v ON w.visit_id = v.id LEFT JOIN customers c ON v.customer_id = c.id LEFT JOIN rooms offered_room ON w.room_id = offered_room.id LEFT JOIN rooms current_room ON cb.room_id = current_room.id LEFT JOIN lockers l ON cb.locker_id = l.id`;
+  let queryStr = `SELECT w.*, w.room_id AS offered_room_id, cb.room_id AS current_room_id, cb.locker_id, cb.rental_type as current_rental_type, cb.starts_at as checkin_starts_at, cb.ends_at as checkin_ends_at, offered_room.number as offered_room_number, current_room.number as current_room_number, current_room.type as current_room_tier, l.number as locker_number, v.customer_id, c.name as customer_name, c.membership_number FROM waitlist w JOIN checkin_blocks cb ON w.checkin_block_id = cb.id JOIN visits v ON w.visit_id = v.id LEFT JOIN customers c ON v.customer_id = c.id LEFT JOIN rooms offered_room ON w.room_id = offered_room.id LEFT JOIN rooms current_room ON cb.room_id = current_room.id LEFT JOIN lockers l ON cb.locker_id = l.id`;
   const params: string[] = [];
   if (status) { queryStr += ` WHERE w.status = $1`; params.push(status); }
   queryStr += ` ORDER BY w.created_at ASC`;
 
   const result = await query<WaitlistRow & {
     offered_room_id: string | null; current_room_id: string | null; locker_id: string | null;
-    current_rental_type: string; checkin_starts_at: Date; checkin_ends_at: Date;
+    current_rental_type: string; current_room_tier: string | null; checkin_starts_at: Date; checkin_ends_at: Date;
     offered_room_number: string | null; current_room_number: string | null; locker_number: string | null;
     customer_id: string; customer_name: string; membership_number: string | null;
   }>(queryStr, params);
@@ -46,7 +46,7 @@ export async function listWaitlistEntries(status?: string, fastifyInstance?: Fas
     offeredAt: row.offered_at, completedAt: row.completed_at, roomId: row.offered_room_id,
     offeredRoomNumber: row.offered_room_number,
     displayIdentifier: row.locker_number || row.current_room_number || `***${row.id.substring(0, 8)}`,
-    currentRentalType: row.current_rental_type, customerName: row.customer_name || 'Customer',
+    currentRentalType: row.current_rental_type, currentRoomTier: row.current_room_tier ?? null, customerName: row.customer_name || 'Customer',
   }));
 }
 

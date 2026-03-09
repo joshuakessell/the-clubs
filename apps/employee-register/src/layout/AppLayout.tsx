@@ -95,7 +95,7 @@ export function AppLayout() {
       setVisibleToast(toastMessage);
       setToastMessage(null);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      toastTimerRef.current = setTimeout(() => setVisibleToast(null), 4000);
+      toastTimerRef.current = setTimeout(() => setVisibleToast(null), 2000);
     }
   }, [toastMessage, setToastMessage]);
 
@@ -130,7 +130,7 @@ export function AppLayout() {
       <div aria-live="polite" aria-atomic="true">
       {visibleToast && (
         <div
-          className="fixed top-4 left-1/2 z-[9999] -translate-x-1/2 animate-[slideDown_0.25s_ease-out]"
+          className="fixed top-1/2 left-1/2 z-[9999] -translate-x-1/2 -translate-y-1/2 animate-[slideDown_0.25s_ease-out]"
           style={{ pointerEvents: 'auto' }}
         >
           <div

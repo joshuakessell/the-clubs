@@ -24,6 +24,7 @@ interface WaitlistEntry {
   offeredRoomNumber?: string | null;
   displayIdentifier: string;
   currentRentalType: string;
+  currentRoomTier?: string | null;
   customerName: string;
 }
 
@@ -59,11 +60,17 @@ const TIER_COLORS: Record<string, string> = {
   SPECIAL: 'var(--color-status-success)',
 };
 
+/** Rank for sorting: lower = higher priority in the upgrade queue */
+const TIER_RANK: Record<string, number> = { LOCKER: 0, STANDARD: 1, DOUBLE: 2, SPECIAL: 3 };
+
+/** Upgrade prices from locker to room type */
+const UPGRADE_PRICES: Record<string, number> = { STANDARD: 8, DOUBLE: 17, SPECIAL: 27 };
+
 const POLL_INTERVAL = 15_000;
 
 /* ── Helpers ────────────────────────────────────────── */
 
-
+/** Map desired tiers (Postgres array format etc.) to JS array */
 function normalizeDesiredTiers(raw: string[] | string | null | undefined): string[] {
   if (Array.isArray(raw)) return raw;
   if (typeof raw !== 'string' || raw.trim() === '') return [];
@@ -78,22 +85,22 @@ function normalizeDesiredTiers(raw: string[] | string | null | undefined): strin
   return [raw];
 }
 
-/** Compute grid span relative to the visible (active) tier columns only */
-function computeSpan(
-  desiredTiersRaw: string[] | string | null | undefined,
-  activeTiers: string[],
-): { startCol: number; span: number } {
-  const desiredTiers = normalizeDesiredTiers(desiredTiersRaw);
-  // Map desired tiers to their index within the active columns
-  const indices = desiredTiers
-    .map((t) => activeTiers.indexOf(t))
-    .filter((i) => i >= 0)
-    .sort((a, b) => a - b);
-  if (indices.length === 0) return { startCol: 0, span: 1 };
-  const min = indices[0] ?? 0;
-  const max = indices.at(-1) ?? 0;
-  return { startCol: min, span: max - min + 1 };
+/** Get the primary desired tier for an entry (single column placement) */
+function getPrimaryTier(entry: WaitlistEntry): string {
+  // Use the primary desiredTier field first, fall back to first of desiredTiers array
+  if (entry.desiredTier && TIER_COLUMNS.includes(entry.desiredTier as typeof TIER_COLUMNS[number])) {
+    return entry.desiredTier;
+  }
+  const tiers = normalizeDesiredTiers(entry.desiredTiers);
+  return tiers[0] ?? 'STANDARD';
 }
+
+/** Singular label for a tier */
+const TIER_LABEL_SINGULAR: Record<string, string> = {
+  STANDARD: 'Private Room',
+  DOUBLE: 'Double Room',
+  SPECIAL: 'Special Room',
+};
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -154,7 +161,7 @@ function EntryActions({
   eligible,
   submitting,
   confirmingCancelId,
-  onOffer,
+  onOfferClick,
   onUpgrade,
   onCancelTap,
   onCancelConfirm,
@@ -164,79 +171,224 @@ function EntryActions({
   eligible: boolean;
   submitting: boolean;
   confirmingCancelId: string | null;
-  onOffer: (e: WaitlistEntry) => void;
+  onOfferClick: (e: WaitlistEntry) => void;
   onUpgrade: (e: WaitlistEntry) => void;
   onCancelTap: (id: string) => void;
   onCancelConfirm: (e: WaitlistEntry) => void;
 }>) {
-  const actionBtnBase = 'rounded-lg px-3 py-1.5 text-xs font-bold';
+  const actionBtnBase = 'w-full rounded-lg px-3 py-1.5 text-xs font-bold text-center';
+
+  const cancelBtnStyle = {
+    backgroundColor: 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
+    color: 'var(--color-status-error)',
+    border: '1px solid color-mix(in oklch, var(--color-status-error) 25%, transparent)',
+    opacity: submitting ? 0.4 : 1,
+    cursor: submitting ? 'not-allowed' : 'pointer',
+    transition: 'opacity 0.15s ease',
+  } as const;
 
   return (
-    <div className="shrink-0 ml-2 flex items-center gap-1.5">
+    <div className="flex flex-col gap-1 mt-2">
       {isOffered ? (
-        <button
-          onClick={() => onUpgrade(entry)}
-          disabled={submitting}
-          className={actionBtnBase}
-          style={{
-            backgroundColor: 'var(--color-status-warning)',
-            color: '#000',
-            transition: 'opacity 0.15s ease',
-            opacity: submitting ? 0.5 : 1,
-          }}
-        >
-          Upgrade
-        </button>
+        <>
+          <button
+            onClick={() => onUpgrade(entry)}
+            disabled={submitting}
+            className={actionBtnBase}
+            style={{
+              backgroundColor: 'var(--color-status-warning)',
+              color: '#000',
+              transition: 'opacity 0.15s ease',
+              opacity: submitting ? 0.5 : 1,
+            }}
+          >
+            Upgrade
+          </button>
+          {/* Cancel Offer — immediately revokes the room hold, no confirmation needed */}
+          <button
+            onClick={() => onCancelConfirm(entry)}
+            disabled={submitting}
+            className={actionBtnBase}
+            aria-label={`Cancel offer for ${entry.customerName}`}
+            style={cancelBtnStyle}
+          >
+            Cancel Offer
+          </button>
+        </>
       ) : (
-        <button
-          onClick={() => onOffer(entry)}
-          disabled={submitting || !eligible}
-          className={actionBtnBase}
-          style={{
-            backgroundColor: eligible ? 'var(--color-accent-primary)' : 'var(--color-surface-overlay)',
-            color: eligible ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
-            cursor: eligible ? 'pointer' : 'not-allowed',
-            opacity: eligible ? 1 : 0.5,
-            transition: 'opacity 0.15s ease',
-          }}
-        >
-          Offer Room
-        </button>
+        <>
+          <button
+            onClick={() => onOfferClick(entry)}
+            disabled={submitting || !eligible}
+            className={actionBtnBase}
+            style={{
+              backgroundColor: eligible ? 'var(--color-accent-primary)' : 'var(--color-surface-overlay)',
+              color: eligible ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
+              cursor: eligible ? 'pointer' : 'not-allowed',
+              opacity: eligible ? 1 : 0.5,
+              transition: 'opacity 0.15s ease',
+            }}
+          >
+            Offer Room
+          </button>
+          {/* Cancel — requires confirmation to remove from waitlist */}
+          {confirmingCancelId === entry.id ? (
+            <button
+              onClick={() => onCancelConfirm(entry)}
+              disabled={submitting}
+              className={actionBtnBase}
+              aria-label={`Confirm cancel for ${entry.customerName}`}
+              style={{
+                backgroundColor: 'var(--color-status-error)',
+                color: 'var(--color-text-inverse)',
+                transition: 'opacity 0.15s ease',
+                opacity: submitting ? 0.5 : 1,
+              }}
+            >
+              Confirm?
+            </button>
+          ) : (
+            <button
+              onClick={() => onCancelTap(entry.id)}
+              disabled={submitting}
+              className={actionBtnBase}
+              aria-label={`Cancel upgrade for ${entry.customerName}`}
+              style={cancelBtnStyle}
+            >
+              Cancel
+            </button>
+          )}
+        </>
       )}
+    </div>
+  );
+}
 
-      {confirmingCancelId === entry.id ? (
-        <button
-          onClick={() => onCancelConfirm(entry)}
-          disabled={submitting}
-          className={`${actionBtnBase}`}
-          aria-label={`Confirm cancel for ${entry.customerName}`}
-          style={{
-            backgroundColor: 'var(--color-status-error)',
-            color: 'var(--color-text-inverse)',
-            transition: 'opacity 0.15s ease',
-            opacity: submitting ? 0.5 : 1,
-          }}
-        >
-          Confirm?
-        </button>
-      ) : (
-        <button
-          onClick={() => onCancelTap(entry.id)}
-          disabled={submitting}
-          className="rounded-lg px-2 py-1.5 text-xs font-semibold"
-          aria-label={`Cancel upgrade for ${entry.customerName}`}
-          style={{
-            backgroundColor: 'transparent',
-            color: 'var(--color-status-error)',
-            border: '1px solid color-mix(in oklch, var(--color-status-error) 40%, transparent)',
-            opacity: submitting ? 0.4 : 0.7,
-            cursor: submitting ? 'not-allowed' : 'pointer',
-            transition: 'opacity 0.15s ease',
-          }}
-        >
-          ✕
-        </button>
-      )}
+/** Room picker modal — shown when employee clicks "Offer Room" */
+function RoomPickerModal({
+  entry,
+  rooms,
+  loadingRooms,
+  onSelectRoom,
+  onClose,
+}: Readonly<{
+  entry: WaitlistEntry;
+  rooms: Record<string, Array<{ id: string; number: string; type: string }>>;
+  loadingRooms: boolean;
+  onSelectRoom: (entry: WaitlistEntry, roomId: string) => void;
+  onClose: () => void;
+}>) {
+  const primaryTier = getPrimaryTier(entry);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Select a room to offer"
+        className="w-full max-w-md rounded-xl border shadow-2xl"
+        style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <div>
+            <h3
+              className="text-base font-bold"
+              style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}
+            >
+              Offer Room to {entry.customerName}
+            </h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              Locker {entry.displayIdentifier} · Select a room to offer
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1 transition-colors"
+            style={{ color: 'var(--color-text-muted)' }}
+            aria-label="Close"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="h-px w-full" style={{ background: 'var(--color-border-subtle)' }} />
+
+        {/* Room list */}
+        <div className="px-5 py-4 max-h-[50vh] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+          {loadingRooms ? (
+            <div className="text-center py-8">
+              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading rooms…</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {TIER_COLUMNS.map((tier) => {
+                const tierRooms = rooms[tier] ?? [];
+                const price = UPGRADE_PRICES[tier] ?? 0;
+                if (tierRooms.length === 0) return null;
+                return (
+                  <div key={tier}>
+                    {/* Tier header */}
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="text-xs font-bold uppercase tracking-wider"
+                          style={{ color: TIER_COLORS[tier] }}
+                        >
+                          {TIER_LABELS[tier] ?? tier}
+                        </span>
+                        {tier === primaryTier && (
+                          <span
+                            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full"
+                            style={{
+                              backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 15%, transparent)',
+                              color: 'var(--color-accent-primary)',
+                            }}
+                          >
+                            Preferred
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className="text-xs font-bold tabular-nums"
+                        style={{ color: 'var(--color-status-success)' }}
+                      >
+                        ${price} upgrade
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {tierRooms.map((room) => (
+                        <button
+                          key={room.id}
+                          onClick={() => onSelectRoom(entry, room.id)}
+                          className="rounded-lg py-2 text-sm font-bold tabular-nums transition-all hover:scale-105"
+                          style={{
+                            backgroundColor: 'var(--color-surface-input)',
+                            color: 'var(--color-text-primary)',
+                            border: `1px solid ${TIER_COLORS[tier] ?? 'var(--color-border-default)'}`,
+                            cursor: 'pointer',
+                            fontFamily: 'var(--font-display)',
+                          }}
+                        >
+                          {room.number}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -250,7 +402,7 @@ function WaitlistRow({
   submitting,
   confirmingCancelId,
   activeTiers,
-  onOffer,
+  onOfferClick,
   onUpgrade,
   onCancelTap,
   onCancelConfirm,
@@ -262,14 +414,17 @@ function WaitlistRow({
   submitting: boolean;
   confirmingCancelId: string | null;
   activeTiers: string[];
-  onOffer: (e: WaitlistEntry) => void;
+  onOfferClick: (e: WaitlistEntry) => void;
   onUpgrade: (e: WaitlistEntry) => void;
   onCancelTap: (id: string) => void;
   onCancelConfirm: (e: WaitlistEntry) => void;
 }>) {
-  const { startCol, span } = computeSpan(entry.desiredTiers, activeTiers);
+  const primaryTier = getPrimaryTier(entry);
+  const colIndex = activeTiers.indexOf(primaryTier);
   const isOffered = entry.status === 'OFFERED';
   const colCount = activeTiers.length;
+  // If the entry's tier isn't in active columns, place in first column
+  const col = colIndex >= 0 ? colIndex : 0;
 
   return (
     <div
@@ -279,14 +434,14 @@ function WaitlistRow({
         gap: '2px',
       }}
     >
-      {/* Empty cells before span */}
-      {startCol > 0 ? <div style={{ gridColumn: `1 / ${startCol + 1}` }} /> : null}
+      {/* Empty cells before */}
+      {col > 0 ? <div style={{ gridColumn: `1 / ${col + 1}` }} /> : null}
 
-      {/* Entry cell */}
+      {/* Entry cell — single column, vertical layout */}
       <div
-        className="flex items-center justify-between rounded-xl px-3 py-2.5"
+        className="rounded-xl px-3 py-2.5"
         style={{
-          gridColumn: `${startCol + 1} / ${startCol + span + 1}`,
+          gridColumn: `${col + 1} / ${col + 2}`,
           backgroundColor: isOffered
             ? 'color-mix(in oklch, var(--color-status-warning) 6%, transparent)'
             : 'var(--color-surface-input)',
@@ -298,72 +453,67 @@ function WaitlistRow({
           transition: 'background-color 0.15s ease, border-color 0.15s ease',
         }}
       >
-        {/* Left: customer info */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          {/* Queue position */}
+        {/* Top: name + status */}
+        <div className="flex items-center gap-1.5">
           <span
             className="text-[11px] font-bold tabular-nums shrink-0"
             style={{
               color: isFirstEligible ? 'var(--color-status-success)' : 'var(--color-text-muted)',
-              minWidth: 24,
             }}
           >
             #{String(queuePos).padStart(2, '0')}
           </span>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <span
-                className="text-sm font-semibold"
-                style={{ color: 'var(--color-text-primary)' }}
-              >
-                {entry.customerName}
-              </span>
-              <StatusDot
-                status={isOffered ? 'OFFERED' : 'WAITING'}
-                label={isOffered ? 'Offered' : 'Waiting'}
-                size="sm"
-              />
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                {entry.displayIdentifier}
-              </span>
-              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>·</span>
-              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
-                {timeAgo(entry.createdAt)}
-              </span>
-              {isOffered && entry.offeredRoomNumber ? (
-                <>
-                  <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>·</span>
-                  <span
-                    className="text-[11px] font-medium"
-                    style={{ color: 'var(--color-status-warning)' }}
-                  >
-                    Room {entry.offeredRoomNumber}
-                  </span>
-                </>
-              ) : null}
-            </div>
-          </div>
+          <span
+            className="text-sm font-semibold truncate"
+            style={{ color: 'var(--color-text-primary)' }}
+          >
+            {entry.customerName}
+          </span>
+          <StatusDot
+            status={isOffered ? 'OFFERED' : 'WAITING'}
+            label={isOffered ? 'Offered' : 'Waiting'}
+            size="sm"
+          />
         </div>
 
-        {/* Right: actions */}
+        {/* Meta info */}
+        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+            {entry.currentRentalType === 'LOCKER' ? `Locker ${entry.displayIdentifier}` : entry.displayIdentifier}
+          </span>
+          <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>·</span>
+          <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+            {timeAgo(entry.createdAt)}
+          </span>
+          {isOffered && entry.offeredRoomNumber ? (
+            <>
+              <span className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>·</span>
+              <span
+                className="text-[11px] font-medium"
+                style={{ color: 'var(--color-status-warning)' }}
+              >
+                Room {entry.offeredRoomNumber}
+              </span>
+            </>
+          ) : null}
+        </div>
+
+        {/* Actions — stacked below content */}
         <EntryActions
           entry={entry}
           isOffered={isOffered}
           eligible={eligible}
           submitting={submitting}
           confirmingCancelId={confirmingCancelId}
-          onOffer={onOffer}
+          onOfferClick={onOfferClick}
           onUpgrade={onUpgrade}
           onCancelTap={onCancelTap}
           onCancelConfirm={onCancelConfirm}
         />
       </div>
 
-      {/* Empty cells after span */}
-      {startCol + span < colCount ? <div style={{ gridColumn: `${startCol + span + 1} / ${colCount + 1}` }} /> : null}
+      {/* Empty cells after */}
+      {col + 1 < colCount ? <div style={{ gridColumn: `${col + 2} / ${colCount + 1}` }} /> : null}
     </div>
   );
 }
@@ -384,6 +534,12 @@ export function UpgradesPanel() {
     fulfill: FulfillResult | null;
     paymentStatus: 'DUE' | 'PAID' | null;
   }>({ open: false, entry: null, fulfill: null, paymentStatus: null });
+  // Room picker modal state
+  const [roomPicker, setRoomPicker] = useState<{
+    entry: WaitlistEntry | null;
+    rooms: Record<string, Array<{ id: string; number: string; type: string }>>;
+    loading: boolean;
+  }>({ entry: null, rooms: {}, loading: false });
   const [submitting, setSubmitting] = useState(false);
   const [confirmingCancelId, setConfirmingCancelId] = useState<string | null>(null);
 
@@ -412,9 +568,14 @@ export function UpgradesPanel() {
       ]);
 
       const all = [...(offeredData.entries ?? []), ...(activeData.entries ?? [])];
-      all.sort((a: WaitlistEntry, b: WaitlistEntry) =>
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      );
+      // Sort by upgrade progression (locker → standard → double → special), FIFO within each
+      all.sort((a: WaitlistEntry, b: WaitlistEntry) => {
+        const aFrom = a.currentRentalType === 'LOCKER' ? 'LOCKER' : (a.currentRoomTier ?? 'STANDARD');
+        const bFrom = b.currentRentalType === 'LOCKER' ? 'LOCKER' : (b.currentRoomTier ?? 'STANDARD');
+        const rankDiff = (TIER_RANK[aFrom] ?? 99) - (TIER_RANK[bFrom] ?? 99);
+        if (rankDiff !== 0) return rankDiff;
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
       setEntries(all);
 
       const rooms: Array<{ tier: string; status: string; assignedTo?: string; occupancyId?: string }> = invData.rooms ?? [];
@@ -441,27 +602,42 @@ export function UpgradesPanel() {
     return () => clearInterval(id);
   }, [fetchData, refreshRentalsTrigger]);
 
-  /* ── Offer room ── */
-  const handleOffer = useCallback(async (entry: WaitlistEntry) => {
+  /* ── Open room picker ── */
+  const handleOpenRoomPicker = useCallback(async (entry: WaitlistEntry) => {
+    setRoomPicker({ entry, rooms: {}, loading: true });
+    try {
+      const h = headers();
+      // Fetch ALL tier rooms so employee can choose any type
+      const results = await Promise.all(
+        TIER_COLUMNS.map(async (tier) => {
+          const res = await fetch(
+            getApiUrl(`/api/v1/rooms/offerable?tier=${encodeURIComponent(tier)}`),
+            { headers: h }
+          );
+          if (!res.ok) return { tier, rooms: [] };
+          const data = await res.json();
+          return { tier, rooms: data.rooms ?? [] };
+        })
+      );
+      const grouped: Record<string, Array<{ id: string; number: string; type: string }>> = {};
+      for (const r of results) grouped[r.tier] = r.rooms;
+      setRoomPicker({ entry, rooms: grouped, loading: false });
+    } catch {
+      setError('Failed to load available rooms');
+      setRoomPicker({ entry: null, rooms: {}, loading: false });
+    }
+  }, [headers]);
+
+  /* ── Offer specific room ── */
+  const handleOfferRoom = useCallback(async (entry: WaitlistEntry, roomId: string) => {
+    setRoomPicker({ entry: null, rooms: {}, loading: false });
     setSubmitting(true);
     try {
       const h = headers();
-      const tiers = normalizeDesiredTiers(entry.desiredTiers);
-      const availableTier = tiers.find((t) => (availability[t as keyof RoomAvailability] ?? 0) > 0);
-      if (!availableTier) throw new Error('No rooms available for desired tier');
-
-      const roomsRes = await fetch(
-        getApiUrl(`/api/v1/rooms/offerable?tier=${encodeURIComponent(availableTier)}`),
-        { headers: h }
-      );
-      if (!roomsRes.ok) throw new Error('No rooms available');
-      const { rooms } = await roomsRes.json();
-      if (!rooms?.length) throw new Error('No rooms available');
-
       const offerRes = await fetch(getApiUrl(`/api/v1/waitlist/${entry.id}/offer`), {
         method: 'POST',
         headers: { ...h, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: rooms[0].id }),
+        body: JSON.stringify({ roomId }),
       });
       if (!offerRes.ok) {
         const err = await offerRes.json().catch(() => ({}));
@@ -473,7 +649,7 @@ export function UpgradesPanel() {
     } finally {
       setSubmitting(false);
     }
-  }, [headers, fetchData, availability]);
+  }, [headers, fetchData]);
 
   /* ── Start upgrade payment ── */
   const handleStartUpgrade = useCallback(async (entry: WaitlistEntry) => {
@@ -579,35 +755,35 @@ export function UpgradesPanel() {
   /* ── Derived state (memoized) ── */
   const canOffer = useCallback((entry: WaitlistEntry): boolean => {
     if (entry.status !== 'ACTIVE') return false;
-    return normalizeDesiredTiers(entry.desiredTiers).some(
-      (t) => (availability[t as keyof RoomAvailability] ?? 0) > 0
+    // Enable when any room of desired tier or higher is available
+    // Tier hierarchy: STANDARD (1) < DOUBLE (2) < SPECIAL (3)
+    const tier = getPrimaryTier(entry);
+    const rank = TIER_RANK[tier] ?? 1;
+    return TIER_COLUMNS.some(
+      (t) => (TIER_RANK[t] ?? 0) >= rank && (availability[t as keyof RoomAvailability] ?? 0) > 0
     );
   }, [availability]);
 
-  /** Only show tier columns that have entries or available rooms */
+  /** Only show tier columns that have entries wanting that tier */
   const activeTiers = useMemo(() => {
     const tiersWithEntries = new Set<string>();
     for (const entry of entries) {
-      for (const t of normalizeDesiredTiers(entry.desiredTiers)) {
-        tiersWithEntries.add(t);
-      }
+      tiersWithEntries.add(getPrimaryTier(entry));
     }
     return TIER_COLUMNS.filter(
-      (t) => tiersWithEntries.has(t) || availability[t] > 0
+      (t) => tiersWithEntries.has(t)
     ) as string[];
-  }, [entries, availability]);
+  }, [entries]);
 
   const firstEligibleIds = useMemo(() => {
     const ids = new Set<string>();
     const claimedTiers = new Set<string>();
     for (const entry of entries) {
       if (entry.status !== 'ACTIVE') continue;
-      const tiers = normalizeDesiredTiers(entry.desiredTiers);
-      for (const t of tiers) {
-        if (!claimedTiers.has(t) && (availability[t as keyof RoomAvailability] ?? 0) > 0) {
-          ids.add(entry.id);
-          claimedTiers.add(t);
-        }
+      const tier = getPrimaryTier(entry);
+      if (!claimedTiers.has(tier) && (availability[tier as keyof RoomAvailability] ?? 0) > 0) {
+        ids.add(entry.id);
+        claimedTiers.add(tier);
       }
     }
     return ids;
@@ -679,7 +855,7 @@ export function UpgradesPanel() {
                   submitting={submitting}
                   confirmingCancelId={confirmingCancelId}
                   activeTiers={activeTiers}
-                  onOffer={(e) => void handleOffer(e)}
+                  onOfferClick={(e) => void handleOpenRoomPicker(e)}
                   onUpgrade={(e) => void handleStartUpgrade(e)}
                   onCancelTap={handleCancelTap}
                   onCancelConfirm={(e) => void handleCancelConfirm(e)}
@@ -689,6 +865,17 @@ export function UpgradesPanel() {
           </div>
         )}
       </div>
+
+      {/* Room picker modal */}
+      {roomPicker.entry ? (
+        <RoomPickerModal
+          entry={roomPicker.entry}
+          rooms={roomPicker.rooms}
+          loadingRooms={roomPicker.loading}
+          onSelectRoom={handleOfferRoom}
+          onClose={() => setRoomPicker({ entry: null, rooms: {}, loading: false })}
+        />
+      ) : null}
 
       {/* Payment modal */}
       {paymentModal.open && paymentModal.entry && paymentModal.fulfill ? (

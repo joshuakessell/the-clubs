@@ -6,6 +6,8 @@ import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { StatusDot } from '../components/StatusDot';
+import { LateFeeModal, type LateFeeDetails } from '../components/LateFeeModal';
+import { executeManualCheckout } from '../utils/checkoutApi';
 import { useRegisterStore } from '../stores/useRegisterStore';
 
 /* ── Types ──────────────────────────────────────────── */
@@ -22,11 +24,7 @@ interface Candidate {
   isOverdue: boolean;
 }
 
-interface ResolvedDetails {
-  lateMinutes: number;
-  fee: number;
-  banApplied: boolean;
-}
+type ResolvedDetails = LateFeeDetails;
 
 /* ── Helpers ────────────────────────────────────────── */
 
@@ -124,7 +122,12 @@ function DetailPanel({
   isProcessing: boolean;
 }>) {
   const { resolved, resolving } = useManualResolve(candidate?.occupancyId);
+  const [confirming, setConfirming] = useState(false);
 
+  // Reset confirmation when candidate changes
+  useEffect(() => {
+    setConfirming(false);
+  }, [candidate?.occupancyId]);
   if (!candidate) {
     return (
       <div
@@ -213,192 +216,41 @@ function DetailPanel({
         )}
       </div>
 
-      {/* Checkout button */}
+      {/* Checkout button — two-step confirmation */}
       <button
         disabled={isProcessing || resolving}
-        onClick={() => onCheckout(candidate, resolved)}
+        onClick={() => {
+          if (confirming) {
+            setConfirming(false);
+            onCheckout(candidate, resolved);
+          } else {
+            setConfirming(true);
+          }
+        }}
         className="w-full rounded-lg py-2 text-sm font-bold"
         style={{
           backgroundColor: isProcessing
             ? 'var(--color-surface-overlay)'
-            : 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
-          color: isProcessing ? 'var(--color-text-muted)' : 'var(--color-status-error)',
+            : confirming
+              ? 'var(--color-status-error)'
+              : 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
+          color: isProcessing
+            ? 'var(--color-text-muted)'
+            : confirming
+              ? 'var(--color-text-inverse)'
+              : 'var(--color-status-error)',
           border: '1px solid color-mix(in oklch, var(--color-status-error) 25%, transparent)',
           cursor: isProcessing || resolving ? 'not-allowed' : 'pointer',
           opacity: resolving ? 0.6 : 1,
-          transition: 'opacity 0.15s ease',
+          transition: 'all 0.15s ease',
         }}
       >
-        {isProcessing ? 'Processing…' : '↩ Check Out'}
+        {isProcessing ? 'Processing…' : confirming ? 'Confirm Checkout?' : '↩ Checkout'}
       </button>
     </div>
   );
 }
 
-/** Late fee settlement modal. */
-function LateFeeModal({
-  candidate,
-  resolved,
-  onSettle,
-  onDismiss,
-  isProcessing,
-}: Readonly<{
-  candidate: Candidate;
-  resolved: ResolvedDetails;
-  onSettle: (payAtCheckout: boolean, paymentMethod?: 'CREDIT' | 'CASH') => void;
-  onDismiss: () => void;
-  isProcessing: boolean;
-}>) {
-  const feeDollars = resolved.fee.toFixed(2);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="late-fee-title"
-        className="w-full max-w-md rounded-xl border shadow-2xl relative"
-        style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
-      >
-        <button 
-          onClick={onDismiss}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 rounded-sm"
-          aria-label="Close modal"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
-        {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-          <div className="flex items-center gap-3">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-full"
-              style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 10%, transparent)' }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-error)"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              >
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </div>
-            <div>
-              <h3 id="late-fee-title" className="text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
-                Late Checkout Fee
-              </h3>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                {candidate.customerName} · {candidate.resourceType} {candidate.number}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="px-6 py-5 flex flex-col gap-4">
-          <div
-            className="rounded-xl p-4"
-            style={{
-              backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)',
-              border: '1px solid color-mix(in oklch, var(--color-status-error) 15%, transparent)',
-            }}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                Late by
-              </span>
-              <span className="text-sm font-bold" style={{ color: 'var(--color-status-error)' }}>
-                {resolved.lateMinutes} minutes
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>
-                Fee due
-              </span>
-              <span className="text-xl font-bold tabular-nums" style={{ color: 'var(--color-status-error)', fontFamily: 'var(--font-display)' }}>
-                ${feeDollars}
-              </span>
-            </div>
-          </div>
-
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-            {resolved.banApplied
-              ? `This customer checked out ${resolved.lateMinutes} minutes late. A $${feeDollars} late fee applies and a potential 30-day ban has been flagged for manager review. Collect the fee now or it will be added as a past-due balance, which must be settled before the customer's next check-in.`
-              : `This customer checked out ${resolved.lateMinutes} minutes late. A $${feeDollars} late fee applies. Collect the fee now or it will be added as a past-due balance, which must be settled before the customer's next check-in.`}
-          </p>
-
-          {/* Payment buttons */}
-          <div className="flex gap-3">
-            <button
-              disabled={isProcessing}
-              onClick={() => onSettle(true, 'CREDIT')}
-              className="flex-1 rounded-lg py-3 text-sm font-bold flex flex-col items-center gap-1"
-              style={{
-                backgroundColor: 'color-mix(in oklch, var(--color-status-success) 10%, transparent)',
-                color: 'var(--color-status-success)',
-                border: '1px solid color-mix(in oklch, var(--color-status-success) 25%, transparent)',
-                cursor: isProcessing ? 'not-allowed' : 'pointer',
-                transition: 'opacity 0.15s ease',
-                opacity: isProcessing ? 0.5 : 1,
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              >
-                <rect x="1" y="4" width="22" height="16" rx="2" />
-                <line x1="1" y1="10" x2="23" y2="10" />
-              </svg>
-              Pay by Card
-            </button>
-            <button
-              disabled={isProcessing}
-              onClick={() => onSettle(true, 'CASH')}
-              className="flex-1 rounded-lg py-3 text-sm font-bold flex flex-col items-center gap-1"
-              style={{
-                backgroundColor: 'color-mix(in oklch, var(--color-status-success) 10%, transparent)',
-                color: 'var(--color-status-success)',
-                border: '1px solid color-mix(in oklch, var(--color-status-success) 25%, transparent)',
-                cursor: isProcessing ? 'not-allowed' : 'pointer',
-                transition: 'opacity 0.15s ease',
-                opacity: isProcessing ? 0.5 : 1,
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              >
-                <rect x="2" y="6" width="20" height="12" rx="2" />
-                <circle cx="12" cy="12" r="2" />
-                <path d="M6 12h.01M18 12h.01" />
-              </svg>
-              Pay by Cash
-            </button>
-          </div>
-
-          {/* Skip / past due */}
-          <div className="text-center pt-1 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
-            <button
-              disabled={isProcessing}
-              onClick={() => onSettle(false)}
-              className="text-xs py-2 px-4"
-              style={{
-                color: 'var(--color-text-muted)',
-                cursor: isProcessing ? 'not-allowed' : 'pointer',
-                background: 'none',
-                border: 'none',
-                transition: 'opacity 0.15s ease',
-                opacity: isProcessing ? 0.5 : 1,
-              }}
-            >
-              Skip — Add ${feeDollars} to Past Due Balance
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ── Main Component ─────────────────────────────────── */
 
@@ -442,17 +294,7 @@ export function CheckoutPanelContent() {
     setCheckingOut(true);
     setLateFeeModal(null);
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(getApiUrl('/api/v1/checkout/manual-complete'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ occupancyId, payAtCheckout, paymentMethod }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as Record<string, string>).error ?? `HTTP ${res.status}`);
-      }
+      await executeManualCheckout(occupancyId, token, payAtCheckout, paymentMethod);
       // Remove and select next
         useRegisterStore.getState().triggerRentalsRefresh();
         const idx = candidates.findIndex((c) => c.occupancyId === occupancyId);
@@ -557,7 +399,7 @@ export function CheckoutPanelContent() {
   return (
     <PanelShell align="top" scroll="hidden">
       <div className="flex items-center justify-between mb-4">
-        <PanelHeader title="Checkout" subtitle="Select a room to check out" />
+        <PanelHeader title="Checkout" subtitle="Select a room to checkout" />
         <button
           onClick={() => void mutate()}
           disabled={isLoading}
@@ -620,7 +462,7 @@ export function CheckoutPanelContent() {
       {/* Late fee modal */}
       {lateFeeModal ? (
         <LateFeeModal
-          candidate={lateFeeModal.candidate}
+          customerLabel={`${lateFeeModal.candidate.customerName} · ${lateFeeModal.candidate.resourceType} ${lateFeeModal.candidate.number}`}
           resolved={lateFeeModal.resolved}
           onSettle={(payAtCheckout, paymentMethod) => {
             void doCheckout(lateFeeModal.candidate.occupancyId, payAtCheckout, paymentMethod);

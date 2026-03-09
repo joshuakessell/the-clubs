@@ -184,8 +184,8 @@ onClick = { onSignOut }
 className = "rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
 style = {{
   color: 'var(--color-status-error)',
-    border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, transparent)',
-      backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)',
+    border: '1px solid color-mix(in oklch, var(--color-status-error) 25%, transparent)',
+      backgroundColor: 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
             }}
           >
   Sign Out
@@ -195,8 +195,8 @@ style = {{
       className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
       style={{
         color: 'var(--color-status-error)',
-        border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, transparent)',
-        backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)',
+        border: '1px solid color-mix(in oklch, var(--color-status-error) 25%, transparent)',
+        backgroundColor: 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
       }}
     >
       Close Out

@@ -48,11 +48,23 @@ export async function getInventorySummary() {
     .groupBy(lockers.status)
     .orderBy(lockers.status);
 
-  const byType: Record<string, { clean: number; cleaning: number; dirty: number; total: number }> =
+  // Count active/offered waitlist entries per desired tier
+  const waitlistResult = await query<{ desired_tier: string; cnt: string }>(
+    `SELECT desired_tier, COUNT(*)::text AS cnt
+     FROM waitlist
+     WHERE status IN ('ACTIVE', 'OFFERED')
+     GROUP BY desired_tier`
+  );
+  const waitlistByTier: Record<string, number> = {};
+  for (const row of waitlistResult.rows) {
+    waitlistByTier[row.desired_tier] = Number.parseInt(row.cnt, 10) || 0;
+  }
+
+  const byType: Record<string, { clean: number; cleaning: number; dirty: number; total: number; availableForCheckin: number }> =
     {
-      STANDARD: { clean: 0, cleaning: 0, dirty: 0, total: 0 },
-      DOUBLE: { clean: 0, cleaning: 0, dirty: 0, total: 0 },
-      SPECIAL: { clean: 0, cleaning: 0, dirty: 0, total: 0 },
+      STANDARD: { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 },
+      DOUBLE: { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 },
+      SPECIAL: { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 },
     };
 
   let overallClean = 0;
@@ -67,7 +79,7 @@ export async function getInventorySummary() {
     if (!roomType || !status) continue;
 
     if (!byType[roomType]) {
-      byType[roomType] = { clean: 0, cleaning: 0, dirty: 0, total: 0 };
+      byType[roomType] = { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 };
     }
 
     byType[roomType][status] = cnt;
@@ -76,6 +88,14 @@ export async function getInventorySummary() {
     if (status === 'clean') overallClean += cnt;
     else if (status === 'cleaning') overallCleaning += cnt;
     else if (status === 'dirty') overallDirty += cnt;
+  }
+
+  // Compute availableForCheckin: clean rooms minus waitlist reservations (floor at 0)
+  for (const tier of ['STANDARD', 'DOUBLE', 'SPECIAL']) {
+    const t = byType[tier];
+    if (t) {
+      t.availableForCheckin = Math.max(0, t.clean - (waitlistByTier[tier] ?? 0));
+    }
   }
 
   let lockerClean = 0;
@@ -93,6 +113,7 @@ export async function getInventorySummary() {
 
   return {
     byType,
+    waitlistByTier,
     overall: {
       clean: overallClean,
       cleaning: overallCleaning,

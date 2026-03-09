@@ -91,9 +91,11 @@ export function InventoryPanel() {
     }
   }, [token]);
 
+  const refreshRentalsTrigger = useRegisterStore((s) => s.refreshRentalsTrigger);
+
   useEffect(() => {
     void fetchData();
-  }, [fetchData]);
+  }, [fetchData, refreshRentalsTrigger]);
 
   // Sort order: occupied first, empty (CLEAN) last
   const STATUS_SORT: Record<string, number> = {

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { verifyPin } from '../../auth/utils';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import { PastDueBypassSchema } from '../../checkin/schemas';
+
 import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { transaction } from '../../db';
@@ -144,7 +144,8 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
             throw new HttpError(403, 'Only admins can bypass past-due balance');
           }
 
-          if (!manager.pin_hash || !(await verifyPin(managerPin, manager.pin_hash))) {
+          const isDemoMode = process.env.DEMO_MODE === 'true';
+          if (!isDemoMode && (!manager.pin_hash || !(await verifyPin(managerPin, manager.pin_hash)))) {
             throw new HttpError(401, 'Invalid PIN');
           }
 

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Badge, Button } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
 import { ViewSpinner } from '../components/ViewSpinner';
@@ -7,10 +7,16 @@ interface WaitlistEntry {
   id: string;
   customerId: string;
   customerName: string;
-  desiredRentalType: string;
-  backupRentalType: string | null;
+  desiredTier: string;
+  desiredTiers?: string[];
+  backupTier: string | null;
+  currentRentalType: string;
+  displayIdentifier: string;
   status: string;
   createdAt: string;
+  checkinAt: string;
+  checkoutAt: string;
+  offeredRoomNumber: string | null;
 }
 
 const STATUS_COLOR: Record<string, 'warning' | 'primary' | 'success' | 'gray'> = {
@@ -18,13 +24,36 @@ const STATUS_COLOR: Record<string, 'warning' | 'primary' | 'success' | 'gray'> =
   OFFERED: 'primary',
   COMPLETED: 'success',
   CANCELLED: 'gray',
+  EXPIRED: 'gray',
 };
 
+type FilterTab = 'pending' | 'all';
+
+/** Format time since created */
+function formatWaitTime(createdAt: string): string {
+  const mins = Math.round((Date.now() - new Date(createdAt).getTime()) / 60_000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  const remainMins = mins % 60;
+  return remainMins > 0 ? `${hrs}h ${remainMins}m` : `${hrs}h`;
+}
+
 export function WaitlistView() {
+  const [filter, setFilter] = useState<FilterTab>('pending');
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
   const { data, loading, error, refetch } = useDashboardFetch<{ entries: WaitlistEntry[] }>(
     '/api/v1/waitlist',
   );
-  const entries = data?.entries ?? [];
+  const allEntries = data?.entries ?? [];
+
+  // Filter entries based on selected tab
+  const entries = filter === 'pending'
+    ? allEntries.filter((e) => e.status === 'ACTIVE' || e.status === 'OFFERED')
+    : allEntries;
+
+  const pendingCount = allEntries.filter((e) => e.status === 'ACTIVE' || e.status === 'OFFERED').length;
 
   const handleOffer = useCallback(async (id: string) => {
     try {
@@ -33,30 +62,55 @@ export function WaitlistView() {
     } catch { /* ignore */ }
   }, [refetch]);
 
-  const handleComplete = useCallback(async (id: string) => {
-    try {
-      await dashboardMutate(`/api/v1/waitlist/${id}/complete`, 'POST');
-      refetch();
-    } catch { /* ignore */ }
-  }, [refetch]);
-
-  const handleCancel = useCallback(async (id: string) => {
+  const handleRemove = useCallback(async (id: string) => {
+    setRemovingId(id);
     try {
       await dashboardMutate(`/api/v1/waitlist/${id}/cancel`, 'POST');
       refetch();
     } catch { /* ignore */ }
+    setRemovingId(null);
   }, [refetch]);
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Header */}
       <div className="rounded-xl border p-6"
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Waitlist Management</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{entries.length} entries</p>
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              {pendingCount} pending · {allEntries.length} total
+            </p>
           </div>
-          <Button size="sm" variant="outline" onClick={() => refetch()}>Refresh</Button>
+          <div className="flex items-center gap-3">
+            {/* Filter tabs */}
+            <div className="flex rounded-lg border" style={{ borderColor: 'var(--color-border-default)' }}>
+              <button
+                className="px-3 py-1.5 text-xs font-medium transition"
+                style={{
+                  backgroundColor: filter === 'pending' ? 'var(--color-accent-primary)' : 'transparent',
+                  color: filter === 'pending' ? '#fff' : 'var(--color-text-muted)',
+                  borderRadius: 'calc(0.5rem - 1px)',
+                }}
+                onClick={() => setFilter('pending')}
+              >
+                Pending ({pendingCount})
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs font-medium transition"
+                style={{
+                  backgroundColor: filter === 'all' ? 'var(--color-accent-primary)' : 'transparent',
+                  color: filter === 'all' ? '#fff' : 'var(--color-text-muted)',
+                  borderRadius: 'calc(0.5rem - 1px)',
+                }}
+                onClick={() => setFilter('all')}
+              >
+                All ({allEntries.length})
+              </button>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => refetch()}>Refresh</Button>
+          </div>
         </div>
       </div>
 
@@ -66,53 +120,77 @@ export function WaitlistView() {
         </div>
       )}
 
-      {loading && entries.length === 0 ? (
-        <ViewSpinner />
-      ) : (
-        <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
-                {['Customer', 'Desired', 'Backup', 'Status', 'Created', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e) => (
-                <tr key={e.id} className="border-b transition"
-                  style={{ borderColor: 'var(--color-border-subtle)' }}
-                  onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
-                  onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{e.customerName}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{e.desiredRentalType}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>{e.backupRentalType ?? '—'}</td>
-                  <td className="px-4 py-3"><Badge color={STATUS_COLOR[e.status] ?? 'gray'} variant="light" size="sm">{e.status}</Badge></td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
-                    {new Date(e.createdAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      {e.status === 'ACTIVE' && <Button size="sm" variant="primary" onClick={() => handleOffer(e.id)}>Offer</Button>}
-                      {e.status === 'OFFERED' && <Button size="sm" variant="primary" onClick={() => handleComplete(e.id)}>Complete</Button>}
-                      {(e.status === 'ACTIVE' || e.status === 'OFFERED') && (
-                        <Button size="sm" variant="ghost" onClick={() => handleCancel(e.id)}>Cancel</Button>
+      {(() => {
+        if (loading && entries.length === 0) return <ViewSpinner />;
+        if (entries.length === 0) {
+          return (
+            <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                {filter === 'pending' ? 'No one is currently on the waitlist' : 'No waitlist entries found'}
+              </p>
+            </div>
+          );
+        }
+        return (
+          <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
+                  {['Customer', 'Current', 'Desired Upgrade', 'Wait Time', 'Status', 'Actions'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((e) => (
+                  <tr key={e.id} className="border-b transition"
+                    style={{ borderColor: 'var(--color-border-subtle)' }}
+                    onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                    onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
+                    <td className="px-4 py-3">
+                      <div className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{e.customerName}</div>
+                      <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{e.displayIdentifier}</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                      {e.currentRentalType === 'LOCKER' ? '🔐 Locker' : '🚪 Room'}
+                    </td>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                      {Array.isArray(e.desiredTiers) && e.desiredTiers.length > 0
+                        ? e.desiredTiers.join(', ')
+                        : e.desiredTier ?? '—'}
+                      {e.offeredRoomNumber && (
+                        <span className="ml-2 text-xs" style={{ color: 'var(--color-accent-primary)' }}>
+                          → Room {e.offeredRoomNumber}
+                        </span>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {entries.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
-                    No waitlist entries
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                      {formatWaitTime(e.createdAt)}
+                    </td>
+                    <td className="px-4 py-3"><Badge color={STATUS_COLOR[e.status] ?? 'gray'} variant="light" size="sm">{e.status}</Badge></td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        {e.status === 'ACTIVE' && <Button size="sm" variant="primary" onClick={() => handleOffer(e.id)}>Offer</Button>}
+                        {(e.status === 'ACTIVE' || e.status === 'OFFERED') && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleRemove(e.id)}
+                            disabled={removingId === e.id}
+                            style={{ color: 'var(--color-status-error)' }}
+                          >
+                            {removingId === e.id ? 'Removing…' : 'Remove'}
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore, type ActiveCheckinInfo } from '../../stores/useRegisterStore';
+import { LateFeeModal, type LateFeeDetails } from '../../components/LateFeeModal';
+import { executeManualCheckout, resolveLateFee } from '../../utils/checkoutApi';
 
 /**
  * Fetched customer profile from the API (used as fallback when no sessionPayload from SSE).
@@ -25,27 +27,18 @@ type FetchedProfile = {
  * Shows customer info, membership status, language toggle, and
  * Start/Cancel Check-In or Checkout controls.
  */
-async function performCheckout(
+
+/** Complete checkout and reset register state. */
+async function completeCheckoutAndReset(
   occupancyId: string,
   token: string | undefined,
   customerName: string | null | undefined,
   returnTab: string | null,
   selectNavTab: (tab: string) => void,
+  payAtCheckout = false,
+  paymentMethod?: 'CREDIT' | 'CASH',
 ) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
-
-  const res = await fetch(getApiUrl('/api/v1/checkout/manual-complete'), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ occupancyId }),
-  });
-
-  if (!res.ok) {
-    const d = await res.json().catch(() => ({}));
-    throw new Error(d.error ?? `HTTP ${res.status}`);
-  }
-
+  await executeManualCheckout(occupancyId, token, payAtCheckout, paymentMethod);
   const dest = returnTab;
   useRegisterStore.getState().triggerRentalsRefresh();
   useRegisterStore.setState({
@@ -76,6 +69,7 @@ export function ProfileTab() {
 
   const [checkingOut, setCheckingOut] = useState(false);
   const [fetchedProfile, setFetchedProfile] = useState<FetchedProfile | null>(null);
+  const [lateFeeModal, setLateFeeModal] = useState<LateFeeDetails | null>(null);
 
   // Fetch customer profile from API whenever a customer is selected
   const cid = customerId ?? sp?.customerId;
@@ -168,7 +162,16 @@ export function ProfileTab() {
     if (!activeCheckinInfo?.occupancyId) return;
     setCheckingOut(true);
     try {
-      await performCheckout(activeCheckinInfo.occupancyId, token, customerName, returnTab, selectNavTab);
+      // Resolve late fees first via shared utility
+      const resolved = await resolveLateFee(activeCheckinInfo.occupancyId, token);
+      if (resolved) {
+        // Show late fee modal — let employee choose payment
+        setLateFeeModal(resolved);
+        setCheckingOut(false);
+        return;
+      }
+      // No fee — proceed directly
+      await completeCheckoutAndReset(activeCheckinInfo.occupancyId, token, customerName, returnTab, selectNavTab);
     } catch (err: unknown) {
       useRegisterStore.setState({
         successToastMessage: err instanceof Error ? err.message : 'Checkout failed',
@@ -178,7 +181,23 @@ export function ProfileTab() {
     }
   };
 
+  const handleLateFeeSettle = async (payAtCheckout: boolean, paymentMethod?: 'CREDIT' | 'CASH') => {
+    if (!activeCheckinInfo?.occupancyId) return;
+    setCheckingOut(true);
+    try {
+      await completeCheckoutAndReset(activeCheckinInfo.occupancyId, token, customerName, returnTab, selectNavTab, payAtCheckout, paymentMethod);
+    } catch (err: unknown) {
+      useRegisterStore.setState({
+        successToastMessage: err instanceof Error ? err.message : 'Checkout failed',
+      });
+    } finally {
+      setCheckingOut(false);
+      setLateFeeModal(null);
+    }
+  };
+
   return (
+    <>
     <div className= "flex flex-col gap-2" >
     {/* Customer header */ }
     < div className = "flex items-center gap-3" >
@@ -275,6 +294,18 @@ style = {{
   onCancel={() => void cancelSession()}
 />
 </div>
+
+      {/* Late fee modal — shown when checkout detects a late fee */}
+      {lateFeeModal && (
+        <LateFeeModal
+          customerLabel={displayName}
+          resolved={lateFeeModal}
+          onSettle={(pay, method) => void handleLateFeeSettle(pay, method)}
+          onDismiss={() => setLateFeeModal(null)}
+          isProcessing={checkingOut}
+        />
+      )}
+    </>
   );
 }
 
@@ -301,21 +332,41 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
   onStartCheckin: () => void;
   onCancel: () => void;
 }>) {
+  const [confirmingCheckout, setConfirmingCheckout] = useState(false);
+
+  // Reset confirmation when customer changes
+  useEffect(() => {
+    setConfirmingCheckout(false);
+  }, [activeCheckinInfo?.occupancyId]);
+
   return (
     <div className="flex gap-3">
       {activeCheckinInfo && !currentSessionId && (
         <button
-          onClick={onCheckout}
+          onClick={() => {
+            if (confirmingCheckout) {
+              setConfirmingCheckout(false);
+              onCheckout();
+            } else {
+              setConfirmingCheckout(true);
+            }
+          }}
           disabled={checkingOut}
            className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition-colors"
           style={{
-            backgroundColor: checkingOut ? 'var(--color-surface-overlay)' : 'var(--color-status-warning)',
+            backgroundColor: checkingOut
+              ? 'var(--color-surface-overlay)'
+              : confirmingCheckout
+                ? 'var(--color-status-error)'
+                : 'var(--color-status-warning)',
             color: 'var(--color-text-inverse)',
-            boxShadow: checkingOut ? 'none' : '0 0 20px color-mix(in oklch, var(--color-status-warning) 30%, transparent)',
+            boxShadow: checkingOut ? 'none' : confirmingCheckout
+              ? '0 0 20px color-mix(in oklch, var(--color-status-error) 30%, transparent)'
+              : '0 0 20px color-mix(in oklch, var(--color-status-warning) 30%, transparent)',
             opacity: checkingOut ? 0.6 : 1,
           }}
         >
-          {checkingOut ? 'Checking out…' : 'Checkout'}
+          {checkingOut ? 'Checking out…' : confirmingCheckout ? 'Confirm Checkout?' : 'Checkout'}
         </button>
       )}
       {!currentSessionId && !activeCheckinInfo && customerId && (

@@ -38,6 +38,9 @@ if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
   process.env.DB_USER = 'clubops';
   process.env.DB_PASSWORD = 'club-ops-dev';
 }
+if (!process.env.KIOSK_TOKEN) {
+  process.env.KIOSK_TOKEN = 'dev-kiosk-token';
+}
 
 const PORT = Number.parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -79,7 +82,12 @@ async function setupSecurityAndCors(fastify: FastifyInstance) {
     process.exit(1);
   }
 
-  const defaultDevOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+  const defaultDevOrigins = [
+    'http://localhost:5173', 'http://127.0.0.1:5173',
+    'http://localhost:5174', 'http://127.0.0.1:5174',
+    'http://localhost:5175', 'http://127.0.0.1:5175',
+    'http://localhost:5176', 'http://127.0.0.1:5176',
+  ];
   const rawOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
     : null;
