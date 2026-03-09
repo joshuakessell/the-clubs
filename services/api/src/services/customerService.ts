@@ -4,9 +4,9 @@
  * Extracted from routes/customers.ts. Zero HTTP/Fastify concepts.
  */
 import { query, transaction } from '../db';
-import crypto from 'crypto';
 import {
   computeIdScanIdentityHash,
+  computeSha256Hex,
   getIdScanIssue,
   getIdScanIssueMessage,
 } from '../checkin/identity';
@@ -50,8 +50,9 @@ function normalizeScanText(raw: string): string {
   return lines.join('\n').trim();
 }
 
-function computeSha256Hex(value: string): string {
-  return crypto.createHash('sha256').update(value).digest('hex');
+function splitFullName(name: string) {
+  const parts = name.split(' ');
+  return { firstName: parts[0] || name, lastName: parts.slice(1).join(' ') || '' };
 }
 
 function toDateOnly(dob: string): string | null {
@@ -156,9 +157,7 @@ export async function searchCustomers(q: string, limit: number) {
   );
 
   return result.rows.map((row) => {
-    const nameParts = row.name.split(' ');
-    const firstName = nameParts[0] || row.name;
-    const lastName = nameParts.slice(1).join(' ') || '';
+    const { firstName, lastName } = splitFullName(row.name);
     const disambiguator = (row.membership_number && row.membership_number.slice(-4)) || row.id.slice(0, 8);
     return {
       id: row.id, name: row.name, firstName, lastName,
@@ -242,9 +241,7 @@ export async function getCustomerProfile(customerId: string) {
   if (result.rows.length === 0) return null;
   const row = result.rows[0]!;
 
-  const nameParts = row.name.split(' ');
-  const firstName = nameParts[0] || row.name;
-  const lastName = nameParts.slice(1).join(' ') || '';
+  const { firstName, lastName } = splitFullName(row.name);
   const idType = row.id_type && isIdType(row.id_type) ? row.id_type : null;
 
   const lastVisitResult = await query<{ starts_at: Date }>(

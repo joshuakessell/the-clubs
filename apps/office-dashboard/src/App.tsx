@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ErrorBoundary, LockScreen, ChangePinScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
+import { ErrorBoundary, LockScreen, ChangePinScreen, ValidatingScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
 import { DashboardLayout } from './layout/DashboardLayout';
 import { OverviewView } from './views/OverviewView';
 import { MonitorView } from './views/MonitorView';
@@ -39,23 +39,7 @@ export default function App() {
 
   function renderContent() {
     if (isValidating) {
-      return (
-        <div
-          className="flex min-h-screen flex-col items-center justify-center gap-4 p-6"
-          style={{ backgroundColor: 'var(--color-surface-base)' }}
-        >
-          <div
-            className="h-8 w-8 animate-spin rounded-full border-[3px]"
-            style={{ borderColor: 'var(--color-border-strong)', borderTopColor: 'var(--color-accent-primary)' }}
-          />
-          <h3
-            className="text-lg font-semibold"
-            style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}
-          >
-            Validating session…
-          </h3>
-        </div>
-      );
+      return <ValidatingScreen />;
     }
 
     if (!session) {

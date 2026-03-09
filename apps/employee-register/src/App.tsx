@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { BrowserRouter } from 'react-router-dom';
-import { ErrorBoundary, LockScreen, ChangePinScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
+import { ErrorBoundary, LockScreen, ChangePinScreen, ValidatingScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
 import { getApiUrl, useSessionPollingFallback, type SessionUpdatedPayload } from '@the-clubs/shared';
 import { AppLayout } from './layout/AppLayout';
 import { useRegisterSSE } from './hooks/useRegisterSSE';
@@ -131,31 +131,5 @@ export default function App() {
 }
 </BrowserRouter>
   </ErrorBoundary>
-  );
-}
-
-function ValidatingScreen() {
-  const clearSession = useAuthStore((s) => s.clearSession);
-
-  return (
-    <div
-      className= "flex min-h-screen flex-col items-center justify-center gap-4 p-6"
-  style = {{ backgroundColor: 'var(--color-surface-base)' }
-}
-    >
-  <div className="h-8 w-8 animate-spin rounded-full border-[3px]"
-style = {{ borderColor: 'var(--color-border-strong)', borderTopColor: 'var(--color-accent-primary)' }}
-      />
-  < h3 className = "text-lg font-semibold" style = {{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
-    Validating session…
-</h3>
-  < button
-onClick = { clearSession }
-className = "rounded-lg px-4 py-2 text-sm"
-style = {{ color: 'var(--color-text-secondary)', border: '1px solid var(--color-border-default)' }}
-      >
-  Return to Login
-    </button>
-    </div>
   );
 }
