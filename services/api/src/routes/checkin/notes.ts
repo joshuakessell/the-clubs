@@ -2,10 +2,33 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import type { CustomerRow, LaneSessionRow } from '../../checkin/types';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
 import { insertClubEvent } from '../../activity/clubEventLog';
 import { HttpError } from '../../errors/HttpError';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by activity/audit helpers.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
   /**
@@ -32,28 +55,26 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
       }
 
       try {
-        const result = await transaction(async (client) => {
-          const sessionResult = await client.query<LaneSessionRow>(
-            `SELECT * FROM lane_sessions
-           WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+        const result = await db.transaction(async (tx) => {
+          const sessionResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions
+           WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
            ORDER BY created_at DESC
-           LIMIT 1`,
-            [laneId]
+           LIMIT 1`
           );
 
           if (sessionResult.rows.length === 0) {
             throw new HttpError(404, 'No active session found');
           }
 
-          const session = sessionResult.rows[0]!;
+          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
 
           if (!session.customer_id) {
             throw new HttpError(400, 'Session has no customer');
           }
 
-          const customerResult = await client.query<CustomerRow>(
-            `SELECT id FROM customers WHERE id = $1`,
-            [session.customer_id]
+          const customerResult = await tx.execute<{ id: string }>(
+            sql`SELECT id FROM customers WHERE id = ${session.customer_id}`
           );
 
           if (customerResult.rows.length === 0) {
@@ -61,20 +82,19 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
           }
 
           const trimmed = note.trim();
-          const inserted = await client.query<{ id: string }>(
-            `
+          const inserted = await tx.execute<{ id: string }>(
+            sql`
             INSERT INTO customer_notes
               (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
             VALUES
-              ($1::uuid, $2::uuid, $3, 'EMPLOYEE_REGISTER', $4, false)
+              (${session.customer_id}::uuid, ${staff.staffId}::uuid, ${staff.name}, 'EMPLOYEE_REGISTER', ${trimmed}, false)
             RETURNING id
-            `,
-            [session.customer_id, staff.staffId, staff.name, trimmed]
+            `
           );
 
           const noteId = inserted.rows[0]!.id;
           const preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
-          await insertCustomerActivityEvent(client, {
+          await insertCustomerActivityEvent(toQueryable(tx) as any, {
             customerId: session.customer_id,
             actionType: 'NOTE_ADDED',
             actionCategory: 'NOTE',
@@ -90,7 +110,7 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
           });
 
           // Emit unified club event for analytics
-          await insertClubEvent(client, {
+          await insertClubEvent(toQueryable(tx) as any, {
             eventType: 'NOTE_ADDED',
             eventDomain: 'NOTE',
             sourceApp: 'EMPLOYEE_REGISTER',
@@ -110,9 +130,8 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
           return { sessionId: session.id, success: true, noteId };
         });
 
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 
         return reply.send(result);

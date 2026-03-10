@@ -4,7 +4,8 @@ import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { AddOnsSchema } from '../../checkin/schemas';
 import type { LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
 import { getHttpError, parsePriceQuote, roundToWhole } from '../../checkin/utils';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { HttpError } from '../../errors/HttpError';
 
 export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
@@ -31,37 +32,37 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
     const { sessionId, items } = parsed.data;
 
     try {
-      const result = await transaction(async (client) => {
-        const sessionResult = sessionId
-          ? await client.query<LaneSessionRow>(
-              `SELECT * FROM lane_sessions WHERE id = $1 LIMIT 1`,
-              [sessionId]
-            )
-          : await client.query<LaneSessionRow>(
-              `SELECT * FROM lane_sessions
-                 WHERE lane_id = $1
+      const result = await db.transaction(async (tx) => {
+        let sessionResult: { rows: Record<string, unknown>[] };
+        if (sessionId) {
+          sessionResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
+          );
+        } else {
+          sessionResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions
+                 WHERE lane_id = ${laneId}
                    AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
                  ORDER BY created_at DESC
-                 LIMIT 1`,
-              [laneId]
-            );
+                 LIMIT 1`
+          );
+        }
 
         if (sessionResult.rows.length === 0) {
           throw new HttpError(404, 'No active session found');
         }
 
-        const session = sessionResult.rows[0]!;
+        const session = sessionResult.rows[0] as unknown as LaneSessionRow;
         const resolvedLaneId = session.lane_id || laneId;
 
         if (!session.payment_intent_id) {
           throw new HttpError(400, 'No payment intent for session');
         }
 
-        const intentResult = await client.query<PaymentIntentRow>(
-          `SELECT * FROM payment_intents WHERE id = $1 LIMIT 1`,
-          [session.payment_intent_id]
+        const intentResult = await tx.execute<Record<string, unknown>>(
+          sql`SELECT * FROM payment_intents WHERE id = ${session.payment_intent_id} LIMIT 1`
         );
-        const paymentIntent = intentResult.rows[0];
+        const paymentIntent = intentResult.rows[0] as unknown as PaymentIntentRow | undefined;
         if (!paymentIntent) {
           throw new HttpError(404, 'Payment intent not found');
         }
@@ -92,29 +93,27 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
           messages: baseQuote.messages,
         };
 
-        await client.query(
-          `UPDATE payment_intents
-             SET amount = $1,
-                 quote_json = $2,
+        const nextQuoteJson = JSON.stringify(nextQuote);
+        await tx.execute(
+          sql`UPDATE payment_intents
+             SET amount = ${nextTotal},
+                 quote_json = ${nextQuoteJson},
                  updated_at = NOW()
-             WHERE id = $3`,
-          [nextTotal, JSON.stringify(nextQuote), paymentIntent.id]
+             WHERE id = ${paymentIntent.id}`
         );
 
-        await client.query(
-          `UPDATE lane_sessions
-             SET price_quote_json = $1,
+        await tx.execute(
+          sql`UPDATE lane_sessions
+             SET price_quote_json = ${nextQuoteJson},
                  updated_at = NOW()
-             WHERE id = $2`,
-          [JSON.stringify(nextQuote), session.id]
+             WHERE id = ${session.id}`
         );
 
         return { laneId: resolvedLaneId, sessionId: session.id, quote: nextQuote };
       });
 
-      const { payload } = await transaction((client) =>
-        buildFullSessionUpdatedPayload(result.sessionId)
-      );
+      // buildFullSessionUpdatedPayload is already Drizzle-native
+      const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
       fastify.broadcaster.broadcastSessionUpdated(payload, result.laneId || laneId);
 
       return reply.send({ quote: result.quote });

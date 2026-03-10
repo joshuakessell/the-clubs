@@ -7,9 +7,32 @@ import { idempotencyKey } from '../../middleware/idempotency';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { CheckinScanBodySchema } from '../../checkin/schemas';
 import { getHttpError } from '../../checkin/utils';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { processCheckinScan } from '../../services/checkin/scanService';
 import { processScanId } from '../../services/checkin/scanIdService';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by scanIdService.processScanId.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
   /**
@@ -62,18 +85,16 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
       const body = parsed.data;
 
       try {
-        const result = await transaction(async (client) =>
-          processScanId(client, {
+        const result = await db.transaction(async (tx) =>
+          processScanId(toQueryable(tx) as any, {
             laneId: request.params.laneId,
             staffId: request.staff!.staffId,
             body,
           }),
         );
 
-        // Broadcast full session update
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId),
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native — no transaction wrapper needed
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
 
         return reply.send(result);

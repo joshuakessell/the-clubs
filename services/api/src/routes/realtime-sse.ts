@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireKioskTokenOrStaff } from '../auth/kioskToken';
 import { optionalAuth } from '../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
-import { transaction } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import type { LocalLaneSSEClients } from '../realtime/localSSE';
 
 declare module 'fastify' {
@@ -76,37 +77,29 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
       })}\n\n`);
 
       // Snapshot-first: send current session state immediately after connect.
-      // This ensures clients receive the latest state without waiting for the
-      // next mutation to trigger a broadcast.
       try {
-        const snapshot = await transaction(async (client) => {
-          const row = (
-            await client.query<{ id: string }>(
-              `SELECT id
-               FROM lane_sessions
-               WHERE lane_id = $1
-                 AND status IN (
-                   'ACTIVE',
-                   'AWAITING_CUSTOMER',
-                   'AWAITING_ASSIGNMENT',
-                   'AWAITING_PAYMENT',
-                   'AWAITING_SIGNATURE'
-                 )
-               ORDER BY created_at DESC
-               LIMIT 1`,
-              [laneId]
-            )
-          ).rows[0];
+        const row = await db.execute<{ id: string }>(
+          sql`SELECT id
+           FROM lane_sessions
+           WHERE lane_id = ${laneId}
+             AND status IN (
+               'ACTIVE',
+               'AWAITING_CUSTOMER',
+               'AWAITING_ASSIGNMENT',
+               'AWAITING_PAYMENT',
+               'AWAITING_SIGNATURE'
+             )
+           ORDER BY created_at DESC
+           LIMIT 1`
+        );
 
-          if (!row) return null;
-          const { payload } = await buildFullSessionUpdatedPayload(row.id);
-          return payload;
-        });
-
-        if (snapshot) {
+        const session = row.rows[0];
+        if (session) {
+          // buildFullSessionUpdatedPayload is already Drizzle-native
+          const { payload } = await buildFullSessionUpdatedPayload(session.id);
           raw.write(`data: ${JSON.stringify({
             type: 'SESSION_UPDATED',
-            payload: snapshot,
+            payload,
             timestamp: new Date().toISOString(),
           })}\n\n`);
         }
@@ -133,4 +126,3 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
     }
   );
 }
-

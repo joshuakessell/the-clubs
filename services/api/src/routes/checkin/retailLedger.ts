@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import type { LaneSessionRow } from '../../checkin/types';
 import { createOrder, addLineItems, type LineItemInput } from '../../services/orderService';
@@ -37,26 +38,23 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
 
       try {
         // Find the active lane session
-        const sessionResult = await transaction(async (client) => {
-          const result = await client.query<LaneSessionRow>(
-            `SELECT * FROM lane_sessions
-             WHERE lane_id = $1 AND status NOT IN ('COMPLETED', 'CANCELLED')
-             ORDER BY created_at DESC
-             LIMIT 1`,
-            [laneId]
-          );
-          return result.rows[0];
-        });
+        const sessionResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT * FROM lane_sessions
+           WHERE lane_id = ${laneId} AND status NOT IN ('COMPLETED', 'CANCELLED')
+           ORDER BY created_at DESC
+           LIMIT 1`
+        );
+        const session = sessionResult.rows[0] as unknown as LaneSessionRow | undefined;
 
-        if (!sessionResult) {
+        if (!session) {
           return reply.status(404).send({ error: 'No active session found' });
         }
 
         // Create the order linked to this session via metadata
         const orderResult = await createOrder(
           {
-            customerId: sessionResult.customer_id,
-            metadataJson: { laneSessionId: sessionResult.id, laneId, addedToLedger: true },
+            customerId: session.customer_id,
+            metadataJson: { laneSessionId: session.id, laneId, addedToLedger: true },
           },
           request.staff.staffId
         );
@@ -72,16 +70,14 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
 
         await addLineItems(orderResult.orderId, lineItems);
 
-        // Broadcast updated session so kiosk + register refresh ledger
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(sessionResult.id)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native — no transaction wrapper needed
+        const { payload } = await buildFullSessionUpdatedPayload(session.id);
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 
         return reply.send({
           success: true,
           orderId: orderResult.orderId,
-          sessionId: sessionResult.id,
+          sessionId: session.id,
         });
       } catch (error: unknown) {
         request.log.error(error, 'Failed to add retail items to ledger');

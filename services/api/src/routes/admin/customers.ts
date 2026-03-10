@@ -1,10 +1,33 @@
 import type { FastifyInstance } from 'fastify';
 import { getHttpError } from '../../checkin/utils';
 import { z } from 'zod';
-import { query, transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/middleware';
 import { insertAuditLog } from '../../audit/auditLog';
 import { HttpError } from '../../errors/HttpError';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertAuditLog.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 // Admin customer search and update delegates to inline service-like functions below.
 // The agreements endpoint is also included. These could be further extracted into
@@ -19,8 +42,9 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
       if (search.length < 2) return reply.send({ customers: [] });
 
       try {
-        const result = await query<{ id: string; name: string; dob: string | null; membership_number: string | null; membership_card_type: string | null; membership_valid_until: Date | null; primary_language: string | null; past_due_balance: string | number | null; last_visit: Date | null }>(
-          `SELECT c.id, c.name, c.dob, c.membership_number, c.membership_card_type, c.membership_valid_until, c.primary_language, c.past_due_balance, (SELECT MAX(v.started_at) FROM visits v WHERE v.customer_id = c.id) as last_visit FROM customers c WHERE c.name ILIKE $1 OR c.membership_number ILIKE $1 ORDER BY c.name ASC LIMIT $2`, [`%${search}%`, limit]
+        const searchPattern = `%${search}%`;
+        const result = await db.execute<{ id: string; name: string; dob: string | null; membership_number: string | null; membership_card_type: string | null; membership_valid_until: Date | null; primary_language: string | null; past_due_balance: string | number | null; last_visit: Date | null }>(
+          sql`SELECT c.id, c.name, c.dob, c.membership_number, c.membership_card_type, c.membership_valid_until, c.primary_language, c.past_due_balance, (SELECT MAX(v.started_at) FROM visits v WHERE v.customer_id = c.id) as last_visit FROM customers c WHERE c.name ILIKE ${searchPattern} OR c.membership_number ILIKE ${searchPattern} ORDER BY c.name ASC LIMIT ${limit}`
         );
         return reply.send({ customers: result.rows.map((r) => ({ id: r.id, name: r.name, dob: r.dob, membershipNumber: r.membership_number, membershipCardType: r.membership_card_type, membershipValidUntil: r.membership_valid_until?.toISOString() ?? null, primaryLanguage: (r.primary_language as 'EN' | 'ES' | null) || null, pastDueBalance: Number.parseFloat(String(r.past_due_balance || 0)), lastVisit: r.last_visit?.toISOString() ?? null })) });
       } catch (e) { request.log.error(e, 'Failed to search customers'); return reply.status(500).send({ error: 'Internal server error' }); }
@@ -36,16 +60,20 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
       const body = request.body as z.infer<typeof UpdateSchema>;
 
       try {
-        const result = await transaction(async (client) => {
-          const existing = await client.query<{ id: string; past_due_balance: string | number | null; name: string; membership_number: string | null; primary_language: string | null }>(`SELECT id, name, membership_number, primary_language, past_due_balance FROM customers WHERE id = $1 FOR UPDATE`, [request.params.id]);
+        const result = await db.transaction(async (tx) => {
+          const existing = await tx.execute<{ id: string; past_due_balance: string | number | null; name: string; membership_number: string | null; primary_language: string | null }>(
+            sql`SELECT id, name, membership_number, primary_language, past_due_balance FROM customers WHERE id = ${request.params.id} FOR UPDATE`
+          );
           if (existing.rows.length === 0) throw new HttpError(404, 'Customer not found');
           const before = existing.rows[0]!;
+          // Dynamic SQL for updates using toQueryable adapter
           const updates: string[] = []; const params: unknown[] = []; let idx = 1;
           if (body.pastDueBalance !== undefined) { updates.push(`past_due_balance = $${idx}`); params.push(body.pastDueBalance); idx++; }
           params.push(request.params.id);
-          const updated = await client.query<{ id: string; name: string; membership_number: string | null; primary_language: string | null; past_due_balance: string | number | null }>(`UPDATE customers SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING id, name, membership_number, primary_language, past_due_balance`, params);
+          const queryText = `UPDATE customers SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING id, name, membership_number, primary_language, past_due_balance`;
+          const updated = await toQueryable(tx).query<{ id: string; name: string; membership_number: string | null; primary_language: string | null; past_due_balance: string | number | null }>(queryText, params);
           const after = updated.rows[0]!;
-          await insertAuditLog(client, { staffId: request.staff!.staffId, userId: request.staff!.staffId, userRole: request.staff!.role, action: 'UPDATE', entityType: 'customer', entityId: request.params.id, oldValue: { pastDueBalance: Number.parseFloat(String(before.past_due_balance || 0)) }, newValue: { pastDueBalance: Number.parseFloat(String(after.past_due_balance || 0)) } });
+          await insertAuditLog(toQueryable(tx) as any, { staffId: request.staff!.staffId, userId: request.staff!.staffId, userRole: request.staff!.role, action: 'UPDATE', entityType: 'customer', entityId: request.params.id, oldValue: { pastDueBalance: Number.parseFloat(String(before.past_due_balance || 0)) }, newValue: { pastDueBalance: Number.parseFloat(String(after.past_due_balance || 0)) } });
           return after;
         });
         return reply.send({ id: result.id, name: result.name, membershipNumber: result.membership_number, primaryLanguage: (result.primary_language as 'EN' | 'ES' | null) || null, pastDueBalance: Number.parseFloat(String(result.past_due_balance || 0)) });
@@ -63,10 +91,14 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
       const { customerId } = request.params;
       const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '25', 10) || 25, 1), 100);
       try {
-        const visitsResult = await query<{ id: string; started_at: Date; ended_at: Date | null }>(`SELECT id, started_at, ended_at FROM visits WHERE customer_id = $1 ORDER BY started_at DESC LIMIT $2`, [customerId, limit]);
+        const visitsResult = await db.execute<{ id: string; started_at: Date; ended_at: Date | null }>(
+          sql`SELECT id, started_at, ended_at FROM visits WHERE customer_id = ${customerId} ORDER BY started_at DESC LIMIT ${limit}`
+        );
         if (visitsResult.rows.length === 0) return reply.send({ visits: [] });
         const visitIds = visitsResult.rows.map((v) => v.id);
-        const blocksResult = await query<any>(`SELECT cb.id, cb.visit_id, cb.block_type::text as block_type, cb.starts_at, cb.ends_at, cb.rental_type::text as rental_type, r.number as room_number, l.number as locker_number, cb.agreement_signed, cb.agreement_signed_at, (cb.agreement_pdf IS NOT NULL) as has_pdf, pi.amount as payment_total, pi.payment_method, sig.signature_png_base64, sig.signature_strokes_json, sig.created_at as signature_created_at, sig.agreement_version, sig.agreement_text_snapshot FROM checkin_blocks cb LEFT JOIN rooms r ON r.id = cb.room_id LEFT JOIN lockers l ON l.id = cb.locker_id LEFT JOIN lane_sessions ls ON ls.id = cb.session_id LEFT JOIN payment_intents pi ON pi.id = ls.payment_intent_id LEFT JOIN LATERAL (SELECT signature_png_base64, signature_strokes_json, created_at, agreement_version, agreement_text_snapshot FROM agreement_signatures WHERE checkin_block_id = cb.id ORDER BY created_at DESC LIMIT 1) sig ON TRUE WHERE cb.visit_id = ANY($1::uuid[]) ORDER BY cb.starts_at DESC, cb.id DESC`, [visitIds]);
+        const blocksResult = await db.execute<any>(
+          sql`SELECT cb.id, cb.visit_id, cb.block_type::text as block_type, cb.starts_at, cb.ends_at, cb.rental_type::text as rental_type, r.number as room_number, l.number as locker_number, cb.agreement_signed, cb.agreement_signed_at, (cb.agreement_pdf IS NOT NULL) as has_pdf, pi.amount as payment_total, pi.payment_method, sig.signature_png_base64, sig.signature_strokes_json, sig.created_at as signature_created_at, sig.agreement_version, sig.agreement_text_snapshot FROM checkin_blocks cb LEFT JOIN rooms r ON r.id = cb.room_id LEFT JOIN lockers l ON l.id = cb.locker_id LEFT JOIN lane_sessions ls ON ls.id = cb.session_id LEFT JOIN payment_intents pi ON pi.id = ls.payment_intent_id LEFT JOIN LATERAL (SELECT signature_png_base64, signature_strokes_json, created_at, agreement_version, agreement_text_snapshot FROM agreement_signatures WHERE checkin_block_id = cb.id ORDER BY created_at DESC LIMIT 1) sig ON TRUE WHERE cb.visit_id = ANY(${visitIds}::uuid[]) ORDER BY cb.starts_at DESC, cb.id DESC`
+        );
         const blocksByVisit = new Map<string, any[]>();
         for (const b of blocksResult.rows) { const arr = blocksByVisit.get(b.visit_id) ?? []; arr.push(b); blocksByVisit.set(b.visit_id, arr); }
         return reply.send({ visits: visitsResult.rows.map((v) => ({ visitId: v.id, visitStartedAt: v.started_at.toISOString(), visitEndedAt: v.ended_at?.toISOString() ?? null, checkinBlocks: (blocksByVisit.get(v.id) ?? []).map((b: any) => ({ checkinBlockId: b.id, blockType: b.block_type, startsAt: b.starts_at.toISOString(), endsAt: b.ends_at.toISOString(), rentalType: b.rental_type, roomNumber: b.room_number, lockerNumber: b.locker_number, agreementSigned: b.agreement_signed, agreementSignedAt: b.agreement_signed_at?.toISOString() ?? null, hasPdf: b.has_pdf, paymentTotal: b.payment_total ? Number.parseFloat(b.payment_total) : null, paymentMethod: b.payment_method, hasSignature: Boolean(b.signature_png_base64) || Boolean(b.signature_strokes_json), signatureCreatedAt: b.signature_created_at?.toISOString() ?? null, agreementVersion: b.agreement_version, agreementTitle: null })) })) });

@@ -4,7 +4,8 @@ import { requireAuth } from '../../auth/middleware';
 import { HighlightOptionSchema } from '../../checkin/schemas';
 import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { HttpError } from '../../errors/HttpError';
 
 export function registerCheckinHighlightRoutes(fastify: FastifyInstance): void {
@@ -37,28 +38,31 @@ export function registerCheckinHighlightRoutes(fastify: FastifyInstance): void {
       const { step, option, sessionId } = parsed.data;
 
       try {
-        const resolved = await transaction(async (client) => {
-          const sessionResult = sessionId
-            ? await client.query<LaneSessionRow>(
-              `SELECT * FROM lane_sessions WHERE id = $1 LIMIT 1`,
-              [sessionId]
-            )
-            : await client.query<LaneSessionRow>(
-              `SELECT * FROM lane_sessions
-                 WHERE lane_id = $1
-                   AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-                 ORDER BY created_at DESC
-                 LIMIT 1`,
-              [laneId]
-            );
+        let resolved: { laneId: string; sessionId: string };
 
+        if (sessionId) {
+          const sessionResult = await db.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
+          );
           if (sessionResult.rows.length === 0) {
             throw new HttpError(404, 'No active session found');
           }
-
-          const session = sessionResult.rows[0]!;
-          return { laneId: session.lane_id || laneId, sessionId: session.id };
-        });
+          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
+          resolved = { laneId: session.lane_id || laneId, sessionId: session.id };
+        } else {
+          const sessionResult = await db.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions
+               WHERE lane_id = ${laneId}
+                 AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+               ORDER BY created_at DESC
+               LIMIT 1`
+          );
+          if (sessionResult.rows.length === 0) {
+            throw new HttpError(404, 'No active session found');
+          }
+          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
+          resolved = { laneId: session.lane_id || laneId, sessionId: session.id };
+        }
 
         const payload: CheckinOptionHighlightedPayload = {
           sessionId: resolved.sessionId,
