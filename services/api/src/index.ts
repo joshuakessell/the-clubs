@@ -279,8 +279,8 @@ async function verifyDatabaseHealth(fastify: FastifyInstance) {
     const { sql: sqlTag } = await import('drizzle-orm');
     const healthRes = await dbInstance.execute<Record<string, unknown>>(
       sqlTag`SELECT 'staff' as tbl, COUNT(*)::text as cnt FROM staff
-      UNION ALL SELECT 'rooms', COUNT(*)::text FROM rooms
-      UNION ALL SELECT 'lockers', COUNT(*)::text FROM lockers
+      UNION ALL SELECT 'rooms', COUNT(*)::text FROM inventory_resources WHERE kind = 'room'
+      UNION ALL SELECT 'lockers', COUNT(*)::text FROM inventory_resources WHERE kind = 'locker'
       UNION ALL SELECT 'customers', COUNT(*)::text FROM customers
       UNION ALL SELECT 'agreements', COUNT(*)::text FROM agreements WHERE active = true
       UNION ALL SELECT 'devices', COUNT(*)::text FROM devices

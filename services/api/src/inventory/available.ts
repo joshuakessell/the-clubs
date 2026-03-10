@@ -22,20 +22,20 @@ function getRoomTier(roomNumber: string): RoomTier {
  * - GET /v1/inventory/available
  * - INVENTORY_UPDATED broadcaster helpers
  *
- * Now uses Drizzle ORM directly instead of accepting a QueryFn parameter.
+ * Queries the unified `inventory_resources` table (rooms + lockers).
  */
 export async function computeInventoryAvailable(): Promise<InventoryAvailableResponse> {
   const result = await db.execute<Record<string, unknown>>(
-    sql`SELECT number, status, assigned_to_customer_id
-     FROM rooms
-     WHERE status = 'CLEAN'
-       AND assigned_to_customer_id IS NULL
-       AND type != 'LOCKER'
+    sql`SELECT r.number, r.status, r.assigned_to_customer_id
+     FROM inventory_resources r
+     WHERE r.kind = 'room'
+       AND r.status = 'CLEAN'
+       AND r.assigned_to_customer_id IS NULL
        AND NOT EXISTS (
          SELECT 1
          FROM lane_sessions ls
          WHERE ls.assigned_resource_type = 'room'
-           AND ls.assigned_resource_id = rooms.id
+           AND ls.assigned_resource_id = r.id
            AND ls.status = ANY (
              ARRAY[
                'ACTIVE'::public.lane_session_status,
@@ -50,14 +50,15 @@ export async function computeInventoryAvailable(): Promise<InventoryAvailableRes
 
   const lockerResult = await db.execute<Record<string, unknown>>(
     sql`SELECT COUNT(*) as count
-     FROM lockers
-     WHERE status = 'CLEAN'
-       AND assigned_to_customer_id IS NULL
+     FROM inventory_resources r
+     WHERE r.kind = 'locker'
+       AND r.status = 'CLEAN'
+       AND r.assigned_to_customer_id IS NULL
        AND NOT EXISTS (
          SELECT 1
          FROM lane_sessions ls
          WHERE ls.assigned_resource_type = 'locker'
-           AND ls.assigned_resource_id = lockers.id
+           AND ls.assigned_resource_id = r.id
            AND ls.status = ANY (
              ARRAY[
                'ACTIVE'::public.lane_session_status,

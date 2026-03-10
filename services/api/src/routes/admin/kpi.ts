@@ -13,26 +13,27 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
       try {
         const roomStatusResult = await db.execute<Record<string, unknown>>(
           sql`SELECT status, COUNT(*) as count
-         FROM rooms
-         WHERE type != 'LOCKER'
+         FROM inventory_resources
+         WHERE kind = 'room'
          GROUP BY status`
         );
 
         const occupiedResult = await db.execute<Record<string, unknown>>(
           sql`SELECT COUNT(*) as count
-         FROM rooms
-         WHERE type != 'LOCKER'
+         FROM inventory_resources
+         WHERE kind = 'room'
            AND assigned_to_customer_id IS NOT NULL`
         );
 
         const lockersInUseResult = await db.execute<Record<string, unknown>>(
           sql`SELECT COUNT(*) as count
-         FROM lockers
-         WHERE assigned_to_customer_id IS NOT NULL`
+         FROM inventory_resources
+         WHERE kind = 'locker'
+           AND assigned_to_customer_id IS NOT NULL`
         );
 
         const totalLockersResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT COUNT(*) as count FROM lockers`
+          sql`SELECT COUNT(*) as count FROM inventory_resources WHERE kind = 'locker'`
         );
         const totalLockers = Number.parseInt((totalLockersResult.rows[0] as any)?.count || '0', 10);
         const lockersOccupied = Number.parseInt((lockersInUseResult.rows[0] as any)?.count || '0', 10);

@@ -5,18 +5,20 @@ import { computeInventoryAvailable } from './available';
 
 /**
  * Helper to broadcast current inventory state.
+ * Queries the unified `inventory_resources` table instead of old rooms/lockers.
  */
 export async function broadcastInventoryUpdate(broadcaster: Broadcaster): Promise<void> {
   const result = await db.execute<{ status: string; room_type: string; count: string }>(
-    sql`SELECT status, type as room_type, COUNT(*) as count
-     FROM rooms
-     WHERE type != 'LOCKER'
-     GROUP BY status, type`
+    sql`SELECT status, tier as room_type, COUNT(*) as count
+     FROM inventory_resources
+     WHERE kind = 'room'
+     GROUP BY status, tier`
   );
 
   const lockerResult = await db.execute<{ status: string; count: string }>(
     sql`SELECT status, COUNT(*) as count
-     FROM lockers
+     FROM inventory_resources
+     WHERE kind = 'locker'
      GROUP BY status`
   );
 
