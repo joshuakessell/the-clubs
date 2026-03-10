@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 /**
  * Idempotency-Key middleware for POST endpoints.
@@ -30,18 +31,17 @@ export async function idempotencyKey(
 
   try {
     // Check for existing entry
-    const existing = await query<{
+    const existing = await db.execute<{
       request_hash: string;
       response_status: number;
       response_body: unknown;
     }>(
-      `SELECT request_hash, response_status, response_body
+      sql`SELECT request_hash, response_status, response_body
        FROM idempotency_keys
-       WHERE principal_id = $1
-         AND route_path = $2
-         AND idempotency_key = $3
-         AND expires_at > NOW()`,
-      [principalId, routePath, key]
+       WHERE principal_id = ${principalId}
+         AND route_path = ${routePath}
+         AND idempotency_key = ${key}
+         AND expires_at > NOW()`
     );
 
     if (existing.rows.length > 0) {
@@ -74,13 +74,13 @@ export async function idempotencyKey(
         if (statusCode >= 200 && statusCode < 300) {
           const parsedPayload =
             typeof payload === 'string' ? JSON.parse(payload) : payload;
-          await query(
-            `INSERT INTO idempotency_keys
+          const responseBody = JSON.stringify(parsedPayload);
+          await db.execute(
+            sql`INSERT INTO idempotency_keys
                (principal_id, route_path, idempotency_key, request_hash, response_status, response_body)
-             VALUES ($1, $2, $3, $4, $5, $6)
+             VALUES (${principalId}, ${routePath}, ${key}, ${requestHash}, ${statusCode}, ${responseBody})
              ON CONFLICT (principal_id, route_path, idempotency_key)
-             DO NOTHING`,
-            [principalId, routePath, key, requestHash, statusCode, JSON.stringify(parsedPayload)]
+             DO NOTHING`
           );
         }
       } catch {

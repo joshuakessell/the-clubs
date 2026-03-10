@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { serializableTransaction } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import type { UpgradeHoldAvailablePayload, UpgradeOfferExpiredPayload } from '@the-clubs/shared';
 
 type ExpiredOfferRow = {
@@ -60,9 +61,9 @@ export async function processUpgradeHoldsTick(
   const holdBatchSize = options?.holdBatchSize ?? 10;
   const initialHoldMinutes = options?.initialHoldMinutes ?? 15;
 
-  const result = await serializableTransaction(async (client) => {
-    const expired = await client.query<ExpiredOfferRow>(
-      `
+  const result = await db.transaction(async (tx) => {
+    const expired = await tx.execute<ExpiredOfferRow>(
+      sql`
       SELECT
         w.id as waitlist_id,
         w.desired_tier::text as desired_tier,
@@ -81,39 +82,36 @@ export async function processUpgradeHoldsTick(
         AND v.ended_at IS NULL
         AND cb.ends_at > NOW()
       ORDER BY w.offer_expires_at ASC
-      LIMIT $1
+      LIMIT ${expireBatchSize}
       FOR UPDATE OF w SKIP LOCKED
-      `,
-      [expireBatchSize]
+      `
     );
 
     const expiredPayloads: UpgradeOfferExpiredPayload[] = [];
     for (const row of expired.rows) {
       // Revert entry back to ACTIVE but keep it in place; record last_offered_at for fair rotation.
-      await client.query(
-        `
+      await tx.execute(
+        sql`
         UPDATE waitlist
         SET status = 'ACTIVE',
             room_id = NULL,
             offer_expires_at = NULL,
             last_offered_at = NOW(),
             updated_at = NOW()
-        WHERE id = $1
-        `,
-        [row.waitlist_id]
+        WHERE id = ${row.waitlist_id}
+        `
       );
 
       // Release reservation (best-effort; should exist for UPGRADE_HOLD).
-      await client.query(
-        `
+      await tx.execute(
+        sql`
         UPDATE inventory_reservations
         SET released_at = NOW(),
             release_reason = 'EXPIRED'
         WHERE released_at IS NULL
           AND kind = 'UPGRADE_HOLD'
-          AND waitlist_id = $1
-        `,
-        [row.waitlist_id]
+          AND waitlist_id = ${row.waitlist_id}
+        `
       );
 
       expiredPayloads.push({
@@ -127,8 +125,8 @@ export async function processUpgradeHoldsTick(
 
     // Find CLEAN/unassigned rooms that are not already reserved, and hold them for waitlist demand.
     // We exclude lane-session-selected resources until lane selection is moved to inventory_reservations.
-    const availableRooms = await client.query<AvailableRoomRow>(
-      `
+    const availableRooms = await tx.execute<AvailableRoomRow>(
+      sql`
       SELECT r.id as room_id, r.number as room_number, r.type::text as room_type
       FROM rooms r
       WHERE r.status = 'CLEAN'
@@ -157,13 +155,12 @@ export async function processUpgradeHoldsTick(
           FROM lane_sessions ls
           WHERE ls.assigned_resource_type = 'room'
             AND ls.assigned_resource_id = r.id
-            AND ls.status = ANY ($1::lane_session_status[])
+            AND ls.status = ANY (${ACTIVE_LANE_SESSION_STATUSES}::lane_session_status[])
         )
       ORDER BY r.number ASC
-      LIMIT $2
+      LIMIT ${holdBatchSize}
       FOR UPDATE OF r SKIP LOCKED
-      `,
-      [ACTIVE_LANE_SESSION_STATUSES, holdBatchSize]
+      `
     );
 
     const heldPayloads: UpgradeHoldAvailablePayload[] = [];
@@ -172,8 +169,8 @@ export async function processUpgradeHoldsTick(
       // Choose next candidate for this tier:
       // - policy C: keep customers in place, but rotate by least-recently-offered
       const candidate = (
-        await client.query<CandidateWaitlistRow>(
-          `
+        await tx.execute<CandidateWaitlistRow>(
+          sql`
           SELECT
             w.id as waitlist_id,
             w.desired_tier::text as desired_tier,
@@ -183,14 +180,13 @@ export async function processUpgradeHoldsTick(
           JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
           LEFT JOIN customers c ON c.id = v.customer_id
           WHERE w.status = 'ACTIVE'
-            AND w.desired_tier::text = $1
+            AND w.desired_tier::text = ${room.room_type}
             AND v.ended_at IS NULL
             AND cb.ends_at > NOW()
           ORDER BY COALESCE(w.last_offered_at, 'epoch'::timestamptz) ASC, w.created_at ASC
           LIMIT 1
           FOR UPDATE OF w SKIP LOCKED
-          `,
-          [room.room_type]
+          `
         )
       ).rows[0];
 
@@ -200,20 +196,19 @@ export async function processUpgradeHoldsTick(
       }
 
       // Create/record the hold.
-      const holdRes = await client.query<{ expires_at: Date }>(
-        `
+      const holdRes = await tx.execute<{ expires_at: Date }>(
+        sql`
         UPDATE waitlist
         SET status = 'OFFERED',
-            room_id = $1,
+            room_id = ${room.room_id},
             offered_at = NOW(),
-            offer_expires_at = NOW() + ($2::int * INTERVAL '1 minute'),
+            offer_expires_at = NOW() + (${initialHoldMinutes}::int * INTERVAL '1 minute'),
             last_offered_at = NOW(),
             offer_attempts = offer_attempts + 1,
             updated_at = NOW()
-        WHERE id = $3
+        WHERE id = ${candidate.waitlist_id}
         RETURNING offer_expires_at as expires_at
-        `,
-        [room.room_id, initialHoldMinutes, candidate.waitlist_id]
+        `
       );
 
       const expiresAt = holdRes.rows[0]!.expires_at;
@@ -221,15 +216,14 @@ export async function processUpgradeHoldsTick(
       // Insert reservation record (enforced unique-active-per-resource).
       // ON CONFLICT handles races where a reservation was created between our
       // availability check and this insert (e.g. from seed data or concurrent ticks).
-      await client.query(
-        `
+      await tx.execute(
+        sql`
         INSERT INTO inventory_reservations
           (resource_type, resource_id, kind, waitlist_id, expires_at)
         VALUES
-          ('room', $1, 'UPGRADE_HOLD', $2, $3)
+          ('room', ${room.room_id}, 'UPGRADE_HOLD', ${candidate.waitlist_id}, ${expiresAt})
         ON CONFLICT (resource_type, resource_id) WHERE released_at IS NULL DO NOTHING
-        `,
-        [room.room_id, candidate.waitlist_id, expiresAt]
+        `
       );
 
       heldPayloads.push({
@@ -246,7 +240,7 @@ export async function processUpgradeHoldsTick(
       expiredPayloads,
       heldPayloads,
     };
-  });
+  }, { isolationLevel: 'serializable' });
 
   // Broadcast AFTER commit so any refetch-on-event sees updated DB rows.
   for (const payload of result.expiredPayloads) {
