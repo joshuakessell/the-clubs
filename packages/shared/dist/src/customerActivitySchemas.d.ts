@@ -10,25 +10,25 @@ export declare const CustomerActivityActorSchema: z.ZodEffects<z.ZodObject<{
     deviceId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     registerNumber: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
 }, "strip", z.ZodTypeAny, {
-    type: "SYSTEM" | "STAFF" | "CUSTOMER";
+    type: "CUSTOMER" | "SYSTEM" | "STAFF";
     staffId?: string | null | undefined;
     staffName?: string | null | undefined;
     deviceId?: string | null | undefined;
     registerNumber?: number | null | undefined;
 }, {
-    type: "SYSTEM" | "STAFF" | "CUSTOMER";
+    type: "CUSTOMER" | "SYSTEM" | "STAFF";
     staffId?: string | null | undefined;
     staffName?: string | null | undefined;
     deviceId?: string | null | undefined;
     registerNumber?: number | null | undefined;
 }>, {
-    type: "SYSTEM" | "STAFF" | "CUSTOMER";
+    type: "CUSTOMER" | "SYSTEM" | "STAFF";
     staffId?: string | null | undefined;
     staffName?: string | null | undefined;
     deviceId?: string | null | undefined;
     registerNumber?: number | null | undefined;
 }, {
-    type: "SYSTEM" | "STAFF" | "CUSTOMER";
+    type: "CUSTOMER" | "SYSTEM" | "STAFF";
     staffId?: string | null | undefined;
     staffName?: string | null | undefined;
     deviceId?: string | null | undefined;
@@ -57,21 +57,21 @@ export declare const CustomerActivityMetadataSchemas: {
         deviceId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         registerNumber: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     }, "strip", z.ZodTypeAny, {
-        laneId: string;
         mode: "CHECKIN" | "RENEWAL";
+        laneId: string;
         laneSessionId: string;
+        proposedRentalType?: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
         startedFrom?: "SCAN" | "SEARCH" | "MANUAL_ENTRY" | null | undefined;
-        proposedRentalType?: "LOCKER" | "STANDARD" | "DOUBLE" | "SPECIAL" | null | undefined;
     }, {
-        laneId: string;
         mode: "CHECKIN" | "RENEWAL";
+        laneId: string;
         laneSessionId: string;
+        proposedRentalType?: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
         startedFrom?: "SCAN" | "SEARCH" | "MANUAL_ENTRY" | null | undefined;
-        proposedRentalType?: "LOCKER" | "STANDARD" | "DOUBLE" | "SPECIAL" | null | undefined;
     }>;
     readonly CHECKIN_COMPLETED: z.ZodObject<{
         visitId: z.ZodString;
@@ -94,37 +94,37 @@ export declare const CustomerActivityMetadataSchemas: {
         renewalHours: z.ZodOptional<z.ZodNullable<z.ZodUnion<[z.ZodLiteral<2>, z.ZodLiteral<6>]>>>;
         amount: z.ZodNumber;
         currency: z.ZodEnum<["USD"]>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        orderId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         waitlistId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         visitId: string;
+        amount: number;
         checkinBlockId: string;
         assignedResource: {
             number: string;
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        amount: number;
         currency: "USD";
-        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         membershipChoice?: "ONE_TIME" | "SIX_MONTH" | null | undefined;
+        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         renewalHours?: 2 | 6 | null | undefined;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
         waitlistId?: string | null | undefined;
     }, {
         visitId: string;
+        amount: number;
         checkinBlockId: string;
         assignedResource: {
             number: string;
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        amount: number;
         currency: "USD";
-        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         membershipChoice?: "ONE_TIME" | "SIX_MONTH" | null | undefined;
+        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         renewalHours?: 2 | 6 | null | undefined;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
         waitlistId?: string | null | undefined;
     }>;
     readonly CHECKOUT_REQUEST_CREATED: z.ZodObject<{
@@ -182,7 +182,7 @@ export declare const CustomerActivityMetadataSchemas: {
         charges: z.ZodNumber;
         paid: z.ZodNumber;
         tip: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        orderId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         paymentMethod: z.ZodOptional<z.ZodNullable<z.ZodEnum<["CASH", "CARD", "SPLIT", "OTHER"]>>>;
     }, "strip", z.ZodTypeAny, {
         visitId: string;
@@ -193,10 +193,10 @@ export declare const CustomerActivityMetadataSchemas: {
         };
         charges: number;
         paid: number;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         checkoutRequestId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
     }, {
         visitId: string;
         resource: {
@@ -206,10 +206,10 @@ export declare const CustomerActivityMetadataSchemas: {
         };
         charges: number;
         paid: number;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         checkoutRequestId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
     }>;
     readonly UPGRADE_STARTED: z.ZodObject<{
         visitId: z.ZodString;
@@ -371,7 +371,7 @@ export declare const CustomerActivityMetadataSchemas: {
         }>;
         amount: z.ZodNumber;
         currency: z.ZodEnum<["USD"]>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        orderId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         visitId: string;
         amount: number;
@@ -389,7 +389,7 @@ export declare const CustomerActivityMetadataSchemas: {
             } | null | undefined;
             toTier?: string | null | undefined;
         };
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     }, {
         visitId: string;
         amount: number;
@@ -407,7 +407,7 @@ export declare const CustomerActivityMetadataSchemas: {
             } | null | undefined;
             toTier?: string | null | undefined;
         };
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     }>;
     readonly ORDER_PAID: z.ZodObject<{
         orderId: z.ZodString;
@@ -417,7 +417,6 @@ export declare const CustomerActivityMetadataSchemas: {
         tax: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         tip: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         discount: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         paymentMethod: z.ZodOptional<z.ZodNullable<z.ZodEnum<["CASH", "CARD", "SPLIT", "OTHER"]>>>;
         registerNumber: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         deviceId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -444,15 +443,14 @@ export declare const CustomerActivityMetadataSchemas: {
             unitPrice?: number | null | undefined;
         }>, "many">>>;
     }, "strip", z.ZodTypeAny, {
-        currency: "USD";
         orderId: string;
         total: number;
+        currency: "USD";
+        visitId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
-        visitId?: string | null | undefined;
-        paymentIntentId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
         tax?: number | null | undefined;
         discount?: number | null | undefined;
         lineItems?: {
@@ -464,15 +462,14 @@ export declare const CustomerActivityMetadataSchemas: {
             unitPrice?: number | null | undefined;
         }[] | null | undefined;
     }, {
-        currency: "USD";
         orderId: string;
         total: number;
+        currency: "USD";
+        visitId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
-        visitId?: string | null | undefined;
-        paymentIntentId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
         tax?: number | null | undefined;
         discount?: number | null | undefined;
         lineItems?: {
@@ -504,29 +501,29 @@ export declare const CustomerActivityMetadataSchemas: {
         }>, "many">;
         total: z.ZodNumber;
         currency: z.ZodEnum<["USD"]>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        orderId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         visitId: string;
-        currency: "USD";
         total: number;
+        currency: "USD";
         addOns: {
             total: number;
             name: string;
             quantity: number;
             code?: string | null | undefined;
         }[];
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     }, {
         visitId: string;
-        currency: "USD";
         total: number;
+        currency: "USD";
         addOns: {
             total: number;
             name: string;
             quantity: number;
             code?: string | null | undefined;
         }[];
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     }>;
     readonly ROOM_CHANGED: z.ZodObject<{
         visitId: z.ZodString;
@@ -569,7 +566,7 @@ export declare const CustomerActivityMetadataSchemas: {
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     }, {
         visitId: string;
         fromResource: {
@@ -582,7 +579,7 @@ export declare const CustomerActivityMetadataSchemas: {
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     }>;
     readonly LOCKER_CHANGED: z.ZodObject<{
         visitId: z.ZodString;
@@ -625,7 +622,7 @@ export declare const CustomerActivityMetadataSchemas: {
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     }, {
         visitId: string;
         fromResource: {
@@ -638,7 +635,7 @@ export declare const CustomerActivityMetadataSchemas: {
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     }>;
     readonly NOTE_ADDED: z.ZodObject<{
         noteId: z.ZodString;
@@ -684,25 +681,25 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         deviceId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         registerNumber: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     }, "strip", z.ZodTypeAny, {
-        type: "SYSTEM" | "STAFF" | "CUSTOMER";
+        type: "CUSTOMER" | "SYSTEM" | "STAFF";
         staffId?: string | null | undefined;
         staffName?: string | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
     }, {
-        type: "SYSTEM" | "STAFF" | "CUSTOMER";
+        type: "CUSTOMER" | "SYSTEM" | "STAFF";
         staffId?: string | null | undefined;
         staffName?: string | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
     }>, {
-        type: "SYSTEM" | "STAFF" | "CUSTOMER";
+        type: "CUSTOMER" | "SYSTEM" | "STAFF";
         staffId?: string | null | undefined;
         staffName?: string | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
     }, {
-        type: "SYSTEM" | "STAFF" | "CUSTOMER";
+        type: "CUSTOMER" | "SYSTEM" | "STAFF";
         staffId?: string | null | undefined;
         staffName?: string | null | undefined;
         deviceId?: string | null | undefined;
@@ -718,21 +715,21 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         deviceId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         registerNumber: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
     }, "strip", z.ZodTypeAny, {
-        laneId: string;
         mode: "CHECKIN" | "RENEWAL";
+        laneId: string;
         laneSessionId: string;
+        proposedRentalType?: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
         startedFrom?: "SCAN" | "SEARCH" | "MANUAL_ENTRY" | null | undefined;
-        proposedRentalType?: "LOCKER" | "STANDARD" | "DOUBLE" | "SPECIAL" | null | undefined;
     }, {
-        laneId: string;
         mode: "CHECKIN" | "RENEWAL";
+        laneId: string;
         laneSessionId: string;
+        proposedRentalType?: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
         startedFrom?: "SCAN" | "SEARCH" | "MANUAL_ENTRY" | null | undefined;
-        proposedRentalType?: "LOCKER" | "STANDARD" | "DOUBLE" | "SPECIAL" | null | undefined;
     }>, z.ZodObject<{
         visitId: z.ZodString;
         checkinBlockId: z.ZodString;
@@ -754,37 +751,37 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         renewalHours: z.ZodOptional<z.ZodNullable<z.ZodUnion<[z.ZodLiteral<2>, z.ZodLiteral<6>]>>>;
         amount: z.ZodNumber;
         currency: z.ZodEnum<["USD"]>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        orderId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         waitlistId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         visitId: string;
+        amount: number;
         checkinBlockId: string;
         assignedResource: {
             number: string;
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        amount: number;
         currency: "USD";
-        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         membershipChoice?: "ONE_TIME" | "SIX_MONTH" | null | undefined;
+        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         renewalHours?: 2 | 6 | null | undefined;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
         waitlistId?: string | null | undefined;
     }, {
         visitId: string;
+        amount: number;
         checkinBlockId: string;
         assignedResource: {
             number: string;
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        amount: number;
         currency: "USD";
-        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         membershipChoice?: "ONE_TIME" | "SIX_MONTH" | null | undefined;
+        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         renewalHours?: 2 | 6 | null | undefined;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
         waitlistId?: string | null | undefined;
     }>, z.ZodObject<{
         checkoutRequestId: z.ZodString;
@@ -840,7 +837,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         charges: z.ZodNumber;
         paid: z.ZodNumber;
         tip: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        orderId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         paymentMethod: z.ZodOptional<z.ZodNullable<z.ZodEnum<["CASH", "CARD", "SPLIT", "OTHER"]>>>;
     }, "strip", z.ZodTypeAny, {
         visitId: string;
@@ -851,10 +848,10 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         };
         charges: number;
         paid: number;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         checkoutRequestId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
     }, {
         visitId: string;
         resource: {
@@ -864,10 +861,10 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         };
         charges: number;
         paid: number;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         checkoutRequestId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
     }>, z.ZodObject<{
         visitId: z.ZodString;
         fromResource: z.ZodObject<{
@@ -1027,7 +1024,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         }>;
         amount: z.ZodNumber;
         currency: z.ZodEnum<["USD"]>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        orderId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         visitId: string;
         amount: number;
@@ -1045,7 +1042,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             } | null | undefined;
             toTier?: string | null | undefined;
         };
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     }, {
         visitId: string;
         amount: number;
@@ -1063,7 +1060,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             } | null | undefined;
             toTier?: string | null | undefined;
         };
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     }>, z.ZodObject<{
         orderId: z.ZodString;
         visitId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1072,7 +1069,6 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         tax: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         tip: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         discount: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         paymentMethod: z.ZodOptional<z.ZodNullable<z.ZodEnum<["CASH", "CARD", "SPLIT", "OTHER"]>>>;
         registerNumber: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
         deviceId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1099,15 +1095,14 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             unitPrice?: number | null | undefined;
         }>, "many">>>;
     }, "strip", z.ZodTypeAny, {
-        currency: "USD";
         orderId: string;
         total: number;
+        currency: "USD";
+        visitId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
-        visitId?: string | null | undefined;
-        paymentIntentId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
         tax?: number | null | undefined;
         discount?: number | null | undefined;
         lineItems?: {
@@ -1119,15 +1114,14 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             unitPrice?: number | null | undefined;
         }[] | null | undefined;
     }, {
-        currency: "USD";
         orderId: string;
         total: number;
+        currency: "USD";
+        visitId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
-        visitId?: string | null | undefined;
-        paymentIntentId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
         tax?: number | null | undefined;
         discount?: number | null | undefined;
         lineItems?: {
@@ -1158,29 +1152,29 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         }>, "many">;
         total: z.ZodNumber;
         currency: z.ZodEnum<["USD"]>;
-        paymentIntentId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        orderId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     }, "strip", z.ZodTypeAny, {
         visitId: string;
-        currency: "USD";
         total: number;
+        currency: "USD";
         addOns: {
             total: number;
             name: string;
             quantity: number;
             code?: string | null | undefined;
         }[];
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     }, {
         visitId: string;
-        currency: "USD";
         total: number;
+        currency: "USD";
         addOns: {
             total: number;
             name: string;
             quantity: number;
             code?: string | null | undefined;
         }[];
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     }>, z.ZodObject<{
         visitId: z.ZodString;
         fromResource: z.ZodObject<{
@@ -1222,7 +1216,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     }, {
         visitId: string;
         fromResource: {
@@ -1235,7 +1229,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     }>, z.ZodObject<{
         visitId: z.ZodString;
         fromResource: z.ZodObject<{
@@ -1277,7 +1271,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     }, {
         visitId: string;
         fromResource: {
@@ -1290,7 +1284,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     }>, z.ZodObject<{
         noteId: z.ZodString;
         isImportant: z.ZodBoolean;
@@ -1322,42 +1316,42 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
     dedupeKey: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     customerName: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    id: string;
-    occurredAt: string;
-    customerId: string;
-    actionType: "CHECKIN_STARTED" | "CHECKIN_COMPLETED" | "CHECKOUT_COMPLETED" | "NOTE_ADDED" | "PAST_DUE_WAIVED" | "CHECKOUT_REQUEST_CREATED" | "UPGRADE_STARTED" | "UPGRADE_COMPLETED" | "ORDER_PAID" | "ADDON_PURCHASED" | "ROOM_CHANGED" | "LOCKER_CHANGED";
-    actionCategory: "CHECKIN" | "CHECKOUT" | "ADMIN" | "UPGRADE" | "PURCHASE" | "RESOURCE_CHANGE" | "NOTE";
-    sourceApp: "EMPLOYEE_REGISTER" | "OFFICE_DASHBOARD" | "CUSTOMER_KIOSK" | "SYSTEM";
     actor: {
-        type: "SYSTEM" | "STAFF" | "CUSTOMER";
+        type: "CUSTOMER" | "SYSTEM" | "STAFF";
         staffId?: string | null | undefined;
         staffName?: string | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
     };
+    customerId: string;
+    id: string;
+    occurredAt: string;
+    actionType: "CHECKOUT_COMPLETED" | "CHECKIN_STARTED" | "CHECKIN_COMPLETED" | "CHECKOUT_REQUEST_CREATED" | "UPGRADE_STARTED" | "UPGRADE_COMPLETED" | "ORDER_PAID" | "ADDON_PURCHASED" | "ROOM_CHANGED" | "LOCKER_CHANGED" | "NOTE_ADDED" | "PAST_DUE_WAIVED";
+    actionCategory: "PURCHASE" | "CHECKIN" | "UPGRADE" | "CHECKOUT" | "RESOURCE_CHANGE" | "NOTE" | "ADMIN";
+    sourceApp: "SYSTEM" | "EMPLOYEE_REGISTER" | "OFFICE_DASHBOARD" | "CUSTOMER_KIOSK";
     summary: string;
     metadata: {
-        laneId: string;
         mode: "CHECKIN" | "RENEWAL";
+        laneId: string;
         laneSessionId: string;
+        proposedRentalType?: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
         startedFrom?: "SCAN" | "SEARCH" | "MANUAL_ENTRY" | null | undefined;
-        proposedRentalType?: "LOCKER" | "STANDARD" | "DOUBLE" | "SPECIAL" | null | undefined;
     } | {
         visitId: string;
+        amount: number;
         checkinBlockId: string;
         assignedResource: {
             number: string;
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        amount: number;
         currency: "USD";
-        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         membershipChoice?: "ONE_TIME" | "SIX_MONTH" | null | undefined;
+        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         renewalHours?: 2 | 6 | null | undefined;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
         waitlistId?: string | null | undefined;
     } | {
         visitId: string;
@@ -1377,10 +1371,10 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         };
         charges: number;
         paid: number;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         checkoutRequestId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
     } | {
         visitId: string;
         fromResource: {
@@ -1416,17 +1410,16 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             } | null | undefined;
             toTier?: string | null | undefined;
         };
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     } | {
-        currency: "USD";
         orderId: string;
         total: number;
+        currency: "USD";
+        visitId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
-        visitId?: string | null | undefined;
-        paymentIntentId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
         tax?: number | null | undefined;
         discount?: number | null | undefined;
         lineItems?: {
@@ -1439,15 +1432,15 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         }[] | null | undefined;
     } | {
         visitId: string;
-        currency: "USD";
         total: number;
+        currency: "USD";
         addOns: {
             total: number;
             name: string;
             quantity: number;
             code?: string | null | undefined;
         }[];
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     } | {
         visitId: string;
         fromResource: {
@@ -1460,7 +1453,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     } | {
         visitId: string;
         fromResource: {
@@ -1473,7 +1466,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     } | {
         noteId: string;
         isImportant: boolean;
@@ -1484,45 +1477,45 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         newPastDue: number;
         reason?: string | null | undefined;
     };
-    dedupeKey?: string | null | undefined;
     customerName?: string | undefined;
+    dedupeKey?: string | null | undefined;
 }, {
-    id: string;
-    occurredAt: string;
-    customerId: string;
-    actionType: "CHECKIN_STARTED" | "CHECKIN_COMPLETED" | "CHECKOUT_COMPLETED" | "NOTE_ADDED" | "PAST_DUE_WAIVED" | "CHECKOUT_REQUEST_CREATED" | "UPGRADE_STARTED" | "UPGRADE_COMPLETED" | "ORDER_PAID" | "ADDON_PURCHASED" | "ROOM_CHANGED" | "LOCKER_CHANGED";
-    actionCategory: "CHECKIN" | "CHECKOUT" | "ADMIN" | "UPGRADE" | "PURCHASE" | "RESOURCE_CHANGE" | "NOTE";
-    sourceApp: "EMPLOYEE_REGISTER" | "OFFICE_DASHBOARD" | "CUSTOMER_KIOSK" | "SYSTEM";
     actor: {
-        type: "SYSTEM" | "STAFF" | "CUSTOMER";
+        type: "CUSTOMER" | "SYSTEM" | "STAFF";
         staffId?: string | null | undefined;
         staffName?: string | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
     };
+    customerId: string;
+    id: string;
+    occurredAt: string;
+    actionType: "CHECKOUT_COMPLETED" | "CHECKIN_STARTED" | "CHECKIN_COMPLETED" | "CHECKOUT_REQUEST_CREATED" | "UPGRADE_STARTED" | "UPGRADE_COMPLETED" | "ORDER_PAID" | "ADDON_PURCHASED" | "ROOM_CHANGED" | "LOCKER_CHANGED" | "NOTE_ADDED" | "PAST_DUE_WAIVED";
+    actionCategory: "PURCHASE" | "CHECKIN" | "UPGRADE" | "CHECKOUT" | "RESOURCE_CHANGE" | "NOTE" | "ADMIN";
+    sourceApp: "SYSTEM" | "EMPLOYEE_REGISTER" | "OFFICE_DASHBOARD" | "CUSTOMER_KIOSK";
     summary: string;
     metadata: {
-        laneId: string;
         mode: "CHECKIN" | "RENEWAL";
+        laneId: string;
         laneSessionId: string;
+        proposedRentalType?: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
         startedFrom?: "SCAN" | "SEARCH" | "MANUAL_ENTRY" | null | undefined;
-        proposedRentalType?: "LOCKER" | "STANDARD" | "DOUBLE" | "SPECIAL" | null | undefined;
     } | {
         visitId: string;
+        amount: number;
         checkinBlockId: string;
         assignedResource: {
             number: string;
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        amount: number;
         currency: "USD";
-        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         membershipChoice?: "ONE_TIME" | "SIX_MONTH" | null | undefined;
+        membershipPurchaseIntent?: "PURCHASE" | "RENEW" | null | undefined;
         renewalHours?: 2 | 6 | null | undefined;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
         waitlistId?: string | null | undefined;
     } | {
         visitId: string;
@@ -1542,10 +1535,10 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         };
         charges: number;
         paid: number;
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         checkoutRequestId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
     } | {
         visitId: string;
         fromResource: {
@@ -1581,17 +1574,16 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             } | null | undefined;
             toTier?: string | null | undefined;
         };
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     } | {
-        currency: "USD";
         orderId: string;
         total: number;
+        currency: "USD";
+        visitId?: string | null | undefined;
+        paymentMethod?: "OTHER" | "CASH" | "CARD" | "SPLIT" | null | undefined;
         deviceId?: string | null | undefined;
         registerNumber?: number | null | undefined;
-        visitId?: string | null | undefined;
-        paymentIntentId?: string | null | undefined;
         tip?: number | null | undefined;
-        paymentMethod?: "CASH" | "CARD" | "SPLIT" | "OTHER" | null | undefined;
         tax?: number | null | undefined;
         discount?: number | null | undefined;
         lineItems?: {
@@ -1604,15 +1596,15 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         }[] | null | undefined;
     } | {
         visitId: string;
-        currency: "USD";
         total: number;
+        currency: "USD";
         addOns: {
             total: number;
             name: string;
             quantity: number;
             code?: string | null | undefined;
         }[];
-        paymentIntentId?: string | null | undefined;
+        orderId?: string | null | undefined;
     } | {
         visitId: string;
         fromResource: {
@@ -1625,7 +1617,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     } | {
         visitId: string;
         fromResource: {
@@ -1638,7 +1630,7 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
             type: "room" | "locker";
             resourceId?: string | null | undefined;
         };
-        reason?: "UPGRADE" | "OTHER" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
+        reason?: "OTHER" | "UPGRADE" | "MAINTENANCE" | "CUSTOMER_REQUEST" | "STAFF_CORRECTION" | null | undefined;
     } | {
         noteId: string;
         isImportant: boolean;
@@ -1649,8 +1641,8 @@ export declare const CustomerActivityEventSchema: z.ZodObject<{
         newPastDue: number;
         reason?: string | null | undefined;
     };
-    dedupeKey?: string | null | undefined;
     customerName?: string | undefined;
+    dedupeKey?: string | null | undefined;
 }>;
 export declare const CustomerNotesListSchema: z.ZodObject<{
     limit: z.ZodDefault<z.ZodOptional<z.ZodNumber>>;
@@ -1669,11 +1661,11 @@ export declare const CreateCustomerNoteSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     note: string;
     isImportant?: boolean | undefined;
-    sourceApp?: "EMPLOYEE_REGISTER" | "OFFICE_DASHBOARD" | "CUSTOMER_KIOSK" | "SYSTEM" | undefined;
+    sourceApp?: "SYSTEM" | "EMPLOYEE_REGISTER" | "OFFICE_DASHBOARD" | "CUSTOMER_KIOSK" | undefined;
 }, {
     note: string;
     isImportant?: boolean | undefined;
-    sourceApp?: "EMPLOYEE_REGISTER" | "OFFICE_DASHBOARD" | "CUSTOMER_KIOSK" | "SYSTEM" | undefined;
+    sourceApp?: "SYSTEM" | "EMPLOYEE_REGISTER" | "OFFICE_DASHBOARD" | "CUSTOMER_KIOSK" | undefined;
 }>;
 export type CustomerActivityEvent = z.infer<typeof CustomerActivityEventSchema>;
 export type CustomerNotesList = z.infer<typeof CustomerNotesListSchema>;

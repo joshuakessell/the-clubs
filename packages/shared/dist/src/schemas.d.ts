@@ -43,7 +43,7 @@ export declare const RoomSchema: z.ZodObject<{
     overrideFlag: z.ZodBoolean;
 }, "strip", z.ZodTypeAny, {
     number: string;
-    type: "LOCKER" | "STANDARD" | "DOUBLE" | "SPECIAL";
+    type: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER";
     status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     id: string;
     floor: number;
@@ -52,7 +52,7 @@ export declare const RoomSchema: z.ZodObject<{
     assignedToCustomerId?: string | undefined;
 }, {
     number: string;
-    type: "LOCKER" | "STANDARD" | "DOUBLE" | "SPECIAL";
+    type: "STANDARD" | "DOUBLE" | "SPECIAL" | "LOCKER";
     status: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     id: string;
     floor: number;
@@ -64,7 +64,7 @@ export declare const RoomSchema: z.ZodObject<{
  * Zod schema for creating/updating room status.
  */
 export declare const RoomStatusUpdateSchema: z.ZodObject<{
-    roomId: z.ZodString;
+    resourceId: z.ZodString;
     newStatus: z.ZodNativeEnum<{
         readonly DIRTY: "DIRTY";
         readonly CLEANING: "CLEANING";
@@ -75,12 +75,12 @@ export declare const RoomStatusUpdateSchema: z.ZodObject<{
     override: z.ZodDefault<z.ZodBoolean>;
     reason: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    roomId: string;
+    resourceId: string;
     newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     override: boolean;
     reason?: string | undefined;
 }, {
-    roomId: string;
+    resourceId: string;
     newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     reason?: string | undefined;
     override?: boolean | undefined;
@@ -95,20 +95,20 @@ export declare const InventorySummarySchema: z.ZodObject<{
     total: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
     dirty: number;
-    total: number;
     clean: number;
     cleaning: number;
+    total: number;
 }, {
     dirty: number;
-    total: number;
     clean: number;
     cleaning: number;
+    total: number;
 }>;
 /**
  * Zod schema for batch room status update (cleaning station).
  */
 export declare const BatchStatusUpdateSchema: z.ZodObject<{
-    roomIds: z.ZodArray<z.ZodString, "many">;
+    resourceIds: z.ZodArray<z.ZodString, "many">;
     newStatus: z.ZodNativeEnum<{
         readonly DIRTY: "DIRTY";
         readonly CLEANING: "CLEANING";
@@ -121,11 +121,11 @@ export declare const BatchStatusUpdateSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
     override: boolean;
-    roomIds: string[];
+    resourceIds: string[];
     reason?: string | undefined;
 }, {
     newStatus: "DIRTY" | "CLEANING" | "CLEAN" | "OCCUPIED" | "OUT_OF_SERVICE";
-    roomIds: string[];
+    resourceIds: string[];
     reason?: string | undefined;
     override?: boolean | undefined;
 }>;
@@ -156,7 +156,7 @@ export declare const IdScanPayloadSchema: z.ZodEffects<z.ZodObject<{
     idNumber?: string | undefined;
     issuer?: string | undefined;
     jurisdiction?: string | undefined;
-    idType?: "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined;
+    idType?: "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined;
     idTypeOther?: string | undefined;
 }, {
     raw?: string | undefined;
@@ -168,7 +168,7 @@ export declare const IdScanPayloadSchema: z.ZodEffects<z.ZodObject<{
     idNumber?: string | undefined;
     issuer?: string | undefined;
     jurisdiction?: string | undefined;
-    idType?: "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined;
+    idType?: "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined;
     idTypeOther?: string | undefined;
 }>, {
     raw?: string | undefined;
@@ -180,7 +180,7 @@ export declare const IdScanPayloadSchema: z.ZodEffects<z.ZodObject<{
     idNumber?: string | undefined;
     issuer?: string | undefined;
     jurisdiction?: string | undefined;
-    idType?: "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined;
+    idType?: "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined;
     idTypeOther?: string | undefined;
 }, {
     raw?: string | undefined;
@@ -192,7 +192,7 @@ export declare const IdScanPayloadSchema: z.ZodEffects<z.ZodObject<{
     idNumber?: string | undefined;
     issuer?: string | undefined;
     jurisdiction?: string | undefined;
-    idType?: "OTHER" | "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | undefined;
+    idType?: "STATE_ID" | "DRIVERS_LICENSE" | "PASSPORT" | "OTHER" | undefined;
     idTypeOther?: string | undefined;
 }>;
 export type RoomInput = z.infer<typeof RoomSchema>;

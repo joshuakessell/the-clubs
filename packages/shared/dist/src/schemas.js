@@ -25,7 +25,7 @@ export const RoomSchema = z.object({
  * Zod schema for creating/updating room status.
  */
 export const RoomStatusUpdateSchema = z.object({
-    roomId: z.string().uuid(),
+    resourceId: z.string().uuid(),
     newStatus: RoomStatusSchema,
     override: z.boolean().default(false),
     reason: z.string().optional(),
@@ -43,7 +43,7 @@ export const InventorySummarySchema = z.object({
  * Zod schema for batch room status update (cleaning station).
  */
 export const BatchStatusUpdateSchema = z.object({
-    roomIds: z.array(z.string().uuid()).min(1),
+    resourceIds: z.array(z.string().uuid()).min(1),
     newStatus: RoomStatusSchema,
     override: z.boolean().default(false),
     reason: z.string().optional(),

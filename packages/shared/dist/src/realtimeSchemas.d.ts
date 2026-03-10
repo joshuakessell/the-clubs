@@ -59,8 +59,8 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     pastDueBalance: z.ZodOptional<z.ZodNumber>;
     pastDueBlocked: z.ZodOptional<z.ZodBoolean>;
     pastDueBypassed: z.ZodOptional<z.ZodBoolean>;
-    paymentIntentId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    paymentStatus: z.ZodOptional<z.ZodEnum<["DUE", "PAID"]>>;
+    orderId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    orderStatus: z.ZodOptional<z.ZodEnum<["OPEN", "PAID"]>>;
     paymentMethod: z.ZodOptional<z.ZodEnum<["CASH", "CREDIT"]>>;
     paymentTotal: z.ZodOptional<z.ZodNumber>;
     paymentLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -132,8 +132,8 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     pastDueBalance: z.ZodOptional<z.ZodNumber>;
     pastDueBlocked: z.ZodOptional<z.ZodBoolean>;
     pastDueBypassed: z.ZodOptional<z.ZodBoolean>;
-    paymentIntentId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    paymentStatus: z.ZodOptional<z.ZodEnum<["DUE", "PAID"]>>;
+    orderId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    orderStatus: z.ZodOptional<z.ZodEnum<["OPEN", "PAID"]>>;
     paymentMethod: z.ZodOptional<z.ZodEnum<["CASH", "CREDIT"]>>;
     paymentTotal: z.ZodOptional<z.ZodNumber>;
     paymentLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -205,8 +205,8 @@ export declare const SessionUpdatedPayloadSchema: z.ZodObject<{
     pastDueBalance: z.ZodOptional<z.ZodNumber>;
     pastDueBlocked: z.ZodOptional<z.ZodBoolean>;
     pastDueBypassed: z.ZodOptional<z.ZodBoolean>;
-    paymentIntentId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
-    paymentStatus: z.ZodOptional<z.ZodEnum<["DUE", "PAID"]>>;
+    orderId: z.ZodEffects<z.ZodOptional<z.ZodString>, string | undefined, unknown>;
+    orderStatus: z.ZodOptional<z.ZodEnum<["OPEN", "PAID"]>>;
     paymentMethod: z.ZodOptional<z.ZodEnum<["CASH", "CREDIT"]>>;
     paymentTotal: z.ZodOptional<z.ZodNumber>;
     paymentLineItems: z.ZodOptional<z.ZodArray<z.ZodObject<{
@@ -351,41 +351,32 @@ export declare const CustomerDeclinedPayloadSchema: z.ZodObject<{
 }, z.ZodTypeAny, "passthrough">>;
 export declare const AssignmentCreatedPayloadSchema: z.ZodObject<{
     sessionId: z.ZodString;
+    resourceId: z.ZodString;
+    resourceNumber: z.ZodString;
     rentalType: z.ZodString;
-    roomId: z.ZodOptional<z.ZodString>;
-    roomNumber: z.ZodOptional<z.ZodString>;
-    lockerId: z.ZodOptional<z.ZodString>;
-    lockerNumber: z.ZodOptional<z.ZodString>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
     sessionId: z.ZodString;
+    resourceId: z.ZodString;
+    resourceNumber: z.ZodString;
     rentalType: z.ZodString;
-    roomId: z.ZodOptional<z.ZodString>;
-    roomNumber: z.ZodOptional<z.ZodString>;
-    lockerId: z.ZodOptional<z.ZodString>;
-    lockerNumber: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
     sessionId: z.ZodString;
+    resourceId: z.ZodString;
+    resourceNumber: z.ZodString;
     rentalType: z.ZodString;
-    roomId: z.ZodOptional<z.ZodString>;
-    roomNumber: z.ZodOptional<z.ZodString>;
-    lockerId: z.ZodOptional<z.ZodString>;
-    lockerNumber: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const AssignmentFailedPayloadSchema: z.ZodObject<{
     sessionId: z.ZodString;
     reason: z.ZodString;
-    requestedRoomId: z.ZodOptional<z.ZodString>;
-    requestedLockerId: z.ZodOptional<z.ZodString>;
+    requestedResourceId: z.ZodOptional<z.ZodString>;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
     sessionId: z.ZodString;
     reason: z.ZodString;
-    requestedRoomId: z.ZodOptional<z.ZodString>;
-    requestedLockerId: z.ZodOptional<z.ZodString>;
+    requestedResourceId: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
     sessionId: z.ZodString;
     reason: z.ZodString;
-    requestedRoomId: z.ZodOptional<z.ZodString>;
-    requestedLockerId: z.ZodOptional<z.ZodString>;
+    requestedResourceId: z.ZodOptional<z.ZodString>;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const InventoryUpdatedPayloadSchema: z.ZodObject<{
     inventory: z.ZodObject<{
@@ -2001,21 +1992,21 @@ export declare const UpgradeHoldAvailablePayloadSchema: z.ZodObject<{
     waitlistId: z.ZodString;
     customerName: z.ZodString;
     desiredTier: z.ZodString;
-    roomId: z.ZodString;
+    resourceId: z.ZodString;
     roomNumber: z.ZodString;
     expiresAt: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
     waitlistId: z.ZodString;
     customerName: z.ZodString;
     desiredTier: z.ZodString;
-    roomId: z.ZodString;
+    resourceId: z.ZodString;
     roomNumber: z.ZodString;
     expiresAt: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
     waitlistId: z.ZodString;
     customerName: z.ZodString;
     desiredTier: z.ZodString;
-    roomId: z.ZodString;
+    resourceId: z.ZodString;
     roomNumber: z.ZodString;
     expiresAt: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>;
@@ -2023,19 +2014,19 @@ export declare const UpgradeOfferExpiredPayloadSchema: z.ZodObject<{
     waitlistId: z.ZodString;
     customerName: z.ZodString;
     desiredTier: z.ZodString;
-    roomId: z.ZodString;
+    resourceId: z.ZodString;
     roomNumber: z.ZodString;
 }, "passthrough", z.ZodTypeAny, z.objectOutputType<{
     waitlistId: z.ZodString;
     customerName: z.ZodString;
     desiredTier: z.ZodString;
-    roomId: z.ZodString;
+    resourceId: z.ZodString;
     roomNumber: z.ZodString;
 }, z.ZodTypeAny, "passthrough">, z.objectInputType<{
     waitlistId: z.ZodString;
     customerName: z.ZodString;
     desiredTier: z.ZodString;
-    roomId: z.ZodString;
+    resourceId: z.ZodString;
     roomNumber: z.ZodString;
 }, z.ZodTypeAny, "passthrough">>;
 export declare const RoomStatusChangedPayloadSchema: z.ZodObject<{

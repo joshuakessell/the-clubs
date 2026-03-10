@@ -1,0 +1,19 @@
+{
+  "app": "npx ts-node bin/the-clubs.ts",
+  "watch": {
+    "include": ["**"],
+    "exclude": ["node_modules", "dist", "cdk.out", "**/*.js", "**/*.d.ts"]
+  },
+  "context": {
+    "projectName": "the-clubs",
+    "environment": "production",
+    "awsRegion": "us-east-1",
+    "githubRepo": "joshuakessell/the-clubs",
+    "instanceType": "t3.micro",
+    "domains": {
+      "customer-kiosk": "customer-kiosk.joshuakessell.com",
+      "employee-register": "employee-register.joshuakessell.com",
+      "office-dashboard": "office-dashboard.joshuakessell.com"
+    }
+  }
+}

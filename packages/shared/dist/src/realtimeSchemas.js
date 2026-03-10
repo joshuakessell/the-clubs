@@ -84,8 +84,8 @@ export const SessionUpdatedPayloadSchema = z
     pastDueBalance: z.number().optional(),
     pastDueBlocked: z.boolean().optional(),
     pastDueBypassed: z.boolean().optional(),
-    paymentIntentId: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),
-    paymentStatus: z.enum(['DUE', 'PAID']).optional(),
+    orderId: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),
+    orderStatus: z.enum(['OPEN', 'PAID']).optional(),
     paymentMethod: z.enum(['CASH', 'CREDIT']).optional(),
     paymentTotal: z.number().optional(),
     paymentLineItems: z
@@ -186,19 +186,16 @@ export const CustomerDeclinedPayloadSchema = z
 export const AssignmentCreatedPayloadSchema = z
     .object({
     sessionId: z.string(),
+    resourceId: z.string(),
+    resourceNumber: z.string(),
     rentalType: z.string(),
-    roomId: z.string().optional(),
-    roomNumber: z.string().optional(),
-    lockerId: z.string().optional(),
-    lockerNumber: z.string().optional(),
 })
     .passthrough();
 export const AssignmentFailedPayloadSchema = z
     .object({
     sessionId: z.string(),
     reason: z.string(),
-    requestedRoomId: z.string().optional(),
-    requestedLockerId: z.string().optional(),
+    requestedResourceId: z.string().optional(),
 })
     .passthrough();
 const InventorySummarySchema = z.object({
@@ -261,7 +258,7 @@ export const UpgradeHoldAvailablePayloadSchema = z
     waitlistId: z.string(),
     customerName: z.string(),
     desiredTier: z.string(),
-    roomId: z.string(),
+    resourceId: z.string(),
     roomNumber: z.string(),
     expiresAt: z.string(),
 })
@@ -271,7 +268,7 @@ export const UpgradeOfferExpiredPayloadSchema = z
     waitlistId: z.string(),
     customerName: z.string(),
     desiredTier: z.string(),
-    roomId: z.string(),
+    resourceId: z.string(),
     roomNumber: z.string(),
 })
     .passthrough();
