@@ -2,12 +2,15 @@
  * Switch resource service — business logic for swapping a customer's room/locker mid-visit.
  *
  * Extracted from routes/checkin/switch-resource.ts. Zero HTTP/Fastify concepts.
+ *
+ * Migrated to Drizzle ORM — uses db.transaction() with serializable isolation.
  */
 import { getRoomTierFromNumber } from '@the-clubs/shared';
-import { insertAuditLog } from '../audit/auditLog';
-import { serializableTransaction, transaction } from '../db';
+import { insertAuditLogDrizzle } from '../audit/auditLog';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { getUpgradeFee, type RentalType } from '../pricing/engine';
-import { insertCustomerActivityEvent } from '../activity/customerActivityLog';
+import { insertCustomerActivityEventDrizzle } from '../activity/customerActivityLog';
 import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
@@ -69,18 +72,16 @@ function getTierFromRoomNumber(roomNumber: string): RentalTier {
 export async function switchResource(input: SwitchResourceInput) {
   const previousRoomStatus: PreviousRoomStatus = input.previousRoomStatus ?? 'DIRTY';
 
-  return serializableTransaction(async (client) => {
-    const visitResult = await client.query<{ id: string; customer_id: string; ended_at: Date | null }>(
-      `SELECT id, customer_id, ended_at FROM visits WHERE id = $1 FOR UPDATE`,
-      [input.visitId]
+  return db.transaction(async (tx) => {
+    const visitResult = await tx.execute<{ id: string; customer_id: string; ended_at: Date | null }>(
+      sql`SELECT id, customer_id, ended_at FROM visits WHERE id = ${input.visitId} FOR UPDATE`
     );
     if (visitResult.rows.length === 0) throw new HttpError(404, 'Visit not found') satisfies SwitchHttpError;
     const visit = visitResult.rows[0]!;
     if (visit.ended_at) throw new HttpError(409, 'Visit is already completed') satisfies SwitchHttpError;
 
-    const blockResult = await client.query<{ id: string; room_id: string | null; locker_id: string | null; rental_type: string }>(
-      `SELECT id, room_id, locker_id, rental_type::text FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC LIMIT 1 FOR UPDATE`,
-      [input.visitId]
+    const blockResult = await tx.execute<{ id: string; room_id: string | null; locker_id: string | null; rental_type: string }>(
+      sql`SELECT id, room_id, locker_id, rental_type::text FROM checkin_blocks WHERE visit_id = ${input.visitId} ORDER BY ends_at DESC LIMIT 1 FOR UPDATE`
     );
     if (blockResult.rows.length === 0) throw new HttpError(404, 'No active check-in block found') satisfies SwitchHttpError;
     const block = blockResult.rows[0]!;
@@ -93,11 +94,11 @@ export async function switchResource(input: SwitchResourceInput) {
     // Get current resource number
     let currentResourceNumber = '';
     if (currentResourceType === 'room') {
-      const r = await client.query<{ id: string; number: string }>(`SELECT id, number FROM rooms WHERE id = $1 FOR UPDATE`, [currentResourceId]);
+      const r = await tx.execute<{ id: string; number: string }>(sql`SELECT id, number FROM rooms WHERE id = ${currentResourceId} FOR UPDATE`);
       if (r.rows.length === 0) throw new HttpError(404, 'Current room not found') satisfies SwitchHttpError;
       currentResourceNumber = r.rows[0]!.number;
     } else {
-      const r = await client.query<{ id: string; number: string }>(`SELECT id, number FROM lockers WHERE id = $1 FOR UPDATE`, [currentResourceId]);
+      const r = await tx.execute<{ id: string; number: string }>(sql`SELECT id, number FROM lockers WHERE id = ${currentResourceId} FOR UPDATE`);
       if (r.rows.length === 0) throw new HttpError(404, 'Current locker not found') satisfies SwitchHttpError;
       currentResourceNumber = r.rows[0]!.number;
     }
@@ -106,8 +107,8 @@ export async function switchResource(input: SwitchResourceInput) {
     let targetResourceNumber = '';
     let targetRentalType: RentalTier;
     if (input.targetResourceType === 'room') {
-      const r = await client.query<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
-        `SELECT id, number, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [input.targetResourceId]
+      const r = await tx.execute<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
+        sql`SELECT id, number, status, assigned_to_customer_id FROM rooms WHERE id = ${input.targetResourceId} FOR UPDATE`
       );
       if (r.rows.length === 0) throw new HttpError(404, 'Target room not found') satisfies SwitchHttpError;
       const room = r.rows[0]!;
@@ -115,8 +116,8 @@ export async function switchResource(input: SwitchResourceInput) {
       targetResourceNumber = room.number;
       targetRentalType = getTierFromRoomNumber(room.number);
     } else {
-      const r = await client.query<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
-        `SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`, [input.targetResourceId]
+      const r = await tx.execute<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
+        sql`SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = ${input.targetResourceId} FOR UPDATE`
       );
       if (r.rows.length === 0) throw new HttpError(404, 'Target locker not found') satisfies SwitchHttpError;
       const locker = r.rows[0]!;
@@ -146,35 +147,34 @@ export async function switchResource(input: SwitchResourceInput) {
         throw declineErr;
       }
 
-      const pr = await client.query<{ id: string }>(
-        `INSERT INTO payment_intents (amount, status, quote_json, paid_at) VALUES ($1, 'PAID', $2, NOW()) RETURNING id`,
-        [additionalFee, JSON.stringify({ type: 'SWITCH_UPCHARGE', method: input.paymentOutcome, visitId: input.visitId, checkinBlockId: block.id, currentRentalType, targetRentalType, targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber })]
+      const quoteJson = JSON.stringify({ type: 'SWITCH_UPCHARGE', method: input.paymentOutcome, visitId: input.visitId, checkinBlockId: block.id, currentRentalType, targetRentalType, targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber });
+      const pr = await tx.execute<{ id: string }>(
+        sql`INSERT INTO payment_intents (amount, status, quote_json, paid_at) VALUES (${additionalFee}, 'PAID', ${quoteJson}::jsonb, NOW()) RETURNING id`
       );
       paymentIntentId = pr.rows[0]!.id;
-      await client.query(`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES ($1, $2, 'UPGRADE_FEE', $3, $4)`, [input.visitId, block.id, additionalFee, paymentIntentId]);
+      await tx.execute(sql`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES (${input.visitId}, ${block.id}, 'UPGRADE_FEE', ${additionalFee}, ${paymentIntentId})`);
     }
 
     // Release current resource
     if (currentResourceType === 'room') {
-      await client.query(`UPDATE rooms SET assigned_to_customer_id = NULL, status = $1, last_status_change = NOW(), updated_at = NOW() WHERE id = $2`, [previousRoomStatus, currentResourceId]);
+      await tx.execute(sql`UPDATE rooms SET assigned_to_customer_id = NULL, status = ${previousRoomStatus}, last_status_change = NOW(), updated_at = NOW() WHERE id = ${currentResourceId}`);
     } else {
-      await client.query(`UPDATE lockers SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = $1`, [currentResourceId]);
+      await tx.execute(sql`UPDATE lockers SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = ${currentResourceId}`);
     }
 
     // Assign target resource
     if (input.targetResourceType === 'room') {
-      await client.query(`UPDATE rooms SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = $2`, [visit.customer_id, input.targetResourceId]);
+      await tx.execute(sql`UPDATE rooms SET assigned_to_customer_id = ${visit.customer_id}, status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = ${input.targetResourceId}`);
     } else {
-      await client.query(`UPDATE lockers SET assigned_to_customer_id = $1, status = 'OCCUPIED', updated_at = NOW() WHERE id = $2`, [visit.customer_id, input.targetResourceId]);
+      await tx.execute(sql`UPDATE lockers SET assigned_to_customer_id = ${visit.customer_id}, status = 'OCCUPIED', updated_at = NOW() WHERE id = ${input.targetResourceId}`);
     }
 
     // Update checkin block
-    await client.query(
-      `UPDATE checkin_blocks SET room_id = $1, locker_id = $2, rental_type = $3::public.rental_type, updated_at = NOW() WHERE id = $4`,
-      [input.targetResourceType === 'room' ? input.targetResourceId : null, input.targetResourceType === 'locker' ? input.targetResourceId : null, targetRentalType, block.id]
-    );
+    const blockRoomId = input.targetResourceType === 'room' ? input.targetResourceId : null;
+    const blockLockerId = input.targetResourceType === 'locker' ? input.targetResourceId : null;
+    await tx.execute(sql`UPDATE checkin_blocks SET room_id = ${blockRoomId}, locker_id = ${blockLockerId}, rental_type = ${targetRentalType}::public.rental_type, updated_at = NOW() WHERE id = ${block.id}`);
 
-    await insertAuditLog(client, {
+    await insertAuditLogDrizzle(tx, {
       staffId: input.staffId, action: 'UPDATE', entityType: input.targetResourceType, entityId: input.targetResourceId,
       oldValue: { visitId: input.visitId, checkinBlockId: block.id, resourceType: currentResourceType, resourceId: currentResourceId, resourceNumber: currentResourceNumber, rentalType: currentRentalType, previousRoomStatus: currentResourceType === 'room' ? previousRoomStatus : null },
       newValue: { resourceType: input.targetResourceType, resourceId: input.targetResourceId, resourceNumber: targetResourceNumber, rentalType: targetRentalType, additionalFee, paymentIntentId },
@@ -186,18 +186,18 @@ export async function switchResource(input: SwitchResourceInput) {
       newResourceType: input.targetResourceType, newResourceId: input.targetResourceId, newResourceNumber: targetResourceNumber, newRentalType: targetRentalType,
       additionalFee, paymentIntentId,
     };
-  });
+  }, { isolationLevel: 'serializable' });
 }
 
 /** Log customer activity for a resource switch (best-effort, after successful switch). */
 export async function logResourceSwitch(result: Awaited<ReturnType<typeof switchResource>>, staff: StaffContext) {
-  await transaction(async (client) => {
-    const visitRow = await client.query<{ customer_id: string }>(`SELECT customer_id FROM visits WHERE id = $1 LIMIT 1`, [result.visitId]);
+  await db.transaction(async (tx) => {
+    const visitRow = await tx.execute<{ customer_id: string }>(sql`SELECT customer_id FROM visits WHERE id = ${result.visitId} LIMIT 1`);
     const customerId = visitRow.rows[0]?.customer_id;
     if (!customerId) return;
 
     const actionType = result.newResourceType === 'room' ? 'ROOM_CHANGED' : 'LOCKER_CHANGED';
-    await insertCustomerActivityEvent(client, {
+    await insertCustomerActivityEventDrizzle(tx, {
       customerId, actionType, actionCategory: 'RESOURCE_CHANGE', sourceApp: 'EMPLOYEE_REGISTER',
       actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.staffName,
       summary: result.newResourceType === 'room'
@@ -218,15 +218,11 @@ export async function logResourceSwitch(result: Awaited<ReturnType<typeof switch
 /** Persist a cancelled payment intent after a declined switch (outside the aborted serializable txn). */
 export async function persistDeclinedSwitchPayment(err: SwitchHttpError) {
   if (err.code !== 'PAYMENT_DECLINED' || !err.checkinBlockId || !err.visitId) return;
-  await transaction(async (client) => {
-    await client.query(
-      `INSERT INTO payment_intents (amount, status, quote_json) VALUES ($1, 'CANCELLED', $2)`,
-      [err.additionalFee ?? 0, JSON.stringify({
-        type: 'SWITCH_UPCHARGE', visitId: err.visitId, checkinBlockId: err.checkinBlockId,
-        currentRentalType: err.currentRentalType, targetRentalType: err.targetRentalType,
-        targetResourceType: err.targetResourceType, targetResourceId: err.targetResourceId,
-        targetResourceNumber: err.targetResourceNumber, declineReason: err.message,
-      })]
-    );
+  const quoteJson = JSON.stringify({
+    type: 'SWITCH_UPCHARGE', visitId: err.visitId, checkinBlockId: err.checkinBlockId,
+    currentRentalType: err.currentRentalType, targetRentalType: err.targetRentalType,
+    targetResourceType: err.targetResourceType, targetResourceId: err.targetResourceId,
+    targetResourceNumber: err.targetResourceNumber, declineReason: err.message,
   });
+  await db.execute(sql`INSERT INTO payment_intents (amount, status, quote_json) VALUES (${err.additionalFee ?? 0}, 'CANCELLED', ${quoteJson}::jsonb)`);
 }
