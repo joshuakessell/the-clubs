@@ -120,7 +120,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/customers/:customerId/notes', { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      const parsed = request.body as z.infer<typeof CreateCustomerNoteSchema>;
+      const parsed = request.body;
 
       try {
         const result = await createCustomerNote(
@@ -150,7 +150,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
         if (!customer) return reply.status(404).send({ error: 'Customer not found' });
         return reply.send({ customer });
       } catch (error) {
-        fastify.log.error(error, 'Failed to fetch customer profile');
+        fastify.log.error({ err: error, customerId: request.params.id }, 'Failed to fetch customer profile');
         return reply.status(500).send({ error: 'Internal server error' });
       }
     }

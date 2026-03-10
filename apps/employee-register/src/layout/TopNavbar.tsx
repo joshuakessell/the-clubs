@@ -109,8 +109,8 @@ style = {{
   <SearchIcon />
   < input
 type = "text"
-className = "h-8 flex-1 bg-transparent text-xs outline-none"
-style = {{ color: 'var(--color-text-primary)', outline: 'none' }}
+className = "h-8 flex-1 bg-transparent outline-none"
+style = {{ color: 'var(--color-text-primary)', outline: 'none', fontSize: '11px' }}
 placeholder = "Search customer…"
 aria-label="Search customer"
 autoComplete = "off"
@@ -190,37 +190,41 @@ style = {{
 
 {/* ── Tab bar ── */ }
 <nav
-        className="flex items-center gap-0.5 border-b px-4 overflow-x-auto"
-style = {{
-  backgroundColor: 'var(--color-surface-base)',
-    borderColor: 'var(--color-border-default)',
-      height: '42px',
-        minHeight: '42px',
+        className="flex items-center gap-0.5 border-b px-2"
+        style={{
+          backgroundColor: 'var(--color-surface-base)',
+          borderColor: 'var(--color-border-default)',
+          height: '42px',
+          minHeight: '42px',
+          containerType: 'inline-size',
         }}
       >
-{
-  NAV_ITEMS.map((item) => {
-    const isActive = activeTab === item.tab;
-    return (
-      <button
-              key= { item.tab }
-    onClick = {() => onNavigate(item.tab)
-  }
-              className = "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all duration-150 whitespace-nowrap shrink-0"
-              style = {{
-    backgroundColor: isActive ? 'var(--color-accent-glow)' : 'transparent',
-    color: isActive ? '#1a1a2e' : 'var(--color-text-secondary)',
-    border: isActive ? '1px solid var(--color-border-accent)' : '1px solid transparent',
-  }}
-title = {`${item.label} (${item.fKey})`}
+        {NAV_ITEMS.map((item) => {
+          const isActive = activeTab === item.tab;
+          return (
+            <button
+              key={item.tab}
+              onClick={() => onNavigate(item.tab)}
+              className="flex items-center gap-0.5 rounded-md py-1 font-medium transition-all duration-150 whitespace-nowrap"
+              style={{
+                backgroundColor: isActive ? 'var(--color-accent-glow)' : 'transparent',
+                color: isActive ? '#1a1a2e' : 'var(--color-text-secondary)',
+                border: isActive ? '1px solid var(--color-border-accent)' : '1px solid transparent',
+                fontSize: 'clamp(12px, 1.5cqw, 14px)',
+                paddingInline: 'clamp(3px, 0.6cqw, 8px)',
+                flex: '1 1 0',
+                justifyContent: 'center',
+                minWidth: 0,
+              }}
+              title={`${item.label} (${item.fKey})`}
             >
-  <span className="w-4 h-4 shrink-0" > { item.icon } </span>
-    < span > { item.label } </span>
-    < span className = "text-[9px] opacity-40" > { item.fKey } </span>
-      </button>
+              <span className="shrink-0" style={{ width: 'clamp(11px, 1.3cqw, 14px)', height: 'clamp(11px, 1.3cqw, 14px)' }}>{item.icon}</span>
+              <span>{item.label}</span>
+              <span style={{ fontSize: 'clamp(7px, 0.8cqw, 9px)', opacity: 0.4 }}>{item.fKey}</span>
+            </button>
           );
         })}
-</nav>
+      </nav>
   </div>
   );
 }

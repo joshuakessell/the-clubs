@@ -86,7 +86,12 @@ export function ProfileTab() {
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
         const res = await fetch(getApiUrl(`/api/v1/customers/${encodeURIComponent(cid)}`), { headers });
-        if (!res.ok || cancelled) return;
+        if (cancelled) return;
+        if (!res.ok) {
+          const errorBody = await res.text().catch(() => '');
+          console.error(`[ProfileTab] Customer fetch failed: HTTP ${res.status}`, errorBody);
+          return;
+        }
 
         const data = await res.json();
         if (cancelled) return;
@@ -106,8 +111,8 @@ export function ProfileTab() {
             pastDueBalance: c.pastDueBalance ?? 0,
           });
         }
-      } catch {
-        // Silently fail — profile fields just remain empty
+      } catch (err) {
+        console.error('[ProfileTab] Customer fetch error:', err);
       }
     })();
 

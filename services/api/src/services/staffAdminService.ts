@@ -22,7 +22,7 @@ export async function searchStaff(input: SearchStaffInput) {
   const conditions = [];
   if (input.search) {
     conditions.push(
-      sql`(${staff.name} ILIKE ${`%${input.search}%`} OR ${staff.id}::text = ${input.search})`
+      sql`(${staff.name} ILIKE ${'%' + input.search + '%'} OR ${staff.id}::text = ${input.search})`
     );
   }
   if (input.role) {
@@ -72,7 +72,7 @@ export async function createStaffMember(input: CreateStaffInput, actorStaffId: s
       })
       .returning({ id: staff.id });
 
-    const staffId = inserted!.id;
+    const staffId = inserted.id;
     await insertAuditLogDrizzle(tx, {
       staffId: actorStaffId,
       action: 'STAFF_CREATED',
@@ -107,7 +107,14 @@ export async function updateStaffMember(staffId: string, input: UpdateStaffInput
 
     if (!updated) throw new HttpError(404, 'Staff not found');
 
-    const action = input.active !== undefined ? (input.active ? 'STAFF_ACTIVATED' : 'STAFF_DEACTIVATED') : 'STAFF_UPDATED';
+    let action: string;
+    if (input.active === undefined) {
+      action = 'STAFF_UPDATED';
+    } else if (input.active) {
+      action = 'STAFF_ACTIVATED';
+    } else {
+      action = 'STAFF_DEACTIVATED';
+    }
     await insertAuditLogDrizzle(tx, {
       staffId: actorStaffId,
       action,

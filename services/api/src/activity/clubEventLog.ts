@@ -138,7 +138,7 @@ export async function insertClubEvent(
   );
 
   if (inserted.rows.length > 0) {
-    return { id: inserted.rows[0]!.id, deduped: false };
+    return { id: inserted.rows[0].id, deduped: false };
   }
 
   // Deduplication occurred — look up the existing row
@@ -153,7 +153,7 @@ export async function insertClubEvent(
   if (existing.rows.length === 0) {
     throw new Error('Club event insert deduped but row not found');
   }
-  return { id: existing.rows[0]!.id, deduped: true };
+  return { id: existing.rows[0].id, deduped: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ export async function insertClubEventDrizzle(
     .returning({ id: clubEvents.id });
 
   if (result.length > 0) {
-    return { id: result[0]!.id, deduped: false };
+    return { id: result[0].id, deduped: false };
   }
 
   // Deduplication occurred — look up existing row

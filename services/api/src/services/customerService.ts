@@ -24,23 +24,27 @@ export interface StaffContext {
   staffName: string;
 }
 
+type DobField = string | Date | null;
+
 interface CustomerRow {
   id: string;
   name: string;
   membership_number: string | null;
-  dob: string | Date | null;
+  dob: DobField;
 }
+
+type DateOrStringField = string | Date | null;
 
 interface CustomerProfileRow {
   id: string;
   name: string;
-  dob: string | Date | null;
+  dob: DobField;
   membership_number: string | null;
-  membership_valid_until: string | Date | null;
+  membership_valid_until: DateOrStringField;
   id_number: string | null;
   id_type: string | null;
   id_type_other: string | null;
-  id_expiration_date: string | Date | null;
+  id_expiration_date: DateOrStringField;
   primary_language: string | null;
   id_scan_hash: string | null;
   past_due_balance: number | string | null;
@@ -66,15 +70,16 @@ function toDateOnly(dob: string): string | null {
   return dob;
 }
 
-function toDateOnlyString(value: string | Date | null | undefined): string | null {
+function toDateOnlyString(value: DateOrStringField | undefined): string | null {
   if (!value) return null;
   if (typeof value === 'string') return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
   if (value instanceof Date) return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : null;
   return null;
 }
 
-function toIsoTimestamp(value: Date | null | undefined): string | null {
+function toIsoTimestamp(value: Date | string | null | undefined): string | null {
   if (!value) return null;
+  if (typeof value === 'string') return value; // Already an ISO string
   return Number.isFinite(value.getTime()) ? value.toISOString() : null;
 }
 
@@ -100,7 +105,7 @@ function normalizePersonNameForMatch(input: string): string {
   if (!collapsed) return '';
   const tokens = collapsed.split(' ').filter(Boolean);
   const suffixes = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
-  while (tokens.length > 1 && suffixes.has(tokens[tokens.length - 1]!)) tokens.pop();
+  while (tokens.length > 1 && suffixes.has(tokens.at(-1)!)) tokens.pop();
   return tokens.join(' ');
 }
 
@@ -109,7 +114,7 @@ function splitNamePartsForMatch(input: string): NormalizedNameParts | null {
   if (!normalizedFull) return null;
   const tokens = normalizedFull.split(' ').filter(Boolean);
   if (tokens.length === 0) return null;
-  return { normalizedFull, firstToken: tokens[0]!, lastToken: tokens[tokens.length - 1]! };
+  return { normalizedFull, firstToken: tokens[0], lastToken: tokens.at(-1)! };
 }
 
 function scoreNameSimilarity(input: NormalizedNameParts, stored: NormalizedNameParts): number {
@@ -120,8 +125,8 @@ function scoreNameSimilarity(input: NormalizedNameParts, stored: NormalizedNameP
   if (direct) score += 2; else if (swapped) score += 1;
   if (input.lastToken === stored.lastToken) score += 1;
   if (input.firstToken === stored.firstToken) score += 1;
-  if (input.firstToken[0] && stored.firstToken[0] && input.firstToken[0] === stored.firstToken[0]) score += 0.5;
-  if (input.lastToken[0] && stored.lastToken[0] && input.lastToken[0] === stored.lastToken[0]) score += 0.5;
+  if (input.firstToken.startsWith(stored.firstToken[0] ?? '') && stored.firstToken.startsWith(input.firstToken[0] ?? '')) score += 0.5;
+  if (input.lastToken.startsWith(stored.lastToken[0] ?? '') && stored.lastToken.startsWith(input.lastToken[0] ?? '')) score += 0.5;
   if (stored.firstToken.startsWith(input.firstToken) || input.firstToken.startsWith(stored.firstToken)) score += 0.5;
   if (stored.lastToken.startsWith(input.lastToken) || input.lastToken.startsWith(stored.lastToken)) score += 0.5;
   return score;
@@ -195,7 +200,7 @@ export async function listCustomerNotes(
     cursor: buildNotesCursor({ createdAt: r.created_at, id: r.id }),
   }));
 
-  const nextCursor = notes.length === opts.limit ? notes[notes.length - 1]!.cursor : null;
+  const nextCursor = notes.length === opts.limit ? notes.at(-1)!.cursor : null;
   return { notes, nextCursor };
 }
 
@@ -220,7 +225,7 @@ export async function createCustomerNote(
         isImportant: opts.isImportant ?? false,
       })
       .returning({ id: customerNotes.id, createdAt: customerNotes.createdAt });
-    const row = inserted[0]!;
+    const row = inserted[0];
 
     const preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
     await insertCustomerActivityEventDrizzle(tx, {
@@ -242,22 +247,31 @@ export async function getCustomerProfile(customerId: string) {
 
   const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedId);
   const whereClause = looksLikeUuid ? sql`id = ${normalizedId}` : sql`membership_number = ${normalizedId}`;
+  
   const result = await db.execute<Record<string, unknown>>(
     sql`SELECT id, name, dob, membership_number, membership_valid_until, id_number, id_type, id_type_other,
             id_expiration_date, primary_language, id_scan_hash, past_due_balance
      FROM customers WHERE ${whereClause} LIMIT 1`
   );
+  
   if (result.rows.length === 0) return null;
   const row = result.rows[0] as unknown as CustomerProfileRow;
 
   const { firstName, lastName } = splitFullName(row.name);
   const idType = row.id_type && isIdType(row.id_type) ? row.id_type : null;
 
-  const lastVisitResult = await db.execute<{ starts_at: Date }>(
-    sql`SELECT cb.starts_at FROM checkin_blocks cb JOIN visits v ON v.id = cb.visit_id
-     WHERE v.customer_id = ${row.id} ORDER BY cb.starts_at DESC LIMIT 1`
-  );
-  const lastVisitAt = lastVisitResult.rows.length > 0 ? toIsoTimestamp(lastVisitResult.rows[0]!.starts_at) : null;
+  let lastVisitAt: string | null = null;
+  try {
+    const lastVisitResult = await db.execute<{ starts_at: Date | string }>(
+      sql`SELECT cb.starts_at FROM checkin_blocks cb JOIN visits v ON v.id = cb.visit_id
+       WHERE v.customer_id = ${row.id} ORDER BY cb.starts_at DESC LIMIT 1`
+    );
+    lastVisitAt = lastVisitResult.rows.length > 0 ? toIsoTimestamp(lastVisitResult.rows[0].starts_at) : null;
+  } catch (err) {
+    console.error('[getCustomerProfile] lastVisit query failed:', err);
+    // Don't throw — lastVisitAt will just be null
+  }
+  
   const pastDueBalance = typeof row.past_due_balance === 'string' ? Number.parseInt(row.past_due_balance, 10) || 0 : (row.past_due_balance ?? 0);
 
   return {
@@ -267,7 +281,7 @@ export async function getCustomerProfile(customerId: string) {
     membershipValidUntil: toDateOnlyString(row.membership_valid_until),
     idNumber: row.id_number, idType, idTypeOther: row.id_type_other,
     idExpirationDate: toDateOnlyString(row.id_expiration_date),
-    primaryLanguage: row.primary_language === 'EN' || row.primary_language === 'ES' ? row.primary_language as 'EN' | 'ES' : null,
+    primaryLanguage: row.primary_language === 'EN' || row.primary_language === 'ES' ? row.primary_language : null,
     lastVisitAt, pastDueBalance,
     hasEncryptedLookupMarker: Boolean(row.id_scan_hash),
   };
@@ -312,8 +326,8 @@ export async function createFromScan(input: CreateFromScanInput) {
 
   // Check for existing customer
   const existing = await db.execute<{
-    id: string; name: string; dob: string | Date | null; membership_number: string | null;
-    banned_until: Date | null; id_scan_hash: string | null; id_scan_value: string | null;
+    id: string; name: string; dob: DobField; membership_number: string | null;
+    banned_until: DateOrStringField; id_scan_hash: string | null; id_scan_value: string | null;
   }>(
     sql`SELECT id, name, dob, membership_number, banned_until, id_scan_hash, id_scan_value FROM customers WHERE id_scan_hash = ${idScanHash} OR id_scan_value = ${idScanValue} LIMIT 1`
   );
@@ -394,7 +408,7 @@ export async function matchIdentity(input: { firstName: string; lastName: string
       if (score < 1.5) return null;
       return {
         id: row.id, name: row.name,
-        dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (row.dob as string | null),
+        dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (row.dob),
         membershipNumber: row.membership_number, score, createdAt: row.created_at,
       };
     })

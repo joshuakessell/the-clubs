@@ -40,9 +40,8 @@ export function LateFeeModal({
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
     >
-      <div
-        role="dialog"
-        aria-modal="true"
+      <dialog
+        open
         aria-labelledby="late-fee-title"
         className="w-full max-w-md rounded-xl border shadow-2xl relative"
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
@@ -161,7 +160,7 @@ export function LateFeeModal({
             </button>
           </div>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

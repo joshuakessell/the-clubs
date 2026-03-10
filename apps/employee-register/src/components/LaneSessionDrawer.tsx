@@ -93,10 +93,10 @@ export function LaneSessionDrawer() {
           ref={tabRef}
           onClick={handleToggle}
           aria-label={open ? 'Close account panel' : 'Open account panel'}
-          className={`relative flex items-center gap-2.5 rounded-t-xl border border-b-0 border-[var(--color-border-default)] cursor-pointer shadow-[0_-4px_12px_rgba(0,0,0,0.2)] transition-colors duration-150 pointer-events-auto shrink-0 ${
+          className={`relative flex items-center gap-2.5 border border-[var(--color-border-default)] cursor-pointer shadow-[0_-4px_12px_rgba(0,0,0,0.2)] transition-all duration-[280ms] pointer-events-auto shrink-0 ${
             open
-              ? 'bg-[var(--color-accent-glow)] text-[var(--color-accent-primary)]'
-              : 'bg-[var(--color-surface-raised)] text-[var(--color-text-primary)]'
+              ? 'bg-[var(--color-accent-glow)] text-[var(--color-accent-primary)] rounded-b-xl border-t-0'
+              : 'bg-[var(--color-surface-raised)] text-[var(--color-text-primary)] rounded-t-xl border-b-0'
           }`}
           style={{ height: TAB_HEIGHT, paddingLeft: 20, paddingRight: 20, minWidth: 180, maxWidth: 360 }}
         >

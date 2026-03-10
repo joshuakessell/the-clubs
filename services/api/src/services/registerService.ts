@@ -69,7 +69,7 @@ function toQueryable(tx: DrizzleTx | typeof db) {
       const values = params ?? [];
       let built = sql.empty();
       for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
+        built = sql`${built}${sql.raw(parts[i])}`;
         if (i < values.length) {
           built = sql`${built}${values[i]}`;
         }
@@ -100,7 +100,7 @@ export async function ensureDeviceEnabled(deviceId: string): Promise<void> {
     return;
   }
 
-  if (!result.rows[0]!.enabled) {
+  if (!result.rows[0].enabled) {
     throw new Error('DEVICE_DISABLED');
   }
 }
@@ -418,7 +418,7 @@ export async function confirmRegister(
       );
     } else if (shiftId) {
       await tx.execute(
-        sql`UPDATE timeclock_sessions SET shift_id = ${shiftId} WHERE id = ${existingTimeclock.rows[0]!.id} AND shift_id IS NULL`
+        sql`UPDATE timeclock_sessions SET shift_id = ${shiftId} WHERE id = ${existingTimeclock.rows[0].id} AND shift_id IS NULL`
       );
     }
 

@@ -47,7 +47,12 @@ export function ChargesTab() {
           getApiUrl(`/api/v1/customers/${encodeURIComponent(cid)}/visits/${encodeURIComponent(visitId)}/spend-ledger`),
           { headers }
         );
-        if (!res.ok || cancelled) return;
+        if (cancelled) return;
+        if (!res.ok) {
+          const errorBody = await res.text().catch(() => '');
+          console.error(`[ChargesTab] Spend-ledger fetch failed: HTTP ${res.status}`, errorBody);
+          return;
+        }
 
         const data = await res.json();
         if (cancelled) return;
@@ -60,8 +65,8 @@ export function ChargesTab() {
         const total = data.totals?.net ?? entries.reduce((sum, e) => sum + e.amount, 0);
         setVisitEntries(entries);
         setVisitTotal(total);
-      } catch {
-        // Silently fail
+      } catch (err) {
+        console.error('[ChargesTab] Spend-ledger fetch error:', err);
       } finally {
         if (!cancelled) setVisitLoading(false);
       }
@@ -261,8 +266,8 @@ export function ChargesTab() {
               color: 'var(--color-accent-primary)',
             }}
           >
-            <span>⬆</span>
-            Upgrade to 6-Month Membership ($43.00)
+            <span>⬆</span>{' '}
+            <span>Upgrade to 6-Month Membership ($43.00)</span>
           </button>
         )}
       </div>

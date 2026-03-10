@@ -150,6 +150,22 @@ function DetailPanel({
   const banApplied = resolved?.banApplied ?? false;
   const isOverdue = lateMinutes > 0;
 
+  const bgColor = isProcessing
+    ? 'var(--color-surface-overlay)'
+    : confirming
+      ? 'var(--color-status-error)'
+      : 'color-mix(in oklch, var(--color-status-error) 12%, transparent)';
+  const textColor = isProcessing
+    ? 'var(--color-text-muted)'
+    : confirming
+      ? 'var(--color-text-inverse)'
+      : 'var(--color-status-error)';
+
+  let buttonLabel: string;
+  if (isProcessing) buttonLabel = 'Processing…';
+  else if (confirming) buttonLabel = 'Confirm Checkout?';
+  else buttonLabel = '↩ Checkout';
+
   return (
     <div className="flex flex-col gap-3 p-3 h-full">
       {/* Customer header */}
@@ -229,23 +245,15 @@ function DetailPanel({
         }}
         className="w-full rounded-lg py-2 text-sm font-bold"
         style={{
-          backgroundColor: isProcessing
-            ? 'var(--color-surface-overlay)'
-            : confirming
-              ? 'var(--color-status-error)'
-              : 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
-          color: isProcessing
-            ? 'var(--color-text-muted)'
-            : confirming
-              ? 'var(--color-text-inverse)'
-              : 'var(--color-status-error)',
+          backgroundColor: bgColor,
+          color: textColor,
           border: '1px solid color-mix(in oklch, var(--color-status-error) 25%, transparent)',
           cursor: isProcessing || resolving ? 'not-allowed' : 'pointer',
           opacity: resolving ? 0.6 : 1,
           transition: 'all 0.15s ease',
         }}
       >
-        {isProcessing ? 'Processing…' : confirming ? 'Confirm Checkout?' : '↩ Checkout'}
+        {buttonLabel}
       </button>
     </div>
   );

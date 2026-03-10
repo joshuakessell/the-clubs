@@ -114,22 +114,19 @@ export default function App() {
     },
   });
 
+  function renderScreen() {
+    if (isValidating) return <ValidatingScreen />;
+    if (!session) return <LockScreen appTitle="Club Dallas" />;
+    if (session.mustChangePin) return <ChangePinScreen />;
+    return <AppLayout />;
+  }
+
   return (
     <ErrorBoundary>
-    <BrowserRouter>
-      <RouteLogger />
-    {
-      isValidating?(
-          <ValidatingScreen />
-        ) : !session ? (
-    <LockScreen appTitle= "Club Dallas" />
-        ) : session.mustChangePin ? (
-    <ChangePinScreen />
-        ) : (
-    <AppLayout />
-  )
-}
-</BrowserRouter>
-  </ErrorBoundary>
+      <BrowserRouter>
+        <RouteLogger />
+        {renderScreen()}
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }

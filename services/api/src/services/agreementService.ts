@@ -41,7 +41,7 @@ function toQueryable(tx: DrizzleTx) {
       const values = params ?? [];
       let built = sql.empty();
       for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
+        built = sql`${built}${sql.raw(parts[i])}`;
         if (i < values.length) {
           built = sql`${built}${values[i]}`;
         }
@@ -848,7 +848,11 @@ export async function processAgreementSigning(
           checkinBlockId: coreResult.checkinBlockId,
           laneSessionId: coreResult.sessionId,
         },
-        dedupeKey: coreResult.checkinBlockId ? `CLUB:${isRoom ? 'ROOM' : 'LOCKER'}_ASSIGNED:${coreResult.checkinBlockId}` : null,
+        dedupeKey: (() => {
+          if (!coreResult.checkinBlockId) return null;
+          const label = isRoom ? 'ROOM' : 'LOCKER';
+          return `CLUB:${label}_ASSIGNED:${coreResult.checkinBlockId}`;
+        })(),
       });
     }
   });

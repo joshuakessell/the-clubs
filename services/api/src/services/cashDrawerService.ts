@@ -48,13 +48,13 @@ export async function openDrawerSession(input: OpenDrawerInput, staffId: string)
       .returning();
 
     return {
-      sessionId: session!.id,
-      registerSessionId: session!.registerSessionId,
-      openedByStaffId: session!.openedByStaffId,
-      openedAt: session!.openedAt,
-      openingFloat: session!.openingFloat,
-      status: session!.status,
-      notes: session!.notes,
+      sessionId: session.id,
+      registerSessionId: session.registerSessionId,
+      openedByStaffId: session.openedByStaffId,
+      openedAt: session.openedAt,
+      openingFloat: session.openingFloat,
+      status: session.status,
+      notes: session.notes,
     };
   });
 }
@@ -87,10 +87,10 @@ export async function recordDrawerEvent(sessionId: string, input: RecordEventInp
       });
 
     return {
-      eventId: event!.id,
-      occurredAt: event!.occurredAt,
-      type: event!.type,
-      amount: event!.amount,
+      eventId: event.id,
+      occurredAt: event.occurredAt,
+      type: event.type,
+      amount: event.amount,
     };
   });
 }
@@ -142,13 +142,13 @@ export async function closeDrawerSession(sessionId: string, input: CloseDrawerIn
       .returning();
 
     return {
-      sessionId: result!.id,
-      status: result!.status,
-      closedAt: result!.closedAt || null,
-      countedCash: result!.countedCash,
-      expectedCash: result!.expectedCash,
-      overShort: result!.overShort,
-      notes: result!.notes,
+      sessionId: result.id,
+      status: result.status,
+      closedAt: result.closedAt || null,
+      countedCash: result.countedCash,
+      expectedCash: result.expectedCash,
+      overShort: result.overShort,
+      notes: result.notes,
     };
   });
 }

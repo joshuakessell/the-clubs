@@ -6,6 +6,12 @@ export type CustomerSpendLedgerSourceApp =
   | 'CUSTOMER_KIOSK'
   | 'SYSTEM';
 
+/** Safely convert a Date or string to ISO string. pg may return timestamps as strings. */
+function toIso(value: Date | string): string {
+  if (typeof value === 'string') return value;
+  return value.toISOString();
+}
+
 export type CustomerSpendLedgerActorType = 'STAFF' | 'CUSTOMER' | 'SYSTEM';
 
 export type InsertCustomerSpendLedgerEntryInput = {
@@ -46,7 +52,7 @@ export async function insertCustomerSpendLedgerEntry(
       [dedupeKey]
     );
     if (existing.rows.length > 0) {
-      return { id: existing.rows[0]!.id, deduped: true };
+      return { id: existing.rows[0].id, deduped: true };
     }
   }
 
@@ -80,7 +86,7 @@ export async function insertCustomerSpendLedgerEntry(
     throw new Error('Failed to insert customer spend ledger entry');
   }
 
-  return { id: inserted.rows[0]!.id, deduped: false };
+  return { id: inserted.rows[0].id, deduped: false };
 }
 
 // ── Drizzle-native insert version ──
@@ -115,7 +121,7 @@ export async function insertCustomerSpendLedgerEntryDrizzle(
       .where(eq(customerSpendLedgerEntries.dedupeKey, dedupeKey))
       .limit(1);
     if (existing.length > 0) {
-      return { id: existing[0]!.id, deduped: true };
+      return { id: existing[0].id, deduped: true };
     }
   }
 
@@ -142,7 +148,7 @@ export async function insertCustomerSpendLedgerEntryDrizzle(
     throw new Error('Failed to insert customer spend ledger entry');
   }
 
-  return { id: result[0]!.id, deduped: false };
+  return { id: result[0].id, deduped: false };
 }
 
 // ── Drizzle-native read functions ──
@@ -191,9 +197,9 @@ export async function listCustomerSpendLedgerByVisit(
 
   const rows = await db.execute<{
     visit_id: string | null;
-    visit_started_at: Date | null;
-    visit_ended_at: Date | null;
-    group_occurred_at: Date;
+    visit_started_at: Date | string | null;
+    visit_ended_at: Date | string | null;
+    group_occurred_at: Date | string;
     gross: string | number;
     refunds: string | number;
     net: string | number;
@@ -236,13 +242,13 @@ export async function listCustomerSpendLedgerByVisit(
   const groups: SpendLedgerVisitGroup[] = rows.rows.map((r) => {
     const visitKey = r.visit_id ?? '__NULL__';
     const cursorObj = {
-      occurredAt: r.group_occurred_at.toISOString(),
+      occurredAt: toIso(r.group_occurred_at),
       visitKey,
     };
     return {
       visitId: r.visit_id,
-      visitStartedAt: r.visit_started_at ? r.visit_started_at.toISOString() : null,
-      visitEndedAt: r.visit_ended_at ? r.visit_ended_at.toISOString() : null,
+      visitStartedAt: r.visit_started_at ? toIso(r.visit_started_at) : null,
+      visitEndedAt: r.visit_ended_at ? toIso(r.visit_ended_at) : null,
       gross: Number(r.gross) || 0,
       refunds: Number(r.refunds) || 0,
       net: Number(r.net) || 0,
@@ -271,7 +277,7 @@ export async function listVisitSpendLedgerEntries(
 }> {
   const rows = await db.execute<{
     id: string;
-    occurred_at: Date;
+    occurred_at: Date | string;
     entry_type: string;
     amount: string | number;
     currency: string;
@@ -291,7 +297,7 @@ export async function listVisitSpendLedgerEntries(
 
   const entries = rows.rows.map((r) => ({
     id: r.id,
-    occurredAt: r.occurred_at.toISOString(),
+    occurredAt: toIso(r.occurred_at),
     entryType: r.entry_type,
     amount: Number(r.amount) || 0,
     currency: r.currency,

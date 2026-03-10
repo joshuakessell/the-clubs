@@ -20,7 +20,7 @@ function toQueryable(tx: any) {
       const values = params ?? [];
       let built = sql.empty();
       for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
+        built = sql`${built}${sql.raw(parts[i])}`;
         if (i < values.length) {
           built = sql`${built}${values[i]}`;
         }

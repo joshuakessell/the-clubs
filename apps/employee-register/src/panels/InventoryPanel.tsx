@@ -39,14 +39,13 @@ const STATUS_LABEL: Record<string, string> = {
 interface ColumnDef {
   key: string;
   label: string;
-  emoji: string;
 }
 
 const COLUMNS: ColumnDef[] = [
-  { key: 'LOCKER', label: 'Lockers', emoji: '🔐' },
-  { key: 'STANDARD', label: 'Private Rooms', emoji: '🛏️' },
-  { key: 'DOUBLE', label: 'Double Rooms', emoji: '🛋️' },
-  { key: 'SPECIAL', label: 'Special Rooms', emoji: '⭐' },
+  { key: 'LOCKER', label: 'Lockers' },
+  { key: 'STANDARD', label: 'Private Rooms' },
+  { key: 'DOUBLE', label: 'Double Rooms' },
+  { key: 'SPECIAL', label: 'Special Rooms' },
 ];
 
 function formatTime(iso?: string): string {
@@ -154,35 +153,38 @@ export function InventoryPanel() {
 
     return (
       <div
-              key={ col.key }
-    className = "flex flex-1 flex-col min-h-0 rounded-lg border"
-    style = {{
-      backgroundColor: 'var(--color-surface-overlay)',
-        borderColor: 'var(--color-border-subtle)',
-          overflow: 'hidden',
-              }
-  }
+              key={col.key}
+              className="flex flex-1 flex-col min-h-0 rounded-lg border"
+              style={{
+                backgroundColor: 'var(--color-surface-overlay)',
+                borderColor: 'var(--color-border-subtle)',
+                overflow: 'hidden',
+                containerType: 'inline-size',
+              }}
             >
-    {/* Column header */ }
-    < div
-                className = "flex items-center justify-between px-3 py-2"
-                style = {{ borderBottom: '1px solid var(--color-border-subtle)' }}
-  >
-  <div className="flex items-center gap-1.5" >
-    <span className="text-sm" > { col.emoji } </span>
-      < span
-className = "text-sm font-bold"
-style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+              {/* Column header */}
+              <div
+                className="flex items-center justify-between px-2 py-2"
+                style={{ borderBottom: '1px solid var(--color-border-subtle)' }}
+              >
+                <div className="flex items-center gap-1 min-w-0">
+                  <span
+                    className="font-bold whitespace-nowrap"
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      color: 'var(--color-text-primary)',
+                      fontSize: 'clamp(13px, 8cqw, 16px)',
+                    }}
                   >
-  { col.label }
-  </span>
-  </div>
-  < div className = "flex items-center gap-2 text-xs" >
-    <span style={ { color: 'var(--color-status-success)' } }> { available } </span>
-      < span style = {{ color: 'var(--color-text-muted)' }}> /</span >
-        <span style={ { color: 'var(--color-text-muted)' } }> { items.length } </span>
-          </div>
-          </div>
+                    {col.label}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0" style={{ fontSize: 'clamp(11px, 6cqw, 14px)' }}>
+                  <span style={{ color: 'var(--color-status-success)' }}>{available}</span>
+                  <span style={{ color: 'var(--color-text-muted)' }}>/</span>
+                  <span style={{ color: 'var(--color-text-muted)' }}>{items.length}</span>
+                </div>
+              </div>
 
 {/* Scrollable item list */ }
 <div className="flex-1 min-h-0 overflow-y-auto" >

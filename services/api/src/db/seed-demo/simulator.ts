@@ -32,13 +32,13 @@ import { SeedProgress } from './progress';
 async function query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number | null }> {
   const result = await db.execute<Record<string, unknown>>(
     params && params.length > 0
-      ? sql.raw(text.replace(/\$(\d+)/g, (_, idx) => {
+      ? sql.raw(text.replaceAll(/\$(\d+)/g, (_, idx) => {
           const val = params[Number(idx) - 1];
           if (val === null || val === undefined) return 'NULL';
           if (val instanceof Date) return `'${val.toISOString()}'`;
-          if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
+          if (typeof val === 'object') return `'${JSON.stringify(val).replaceAll('\'', "''")}'`;
           if (typeof val === 'number' || typeof val === 'boolean') return String(val);
-          return `'${String(val).replace(/'/g, "''")}'`;
+          return `'${String(val).replaceAll('\'', "''")}'`;
         }))
       : sql.raw(text)
   );
@@ -1465,7 +1465,7 @@ async function seedActiveWaitlist(client: DbClient, p: {
     if (overdueIdx < OVERDUE_SCHEDULE_MINS.length) {
       // Force overdue: checked in 4hr ago, 2hr rental → expired ~2hr ago, but we set
       // scheduledEnd to be exactly OVERDUE_SCHEDULE_MINS[overdueIdx] minutes in the past
-      const overdueBy = OVERDUE_SCHEDULE_MINS[overdueIdx]!;
+      const overdueBy = OVERDUE_SCHEDULE_MINS[overdueIdx];
       scheduledEnd = new Date(p.now.getTime() - overdueBy * 60 * 1000);
       start = new Date(scheduledEnd.getTime() - 2 * 60 * 60 * 1000); // 2hr rental
       overdueIdx++;
@@ -1507,6 +1507,27 @@ async function seedActiveWaitlist(client: DbClient, p: {
         dedupeKey: `ACT:SIM:ACTIVE_ROOM_CHECKIN:${blockId}`,
       });
     }
+
+    // Spend Ledger: Rental Fee for active visit
+    const price = checkinPrice(rentalType);
+    const emp = p.staff[0];
+    await insertLedgerEntry(client, {
+      at: signedAt, customerId: customer.id, visitId, type: 'RENTAL_FEE', amount: price,
+      staffId: emp?.id ?? '', staffName: emp?.name ?? '', summary: rentalLabel(rentalType),
+      metadata: { rentalType, price },
+      dedupeKey: `LEDGER:SIM:ACTIVE_RENTAL_FEE:${blockId}`,
+    });
+
+    // Spend Ledger: Membership Fee ($13) for non-members
+    const hasValidMembership = customer.membership_valid_until && new Date(customer.membership_valid_until) >= start;
+    if (!hasValidMembership) {
+      await insertLedgerEntry(client, {
+        at: signedAt, customerId: customer.id, visitId, type: 'MEMBERSHIP_FEE', amount: 13,
+        staffId: emp?.id ?? '', staffName: emp?.name ?? '', summary: 'Non-Member Fee',
+        metadata: { membershipPrice: 13 },
+        dedupeKey: `LEDGER:SIM:ACTIVE_MEMBERSHIP_FEE:${blockId}`,
+      });
+    }
   }
 
   // Create pending waitlist entries
@@ -1519,7 +1540,9 @@ async function seedActiveWaitlist(client: DbClient, p: {
       desiredTier = FORCED_TIERS[i]!;
     } else {
       const tierRoll = rng();
-      desiredTier = tierRoll < 0.6 ? 'STANDARD' : tierRoll < 0.8 ? 'DOUBLE' : 'SPECIAL';
+      if (tierRoll < 0.6) desiredTier = 'STANDARD';
+      else if (tierRoll < 0.8) desiredTier = 'DOUBLE';
+      else desiredTier = 'SPECIAL';
     }
     const createdAt = new Date(p.now.getTime() - Math.floor(5 + rng() * 25) * 60 * 1000);
     const _emp = p.staff[Math.floor(rng() * p.staff.length)];
@@ -1551,6 +1574,27 @@ async function seedActiveWaitlist(client: DbClient, p: {
       `UPDATE inventory_resources SET assigned_to_customer_id = $1, status = 'OCCUPIED', updated_at = NOW() WHERE id = $2`,
       [customer.id, lockerId]
     );
+
+    // Spend Ledger: Locker Rental Fee
+    const lockerPrice = checkinPrice('LOCKER');
+    const wlEmp = p.staff[0];
+    await insertLedgerEntry(client, {
+      at: start, customerId: customer.id, visitId, type: 'RENTAL_FEE', amount: lockerPrice,
+      staffId: wlEmp?.id ?? '', staffName: wlEmp?.name ?? '', summary: rentalLabel('LOCKER'),
+      metadata: { rentalType: 'LOCKER', price: lockerPrice },
+      dedupeKey: `LEDGER:SIM:ACTIVE_WL_RENTAL_FEE:${blockId}`,
+    });
+
+    // Spend Ledger: Membership Fee ($13) for non-members
+    const wlHasValidMembership = customer.membership_valid_until && new Date(customer.membership_valid_until) >= start;
+    if (!wlHasValidMembership) {
+      await insertLedgerEntry(client, {
+        at: start, customerId: customer.id, visitId, type: 'MEMBERSHIP_FEE', amount: 13,
+        staffId: wlEmp?.id ?? '', staffName: wlEmp?.name ?? '', summary: 'Non-Member Fee',
+        metadata: { membershipPrice: 13 },
+        dedupeKey: `LEDGER:SIM:ACTIVE_WL_MEMBERSHIP_FEE:${blockId}`,
+      });
+    }
 
     // Create the pending waitlist entry — always ACTIVE (no room offered yet)
     const wlId = randomUUID();
