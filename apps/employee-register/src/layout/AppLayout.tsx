@@ -106,9 +106,9 @@ export function AppLayout() {
   const ActivePanel = PANELS[activeTab] ?? ScanPanel;
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden" style={{ backgroundColor: 'var(--color-surface-base)' }}>
+    <div className="flex h-screen flex-col overflow-hidden bg-[var(--color-surface-base)]">
       {/* Skip link for keyboard/screen-reader users */}
-      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:rounded-lg focus:bg-[var(--color-surface-raised)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold" style={{ color: 'var(--color-accent-primary)' }}>
+      <a href="#main-content" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:rounded-lg focus:bg-[var(--color-surface-raised)] focus:px-4 focus:py-2 focus:text-sm focus:font-semibold text-[var(--color-accent-primary)]">
         Skip to main content
       </a>
       <TopNavbar
@@ -130,27 +130,22 @@ export function AppLayout() {
       <div aria-live="polite" aria-atomic="true">
       {visibleToast && (
         <div
-          className="fixed top-1/2 left-1/2 z-[9999] -translate-x-1/2 -translate-y-1/2 animate-[slideDown_0.25s_ease-out]"
-          style={{ pointerEvents: 'auto' }}
+          className="fixed top-1/2 left-1/2 z-[9999] -translate-x-1/2 -translate-y-1/2 animate-slideDown pointer-events-auto"
         >
           <div
-            className="flex items-center gap-3 rounded-xl border px-5 py-3 shadow-lg"
-            style={{
-              backgroundColor: isErrorToast ? 'color-mix(in oklch, var(--color-status-error) 12%, transparent)' : 'color-mix(in oklch, var(--color-status-success) 12%, transparent)',
-              borderColor: isErrorToast ? 'color-mix(in oklch, var(--color-status-error) 30%, transparent)' : 'color-mix(in oklch, var(--color-status-success) 30%, transparent)',
-              color: isErrorToast ? '#ef4444' : '#22c55e',
-              backdropFilter: 'blur(12px)',
-              maxWidth: '480px',
-            }}
+            className={`flex items-center gap-3 rounded-xl border px-5 py-3 shadow-lg backdrop-blur-[12px] max-w-[480px] ${
+              isErrorToast
+                ? 'bg-[color-mix(in_oklch,var(--color-status-error)_12%,transparent)] border-[color-mix(in_oklch,var(--color-status-error)_30%,transparent)]'
+                : 'bg-[color-mix(in_oklch,var(--color-status-success)_12%,transparent)] border-[color-mix(in_oklch,var(--color-status-success)_30%,transparent)]'
+            }`}
           >
             <span className="text-lg">{isErrorToast ? '⛔' : '✓'}</span>
-            <span className="text-sm font-semibold" style={{ color: isErrorToast ? '#fca5a5' : '#86efac' }}>
+            <span className={`text-sm font-semibold ${isErrorToast ? 'text-[#fca5a5]' : 'text-[#86efac]'}`}>
               {visibleToast}
             </span>
             <button
               onClick={() => setVisibleToast(null)}
-              className="ml-2 text-xs opacity-60 hover:opacity-100"
-              style={{ color: isErrorToast ? '#fca5a5' : '#86efac' }}
+              className={`ml-2 text-xs opacity-60 hover:opacity-100 ${isErrorToast ? 'text-[#fca5a5]' : 'text-[#86efac]'}`}
             >
               ✕
             </button>

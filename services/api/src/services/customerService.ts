@@ -195,7 +195,7 @@ export async function listCustomerNotes(
     cursor: buildNotesCursor({ createdAt: r.created_at, id: r.id }),
   }));
 
-  const nextCursor = notes.length === opts.limit ? notes[notes.length - 1]!.cursor : null;
+  const nextCursor = notes.length === opts.limit ? notes[notes.length - 1]  .cursor : null;
   return { notes, nextCursor };
 }
 
@@ -319,7 +319,7 @@ export async function createFromScan(input: CreateFromScanInput) {
   );
 
   if (existing.rows.length > 0) {
-    const row = existing.rows[0]!;
+    const row = existing.rows[0];
     if (row.banned_until && row.banned_until > new Date()) throw new HttpError(403, 'Customer is banned');
 
     const needsScanUpdate = !row.id_scan_hash || !row.id_scan_value || row.id_scan_hash !== idScanHash || row.id_scan_value !== idScanValue;
@@ -353,7 +353,7 @@ export async function createFromScan(input: CreateFromScanInput) {
     sql`INSERT INTO customers (name, dob, id_expiration_date, id_number, id_state, id_type, id_type_other, id_scan_hash, id_scan_value, created_at, updated_at)
      VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${input.idNumber || null}, ${input.state || null}, ${idType}, ${idTypeOther}, ${idScanHash}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`
   );
-  const row = inserted.rows[0]!;
+  const row = inserted.rows[0];
   return {
     created: true,
     customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
@@ -373,7 +373,7 @@ export async function matchIdentity(input: { firstName: string; lastName: string
       sql`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER(${input.idNumber.trim()}) LIMIT 1`
     );
     if (byIdNumber.rows.length > 0) {
-      const row = byIdNumber.rows[0]!;
+      const row = byIdNumber.rows[0];
       return {
         matchCount: 1, matchReason: 'ID_NUMBER' as const,
         bestMatch: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob, membershipNumber: row.membership_number },
@@ -432,7 +432,7 @@ export async function createManual(input: {
       sql`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER(${idScanValue}) LIMIT 1`
     );
     if (byIdNumber.rows.length > 0) {
-      const row = byIdNumber.rows[0]!;
+      const row = byIdNumber.rows[0];
       return {
         created: false, existing: true, matchReason: 'ID_NUMBER' as const,
         customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
@@ -445,7 +445,7 @@ export async function createManual(input: {
     sql`SELECT id, name, dob, membership_number FROM customers WHERE dob = ${dob}::date AND LOWER(name) = LOWER(${name}) LIMIT 1`
   );
   if (byNameDob.rows.length > 0) {
-    const row = byNameDob.rows[0]!;
+    const row = byNameDob.rows[0];
     return {
       created: false, existing: true, matchReason: 'NAME_DOB' as const,
       customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
@@ -456,7 +456,7 @@ export async function createManual(input: {
     sql`INSERT INTO customers (name, dob, id_expiration_date, id_type, id_type_other, id_scan_value, id_number, created_at, updated_at)
      VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${idType}, ${idTypeOther}, ${idScanValue}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`
   );
-  const row = inserted.rows[0]!;
+  const row = inserted.rows[0];
   return {
     created: true,
     customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },

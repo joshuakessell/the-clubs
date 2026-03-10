@@ -9,7 +9,7 @@
  */
 import { db } from '../db';
 import { visits, customers, checkinBlocks, paymentIntents } from '../db/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, desc } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import { assignRoom, assignLocker } from '../domain/resourceAssignment';
 import { assertNotBanned, assertCustomerExists } from '../domain/customerGuards';
@@ -206,16 +206,20 @@ export async function renewVisit(input: RenewVisitInput) {
   return db.transaction(async (tx) => {
     const requestedRenewalHours = input.renewalHours ?? 6;
 
-    // 1. Get the visit and verify it's active (FOR UPDATE)
-    const visitRows = await tx.execute<{
-      id: string;
-      customer_id: string;
-      started_at: string;
-      ended_at: string | null;
-    }>(sql`SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = ${input.visitId} FOR UPDATE`);
+    // 1. Get the visit and verify it's active (FOR UPDATE — native Drizzle lock)
+    const visitRows = await tx
+      .select({
+        id: visits.id,
+        customerId: visits.customerId,
+        startedAt: visits.startedAt,
+        endedAt: visits.endedAt,
+      })
+      .from(visits)
+      .where(eq(visits.id, input.visitId))
+      .for('update');
 
-    const visit = assertCustomerExists(visitRows.rows, 'Visit');
-    if (visit.ended_at) {
+    const visit = assertCustomerExists(visitRows, 'Visit');
+    if (visit.endedAt) {
       throw new HttpError(400, 'Visit has already ended');
     }
 
@@ -228,36 +232,38 @@ export async function renewVisit(input: RenewVisitInput) {
         bannedUntil: customers.bannedUntil,
       })
       .from(customers)
-      .where(eq(customers.id, visit.customer_id));
+      .where(eq(customers.id, visit.customerId));
 
     const customer = assertCustomerExists(customerRows);
-    assertNotBanned({ banned_until: customer.bannedUntil ? new Date(customer.bannedUntil) : null });
+    assertNotBanned({ banned_until: customer.bannedUntil });
 
-    // 3. Get all existing blocks for this visit
-    const blocksResult = await tx.execute<{
-      id: string;
-      visit_id: string;
-      block_type: string;
-      starts_at: string;
-      ends_at: string;
-      rental_type: string;
-      room_id: string | null;
-      locker_id: string | null;
-      session_id: string | null;
-      agreement_signed: boolean;
-    }>(sql`SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id, session_id, agreement_signed
-       FROM checkin_blocks WHERE visit_id = ${visit.id} ORDER BY ends_at DESC`);
+    // 3. Get all existing blocks for this visit (Drizzle returns Date via mode: 'date')
+    const blocks = await tx
+      .select({
+        id: checkinBlocks.id,
+        visitId: checkinBlocks.visitId,
+        blockType: checkinBlocks.blockType,
+        startsAt: checkinBlocks.startsAt,
+        endsAt: checkinBlocks.endsAt,
+        rentalType: checkinBlocks.rentalType,
+        roomId: checkinBlocks.roomId,
+        lockerId: checkinBlocks.lockerId,
+        sessionId: checkinBlocks.sessionId,
+        agreementSigned: checkinBlocks.agreementSigned,
+      })
+      .from(checkinBlocks)
+      .where(eq(checkinBlocks.visitId, visit.id))
+      .orderBy(desc(checkinBlocks.endsAt));
 
-    const blocks = blocksResult.rows;
     if (blocks.length === 0) {
       throw new HttpError(400, 'Visit has no blocks');
     }
 
-    // 4. Check renewal hour limit — need Date objects for calculation
+    // 4. Check renewal hour limit — Drizzle returns Date objects natively
     const blocksForCalc: CheckinBlockForCalc[] = blocks.map((b) => ({
-      starts_at: new Date(b.starts_at),
-      ends_at: new Date(b.ends_at),
-      block_type: b.block_type,
+      starts_at: b.startsAt,
+      ends_at: b.endsAt,
+      block_type: b.blockType,
     }));
 
     const totalHoursIfRenewed = calculateTotalHoursWithExtension(blocksForCalc, requestedRenewalHours);
@@ -285,13 +291,13 @@ export async function renewVisit(input: RenewVisitInput) {
 
     // 6. Room/locker assignment (renewal allows reassign-to-same)
     const assignedRoomId = input.roomId
-      ? await assignRoom(tx, input.roomId, visit.customer_id, {
+      ? await assignRoom(tx, input.roomId, visit.customerId, {
           allowReassignToSame: true,
         })
       : null;
 
     const assignedLockerId = input.lockerId
-      ? await assignLocker(tx, input.lockerId, visit.customer_id, {
+      ? await assignLocker(tx, input.lockerId, visit.customerId, {
           allowReassignToSame: true,
         })
       : null;
@@ -315,10 +321,10 @@ export async function renewVisit(input: RenewVisitInput) {
     return {
       visit: {
         id: visit.id,
-        customerId: visit.customer_id,
-        startedAt: visit.started_at,
-        endedAt: visit.ended_at,
-        createdAt: visit.started_at,
+        customerId: visit.customerId,
+        startedAt: visit.startedAt.toISOString(),
+        endedAt: null,
+        createdAt: visit.startedAt.toISOString(),
         updatedAt: new Date().toISOString(),
       },
       block: formatBlock(block),
@@ -332,33 +338,38 @@ export async function renewVisit(input: RenewVisitInput) {
  */
 export async function createFinalExtension(input: FinalExtensionInput) {
   return db.transaction(async (tx) => {
-    // 1. Get visit and verify it's active (FOR UPDATE)
-    const visitRows = await tx.execute<{
-      id: string;
-      customer_id: string;
-      started_at: string;
-      ended_at: string | null;
-    }>(sql`SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = ${input.visitId} FOR UPDATE`);
+    // 1. Get visit and verify it's active (FOR UPDATE — native Drizzle lock)
+    const visitRows = await tx
+      .select({
+        id: visits.id,
+        customerId: visits.customerId,
+        startedAt: visits.startedAt,
+        endedAt: visits.endedAt,
+      })
+      .from(visits)
+      .where(eq(visits.id, input.visitId))
+      .for('update');
 
-    const visit = assertCustomerExists(visitRows.rows, 'Visit');
-    if (visit.ended_at) {
+    const visit = assertCustomerExists(visitRows, 'Visit');
+    if (visit.endedAt) {
       throw new HttpError(400, 'Visit has already ended');
     }
 
-    // 2. Get all blocks and validate state
-    const blocksResult = await tx.execute<{
-      id: string;
-      visit_id: string;
-      block_type: string;
-      starts_at: string;
-      ends_at: string;
-      rental_type: string;
-      room_id: string | null;
-      locker_id: string | null;
-    }>(sql`SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id
-       FROM checkin_blocks WHERE visit_id = ${visit.id} ORDER BY ends_at DESC`);
-
-    const blocks = blocksResult.rows;
+    // 2. Get all blocks and validate state (Drizzle returns Date via mode: 'date')
+    const blocks = await tx
+      .select({
+        id: checkinBlocks.id,
+        visitId: checkinBlocks.visitId,
+        blockType: checkinBlocks.blockType,
+        startsAt: checkinBlocks.startsAt,
+        endsAt: checkinBlocks.endsAt,
+        rentalType: checkinBlocks.rentalType,
+        roomId: checkinBlocks.roomId,
+        lockerId: checkinBlocks.lockerId,
+      })
+      .from(checkinBlocks)
+      .where(eq(checkinBlocks.visitId, visit.id))
+      .orderBy(desc(checkinBlocks.endsAt));
 
     if (blocks.length !== 2) {
       throw new HttpError(
@@ -367,14 +378,15 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       );
     }
 
-    if (blocks.some((b) => b.block_type === 'FINAL2H')) {
+    if (blocks.some((b) => b.blockType === 'FINAL2H')) {
       throw new HttpError(400, 'Final extension has already been applied to this visit');
     }
 
+    // Drizzle returns Date objects natively — no wrapping needed
     const blocksForCalc: CheckinBlockForCalc[] = blocks.map((b) => ({
-      starts_at: new Date(b.starts_at),
-      ends_at: new Date(b.ends_at),
-      block_type: b.block_type,
+      starts_at: b.startsAt,
+      ends_at: b.endsAt,
+      block_type: b.blockType,
     }));
 
     const totalHours = calculateTotalHours(blocksForCalc);
@@ -396,13 +408,13 @@ export async function createFinalExtension(input: FinalExtensionInput) {
 
     // 3. Room/locker assignment (reassign-to-same allowed)
     const assignedRoomId = input.roomId
-      ? await assignRoom(tx, input.roomId, visit.customer_id, {
+      ? await assignRoom(tx, input.roomId, visit.customerId, {
           allowReassignToSame: true,
         })
       : null;
 
     const assignedLockerId = input.lockerId
-      ? await assignLocker(tx, input.lockerId, visit.customer_id, {
+      ? await assignLocker(tx, input.lockerId, visit.customerId, {
           allowReassignToSame: true,
         })
       : null;
@@ -468,10 +480,10 @@ export async function createFinalExtension(input: FinalExtensionInput) {
     return {
       visit: {
         id: visit.id,
-        customerId: visit.customer_id,
-        startedAt: visit.started_at,
-        endedAt: visit.ended_at,
-        createdAt: visit.started_at,
+        customerId: visit.customerId,
+        startedAt: visit.startedAt.toISOString(),
+        endedAt: null,
+        createdAt: visit.startedAt.toISOString(),
         updatedAt: new Date().toISOString(),
       },
       block: formatBlock(block),
