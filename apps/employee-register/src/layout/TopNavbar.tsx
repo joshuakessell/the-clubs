@@ -140,12 +140,7 @@ disabled = { isSubmitting }
       <button
                     key= { s.id }
     type = "button"
-    className = "flex w-full items-center justify-between gap-3 border-b px-4 py-2.5 text-left transition"
-    style = {{ borderColor: 'var(--color-border-subtle)' }
-  }
-                    onMouseEnter = {(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)';
-}}
-onMouseLeave = {(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                    className="flex w-full items-center justify-between gap-3 border-b px-4 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-raised)] bg-transparent"
 onClick = {() => {
   openCustomerAccount(s.id, label, {
     authToken,
@@ -189,17 +184,6 @@ style = {{
             }}
           >
   Sign Out
-    </button>
-    <button
-      onClick={ onSignOut }
-      className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-      style={{
-        color: 'var(--color-status-error)',
-        border: '1px solid color-mix(in oklch, var(--color-status-error) 25%, transparent)',
-        backgroundColor: 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
-      }}
-    >
-      Close Out
     </button>
     </div>
     </div>

@@ -253,7 +253,6 @@ export function ScanPanel() {
           ref={hiddenInputRef}
           type="text"
           className="sr-only"
-          style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
           aria-label="Scanner input"
           autoComplete="off"
           autoCorrect="off"

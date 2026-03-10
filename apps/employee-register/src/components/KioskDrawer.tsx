@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { KioskMirrorView } from './KioskMirrorView';
 import { useRegisterStore } from '../stores/useRegisterStore';
 
-const NAVBAR_HEIGHT = 90; // px — combined height of top toolbar + tab bar
-const DRAWER_WIDTH = 480; // px
-const TAB_WIDTH = 48; // px — width of the exposed pull tab
+const NAVBAR_HEIGHT = 90;
+const DRAWER_WIDTH = 480;
+const TAB_WIDTH = 48;
 
 /**
  * KioskDrawer — right-side slide-out showing a centered mirror of the customer kiosk.
@@ -36,129 +36,62 @@ export function KioskDrawer() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
-  const drawerRange = `calc(100vh - ${NAVBAR_HEIGHT}px)`;
-
-  const containerStyle: React.CSSProperties = {
-    position: 'fixed',
-    top: NAVBAR_HEIGHT,
-    right: 0,
-    bottom: 0,
-    zIndex: 9000,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-end',
-    pointerEvents: 'none',
-  };
-
   return (
-    <div ref={drawerRef} style={containerStyle}>
+    <div
+      ref={drawerRef}
+      className="fixed right-0 bottom-0 z-[9000] flex flex-col items-end pointer-events-none"
+      style={{ top: NAVBAR_HEIGHT }}
+    >
       {/* Drawer panel — slides in from right */}
       <div
+        className={`absolute top-0 flex flex-col overflow-hidden border-l border-t border-[var(--color-border-default)] bg-[var(--color-surface-raised)] rounded-tl-xl shadow-[-8px_0_32px_rgba(0,0,0,0.35)] transition-transform duration-[280ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          open ? 'translate-x-0 pointer-events-auto' : 'pointer-events-none'
+        }`}
         style={{
-          position: 'absolute',
-          top: 0,
           right: TAB_WIDTH,
           width: DRAWER_WIDTH,
-          height: drawerRange,
-          background: 'var(--color-surface-raised)',
-          borderLeft: '1px solid var(--color-border-default)',
-          borderTop: '1px solid var(--color-border-default)',
-          borderRadius: '12px 0 0 0',
-          boxShadow: '-8px 0 32px rgba(0,0,0,0.35)',
+          height: `calc(100vh - ${NAVBAR_HEIGHT}px)`,
           transform: open ? 'translateX(0)' : `translateX(${DRAWER_WIDTH + TAB_WIDTH}px)`,
-          transition: 'transform 0.28s cubic-bezier(0.4, 0, 0.2, 1)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          pointerEvents: open ? 'auto' : 'none',
         }}
       >
         {/* Drawer header */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '10px 14px',
-            borderBottom: '1px solid var(--color-border-subtle)',
-            flexShrink: 0,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-[var(--color-border-subtle)] shrink-0">
+          <div className="flex items-center gap-2">
             <MonitorIcon />
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--color-text-primary)' }}>
+            <span className="text-[13px] font-bold text-[var(--color-text-primary)]">
               Customer Kiosk
             </span>
           </div>
           <button
             onClick={() => setOpen(false)}
             aria-label="Close kiosk drawer"
-            style={{
-              width: 26,
-              height: 26,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderRadius: 6,
-              border: '1px solid var(--color-border-default)',
-              background: 'transparent',
-              color: 'var(--color-text-muted)',
-              cursor: 'pointer',
-              fontSize: 14,
-              lineHeight: 1,
-            }}
+            className="flex items-center justify-center w-[26px] h-[26px] rounded-md border border-[var(--color-border-default)] bg-transparent text-[var(--color-text-muted)] cursor-pointer text-sm leading-none hover:bg-[var(--color-surface-raised)]"
           >
             ✕
           </button>
         </div>
 
-        {/* Body: centered mirror only (no extra scrolling or proxy controls) */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '16px 0 24px' }}>
-          {/* Mirror view — centered */}
-          <div style={{ transform: 'scale(0.8)', transformOrigin: 'center center', flexShrink: 0 }}>
+        {/* Body: centered mirror */}
+        <div className="flex-1 flex flex-col items-center justify-center py-4 pb-6">
+          <div className="scale-[0.8] origin-center shrink-0">
             <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId} />
           </div>
         </div>
       </div>
 
-      {/* ── Pull tab — compact pill on the right edge ── */}
+      {/* Pull tab */}
       <button
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? 'Close customer kiosk' : 'Open customer kiosk'}
-        style={{
-          position: 'absolute',
-          right: 0,
-          top: '50%',
-          transform: 'translateY(-50%)',
-          width: TAB_WIDTH,
-          height: 180,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 10,
-          borderRadius: '12px 0 0 12px',
-          border: '1px solid var(--color-border-default)',
-          borderRight: 'none',
-          background: open ? 'var(--color-accent-glow)' : 'var(--color-surface-raised)',
-          color: open ? 'var(--color-accent-primary)' : 'var(--color-text-secondary)',
-          cursor: 'pointer',
-          boxShadow: '-6px 0 16px rgba(0,0,0,0.2)',
-          transition: 'background 0.15s, color 0.15s',
-          pointerEvents: 'auto',
-        }}
+        className={`absolute right-0 top-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-2.5 rounded-l-xl border border-r-0 border-[var(--color-border-default)] cursor-pointer shadow-[-6px_0_16px_rgba(0,0,0,0.2)] transition-colors duration-150 pointer-events-auto ${
+          open
+            ? 'bg-[var(--color-accent-glow)] text-[var(--color-accent-primary)]'
+            : 'bg-[var(--color-surface-raised)] text-[var(--color-text-secondary)]'
+        }`}
+        style={{ width: TAB_WIDTH, height: 180 }}
       >
         <MonitorIcon size={20} />
-        <span
-          style={{
-            fontSize: 13,
-            fontWeight: 800,
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            writingMode: 'vertical-rl',
-            transform: 'rotate(180deg)',
-          }}
-        >
+        <span className="text-[13px] font-extrabold tracking-widest uppercase [writing-mode:vertical-rl] rotate-180">
           Kiosk
         </span>
       </button>
@@ -180,7 +113,7 @@ function MonitorIcon({ size = 16 }: { readonly size?: number }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
-      style={{ flexShrink: 0 }}
+      className="shrink-0"
     >
       <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
       <line x1="8" y1="21" x2="16" y2="21" />

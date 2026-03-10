@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { getApiUrl, type SessionUpdatedPayload } from '@the-clubs/shared';
+import { type SessionUpdatedPayload } from '@the-clubs/shared';
+import { getApiUrl } from '@the-clubs/shared';
+import { apiFetch, apiFetchWithToken } from '../utils/apiClient';
 
 /* ────────────────────────────────────────────────────────
    Employee Register Store
@@ -186,31 +188,21 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       set({ customerSearchLoading: true });
       searchTimer = setTimeout(async () => {
         try {
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          const token = authToken || globalThis.__authToken;
-          if (token) headers['Authorization'] = `Bearer ${token}`;
-
-          const res = await fetch(
-            getApiUrl(`/api/v1/customers/search?q=${encodeURIComponent(v)}&limit=10`),
-            { headers }
+          const data = await apiFetchWithToken<{ suggestions?: Record<string, string | undefined>[] }>(
+            `/api/v1/customers/search?q=${encodeURIComponent(v)}&limit=10`, authToken,
           );
-          if (res.ok) {
-            const data = await res.json();
-            set({
-              customerSearchLoading: false,
-              customerSuggestions: (data.suggestions ?? []).map((s: Record<string, string | undefined>) => ({
-                id: s.id,
-                firstName: s.firstName ?? s.name?.split(' ')[0] ?? '',
-                lastName: s.lastName ?? s.name?.split(' ').slice(1).join(' ') ?? '',
-                name: s.name,
-                dobMonthDay: s.dobMonthDay,
-                membershipNumber: s.membershipNumber,
-                disambiguator: s.disambiguator,
-              })),
-            });
-          } else {
-            set({ customerSearchLoading: false, customerSuggestions: [] });
-          }
+          set({
+            customerSearchLoading: false,
+            customerSuggestions: (data.suggestions ?? []).map((s) => ({
+              id: s.id!,
+              firstName: s.firstName ?? s.name?.split(' ')[0] ?? '',
+              lastName: s.lastName ?? s.name?.split(' ').slice(1).join(' ') ?? '',
+              name: s.name,
+              dobMonthDay: s.dobMonthDay,
+              membershipNumber: s.membershipNumber,
+              disambiguator: s.disambiguator,
+            })),
+          });
         } catch {
           set({ customerSearchLoading: false, customerSuggestions: [] });
         }
@@ -232,33 +224,27 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     if (!opts?.activeCheckin && !opts?.autoStart) {
       (async () => {
         try {
-          const headers: Record<string, string> = {};
-          if (opts?.authToken) headers['Authorization'] = `Bearer ${opts.authToken}`;
-
-          const res = await fetch(getApiUrl('/api/v1/inventory/detailed'), { headers });
-          if (res.ok) {
-            const data = await res.json();
-            const allItems = [
-              ...(data.rooms ?? []).map((r: Record<string, unknown>) => ({ ...r, resourceType: 'room' as const })),
-              ...(data.lockers ?? []).map((l: Record<string, unknown>) => ({ ...l, resourceType: 'locker' as const })),
-            ];
-            const match = allItems.find(
-              (item) => (item as Record<string, unknown>).assignedTo === id && (item as Record<string, unknown>).status === 'OCCUPIED' && (item as Record<string, unknown>).occupancyId
-            );
-            if (match) {
-              const checkinInfo = {
-                visitId: (match.visitId ?? match.occupancyId) as string,
-                occupancyId: (match.occupancyId ?? match.visitId) as string,
-                resourceType: match.resourceType as 'room' | 'locker',
-                resourceNumber: match.number as string,
-                checkinAt: match.checkinAt ?? null,
-                checkoutAt: match.checkoutAt ?? null,
-                overdue: match.checkoutAt ? new Date(match.checkoutAt) < new Date() : false,
-              };
-              set({ activeCheckinInfo: checkinInfo, isSubmitting: false });
-            } else {
-              set({ isSubmitting: false });
-            }
+          const data = await apiFetchWithToken<{ rooms?: Record<string, unknown>[]; lockers?: Record<string, unknown>[] }>(
+            '/api/v1/inventory/detailed', opts?.authToken,
+          );
+          const allItems = [
+            ...(data.rooms ?? []).map((r) => ({ ...r, resourceType: 'room' as const })),
+            ...(data.lockers ?? []).map((l) => ({ ...l, resourceType: 'locker' as const })),
+          ];
+          const match = allItems.find(
+            (item) => (item as Record<string, unknown>).assignedTo === id && (item as Record<string, unknown>).status === 'OCCUPIED' && (item as Record<string, unknown>).occupancyId
+          ) as Record<string, unknown> | undefined;
+          if (match) {
+            const checkinInfo = {
+              visitId: (match.visitId ?? match.occupancyId) as string,
+              occupancyId: (match.occupancyId ?? match.visitId) as string,
+              resourceType: match.resourceType as 'room' | 'locker',
+              resourceNumber: match.number as string,
+              checkinAt: (match.checkinAt as string) ?? null,
+              checkoutAt: (match.checkoutAt as string) ?? null,
+              overdue: match.checkoutAt ? new Date(match.checkoutAt as string) < new Date() : false,
+            };
+            set({ activeCheckinInfo: checkinInfo, isSubmitting: false });
           } else {
             set({ isSubmitting: false });
           }
@@ -273,84 +259,65 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     if (opts?.autoStart) {
       (async () => {
         try {
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (opts.authToken) headers['Authorization'] = `Bearer ${opts.authToken}`;
-
-          const res = await fetch(
-            getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/start`),
-            {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ customerId: id }),
-            }
+          const data = await apiFetchWithToken<Record<string, unknown>>(
+            `/api/v1/checkin/lane/${encodeURIComponent(laneId)}/start`, opts.authToken,
+            { method: 'POST', body: JSON.stringify({ customerId: id }) },
           );
 
-          if (res.ok) {
-            const data = await res.json();
-            if (data.alreadyCheckedIn) {
-              const ac = data.activeCheckin as {
-                visitId?: string; assignedResourceType?: string;
-                assignedResourceNumber?: string; checkinAt?: string;
-                checkoutAt?: string; overdue?: boolean;
-              } | undefined;
-              const checkinInfo: ActiveCheckinInfo | null = ac ? {
-                visitId: ac.visitId ?? '',
-                occupancyId: ac.visitId ?? '',
-                resourceType: ac.assignedResourceType ?? 'room',
-                resourceNumber: ac.assignedResourceNumber ?? '?',
-                checkinAt: ac.checkinAt ?? null,
-                checkoutAt: ac.checkoutAt ?? null,
-                overdue: ac.overdue ?? false,
-              } : null;
-              set({
-                isSubmitting: false,
-                activeCheckinInfo: checkinInfo,
-                successToastMessage: `${label} is already checked in`,
-              });
-              get().selectNavTab('account');
-            } else {
-              set({
-                currentSessionId: data.sessionId,
-                customerName: data.customerName ?? label,
-                isSubmitting: false,
-                successToastMessage: `Check-in started for ${data.customerName ?? label}`,
-                // Seed sessionPayload so EmployeeAssistTab renders immediately
-                // (SSE will overwrite with the full payload shortly after)
-                sessionPayload: {
-                  sessionId: data.sessionId,
-                  customerId: data.customerId ?? id,
-                  customerName: data.customerName ?? label,
-                  membershipNumber: data.membershipNumber,
-                  customerMembershipValidUntil: data.customerMembershipValidUntil,
-                  allowedRentals: data.allowedRentals ?? [],
-                  mode: data.mode ?? 'CHECKIN',
-                  flowStep: 'RENTAL',
-                  flowVersion: 0,
-                  status: 'ACTIVE',
-                  pastDueBalance: data.pastDueBalance,
-                  pastDueBlocked: data.pastDueBlocked,
-                  ledgerLineItems: data.ledgerLineItems,
-                  ledgerTotal: data.ledgerTotal,
-                },
-              });
-            }
-          } else {
-            const errData = await res.json().catch(() => ({}));
-            let errorMsg = errData.error ?? `Failed to start check-in (${res.status})`;
-            // Format ban date for employee readability
-            const banMatch = errorMsg.match(/banned until (\d{4}-\d{2}-\d{2}T[^\s]+)/i);
-            if (banMatch) {
-              const banDate = new Date(banMatch[1]);
-              const formatted = banDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-              errorMsg = `⛔ Customer is banned until ${formatted}`;
-            }
+          if (data.alreadyCheckedIn) {
+            const ac = data.activeCheckin as {
+              visitId?: string; assignedResourceType?: string;
+              assignedResourceNumber?: string; checkinAt?: string;
+              checkoutAt?: string; overdue?: boolean;
+            } | undefined;
+            const checkinInfo: ActiveCheckinInfo | null = ac ? {
+              visitId: ac.visitId ?? '',
+              occupancyId: ac.visitId ?? '',
+              resourceType: ac.assignedResourceType ?? 'room',
+              resourceNumber: ac.assignedResourceNumber ?? '?',
+              checkinAt: ac.checkinAt ?? null,
+              checkoutAt: ac.checkoutAt ?? null,
+              overdue: ac.overdue ?? false,
+            } : null;
             set({
               isSubmitting: false,
-              successToastMessage: errorMsg,
+              activeCheckinInfo: checkinInfo,
+              successToastMessage: `${label} is already checked in`,
+            });
+            get().selectNavTab('account');
+          } else {
+            set({
+              currentSessionId: data.sessionId as string,
+              customerName: (data.customerName as string) ?? label,
+              isSubmitting: false,
+              successToastMessage: `Check-in started for ${(data.customerName as string) ?? label}`,
+              sessionPayload: {
+                sessionId: data.sessionId as string,
+                customerId: (data.customerId as string) ?? id,
+                customerName: (data.customerName as string) ?? label,
+                membershipNumber: data.membershipNumber as string | undefined,
+                customerMembershipValidUntil: data.customerMembershipValidUntil as string | undefined,
+                allowedRentals: (data.allowedRentals as string[]) ?? [],
+                mode: (data.mode as 'CHECKIN' | 'RENEWAL') ?? 'CHECKIN',
+                flowStep: 'RENTAL',
+                flowVersion: 0,
+                status: 'ACTIVE',
+                pastDueBalance: data.pastDueBalance as number | undefined,
+                pastDueBlocked: data.pastDueBlocked as boolean | undefined,
+                ledgerLineItems: data.ledgerLineItems as { description: string; amount: number }[],
+                ledgerTotal: data.ledgerTotal as number | undefined,
+              },
             });
           }
-        } catch {
-          set({ isSubmitting: false, successToastMessage: 'Network error starting check-in' });
+        } catch (error: unknown) {
+          let errorMsg = error instanceof Error ? error.message : 'Failed to start check-in';
+          const banMatch = errorMsg.match(/banned until (\d{4}-\d{2}-\d{2}T[^\s]+)/i);
+          if (banMatch) {
+            const banDate = new Date(banMatch[1]);
+            const formatted = banDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            errorMsg = `⛔ Customer is banned until ${formatted}`;
+          }
+          set({ isSubmitting: false, successToastMessage: errorMsg });
         }
       })();
     } else {
@@ -570,10 +537,6 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
   },
   cancelSession: async () => {
     const { laneId } = get();
-    // Clear local state IMMEDIATELY to prevent the SSE broadcast race.
-    // The reset endpoint broadcasts a SESSION_UPDATED event with nulled fields;
-    // if we clear state *after* the fetch, the SSE event arrives first and
-    // re-renders the flow in a partially-nulled state (showing "Room null").
     set({
       currentSessionId: null,
       customerId: null,
@@ -583,14 +546,9 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       successToastMessage: 'Check-in cancelled',
     });
     try {
-      const token = globalThis.__authToken;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      await fetch(
-        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/reset`),
-        { method: 'POST', headers, body: JSON.stringify({ cancelled: true }) }
-      );
+      await apiFetch(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/reset`, {
+        method: 'POST', body: JSON.stringify({ cancelled: true }),
+      });
     } catch {
       // Best-effort — local state already cleared
     }
@@ -600,9 +558,6 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     const { laneId, customerId, customerName, sessionPayload } = get();
 
     let optimisticCheckin;
-    // Build optimistic checkin info from the session payload.
-    // With flow commands, the session stays in AWAITING_SIGNATURE during ASSIGNMENT
-    // (status transitions to COMPLETED only after /reset is called below).
     if (sessionPayload?.assignedResourceNumber) {
       optimisticCheckin = {
         visitId: sessionPayload.sessionId,
@@ -615,8 +570,6 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       };
     }
 
-    // Clear session state but keep customerId/customerName so the profile
-    // tab re-renders and shows the now-checked-in customer.
     set({
       currentSessionId: null,
       activeCheckinInfo: optimisticCheckin ?? null,
@@ -624,19 +577,13 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       successToastMessage: `${customerName ?? 'Customer'} checked in successfully`,
     });
     try {
-      const token = globalThis.__authToken;
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await apiFetch(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/reset`, {
+        method: 'POST',
+      });
 
-      await fetch(
-        getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/reset`),
-        { method: 'POST', headers }
-      );
-
-      // Re-open the customer's profile to refresh and show the active visit
       if (customerId) {
         const { openCustomerAccount } = get();
-        // Passing activeCheckin skips the slow /inventory/detailed fetch for immediate feedback
+        const token = globalThis.__authToken;
         const opts: { authToken: string | null | undefined; activeCheckin?: typeof optimisticCheckin } = { authToken: token };
         if (optimisticCheckin) opts.activeCheckin = optimisticCheckin;
         openCustomerAccount(customerId, customerName ?? '', opts);
@@ -678,18 +625,12 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       const { clubLog } = get();
       set((s) => ({ clubLog: { ...s.clubLog, loading: true, error: null, items: [], nextCursor: null } }));
       try {
-        const token = globalThis.__authToken;
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
         const params = new URLSearchParams({ limit: '50' });
         if (clubLog.q) params.set('search', clubLog.q);
         if (clubLog.domain) params.set('domain', clubLog.domain);
         if (clubLog.category) params.set('eventType', clubLog.category);
 
-        const res = await fetch(getApiUrl(`/api/v1/admin/club-log?${params}`), { headers });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await apiFetch<{ events?: ClubLogItem[]; nextCursor?: string }>(`/api/v1/admin/club-log?${params}`);
 
         set((s) => ({
           clubLog: {
@@ -708,18 +649,12 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       if (!clubLog.nextCursor) return;
       set((s) => ({ clubLog: { ...s.clubLog, loading: true } }));
       try {
-        const token = globalThis.__authToken;
-        const headers: Record<string, string> = {};
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
         const params = new URLSearchParams({ limit: '50', cursor: clubLog.nextCursor ?? '' });
         if (clubLog.q) params.set('search', clubLog.q);
         if (clubLog.domain) params.set('domain', clubLog.domain);
         if (clubLog.category) params.set('eventType', clubLog.category);
 
-        const res = await fetch(getApiUrl(`/api/v1/admin/club-log?${params}`), { headers });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const data = await apiFetch<{ events?: ClubLogItem[]; nextCursor?: string }>(`/api/v1/admin/club-log?${params}`);
 
         set((s) => ({
           clubLog: {
