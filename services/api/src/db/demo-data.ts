@@ -34,8 +34,7 @@ export interface DemoCheckinBlock {
   starts_at: Date;
   ends_at: Date;
   rental_type: RentalType;
-  room_id?: string | null;
-  locker_id?: string | null;
+  resource_id?: string | null;
   has_tv_remote: boolean;
   agreement_signed: boolean;
   waitlist_id?: string | null;
@@ -57,7 +56,7 @@ export interface DemoWaitlistEntry {
   desired_tiers: RentalType[];
   backup_tier: RentalType;
   locker_or_room_assigned_initially: string | null;
-  room_id: string | null;
+  resource_id: string | null;
   status: 'ACTIVE' | 'OFFERED' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED';
   created_at: Date;
 }
@@ -348,8 +347,7 @@ function planVisitsForCustomer(
         starts_at: blockStart,
         ends_at: blockEnd,
         rental_type: rental,
-        room_id: null,
-        locker_id: null,
+        resource_id: null,
         has_tv_remote:
           rental !== RentalType.LOCKER && rental !== RentalType.GYM_LOCKER
             ? Math.random() < 0.2
@@ -395,8 +393,7 @@ function planVisitsForCustomer(
         starts_at: activeStart,
         ends_at: new Date(activeStart.getTime() + blockDurationMs),
         rental_type: Math.random() < 0.5 ? RentalType.STANDARD : RentalType.LOCKER,
-        room_id: null,
-        locker_id: null,
+        resource_id: null,
         has_tv_remote: false,
         agreement_signed: true,
         waitlist_id: null,
@@ -421,12 +418,12 @@ function planVisitsForCustomer(
       if (block.rental_type === RentalType.LOCKER || block.rental_type === RentalType.GYM_LOCKER) {
         const locker = pickLocker(lockers);
         if (locker) {
-          block.locker_id = locker.id;
+          block.resource_id = locker.id;
         }
       } else {
         const preferredRoom = pickAvailableRoom(rooms, block.rental_type);
         if (preferredRoom) {
-          block.room_id = preferredRoom.id;
+          block.resource_id = preferredRoom.id;
         }
       }
     }
@@ -469,8 +466,8 @@ function createWaitlistEntries(visits: DemoVisit[], now: Date): DemoWaitlistEntr
       desired_tier: scenario.desired,
       desired_tiers: scenario.tiers,
       backup_tier,
-      locker_or_room_assigned_initially: block.room_id || block.locker_id || null,
-      room_id: null,
+      locker_or_room_assigned_initially: block.resource_id || null,
+      resource_id: null,
       status: 'ACTIVE',
       created_at: new Date(now.getTime() - randomInt(1, 24) * 60 * 60 * 1000),
     });

@@ -11,8 +11,7 @@ import type {
   CheckoutRequestRow,
   CustomerRow,
   KeyTagRow,
-  LockerRow,
-  RoomRow,
+  ResourceRow,
 } from '../../checkout/types';
 import type {
   CheckoutRequestSummary,
@@ -54,7 +53,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
     try {
       // 1. Find the key tag
       const tagResult = await db.execute<Record<string, unknown>>(
-        sql`SELECT id, room_id, locker_id, tag_code, is_active
+        sql`SELECT id, resource_id, tag_code, is_active
          FROM key_tags
          WHERE tag_code = ${body.token} AND is_active = true`
       );
@@ -65,31 +64,20 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
 
       const tag = tagResult.rows[0] as unknown as KeyTagRow;
 
-      // 2. Find the active checkin block for this key
-      let blockResult: { rows: Record<string, unknown>[] };
-      if (tag.room_id) {
-        blockResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote
-           FROM checkin_blocks cb
-           JOIN visits v ON cb.visit_id = v.id
-           WHERE cb.room_id = ${tag.room_id} AND v.ended_at IS NULL
-           ORDER BY cb.ends_at DESC
-           LIMIT 1`
-        );
-      } else if (tag.locker_id) {
-        blockResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote
-           FROM checkin_blocks cb
-           JOIN visits v ON cb.visit_id = v.id
-           WHERE cb.locker_id = ${tag.locker_id} AND v.ended_at IS NULL
-           ORDER BY cb.ends_at DESC
-           LIMIT 1`
-        );
-      } else {
-        return reply.status(404).send({ error: 'Key tag is not associated with a room or locker' });
+      if (!tag.resource_id) {
+        return reply.status(404).send({ error: 'Key tag is not associated with a resource' });
       }
+
+      // 2. Find the active checkin block for this resource
+      const blockResult = await db.execute<Record<string, unknown>>(
+        sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
+                cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote
+         FROM checkin_blocks cb
+         JOIN visits v ON cb.visit_id = v.id
+         WHERE cb.resource_id = ${tag.resource_id} AND v.ended_at IS NULL
+         ORDER BY cb.ends_at DESC
+         LIMIT 1`
+      );
 
       if (blockResult.rows.length === 0) {
         return reply.status(404).send({ error: 'No active occupancy found for this key' });
@@ -118,25 +106,14 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
 
       const customer = customerResult.rows[0] as unknown as CustomerRow;
 
-      // 4. Get room/locker details
-      let roomNumber: string | undefined;
-      let lockerNumber: string | undefined;
-
-      if (block.room_id) {
-        const roomResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT id, number, type FROM rooms WHERE id = ${block.room_id}`
+      // 4. Get resource details
+      let resourceNumber: string | undefined;
+      if (block.resource_id) {
+        const resourceResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT id, number, kind, tier FROM inventory_resources WHERE id = ${block.resource_id}`
         );
-        if (roomResult.rows.length > 0) {
-          roomNumber = (roomResult.rows[0] as unknown as RoomRow).number;
-        }
-      }
-
-      if (block.locker_id) {
-        const lockerResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT id, number FROM lockers WHERE id = ${block.locker_id}`
-        );
-        if (lockerResult.rows.length > 0) {
-          lockerNumber = (lockerResult.rows[0] as unknown as LockerRow).number;
+        if (resourceResult.rows.length > 0) {
+          resourceNumber = (resourceResult.rows[0] as unknown as ResourceRow).number;
         }
       }
 
@@ -157,10 +134,8 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
         customerName: customer.name,
         membershipNumber: customer.membership_number || undefined,
         rentalType: block.rental_type,
-        roomId: block.room_id || undefined,
-        roomNumber,
-        lockerId: block.locker_id || undefined,
-        lockerNumber,
+        resourceId: block.resource_id || undefined,
+        resourceNumber,
         scheduledCheckoutAt,
         hasTvRemote: block.has_tv_remote,
         lateMinutes,
@@ -197,7 +172,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
           // 1. Verify the block exists and is active
           const blockResult = await tx.execute<Record<string, unknown>>(
             sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote,
+                  cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote,
                   v.customer_id
            FROM checkin_blocks cb
            JOIN visits v ON cb.visit_id = v.id
@@ -231,16 +206,9 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
 
           // 4. Get key tag ID if available
           let keyTagId: string | null = null;
-          if (block.room_id) {
+          if (block.resource_id) {
             const keyResult = await tx.execute<Record<string, unknown>>(
-              sql`SELECT id FROM key_tags WHERE room_id = ${block.room_id} AND is_active = true LIMIT 1`
-            );
-            if (keyResult.rows.length > 0) {
-              keyTagId = (keyResult.rows[0] as unknown as { id: string }).id;
-            }
-          } else if (block.locker_id) {
-            const keyResult = await tx.execute<Record<string, unknown>>(
-              sql`SELECT id FROM key_tags WHERE locker_id = ${block.locker_id} AND is_active = true LIMIT 1`
+              sql`SELECT id FROM key_tags WHERE resource_id = ${block.resource_id} AND is_active = true LIMIT 1`
             );
             if (keyResult.rows.length > 0) {
               keyTagId = (keyResult.rows[0] as unknown as { id: string }).id;
@@ -264,10 +232,10 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
           return requestResult.rows[0] as unknown as CheckoutRequestRow;
         }, { isolationLevel: 'serializable' });
 
-        // 6. Get customer and room/locker info for realtime event
+        // 6. Get customer and resource info for realtime event
         const blockResult = await db.execute<Record<string, unknown>>(
           sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote,
+                cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote,
                 v.customer_id
          FROM checkin_blocks cb
          JOIN visits v ON cb.visit_id = v.id
@@ -280,24 +248,13 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
         );
         const customer = customerResult.rows[0] as unknown as CustomerRow;
 
-        let roomNumber: string | undefined;
-        let lockerNumber: string | undefined;
-
-        if (block.room_id) {
-          const roomResult = await db.execute<Record<string, unknown>>(
-            sql`SELECT number FROM rooms WHERE id = ${block.room_id}`
+        let resourceNumber: string | undefined;
+        if (block.resource_id) {
+          const resourceResult = await db.execute<Record<string, unknown>>(
+            sql`SELECT number, kind FROM inventory_resources WHERE id = ${block.resource_id}`
           );
-          if (roomResult.rows.length > 0) {
-            roomNumber = (roomResult.rows[0] as unknown as RoomRow).number;
-          }
-        }
-
-        if (block.locker_id) {
-          const lockerResult = await db.execute<Record<string, unknown>>(
-            sql`SELECT number FROM lockers WHERE id = ${block.locker_id}`
-          );
-          if (lockerResult.rows.length > 0) {
-            lockerNumber = (lockerResult.rows[0] as unknown as LockerRow).number;
+          if (resourceResult.rows.length > 0) {
+            resourceNumber = (resourceResult.rows[0] as unknown as ResourceRow).number;
           }
         }
 
@@ -309,8 +266,8 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
             customerName: customer.name,
             membershipNumber: customer.membership_number || undefined,
             rentalType: block.rental_type,
-            roomNumber,
-            lockerNumber,
+            roomNumber: resourceNumber,
+            lockerNumber: undefined,
             scheduledCheckoutAt: block.ends_at,
             currentTime: new Date(),
             lateMinutes: result.late_minutes,
@@ -331,7 +288,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
 
         // Log club event for checkout requested
         await db.transaction(async (tx) => {
-          const resourceLabel = roomNumber ? ` (Room ${roomNumber})` : lockerNumber ? ` (Locker ${lockerNumber})` : '';
+          const resourceLabel = resourceNumber ? ` (${block.rental_type === 'LOCKER' ? 'Locker' : 'Room'} ${resourceNumber})` : '';
           await insertClubEvent(toQueryable(tx) as any, {
             eventType: 'CHECKOUT_REQUESTED',
             eventDomain: 'CHECKOUT',
@@ -339,12 +296,11 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
             customerId: customer.id,
             customerName: customer.name,
             visitId: block.visit_id,
-            summary: `Checkout requested \u2014 ${customer.name}${resourceLabel}`,
+            summary: `Checkout requested — ${customer.name}${resourceLabel}`,
             metadata: {
               checkoutRequestId: result.id,
               occupancyId: body.occupancyId,
-              roomNumber: roomNumber ?? null,
-              lockerNumber: lockerNumber ?? null,
+              resourceNumber: resourceNumber ?? null,
               lateMinutes: result.late_minutes,
               lateFeeAmount: result.late_fee_amount,
               banApplied: result.ban_applied,

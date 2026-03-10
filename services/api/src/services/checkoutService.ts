@@ -94,8 +94,7 @@ export interface ManualCompleteResult {
   fee: number;
   banApplied: boolean;
   alreadyCheckedOut: boolean;
-  roomId?: string | null;
-  lockerId?: string | null;
+  resourceId?: string | null;
   cancelledWaitlistIds: string[];
   visitId: string;
 }
@@ -120,8 +119,7 @@ export interface ConfirmItemsResult {
 
 export interface CompleteCheckoutResult {
   requestId: string;
-  roomId: string | null;
-  lockerId: string | null;
+  resourceId: string | null;
   visitId: string;
   kioskDeviceId: string | null;
   cancelledWaitlistIds: string[];
@@ -135,50 +133,24 @@ export interface CompleteCheckoutResult {
 export async function listManualCandidates(): Promise<ManualCheckoutCandidate[]> {
   const result = await db.execute<Record<string, unknown>>(
     sql`
-    WITH room_candidates AS (
-      SELECT DISTINCT ON (cb.room_id)
-        cb.id as occupancy_id,
-        cb.visit_id as visit_id,
-        'ROOM'::text as resource_type,
-        r.number as number,
-        c.id as customer_id,
-        c.name as customer_name,
-        cb.starts_at as checkin_at,
-        cb.ends_at as scheduled_checkout_at,
-        (cb.ends_at < NOW()) as is_overdue
-      FROM checkin_blocks cb
-      JOIN visits v ON cb.visit_id = v.id
-      JOIN customers c ON v.customer_id = c.id
-      JOIN rooms r ON cb.room_id = r.id
-      WHERE cb.room_id IS NOT NULL
-        AND v.ended_at IS NULL
-        AND cb.ends_at <= NOW() + INTERVAL '60 minutes'
-      ORDER BY cb.room_id, cb.ends_at DESC
-    ),
-    locker_candidates AS (
-      SELECT DISTINCT ON (cb.locker_id)
-        cb.id as occupancy_id,
-        cb.visit_id as visit_id,
-        'LOCKER'::text as resource_type,
-        l.number as number,
-        c.id as customer_id,
-        c.name as customer_name,
-        cb.starts_at as checkin_at,
-        cb.ends_at as scheduled_checkout_at,
-        (cb.ends_at < NOW()) as is_overdue
-      FROM checkin_blocks cb
-      JOIN visits v ON cb.visit_id = v.id
-      JOIN customers c ON v.customer_id = c.id
-      JOIN lockers l ON cb.locker_id = l.id
-      WHERE cb.locker_id IS NOT NULL
-        AND v.ended_at IS NULL
-        AND cb.ends_at <= NOW() + INTERVAL '60 minutes'
-      ORDER BY cb.locker_id, cb.ends_at DESC
-    )
-    SELECT * FROM room_candidates
-    UNION ALL
-    SELECT * FROM locker_candidates
-    ORDER BY is_overdue DESC, scheduled_checkout_at ASC
+    SELECT DISTINCT ON (cb.resource_id)
+      cb.id as occupancy_id,
+      cb.visit_id as visit_id,
+      CASE WHEN ir.kind = 'room' THEN 'ROOM' ELSE 'LOCKER' END as resource_type,
+      ir.number as number,
+      c.id as customer_id,
+      c.name as customer_name,
+      cb.starts_at as checkin_at,
+      cb.ends_at as scheduled_checkout_at,
+      (cb.ends_at < NOW()) as is_overdue
+    FROM checkin_blocks cb
+    JOIN visits v ON cb.visit_id = v.id
+    JOIN customers c ON v.customer_id = c.id
+    JOIN inventory_resources ir ON cb.resource_id = ir.id
+    WHERE cb.resource_id IS NOT NULL
+      AND v.ended_at IS NULL
+      AND cb.ends_at <= NOW() + INTERVAL '60 minutes'
+    ORDER BY cb.resource_id, cb.ends_at DESC
     `
   );
 
@@ -206,30 +178,26 @@ export async function resolveManualCheckout(input: {
     const res = await db.execute<Record<string, unknown>>(
       sql`SELECT cb.id as occupancy_id, cb.visit_id, v.customer_id, c.name as customer_name,
               cb.starts_at as checkin_at, cb.ends_at as scheduled_checkout_at,
-              cb.room_id, r.number as room_number, cb.locker_id, l.number as locker_number, cb.session_id
+              cb.resource_id, ir.number as resource_number, ir.kind as resource_kind, cb.session_id
        FROM checkin_blocks cb
        JOIN visits v ON cb.visit_id = v.id
        JOIN customers c ON v.customer_id = c.id
-       LEFT JOIN rooms r ON cb.room_id = r.id
-       LEFT JOIN lockers l ON cb.locker_id = l.id
+       LEFT JOIN inventory_resources ir ON cb.resource_id = ir.id
        WHERE cb.id = ${occupancyId} AND v.ended_at IS NULL`
     );
     return (res.rows[0] as unknown as ManualResolveRow) ?? null;
   };
 
-  const loadLatestByResourceId = async (table: 'rooms' | 'lockers', resourceId: string) => {
-    // Dynamic column name requires sql.raw — safe since value is from literal type
-    const joinCol = table === 'rooms' ? 'room_id' : 'locker_id';
+  const loadLatestByResourceId = async (resourceId: string) => {
     const res = await db.execute<Record<string, unknown>>(
       sql`SELECT cb.id as occupancy_id, cb.visit_id, v.customer_id, c.name as customer_name,
               cb.starts_at as checkin_at, cb.ends_at as scheduled_checkout_at,
-              cb.room_id, r.number as room_number, cb.locker_id, l.number as locker_number, cb.session_id
+              cb.resource_id, ir.number as resource_number, ir.kind as resource_kind, cb.session_id
        FROM checkin_blocks cb
        JOIN visits v ON cb.visit_id = v.id
        JOIN customers c ON v.customer_id = c.id
-       LEFT JOIN rooms r ON cb.room_id = r.id
-       LEFT JOIN lockers l ON cb.locker_id = l.id
-       WHERE ${sql.raw(`cb.${joinCol}`)} = ${resourceId} AND v.ended_at IS NULL
+       LEFT JOIN inventory_resources ir ON cb.resource_id = ir.id
+       WHERE cb.resource_id = ${resourceId} AND v.ended_at IS NULL
        ORDER BY cb.ends_at DESC LIMIT 1`
     );
     return (res.rows[0] as unknown as ManualResolveRow) ?? null;
@@ -239,14 +207,9 @@ export async function resolveManualCheckout(input: {
   if (input.occupancyId) {
     row = await loadByOccupancyId(input.occupancyId);
   } else if (input.number) {
-    const lockerRes = await db.execute<{ id: string }>(sql`SELECT id FROM lockers WHERE number = ${input.number}`);
-    if (lockerRes.rows[0]?.id) {
-      row = await loadLatestByResourceId('lockers', lockerRes.rows[0].id);
-    } else {
-      const roomRes = await db.execute<{ id: string }>(sql`SELECT id FROM rooms WHERE number = ${input.number}`);
-      if (roomRes.rows[0]?.id) {
-        row = await loadLatestByResourceId('rooms', roomRes.rows[0].id);
-      }
+    const resourceRes = await db.execute<{ id: string }>(sql`SELECT id FROM inventory_resources WHERE number = ${input.number}`);
+    if (resourceRes.rows[0]?.id) {
+      row = await loadLatestByResourceId(resourceRes.rows[0].id);
     }
   }
 
@@ -255,8 +218,8 @@ export async function resolveManualCheckout(input: {
   const scheduledCheckoutAt = row.scheduled_checkout_at;
   const lateMinutes = Math.max(0, Math.floor((Date.now() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
   const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
-  const resourceType = row.locker_id ? 'LOCKER' as const : 'ROOM' as const;
-  const number = resourceType === 'LOCKER' ? row.locker_number : row.room_number;
+  const resourceType = row.resource_kind === 'locker' ? 'LOCKER' as const : 'ROOM' as const;
+  const number = row.resource_number;
 
   if (!number) return null;
 
@@ -287,13 +250,12 @@ export async function completeManualCheckout(
     const occRes = await tx.execute<Record<string, unknown>>(
       sql`SELECT cb.id as occupancy_id, cb.visit_id, v.customer_id, c.name as customer_name,
               cb.starts_at as checkin_at, cb.ends_at as scheduled_checkout_at,
-              cb.room_id, r.number as room_number, cb.locker_id, l.number as locker_number,
+              cb.resource_id, ir.number as resource_number, ir.kind as resource_kind,
               cb.session_id, v.ended_at as visit_ended_at
        FROM checkin_blocks cb
        JOIN visits v ON cb.visit_id = v.id
        JOIN customers c ON v.customer_id = c.id
-       LEFT JOIN rooms r ON cb.room_id = r.id
-       LEFT JOIN lockers l ON cb.locker_id = l.id
+       LEFT JOIN inventory_resources ir ON cb.resource_id = ir.id
        WHERE cb.id = ${occupancyId}
        FOR UPDATE OF v`
     );
@@ -302,8 +264,8 @@ export async function completeManualCheckout(
     const row = occRes.rows[0] as unknown as ManualResolveRow & { visit_ended_at: Date | null };
 
     const scheduledCheckoutAt = row.scheduled_checkout_at;
-    const resourceType = row.locker_id ? 'LOCKER' as const : 'ROOM' as const;
-    const number = resourceType === 'LOCKER' ? row.locker_number : row.room_number;
+    const resourceType = row.resource_kind === 'locker' ? 'LOCKER' as const : 'ROOM' as const;
+    const number = row.resource_number;
 
     if (!number) throw new HttpError(500, 'Resource not found for occupancy');
 
@@ -321,8 +283,7 @@ export async function completeManualCheckout(
         fee: feeAmount,
         banApplied,
         alreadyCheckedOut: true,
-        roomId: row.room_id,
-        lockerId: row.locker_id,
+        resourceId: row.resource_id,
         cancelledWaitlistIds: [] as string[],
         visitId: row.visit_id,
       };
@@ -353,12 +314,10 @@ export async function completeManualCheckout(
       }
     }
 
-    // Update room → DIRTY or locker → CLEAN and unassign
-    if (row.room_id) {
-      await tx.execute(sql`UPDATE rooms SET status = ${RoomStatus.DIRTY}, assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${row.room_id}`);
-    }
-    if (row.locker_id) {
-      await tx.execute(sql`UPDATE lockers SET status = ${RoomStatus.CLEAN}, assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${row.locker_id}`);
+    // Release resource: rooms → DIRTY, lockers → CLEAN
+    if (row.resource_id) {
+      const targetStatus = row.resource_kind === 'locker' ? RoomStatus.CLEAN : RoomStatus.DIRTY;
+      await tx.execute(sql`UPDATE inventory_resources SET status = ${targetStatus}, assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${row.resource_id}`);
     }
 
     // End the visit
@@ -448,8 +407,7 @@ export async function completeManualCheckout(
       metadata: {
         occupancyId: row.occupancy_id,
         visitId: row.visit_id,
-        roomId: row.room_id,
-        lockerId: row.locker_id,
+        resourceId: row.resource_id,
         lateMinutes,
         feeAmount,
         banApplied,
@@ -468,8 +426,7 @@ export async function completeManualCheckout(
       fee: feeAmount,
       banApplied,
       alreadyCheckedOut: false,
-      roomId: row.room_id,
-      lockerId: row.locker_id,
+      resourceId: row.resource_id,
       cancelledWaitlistIds: waitlistRows.map((r) => r.id),
       visitId: row.visit_id,
     };
@@ -770,7 +727,7 @@ export async function completeStaffCheckout(
     // Get the checkin block
     const blockResult = await tx.execute<Record<string, unknown>>(
       sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-              cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote,
+              cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote,
               v.customer_id
        FROM checkin_blocks cb
        JOIN visits v ON cb.visit_id = v.id
@@ -802,12 +759,13 @@ export async function completeStaffCheckout(
       }
     }
 
-    // Release room/locker
-    if (block.room_id) {
-      await tx.execute(sql`UPDATE rooms SET status = ${RoomStatus.DIRTY}, assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${block.room_id}`);
-    }
-    if (block.locker_id) {
-      await tx.execute(sql`UPDATE lockers SET status = ${RoomStatus.CLEAN}, assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${block.locker_id}`);
+    // Release resource: rooms → DIRTY, lockers → CLEAN
+    if (block.resource_id) {
+      // Determine resource kind for status
+      const kindResult = await tx.execute<{ kind: string }>(sql`SELECT kind FROM inventory_resources WHERE id = ${block.resource_id}`);
+      const kind = kindResult.rows[0]?.kind;
+      const targetStatus = kind === 'locker' ? RoomStatus.CLEAN : RoomStatus.DIRTY;
+      await tx.execute(sql`UPDATE inventory_resources SET status = ${targetStatus}, assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${block.resource_id}`);
     }
 
     // End the visit
@@ -922,8 +880,7 @@ export async function completeStaffCheckout(
         checkoutRequestId: checkoutRequest.id,
         visitId: block.visit_id,
         checkinBlockId: block.id,
-        roomId: block.room_id,
-        lockerId: block.locker_id,
+        resourceId: block.resource_id,
         lateMinutes: checkoutRequest.late_minutes,
         feeAmount: Number(checkoutRequest.late_fee_amount) || 0,
         banApplied: checkoutRequest.ban_applied,
@@ -934,8 +891,7 @@ export async function completeStaffCheckout(
     return {
       requestId: checkoutRequest.id,
       kioskDeviceId: checkoutRequest.kiosk_device_id,
-      roomId: block.room_id,
-      lockerId: block.locker_id,
+      resourceId: block.resource_id,
       visitId: block.visit_id,
       cancelledWaitlistIds: waitlistRows.map((r) => r.id),
     };

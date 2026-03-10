@@ -319,12 +319,11 @@ async function assertNoActiveVisit(client: PoolClient, customerId: string): Prom
 
   const activeBlock = await client.query<{
     starts_at: Date; ends_at: Date; rental_type: string;
-    room_number: string | null; locker_number: string | null;
+    resource_number: string | null; resource_kind: string | null;
   }>(
-    `SELECT cb.starts_at, cb.ends_at, cb.rental_type, r.number as room_number, l.number as locker_number
+    `SELECT cb.starts_at, cb.ends_at, cb.rental_type, r.number as resource_number, r.kind as resource_kind
      FROM checkin_blocks cb
-     LEFT JOIN rooms r ON cb.room_id = r.id
-     LEFT JOIN lockers l ON cb.locker_id = l.id
+     LEFT JOIN inventory_resources r ON cb.resource_id = r.id
      WHERE cb.visit_id = $1
      ORDER BY cb.ends_at DESC
      LIMIT 1`,
@@ -333,8 +332,8 @@ async function assertNoActiveVisit(client: PoolClient, customerId: string): Prom
 
   const block = activeBlock.rows[0];
   const assignedResourceType: 'room' | 'locker' | null =
-    block?.room_number ? 'room' : block?.locker_number ? 'locker' : null;
-  const assignedResourceNumber = block?.room_number ?? block?.locker_number ?? null;
+    block?.resource_kind === 'locker' ? 'locker' : block?.resource_number ? 'room' : null;
+  const assignedResourceNumber = block?.resource_number ?? null;
 
   const waitlistResult = await client.query<{ id: string; desired_tier: string; backup_tier: string; status: string }>(
     `SELECT id, desired_tier, backup_tier, status FROM waitlist

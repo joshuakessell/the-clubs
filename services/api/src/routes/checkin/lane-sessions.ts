@@ -24,18 +24,16 @@ export function registerCheckinLaneSessionsRoutes(fastify: FastifyInstance): voi
           s.name as staff_name,
           c.name as customer_name,
           c.membership_number,
-          r.number as room_number,
-          l.number as locker_number
+          r.number as resource_number
          FROM lane_sessions ls
          LEFT JOIN staff s ON ls.staff_id = s.id
          LEFT JOIN customers c ON ls.customer_id = c.id
-         LEFT JOIN rooms r ON ls.assigned_resource_id = r.id AND ls.desired_rental_type NOT IN ('LOCKER', 'GYM_LOCKER')
-         LEFT JOIN lockers l ON ls.assigned_resource_id = l.id AND ls.desired_rental_type IN ('LOCKER', 'GYM_LOCKER')
+         LEFT JOIN inventory_resources r ON ls.assigned_resource_id = r.id
          WHERE ls.status != 'COMPLETED' AND ls.status != 'CANCELLED'
          ORDER BY ls.created_at DESC`
         );
 
-        const sessions = (result.rows as unknown as (LaneSessionRow & { staff_name: string; customer_name: string; room_number: string; locker_number: string })[]).map((session) => ({
+        const sessions = (result.rows as unknown as (LaneSessionRow & { staff_name: string; customer_name: string; resource_number: string })[]).map((session) => ({
           id: session.id,
           laneId: session.lane_id,
           status: session.status,
@@ -48,7 +46,7 @@ export function registerCheckinLaneSessionsRoutes(fastify: FastifyInstance): voi
           assignedResource: session.assigned_resource_id
             ? {
                 id: session.assigned_resource_id,
-                number: session.room_number || session.locker_number,
+                number: session.resource_number,
                 type: session.desired_rental_type,
               }
             : null,

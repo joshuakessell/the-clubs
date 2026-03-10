@@ -49,7 +49,7 @@ interface CustomerProfileRow {
 // ── Utility Functions ──
 
 function normalizeScanText(raw: string): string {
-  const lf = raw.replaceAll(/\r\n/g, '\n').replaceAll(/\r/g, '\n');
+  const lf = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   const lines = lf.split('\n').map((line) => line.replaceAll(/[ \t]+/g, ' ').trimEnd());
   return lines.join('\n').trim();
 }
@@ -162,7 +162,7 @@ export async function searchCustomers(q: string, limit: number) {
   return result.rows.map((r) => {
     const row = r as unknown as CustomerRow;
     const { firstName, lastName } = splitFullName(row.name);
-    const disambiguator = (row.membership_number && row.membership_number.slice(-4)) || row.id.slice(0, 8);
+    const disambiguator = (row.membership_number?.slice(-4)) || row.id.slice(0, 8);
     return {
       id: row.id, name: row.name, firstName, lastName,
       membershipNumber: row.membership_number || undefined,
@@ -195,7 +195,7 @@ export async function listCustomerNotes(
     cursor: buildNotesCursor({ createdAt: r.created_at, id: r.id }),
   }));
 
-  const nextCursor = notes.length === opts.limit ? notes[notes.length - 1]  .cursor : null;
+  const nextCursor = notes.length === opts.limit ? notes[notes.length - 1]!.cursor : null;
   return { notes, nextCursor };
 }
 

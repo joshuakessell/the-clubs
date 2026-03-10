@@ -14,7 +14,7 @@ export function registerAdminRoomRoutes(fastify: FastifyInstance): void {
         type ExpirationRow = {
           room_id: string;
           room_number: string;
-          room_type: string;
+          room_tier: string;
           occupancy_id: string;
           customer_name: string;
           membership_number: string | null;
@@ -26,24 +26,24 @@ export function registerAdminRoomRoutes(fastify: FastifyInstance): void {
           sql`SELECT
           r.id as room_id,
           r.number as room_number,
-          r.type as room_type,
+          r.tier as room_tier,
           cb.id as occupancy_id,
           c.name as customer_name,
           c.membership_number,
           cb.starts_at as check_in_time,
           cb.ends_at as checkout_at
-         FROM rooms r
+         FROM inventory_resources r
          JOIN LATERAL (
            SELECT cb.id, cb.starts_at, cb.ends_at, v.customer_id
            FROM checkin_blocks cb
            JOIN visits v ON v.id = cb.visit_id
-           WHERE cb.room_id = r.id
+           WHERE cb.resource_id = r.id
              AND v.ended_at IS NULL
            ORDER BY cb.ends_at DESC
            LIMIT 1
          ) cb ON TRUE
          JOIN customers c ON c.id = cb.customer_id
-         WHERE r.type != 'LOCKER'
+         WHERE r.kind = 'room'
          ORDER BY checkout_at ASC`
         );
 
@@ -58,9 +58,9 @@ export function registerAdminRoomRoutes(fastify: FastifyInstance): void {
           const isExpiringSoon = !isExpired && checkoutAt <= thirtyMinutesFromNow;
 
           return {
-            roomId: row.room_id,
+            resourceId: row.room_id,
             roomNumber: row.room_number,
-            roomTier: row.room_type,
+            roomTier: row.room_tier,
             sessionId: row.occupancy_id,
             customerName: row.customer_name,
             membershipNumber: row.membership_number || null,

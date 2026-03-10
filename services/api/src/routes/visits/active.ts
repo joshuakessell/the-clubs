@@ -56,7 +56,7 @@ export function registerVisitActiveRoutes(fastify: FastifyInstance): void {
       const activeVisits = await Promise.all(
         visitsResult.rows.map(async (visit) => {
           const blocksRaw = await db.execute<Record<string, unknown>>(
-            sql`SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id, session_id, agreement_signed, created_at, updated_at
+            sql`SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, resource_id, session_id, agreement_signed, created_at, updated_at
              FROM checkin_blocks WHERE visit_id = ${visit.id} ORDER BY ends_at DESC`
           );
 
@@ -81,8 +81,7 @@ export function registerVisitActiveRoutes(fastify: FastifyInstance): void {
               startsAt: block.starts_at,
               endsAt: block.ends_at,
               rentalType: block.rental_type,
-              roomId: block.room_id,
-              lockerId: block.locker_id,
+              resourceId: block.resource_id,
               sessionId: block.session_id,
               agreementSigned: block.agreement_signed,
               createdAt: block.created_at,

@@ -33,8 +33,8 @@ async function seedCI() {
 
     for (const room of rooms) {
       await db.execute(
-        sql`INSERT INTO rooms (number, type, status, floor, last_status_change)
-         VALUES (${room.number}, ${room.type}, ${RoomStatus.CLEAN}, ${room.floor}, NOW())
+        sql`INSERT INTO inventory_resources (number, kind, tier, status, floor, last_status_change)
+         VALUES (${room.number}, 'room', ${room.type}, ${RoomStatus.CLEAN}, ${room.floor}, NOW())
          ON CONFLICT (number) DO NOTHING`
       );
     }
@@ -44,8 +44,8 @@ async function seedCI() {
     const lockerNumbers = ['001', '002', '003', '004', '005'];
     for (const num of lockerNumbers) {
       await db.execute(
-        sql`INSERT INTO lockers (number, status)
-         VALUES (${num}, ${RoomStatus.CLEAN})
+        sql`INSERT INTO inventory_resources (number, kind, status)
+         VALUES (${num}, 'locker', ${RoomStatus.CLEAN})
          ON CONFLICT (number) DO NOTHING`
       );
     }

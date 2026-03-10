@@ -126,9 +126,9 @@ export function RoomManagementView() {
     });
   };
 
-  const handleSetLockerStatus = (lockerId: string, status: string) => {
+  const handleSetLockerStatus = (resourceId: string, status: string) => {
     void doMutate(() =>
-      dashboardMutate(`/api/v1/admin/room-management/lockers/${lockerId}/set-status`, 'POST', { status })
+      dashboardMutate(`/api/v1/admin/room-management/lockers/${resourceId}/set-status`, 'POST', { status })
     );
   };
 

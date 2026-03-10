@@ -13,7 +13,7 @@ type OfferableRoomsQuery = z.infer<typeof OfferableRoomsQuerySchema>;
 type RoomRow = {
   id: string;
   number: string;
-  type: string;
+  tier: string;
 };
 
 export async function roomsRoutes(fastify: FastifyInstance): Promise<void> {
@@ -37,11 +37,12 @@ export async function roomsRoutes(fastify: FastifyInstance): Promise<void> {
 
       try {
         const result = await db.execute<Record<string, unknown>>(
-          sql`SELECT r.id, r.number, r.type
-           FROM rooms r
+          sql`SELECT r.id, r.number, r.tier
+           FROM inventory_resources r
            WHERE r.status = 'CLEAN'
              AND r.assigned_to_customer_id IS NULL
-             AND r.type = ${qs.tier}
+             AND r.kind = 'room'
+             AND r.tier = ${qs.tier}
              AND NOT EXISTS (
                SELECT 1
                FROM lane_sessions ls
@@ -63,7 +64,7 @@ export async function roomsRoutes(fastify: FastifyInstance): Promise<void> {
                JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
                JOIN visits v ON v.id = w.visit_id
                WHERE w.status = 'OFFERED'
-                 AND w.room_id = r.id
+                 AND w.resource_id = r.id
                  AND v.ended_at IS NULL
                  AND cb.ends_at > NOW()
              )

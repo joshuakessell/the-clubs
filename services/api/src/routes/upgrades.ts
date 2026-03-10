@@ -18,14 +18,14 @@ export async function upgradeRoutes(fastify: FastifyInstance): Promise<void> {
     return reply.send({ text: UPGRADE_DISCLAIMER_TEXT });
   });
 
-  fastify.post<{ Body: { waitlistId: string; roomId: string; acknowledgedDisclaimer: boolean } }>(
+  fastify.post<{ Body: { waitlistId: string; resourceId: string; acknowledgedDisclaimer: boolean } }>(
     '/v1/upgrades/fulfill', { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       if (!request.body.acknowledgedDisclaimer) return reply.status(400).send({ error: 'Upgrade disclaimer must be acknowledged' });
 
       try {
-        const result = await fulfillUpgrade(request.body.waitlistId, request.body.roomId, { staffId: request.staff.staffId, name: request.staff.name });
+        const result = await fulfillUpgrade(request.body.waitlistId, request.body.resourceId, { staffId: request.staff.staffId, name: request.staff.name });
         await logUpgradeStarted(result, { staffId: request.staff.staffId, name: request.staff.name }).catch((e) => request.log.warn(e, 'Failed to log upgrade started activity'));
         return reply.send(result);
       } catch (error: unknown) {

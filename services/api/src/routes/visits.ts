@@ -15,140 +15,27 @@ declare module 'fastify' {
 
 /**
  * Schema for creating an initial visit.
+ * Uses unified `resourceId` instead of separate roomId/lockerId.
  */
-const CreateVisitSchema = z
-  .object({
-    customerId: z.string().uuid(),
-    rentalType: z.enum(['STANDARD', 'DOUBLE', 'SPECIAL', 'LOCKER', 'GYM_LOCKER']),
-    roomId: z.string().uuid().optional(),
-    lockerId: z.string().uuid().optional(),
-  })
-  .superRefine((v, ctx) => {
-    const hasRoom = Boolean(v.roomId);
-    const hasLocker = Boolean(v.lockerId);
-    if (hasRoom && hasLocker) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Provide either roomId or lockerId, not both',
-        path: ['roomId'],
-      });
-      return;
-    }
-
-    const isLockerRental = v.rentalType === 'LOCKER' || v.rentalType === 'GYM_LOCKER';
-    if (isLockerRental) {
-      if (!hasLocker) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `lockerId is required for rentalType ${v.rentalType}`,
-          path: ['lockerId'],
-        });
-      }
-      if (hasRoom) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `roomId must not be provided for rentalType ${v.rentalType}`,
-          path: ['roomId'],
-        });
-      }
-    } else {
-      if (!hasRoom) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `roomId is required for rentalType ${v.rentalType}`,
-          path: ['roomId'],
-        });
-      }
-      if (hasLocker) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `lockerId must not be provided for rentalType ${v.rentalType}`,
-          path: ['lockerId'],
-        });
-      }
-    }
-  });
+const CreateVisitSchema = z.object({
+  customerId: z.string().uuid(),
+  rentalType: z.enum(['STANDARD', 'DOUBLE', 'SPECIAL', 'LOCKER', 'GYM_LOCKER']),
+  resourceId: z.string().uuid(),
+});
 
 type CreateVisitInput = z.infer<typeof CreateVisitSchema>;
 
 /**
  * Schema for renewing a visit.
+ * Uses unified `resourceId` instead of separate roomId/lockerId.
  */
-const RenewVisitSchema = z
-  .object({
-    rentalType: z.enum(['STANDARD', 'DOUBLE', 'SPECIAL', 'LOCKER', 'GYM_LOCKER']),
-    roomId: z.string().uuid().optional(),
-    lockerId: z.string().uuid().optional(),
-    renewalHours: z.union([z.literal(2), z.literal(6)]).optional(),
-  })
-  .superRefine((v, ctx) => {
-    const hasRoom = Boolean(v.roomId);
-    const hasLocker = Boolean(v.lockerId);
-    if (hasRoom && hasLocker) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Provide either roomId or lockerId, not both',
-        path: ['roomId'],
-      });
-      return;
-    }
-
-    const isLockerRental = v.rentalType === 'LOCKER' || v.rentalType === 'GYM_LOCKER';
-    if (isLockerRental) {
-      if (!hasLocker) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `lockerId is required for rentalType ${v.rentalType}`,
-          path: ['lockerId'],
-        });
-      }
-      if (hasRoom) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `roomId must not be provided for rentalType ${v.rentalType}`,
-          path: ['roomId'],
-        });
-      }
-    } else {
-      if (!hasRoom) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `roomId is required for rentalType ${v.rentalType}`,
-          path: ['roomId'],
-        });
-      }
-      if (hasLocker) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `lockerId must not be provided for rentalType ${v.rentalType}`,
-          path: ['lockerId'],
-        });
-      }
-    }
-  });
+const RenewVisitSchema = z.object({
+  rentalType: z.enum(['STANDARD', 'DOUBLE', 'SPECIAL', 'LOCKER', 'GYM_LOCKER']),
+  resourceId: z.string().uuid(),
+  renewalHours: z.union([z.literal(2), z.literal(6)]).optional(),
+});
 
 type RenewVisitInput = z.infer<typeof RenewVisitSchema>;
-
-interface CustomerRow {
-  id: string;
-  name: string;
-  membership_number: string | null;
-  banned_until: Date | null;
-}
-
-interface RoomRow {
-  id: string;
-  number: string;
-  status: string;
-  assigned_to_customer_id: string | null;
-}
-
-interface LockerRow {
-  id: string;
-  number: string;
-  status: string;
-  assigned_to_customer_id: string | null;
-}
 
 /**
  * Visit management routes.
@@ -168,8 +55,7 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
       const result = await createVisit({
         customerId: body.customerId,
         rentalType: body.rentalType,
-        roomId: body.roomId,
-        lockerId: body.lockerId,
+        resourceId: body.resourceId,
       });
 
       // Broadcast inventory update AFTER commit for immediate UI refresh.
@@ -205,8 +91,7 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
         const result = await renewVisit({
           visitId: request.params.visitId,
           rentalType: body.rentalType,
-          roomId: body.roomId,
-          lockerId: body.lockerId,
+          resourceId: body.resourceId,
           renewalHours: body.renewalHours,
         });
 
@@ -233,8 +118,7 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
     Params: { visitId: string };
     Body: {
       rentalType: 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'LOCKER' | 'GYM_LOCKER';
-      roomId?: string;
-      lockerId?: string;
+      resourceId?: string;
     };
   }>(
     '/v1/visits/:visitId/final-extension',
@@ -248,14 +132,13 @@ export async function visitRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       const { visitId } = request.params;
-      const { rentalType, roomId, lockerId } = request.body;
+      const { rentalType, resourceId } = request.body;
 
       try {
         const result = await createFinalExtension({
           visitId,
           rentalType,
-          roomId,
-          lockerId,
+          resourceId,
           staffId: staff.staffId,
         });
 

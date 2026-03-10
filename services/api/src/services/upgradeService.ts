@@ -15,7 +15,7 @@ import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
 
-interface RoomRow { id: string; number: string; type: string; status: string; assigned_to_customer_id: string | null; }
+interface ResourceRow { id: string; number: string; kind: string; tier: string; status: string; assigned_to_customer_id: string | null; }
 
 function toNumber(value: unknown): number | undefined {
   if (value === null || value === undefined) return undefined;
@@ -89,8 +89,8 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Waitlist entry must be OFFERED (current: ${waitlist.status})`);
 
     const blockResult = await tx.execute<{
-      id: string; visit_id: string; room_id: string | null; locker_id: string | null; rental_type: string; ends_at: Date; session_id: string | null;
-    }>(sql`SELECT id, visit_id, room_id, locker_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = ${waitlist.checkin_block_id} FOR UPDATE`);
+      id: string; visit_id: string; resource_id: string | null; rental_type: string; ends_at: Date; session_id: string | null;
+    }>(sql`SELECT id, visit_id, resource_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = ${waitlist.checkin_block_id} FOR UPDATE`);
     if (blockResult.rows.length === 0) throw new HttpError(404, 'Check-in block not found');
     const block = blockResult.rows[0]!;
 
@@ -113,11 +113,11 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
       originalTotal = toNumber(originalIntent?.amount);
     }
 
-    const newRoomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = ${roomId} FOR UPDATE`);
-    if (newRoomResult.rows.length === 0) throw new HttpError(404, 'Room not found');
-    const newRoom = newRoomResult.rows[0] as unknown as RoomRow;
-    if (newRoom.status !== 'CLEAN') throw new HttpError(400, `Room ${newRoom.number} is not available (status: ${newRoom.status})`);
-    if (newRoom.assigned_to_customer_id) throw new HttpError(409, `Room ${newRoom.number} is already assigned`);
+    const newRoomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${roomId} FOR UPDATE`);
+    if (newRoomResult.rows.length === 0) throw new HttpError(404, 'Resource not found');
+    const newRoom = newRoomResult.rows[0] as unknown as ResourceRow;
+    if (newRoom.status !== 'CLEAN') throw new HttpError(400, `Resource ${newRoom.number} is not available (status: ${newRoom.status})`);
+    if (newRoom.assigned_to_customer_id) throw new HttpError(409, `Resource ${newRoom.number} is already assigned`);
 
     const newRoomTier = getRoomTier(newRoom.number);
     if (newRoomTier !== waitlist.desired_tier) throw new HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but desired tier is ${waitlist.desired_tier}`);
@@ -131,7 +131,7 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
 
     await insertAuditLogDrizzle(tx, {
       staffId: staff.staffId, action: 'UPGRADE_STARTED', entityType: 'waitlist', entityId: waitlistId,
-      oldValue: { status: waitlist.status, currentRentalType: block.rental_type, currentResourceId: block.room_id || block.locker_id },
+      oldValue: { status: waitlist.status, currentRentalType: block.rental_type, currentResourceId: block.resource_id },
       newValue: { desiredTier: waitlist.desired_tier, newRoomId: roomId, newRoomNumber: newRoom.number, upgradeFee, paymentIntentId: paymentIntent.id, disclaimerAcknowledged: true },
     });
 
@@ -175,8 +175,8 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
     if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Waitlist entry must be OFFERED (current: ${waitlist.status})`);
 
     const blockResult = await tx.execute<{
-      id: string; visit_id: string; room_id: string | null; locker_id: string | null; rental_type: string; ends_at: Date; session_id: string | null;
-    }>(sql`SELECT id, visit_id, room_id, locker_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = ${waitlist.checkin_block_id} FOR UPDATE`);
+      id: string; visit_id: string; resource_id: string | null; rental_type: string; ends_at: Date; session_id: string | null;
+    }>(sql`SELECT id, visit_id, resource_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = ${waitlist.checkin_block_id} FOR UPDATE`);
     if (blockResult.rows.length === 0) throw new HttpError(404, 'Check-in block not found');
     const block = blockResult.rows[0]!;
 
@@ -185,20 +185,24 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
     if (!quote.newRoomId) throw new HttpError(400, 'Room ID not found in payment intent (upgrade must be fulfilled first)');
 
     const newRoomId = quote.newRoomId;
-    const newRoomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = ${newRoomId} FOR UPDATE`);
-    if (newRoomResult.rows.length === 0) throw new HttpError(404, 'New room not found');
-    const newRoom = newRoomResult.rows[0] as unknown as RoomRow;
+    const newRoomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${newRoomId} FOR UPDATE`);
+    if (newRoomResult.rows.length === 0) throw new HttpError(404, 'New resource not found');
+    const newRoom = newRoomResult.rows[0] as unknown as ResourceRow;
 
-    const oldResourceId = block.room_id || block.locker_id;
-    const oldResourceType = block.room_id ? 'room' : 'locker';
-    if (oldResourceType === 'room' && oldResourceId) {
-      await tx.execute(sql`UPDATE rooms SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = NOW(), updated_at = NOW() WHERE id = ${oldResourceId}`);
-    } else if (oldResourceType === 'locker' && oldResourceId) {
-      await tx.execute(sql`UPDATE lockers SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = ${oldResourceId}`);
+    const oldResourceId = block.resource_id;
+    if (oldResourceId) {
+      // Determine old resource kind for correct status
+      const kindRes = await tx.execute<{ kind: string }>(sql`SELECT kind FROM inventory_resources WHERE id = ${oldResourceId}`);
+      const oldKind = kindRes.rows[0]?.kind;
+      if (oldKind === 'locker') {
+        await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = ${oldResourceId}`);
+      } else {
+        await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = NOW(), updated_at = NOW() WHERE id = ${oldResourceId}`);
+      }
     }
 
-    await tx.execute(sql`UPDATE rooms SET assigned_to_customer_id = (SELECT customer_id FROM visits WHERE id = ${waitlist.visit_id}), status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = ${newRoomId}`);
-    await tx.execute(sql`UPDATE checkin_blocks SET room_id = ${newRoomId}, locker_id = NULL, rental_type = ${waitlist.desired_tier}, updated_at = NOW() WHERE id = ${block.id}`);
+    await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = (SELECT customer_id FROM visits WHERE id = ${waitlist.visit_id}), status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = ${newRoomId}`);
+    await tx.execute(sql`UPDATE checkin_blocks SET resource_id = ${newRoomId}, rental_type = ${waitlist.desired_tier}, updated_at = NOW() WHERE id = ${block.id}`);
     await tx.execute(sql`UPDATE waitlist SET status = 'COMPLETED', completed_at = NOW(), updated_at = NOW() WHERE id = ${waitlistId}`);
 
     if (upgradeAmount !== undefined) {
@@ -210,7 +214,7 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
 
     await insertAuditLogDrizzle(tx, {
       staffId: staff.staffId, action: 'UPGRADE_COMPLETED', entityType: 'waitlist', entityId: waitlistId,
-      oldValue: { oldResourceId, oldResourceType, oldRentalType: block.rental_type },
+      oldValue: { oldResourceId, oldRentalType: block.rental_type },
       newValue: { newRoomId, newRoomNumber: newRoom.number, newRentalType: waitlist.desired_tier, paymentIntentId, blockEndsAt: block.ends_at.toISOString() },
     });
 
@@ -252,7 +256,7 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
     });
 
     return {
-      waitlistId, success: true, oldResourceId, oldResourceType,
+      waitlistId, success: true, oldResourceId,
       newRoomId, newRoomNumber: newRoom.number, newRentalType: waitlist.desired_tier,
       blockEndsAt: block.ends_at, customerId, visitId: waitlist.visit_id,
     };

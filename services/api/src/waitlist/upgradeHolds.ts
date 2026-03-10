@@ -7,14 +7,14 @@ type ExpiredOfferRow = {
   waitlist_id: string;
   desired_tier: string;
   customer_name: string;
-  room_id: string;
+  resource_id: string;
   room_number: string;
 };
 
 type AvailableRoomRow = {
-  room_id: string;
+  resource_id: string;
   room_number: string;
-  room_type: string;
+  room_tier: string;
 };
 
 type CandidateWaitlistRow = {
@@ -68,15 +68,15 @@ export async function processUpgradeHoldsTick(
         w.id as waitlist_id,
         w.desired_tier::text as desired_tier,
         COALESCE(c.name, 'Customer') as customer_name,
-        w.room_id as room_id,
+        w.resource_id as resource_id,
         COALESCE(r.number, '(unknown)') as room_number
       FROM waitlist w
       JOIN visits v ON v.id = w.visit_id
       JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
       LEFT JOIN customers c ON c.id = v.customer_id
-      LEFT JOIN rooms r ON r.id = w.room_id
+      LEFT JOIN inventory_resources r ON r.id = w.resource_id
       WHERE w.status = 'OFFERED'
-        AND w.room_id IS NOT NULL
+        AND w.resource_id IS NOT NULL
         AND w.offer_expires_at IS NOT NULL
         AND w.offer_expires_at <= NOW()
         AND v.ended_at IS NULL
@@ -94,7 +94,7 @@ export async function processUpgradeHoldsTick(
         sql`
         UPDATE waitlist
         SET status = 'ACTIVE',
-            room_id = NULL,
+            resource_id = NULL,
             offer_expires_at = NULL,
             last_offered_at = NOW(),
             updated_at = NOW()
@@ -118,7 +118,7 @@ export async function processUpgradeHoldsTick(
         waitlistId: row.waitlist_id,
         customerName: row.customer_name,
         desiredTier: row.desired_tier,
-        roomId: row.room_id,
+        resourceId: row.resource_id,
         roomNumber: row.room_number,
       });
     }
@@ -127,11 +127,12 @@ export async function processUpgradeHoldsTick(
     // We exclude lane-session-selected resources until lane selection is moved to inventory_reservations.
     const availableRooms = await tx.execute<AvailableRoomRow>(
       sql`
-      SELECT r.id as room_id, r.number as room_number, r.type::text as room_type
-      FROM rooms r
+      SELECT r.id as resource_id, r.number as room_number, r.tier as room_tier
+      FROM inventory_resources r
       WHERE r.status = 'CLEAN'
         AND r.assigned_to_customer_id IS NULL
-        AND r.type IN ('STANDARD','DOUBLE','SPECIAL')
+        AND r.kind = 'room'
+        AND r.tier IN ('STANDARD','DOUBLE','SPECIAL')
         AND NOT EXISTS (
           SELECT 1
           FROM inventory_reservations ir
@@ -146,7 +147,7 @@ export async function processUpgradeHoldsTick(
           JOIN visits v ON v.id = w.visit_id
           JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
           WHERE w.status = 'OFFERED'
-            AND w.room_id = r.id
+            AND w.resource_id = r.id
             AND v.ended_at IS NULL
             AND cb.ends_at > NOW()
         )
@@ -180,7 +181,7 @@ export async function processUpgradeHoldsTick(
           JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
           LEFT JOIN customers c ON c.id = v.customer_id
           WHERE w.status = 'ACTIVE'
-            AND w.desired_tier::text = ${room.room_type}
+            AND w.desired_tier::text = ${room.room_tier}
             AND v.ended_at IS NULL
             AND cb.ends_at > NOW()
           ORDER BY COALESCE(w.last_offered_at, 'epoch'::timestamptz) ASC, w.created_at ASC
@@ -200,7 +201,7 @@ export async function processUpgradeHoldsTick(
         sql`
         UPDATE waitlist
         SET status = 'OFFERED',
-            room_id = ${room.room_id},
+            resource_id = ${room.resource_id},
             offered_at = NOW(),
             offer_expires_at = NOW() + (${initialHoldMinutes}::int * INTERVAL '1 minute'),
             last_offered_at = NOW(),
@@ -221,7 +222,7 @@ export async function processUpgradeHoldsTick(
         INSERT INTO inventory_reservations
           (resource_type, resource_id, kind, waitlist_id, expires_at)
         VALUES
-          ('room', ${room.room_id}, 'UPGRADE_HOLD', ${candidate.waitlist_id}, ${expiresAt})
+          ('room', ${room.resource_id}, 'UPGRADE_HOLD', ${candidate.waitlist_id}, ${expiresAt})
         ON CONFLICT (resource_type, resource_id) WHERE released_at IS NULL DO NOTHING
         `
       );
@@ -230,7 +231,7 @@ export async function processUpgradeHoldsTick(
         waitlistId: candidate.waitlist_id,
         customerName: candidate.customer_name,
         desiredTier: candidate.desired_tier,
-        roomId: room.room_id,
+        resourceId: room.resource_id,
         roomNumber: room.room_number,
         expiresAt: expiresAt.toISOString(),
       });
@@ -267,7 +268,7 @@ export async function processUpgradeHoldsTick(
       payload: {
         waitlistId: payload.waitlistId,
         status: 'OFFERED',
-        roomId: payload.roomId,
+        resourceId: payload.resourceId,
         roomNumber: payload.roomNumber,
       },
       timestamp: new Date().toISOString(),

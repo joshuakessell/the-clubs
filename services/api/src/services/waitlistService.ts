@@ -16,11 +16,11 @@ import { HttpError } from '../errors/HttpError';
 
 interface WaitlistRow {
   id: string; visit_id: string; checkin_block_id: string; desired_tier: string;
-  desired_tiers: string[]; backup_tier: string; locker_or_room_assigned_initially: string | null;
-  room_id: string | null; status: string; created_at: Date; offered_at: Date | null; completed_at: Date | null;
+  desired_tiers: string[]; backup_tier: string;
+  resource_id: string | null; status: string; created_at: Date; offered_at: Date | null; completed_at: Date | null;
 }
 
-interface RoomRow { id: string; number: string; type: string; status: string; assigned_to_customer_id: string | null; }
+interface ResourceRow { id: string; number: string; kind: string; tier: string; status: string; assigned_to_customer_id: string | null; }
 
 // ── Service Methods ──
 
@@ -30,7 +30,7 @@ export async function listWaitlistEntries(status?: string, fastifyInstance?: Fas
     try { await expireWaitlistEntries(fastifyInstance); } catch { /* non-critical */ }
   }
 
-  const baseQuery = sql`SELECT w.*, w.room_id AS offered_room_id, cb.room_id AS current_room_id, cb.locker_id, cb.rental_type as current_rental_type, cb.starts_at as checkin_starts_at, cb.ends_at as checkin_ends_at, offered_room.number as offered_room_number, current_room.number as current_room_number, current_room.type as current_room_tier, l.number as locker_number, v.customer_id, c.name as customer_name, c.membership_number FROM waitlist w JOIN checkin_blocks cb ON w.checkin_block_id = cb.id JOIN visits v ON w.visit_id = v.id LEFT JOIN customers c ON v.customer_id = c.id LEFT JOIN rooms offered_room ON w.room_id = offered_room.id LEFT JOIN rooms current_room ON cb.room_id = current_room.id LEFT JOIN lockers l ON cb.locker_id = l.id`;
+  const baseQuery = sql`SELECT w.*, w.resource_id AS offered_resource_id, cb.resource_id AS current_resource_id, cb.rental_type as current_rental_type, cb.starts_at as checkin_starts_at, cb.ends_at as checkin_ends_at, offered_res.number as offered_resource_number, current_res.number as current_resource_number, current_res.tier as current_resource_tier, current_res.kind as current_resource_kind, v.customer_id, c.name as customer_name, c.membership_number FROM waitlist w JOIN checkin_blocks cb ON w.checkin_block_id = cb.id JOIN visits v ON w.visit_id = v.id LEFT JOIN customers c ON v.customer_id = c.id LEFT JOIN inventory_resources offered_res ON w.resource_id = offered_res.id LEFT JOIN inventory_resources current_res ON cb.resource_id = current_res.id`;
 
   const fullQuery = status
     ? sql`${baseQuery} WHERE w.status = ${status} ORDER BY w.created_at ASC`
@@ -39,9 +39,10 @@ export async function listWaitlistEntries(status?: string, fastifyInstance?: Fas
   const result = await db.execute<Record<string, unknown>>(fullQuery);
 
   type EnrichedRow = WaitlistRow & {
-    offered_room_id: string | null; current_room_id: string | null; locker_id: string | null;
-    current_rental_type: string; current_room_tier: string | null; checkin_starts_at: Date; checkin_ends_at: Date;
-    offered_room_number: string | null; current_room_number: string | null; locker_number: string | null;
+    offered_resource_id: string | null; current_resource_id: string | null;
+    current_rental_type: string; current_resource_tier: string | null; current_resource_kind: string | null;
+    checkin_starts_at: Date; checkin_ends_at: Date;
+    offered_resource_number: string | null; current_resource_number: string | null;
     customer_id: string; customer_name: string; membership_number: string | null;
   };
   const rows = result.rows as unknown as EnrichedRow[];
@@ -50,10 +51,10 @@ export async function listWaitlistEntries(status?: string, fastifyInstance?: Fas
     id: row.id, visitId: row.visit_id, checkinBlockId: row.checkin_block_id, customerId: row.customer_id,
     desiredTier: row.desired_tier, desiredTiers: row.desired_tiers ?? [row.desired_tier], backupTier: row.backup_tier,
     status: row.status, createdAt: row.created_at, checkinAt: row.checkin_starts_at, checkoutAt: row.checkin_ends_at,
-    offeredAt: row.offered_at, completedAt: row.completed_at, roomId: row.offered_room_id,
-    offeredRoomNumber: row.offered_room_number,
-    displayIdentifier: row.locker_number || row.current_room_number || `***${row.id.substring(0, 8)}`,
-    currentRentalType: row.current_rental_type, currentRoomTier: row.current_room_tier ?? null, customerName: row.customer_name || 'Customer',
+    offeredAt: row.offered_at, completedAt: row.completed_at, resourceId: row.offered_resource_id,
+    offeredRoomNumber: row.offered_resource_number,
+    displayIdentifier: row.current_resource_number || `***${row.id.substring(0, 8)}`,
+    currentRentalType: row.current_rental_type, currentRoomTier: row.current_resource_tier ?? null, customerName: row.customer_name || 'Customer',
   }));
 }
 
@@ -65,23 +66,23 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
     const waitlist = waitlistResult.rows[0] as unknown as WaitlistRow & { visit_ended_at: Date | null; block_ends_at: Date };
     if (waitlist.status !== 'ACTIVE' && waitlist.status !== 'OFFERED') throw new HttpError(409, `Waitlist entry must be ACTIVE or OFFERED (current status: ${waitlist.status})`);
-    if (waitlist.status === 'OFFERED' && waitlist.room_id && waitlist.room_id !== roomId) throw new HttpError(409, 'Waitlist entry already has an active hold for a different room');
+    if (waitlist.status === 'OFFERED' && waitlist.resource_id && waitlist.resource_id !== roomId) throw new HttpError(409, 'Waitlist entry already has an active hold for a different resource');
     if (waitlist.visit_ended_at) throw new HttpError(409, 'Waitlist entry is no longer valid (visit ended)');
     if (new Date(waitlist.block_ends_at).getTime() <= Date.now()) throw new HttpError(409, 'Waitlist entry is no longer valid (block ended)');
 
-    const roomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = ${roomId} FOR UPDATE`);
-    if (roomResult.rows.length === 0) throw new HttpError(404, 'Room not found');
-    const room = roomResult.rows[0] as unknown as RoomRow;
-    if (room.status !== 'CLEAN') throw new HttpError(409, `Room ${room.number} is not available (status: ${room.status})`);
-    if (room.assigned_to_customer_id) throw new HttpError(409, `Room ${room.number} is already assigned`);
+    const roomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${roomId} FOR UPDATE`);
+    if (roomResult.rows.length === 0) throw new HttpError(404, 'Resource not found');
+    const room = roomResult.rows[0] as unknown as ResourceRow;
+    if (room.status !== 'CLEAN') throw new HttpError(409, `Resource ${room.number} is not available (status: ${room.status})`);
+    if (room.assigned_to_customer_id) throw new HttpError(409, `Resource ${room.number} is already assigned`);
 
     const reservationConflict = await tx.execute<{ id: string }>(sql`SELECT id FROM inventory_reservations WHERE resource_type = 'room' AND resource_id = ${roomId} AND released_at IS NULL AND (waitlist_id IS NULL OR waitlist_id <> ${waitlistId}) LIMIT 1`);
     if (reservationConflict.rows.length > 0) throw new HttpError(409, `Room ${room.number} is reserved`);
 
-    if (String(room.type) !== String(waitlist.desired_tier)) throw new HttpError(409, `Room ${room.number} is ${room.type}, but waitlist is for ${waitlist.desired_tier}`);
+    if (String(room.tier) !== String(waitlist.desired_tier)) throw new HttpError(409, `Resource ${room.number} is ${room.tier}, but waitlist is for ${waitlist.desired_tier}`);
 
-    const reserved = await tx.execute<{ id: string }>(sql`SELECT w.id FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.status = 'OFFERED' AND w.room_id = ${roomId} AND w.id <> ${waitlistId} AND v.ended_at IS NULL AND cb.ends_at > NOW() LIMIT 1`);
-    if (reserved.rows.length > 0) throw new HttpError(409, `Room ${room.number} is reserved for another offer`);
+    const reserved = await tx.execute<{ id: string }>(sql`SELECT w.id FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.status = 'OFFERED' AND w.resource_id = ${roomId} AND w.id <> ${waitlistId} AND v.ended_at IS NULL AND cb.ends_at > NOW() LIMIT 1`);
+    if (reserved.rows.length > 0) throw new HttpError(409, `Resource ${room.number} is reserved for another offer`);
 
     const desiredExpiryRes = await tx.execute<{ offer_expires_at: Date | null }>(sql`SELECT offer_expires_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     const existingExpiresAt = desiredExpiryRes.rows[0]?.offer_expires_at ?? null;
@@ -91,11 +92,11 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
     await tx.execute(sql`INSERT INTO inventory_reservations (resource_type, resource_id, kind, waitlist_id, expires_at) VALUES ('room', ${roomId}, 'UPGRADE_HOLD', ${waitlistId}, ${nextExpiresAt}) ON CONFLICT DO NOTHING`);
     await tx.execute(sql`UPDATE inventory_reservations SET expires_at = ${nextExpiresAt} WHERE released_at IS NULL AND kind = 'UPGRADE_HOLD' AND waitlist_id = ${waitlistId}`);
 
-    await tx.execute(sql`UPDATE waitlist SET status = 'OFFERED', offered_at = COALESCE(offered_at, NOW()), room_id = ${roomId}, offer_expires_at = ${nextExpiresAt}, last_offered_at = NOW(), offer_attempts = offer_attempts + CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END, updated_at = NOW() WHERE id = ${waitlistId}`);
+    await tx.execute(sql`UPDATE waitlist SET status = 'OFFERED', offered_at = COALESCE(offered_at, NOW()), resource_id = ${roomId}, offer_expires_at = ${nextExpiresAt}, last_offered_at = NOW(), offer_attempts = offer_attempts + CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END, updated_at = NOW() WHERE id = ${waitlistId}`);
 
-    await insertAuditLogDrizzle(tx, { staffId, action: 'WAITLIST_OFFERED', entityType: 'waitlist', entityId: waitlistId, oldValue: { status: 'ACTIVE' }, newValue: { status: 'OFFERED', room_id: roomId, room_number: room.number } });
+    await insertAuditLogDrizzle(tx, { staffId, action: 'WAITLIST_OFFERED', entityType: 'waitlist', entityId: waitlistId, oldValue: { status: 'ACTIVE' }, newValue: { status: 'OFFERED', resource_id: roomId, resource_number: room.number } });
 
-    return { waitlistId, status: 'OFFERED' as const, roomId, roomNumber: room.number };
+    return { waitlistId, status: 'OFFERED' as const, resourceId: roomId, roomNumber: room.number };
   }, { isolationLevel: 'serializable' });
 }
 

@@ -7,7 +7,7 @@
  * Migrated to Drizzle ORM typed queries.
  */
 import { db } from '../db';
-import { cleaningBatches, cleaningBatchRooms, rooms } from '../db/schema';
+import { cleaningBatches, cleaningBatchRooms, inventoryResources } from '../db/schema';
 import { eq, desc, sql, inArray } from 'drizzle-orm';
 import { RoomStatus, validateTransition } from '@the-clubs/shared';
 import { insertAuditLogDrizzle } from '../audit/auditLog';
@@ -73,16 +73,16 @@ export async function processCleaningBatch(
       .returning({ id: cleaningBatches.id });
     const batchId = batch!.id;
 
-    // 2. Fetch all rooms with row locks
+    // 2. Fetch all resources with row locks
     const roomRows = await tx
       .select({
-        id: rooms.id,
-        number: rooms.number,
-        status: rooms.status,
-        overrideFlag: rooms.overrideFlag,
+        id: inventoryResources.id,
+        number: inventoryResources.number,
+        status: inventoryResources.status,
+        overrideFlag: inventoryResources.overrideFlag,
       })
-      .from(rooms)
-      .where(inArray(rooms.id, input.roomIds))
+      .from(inventoryResources)
+      .where(inArray(inventoryResources.id, input.roomIds))
       .for('update');
 
     const roomMap = new Map(roomRows.map((r) => [r.id, r]));
@@ -92,9 +92,9 @@ export async function processCleaningBatch(
     // Collect cleaning_batch_rooms rows for a single multi-row INSERT
     const batchRoomInserts: Array<{
       batchId: string;
-      roomId: string;
-      statusFrom: typeof rooms.status.enumValues[number];
-      statusTo: typeof rooms.status.enumValues[number];
+      resourceId: string;
+      statusFrom: typeof inventoryResources.status.enumValues[number];
+      statusTo: typeof inventoryResources.status.enumValues[number];
       overrideFlag: boolean;
       overrideReason: string | null;
     }> = [];
@@ -149,9 +149,9 @@ export async function processCleaningBatch(
       const isOverrideTransition = input.override && validation.ok;
       const isClean = toStatus === RoomStatus.CLEAN;
 
-      // 4. Update the room status
+      // 4. Update the resource status
       await tx
-        .update(rooms)
+        .update(inventoryResources)
         .set({
           status: toStatus as any,
           lastStatusChange: sql`NOW()`,
@@ -159,12 +159,12 @@ export async function processCleaningBatch(
           assignedToCustomerId: isClean ? null : undefined,
           updatedAt: sql`NOW()`,
         })
-        .where(eq(rooms.id, roomId));
+        .where(eq(inventoryResources.id, roomId));
 
       // Collect for batch INSERT
       batchRoomInserts.push({
         batchId,
-        roomId,
+        resourceId: roomId,
         statusFrom: fromStatus as any,
         statusTo: toStatus as any,
         overrideFlag: isOverrideTransition,

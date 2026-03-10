@@ -136,18 +136,20 @@ export async function startLaneSession(
 
     const resolveActiveAssignment = async (activeVisitId: string) => {
       const activeBlock = await tx.execute<Record<string, unknown>>(
-        sql`SELECT cb.rental_type, cb.room_id, cb.locker_id, r.number as room_number, l.number as locker_number
-         FROM checkin_blocks cb LEFT JOIN rooms r ON cb.room_id = r.id LEFT JOIN lockers l ON cb.locker_id = l.id
+        sql`SELECT cb.rental_type, cb.resource_id, r.number as resource_number, r.kind as resource_kind
+         FROM checkin_blocks cb LEFT JOIN inventory_resources r ON cb.resource_id = r.id
          WHERE cb.visit_id = ${activeVisitId} ORDER BY cb.ends_at DESC LIMIT 1`
       );
       const row = activeBlock.rows[0] as unknown as {
-        rental_type: string; room_id: string | null; locker_id: string | null;
-        room_number: string | null; locker_number: string | null;
+        rental_type: string; resource_id: string | null;
+        resource_number: string | null; resource_kind: string | null;
       } | undefined;
       if (!row) return;
       activeRentalType = row.rental_type;
-      if (row.room_id && row.room_number) { activeAssignedResourceType = 'room'; activeAssignedResourceNumber = row.room_number; }
-      else if (row.locker_id && row.locker_number) { activeAssignedResourceType = 'locker'; activeAssignedResourceNumber = row.locker_number; }
+      if (row.resource_id && row.resource_number) {
+        activeAssignedResourceType = row.resource_kind === 'locker' ? 'locker' : 'room';
+        activeAssignedResourceNumber = row.resource_number;
+      }
     };
 
     if (renewalHours && !visitId) throw new HttpError(400, 'renewalHours requires an explicit visitId');
@@ -179,16 +181,16 @@ export async function startLaneSession(
         await resolveVisitBlocks(activeVisitId);
 
         const activeBlock = await tx.execute<Record<string, unknown>>(
-          sql`SELECT cb.starts_at, cb.ends_at, cb.rental_type, r.number as room_number, l.number as locker_number
-           FROM checkin_blocks cb LEFT JOIN rooms r ON cb.room_id = r.id LEFT JOIN lockers l ON cb.locker_id = l.id
+          sql`SELECT cb.starts_at, cb.ends_at, cb.rental_type, r.number as resource_number, r.kind as resource_kind
+           FROM checkin_blocks cb LEFT JOIN inventory_resources r ON cb.resource_id = r.id
            WHERE cb.visit_id = ${activeVisitId} ORDER BY cb.ends_at DESC LIMIT 1`
         );
         const block = activeBlock.rows[0] as unknown as {
           starts_at: Date; ends_at: Date; rental_type: string;
-          room_number: string | null; locker_number: string | null;
+          resource_number: string | null; resource_kind: string | null;
         } | undefined;
-        const assignedResourceType: 'room' | 'locker' | null = block?.room_number ? 'room' : block?.locker_number ? 'locker' : null;
-        const assignedResourceNumber: string | null = block?.room_number ?? block?.locker_number ?? null;
+        const assignedResourceType: 'room' | 'locker' | null = block?.resource_kind === 'locker' ? 'locker' : block?.resource_number ? 'room' : null;
+        const assignedResourceNumber: string | null = block?.resource_number ?? null;
 
         const waitlistResult = await tx.execute<{ id: string; desired_tier: string; backup_tier: string; status: string }>(
           sql`SELECT id, desired_tier, backup_tier, status FROM waitlist WHERE visit_id = ${activeVisitId} AND status IN ('ACTIVE', 'OFFERED') ORDER BY created_at DESC LIMIT 1`

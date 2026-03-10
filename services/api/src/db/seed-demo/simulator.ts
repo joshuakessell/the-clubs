@@ -94,7 +94,7 @@ type SimCustomer = {
   dob: Date | null;
 };
 
-type SimRoom = { id: string; number: string; type: string };
+type SimRoom = { id: string; number: string; tier: string };
 type SimLocker = { id: string; number: number };
 type SimStaff = { id: string; name: string; role?: string };
 type SimRegisterSession = {
@@ -370,9 +370,9 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
     if (r.tier === 'DOUBLE') type = RoomType.DOUBLE;
     else if (r.tier === 'SPECIAL') type = RoomType.SPECIAL;
     await query(
-      `INSERT INTO rooms (number, type, status, floor, last_status_change)
-       VALUES ($1, $2, 'CLEAN', $3, NOW())
-       ON CONFLICT (number) DO UPDATE SET type = EXCLUDED.type, floor = EXCLUDED.floor, updated_at = NOW()`,
+      `INSERT INTO inventory_resources (number, kind, tier, status, floor, last_status_change)
+       VALUES ($1, 'room', $2, 'CLEAN', $3, NOW())
+       ON CONFLICT (number) DO UPDATE SET tier = EXCLUDED.tier, floor = EXCLUDED.floor, updated_at = NOW()`,
       [String(r.number), type, Math.floor(r.number / 100)]
     );
     progress.tick();
@@ -381,7 +381,7 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
   // Upsert lockers
   for (const n of LOCKER_NUMBERS) {
     await query(
-      `INSERT INTO lockers (number, status) VALUES ($1, 'CLEAN')
+      `INSERT INTO inventory_resources (number, kind, status) VALUES ($1, 'locker', 'CLEAN')
        ON CONFLICT (number) DO UPDATE SET updated_at = NOW()`,
       [n]
     );
@@ -390,23 +390,23 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
 
   // Key tags for rooms & lockers
   progress.setMessage('Ensuring key tags');
-  const roomRows = await query<{ id: string; number: string }>(`SELECT id, number FROM rooms ORDER BY number`);
+  const roomRows = await query<{ id: string; number: string }>(`SELECT id, number FROM inventory_resources WHERE kind = 'room' ORDER BY number`);
   progress.addTotal(roomRows.rows.length);
   for (const row of roomRows.rows) {
     await query(
-      `INSERT INTO key_tags (room_id, tag_type, tag_code, is_active) VALUES ($1, 'QR', $2, true)
-       ON CONFLICT (tag_code) DO UPDATE SET room_id = EXCLUDED.room_id, locker_id = NULL, is_active = true, updated_at = NOW()`,
+      `INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active) VALUES ($1, 'QR', $2, true)
+       ON CONFLICT (tag_code) DO UPDATE SET resource_id = EXCLUDED.resource_id, is_active = true, updated_at = NOW()`,
       [row.id, `ROOM-${row.number}`]
     );
     progress.tick();
   }
 
-  const lockerRows = await query<{ id: string; number: string }>(`SELECT id, number FROM lockers ORDER BY number`);
+  const lockerRows = await query<{ id: string; number: string }>(`SELECT id, number FROM inventory_resources WHERE kind = 'locker' ORDER BY number`);
   progress.addTotal(lockerRows.rows.length);
   for (const row of lockerRows.rows) {
     await query(
-      `INSERT INTO key_tags (locker_id, tag_type, tag_code, is_active) VALUES ($1, 'QR', $2, true)
-       ON CONFLICT (tag_code) DO UPDATE SET locker_id = EXCLUDED.locker_id, room_id = NULL, is_active = true, updated_at = NOW()`,
+      `INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active) VALUES ($1, 'QR', $2, true)
+       ON CONFLICT (tag_code) DO UPDATE SET resource_id = EXCLUDED.resource_id, is_active = true, updated_at = NOW()`,
       [row.id, `LOCKER-${row.number}`]
     );
     progress.tick();
@@ -661,18 +661,18 @@ async function simulateVisits(params: {
       const emp = staff.find(s => s.id === reg.employee_id) ?? staff[0];
 
       // --- Choose resource (62% locker, 38% room) ---
-      let lockerId: string | null = null;
-      let roomId: string | null = null;
+      let resourceId: string | null = null;
       let rentalType = 'LOCKER';
       if (rng() < 0.62 && lockers.length > 0) {
-        lockerId = lockers[lockerIdx++ % lockers.length].id;
+        resourceId = lockers[lockerIdx++ % lockers.length].id;
       } else if (rooms.length > 0) {
         const room = rooms[roomIdx++ % rooms.length];
-        roomId = room.id;
-        rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.type) ? room.type : 'STANDARD';
+        resourceId = room.id;
+        rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.tier) ? room.tier : 'STANDARD';
       } else if (lockers.length > 0) {
-        lockerId = lockers[lockerIdx++ % lockers.length].id;
+        resourceId = lockers[lockerIdx++ % lockers.length].id;
       }
+      const isRoom = rentalType !== 'LOCKER';
 
       const visitId = randomUUID();
       const blockId = randomUUID();
@@ -685,9 +685,9 @@ async function simulateVisits(params: {
         [visitId, start, end, customer.id]
       );
       await client.query(
-        `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type)
-         VALUES ($1,$2,'INITIAL',$3,$4,$5,$6,true,$7,$8)`,
-        [blockId, visitId, start, scheduledEnd, lockerId, roomId, signedAt, rentalType]
+        `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type)
+         VALUES ($1,$2,'INITIAL',$3,$4,$5,true,$6,$7)`,
+        [blockId, visitId, start, scheduledEnd, resourceId, signedAt, rentalType]
       );
       await client.query(
         `INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, agreement_text_snapshot, agreement_version, checkin_block_id)
@@ -758,53 +758,53 @@ async function simulateVisits(params: {
       });
 
       // --- Cleaning Events for room visits ---
-      if (roomId) {
+      if (isRoom && resourceId) {
         const cleanStart = new Date(end.getTime() + (3 + Math.floor(rng() * 6)) * 60 * 1000);
         const cleanEnd = new Date(cleanStart.getTime() + (8 + Math.floor(rng() * 8)) * 60 * 1000);
         if (cleanEnd <= to) {
           const cleaner = staff[(roomIdx + j) % staff.length];
           const ev1 = randomUUID(), ev2 = randomUUID();
           await client.query(
-            `INSERT INTO cleaning_events (id, room_id, staff_id, started_at, completed_at, from_status, to_status, override_flag, device_id, created_at)
+            `INSERT INTO cleaning_events (id, resource_id, staff_id, started_at, completed_at, from_status, to_status, override_flag, device_id, created_at)
              VALUES ($1,$2::uuid,$3::uuid,$4,NULL,'DIRTY','CLEANING',false,'demo-cleaning',$4),
                     ($5,$2::uuid,$3::uuid,$4,$6,'CLEANING','CLEAN',false,'demo-cleaning',$6)`,
-            [ev1, roomId, cleaner.id, cleanStart, ev2, cleanEnd]
+            [ev1, resourceId, cleaner.id, cleanStart, ev2, cleanEnd]
           );
         }
       }
 
       // --- Waitlist (~8% of room visits) ---
-      if (roomId && rng() < 0.08) {
+      if (isRoom && resourceId && rng() < 0.08) {
         const wlCreated = new Date(start.getTime() - Math.floor(15 + rng() * 30) * 60 * 1000);
         const wlOffered = new Date(wlCreated.getTime() + Math.floor(15 + rng() * 30) * 60 * 1000);
         const wlCompleted = new Date(wlOffered.getTime() + Math.floor(2 + rng() * 3) * 60 * 1000);
         const wlId = randomUUID();
         await client.query(
-          `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, room_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
+          `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, resource_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
            VALUES ($1,$2,$3,$4::rental_type,'LOCKER'::rental_type,$5,'COMPLETED',$6,$7,$8,$9,$8,1,$7)`,
-          [wlId, visitId, blockId, rentalType, roomId, wlCreated, wlCompleted, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000)]
+          [wlId, visitId, blockId, rentalType, resourceId, wlCreated, wlCompleted, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000)]
         );
         await client.query(`UPDATE checkin_blocks SET waitlist_id = $1 WHERE id = $2`, [wlId, blockId]);
         await client.query(
           `INSERT INTO inventory_reservations (id, resource_type, resource_id, kind, waitlist_id, created_at, expires_at, released_at, release_reason)
            VALUES ($1,'room'::inventory_resource_type,$2,'UPGRADE_HOLD'::inventory_reservation_kind,$3,$4,$5,$6,'waitlist_completed')`,
-          [randomUUID(), roomId, wlId, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000), wlCompleted]
+          [randomUUID(), resourceId, wlId, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000), wlCompleted]
         );
       }
 
       // --- Room Upgrade (~4% of locker visits) ---
-      if (lockerId && !roomId && rooms.length > 0 && rng() < 0.04) {
+      if (!isRoom && resourceId && rooms.length > 0 && rng() < 0.04) {
         const ugRoom = rooms[Math.floor(rng() * rooms.length)];
         const ugMinIn = 30 + Math.floor(rng() * 90);
         const ugAt = new Date(start.getTime() + ugMinIn * 60 * 1000);
         if (ugAt < end) {
-          const ugType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(ugRoom.type) ? ugRoom.type : 'STANDARD';
-          await insertUpgrade(client, { visitId, blockId, customerId: customer.id, roomId: ugRoom.id, roomType: ugType, lockerId, ugAt, ugEnd: scheduledEnd, staffId: emp.id, staff, to, rng });
+          const ugType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(ugRoom.tier) ? ugRoom.tier : 'STANDARD';
+          await insertUpgrade(client, { visitId, blockId, customerId: customer.id, roomId: ugRoom.id, roomType: ugType, lockerId: resourceId, ugAt, ugEnd: scheduledEnd, staffId: emp.id, staff, to, rng });
         }
       }
 
       // --- Checkout Request for room visits ---
-      if (roomId) {
+      if (isRoom) {
         // With a fixed 6-hour checkout window, guests are never late
         await insertCheckoutRequest(client, { blockId, customerId: customer.id, lateMins: 0, lateFee: 0, at: end });
       }
@@ -919,7 +919,7 @@ async function insertUpgrade(client: DbClient, p: {
 
   // Waitlist entry for upgrade (must insert before checkin_blocks FK)
   await client.query(
-    `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially, room_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
+    `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially, resource_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
      VALUES ($1,$2,$3,$4::rental_type,'LOCKER'::rental_type,$5,$6,'COMPLETED',$7,$8,$9,$10,$9,1,$8)`,
     [wlId, p.visitId, p.blockId, p.roomType, p.lockerId, p.roomId,
      new Date(p.ugAt.getTime() - 5 * 60 * 1000), p.ugAt,
@@ -927,8 +927,8 @@ async function insertUpgrade(client: DbClient, p: {
   );
 
   await client.query(
-    `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type, waitlist_id)
-     VALUES ($1,$2,'RENEWAL',$3,$4,NULL,$5,true,$6,$7::rental_type,$8)`,
+    `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type, waitlist_id)
+     VALUES ($1,$2,'RENEWAL',$3,$4,$5,true,$6,$7::rental_type,$8)`,
     [renewalId, p.visitId, p.ugAt, p.ugEnd, p.roomId, p.ugAt, p.roomType, wlId]
   );
 
@@ -1136,7 +1136,7 @@ type ActiveBlock = {
   customer_name: string;
   rental_type: string;
   scheduled_end: Date;
-  room_id: string | null;
+  resource_id: string | null;
 };
 
 async function checkoutActiveVisits(client: DbClient, p: {
@@ -1152,7 +1152,7 @@ async function checkoutActiveVisits(client: DbClient, p: {
       c.name          AS customer_name,
       cb.rental_type,
       cb.ends_at      AS scheduled_end,
-      cb.room_id
+      cb.resource_id
     FROM visits v
     JOIN checkin_blocks cb
       ON cb.visit_id = v.id
@@ -1193,10 +1193,10 @@ async function checkoutActiveVisits(client: DbClient, p: {
       [actualEnd, row.block_id]
     );
     // 3. Release any room/locker assignment
-    if (row.room_id) {
+    if (row.resource_id) {
       await client.query(
-        `UPDATE rooms SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = $1, updated_at = $1 WHERE id = $2`,
-        [actualEnd, row.room_id]
+        `UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = $1, updated_at = $1 WHERE id = $2`,
+        [actualEnd, row.resource_id]
       );
     }
     // 4. CHECKOUT_COMPLETED activity event (idempotent)
@@ -1261,14 +1261,9 @@ async function closeOrphanedVisits(client: DbClient, now: Date): Promise<number>
     FROM visits v
     WHERE v.ended_at IS NULL
       AND NOT EXISTS (
-        -- No room currently assigned to this customer
-        SELECT 1 FROM rooms r
+        -- No resource currently assigned to this customer
+        SELECT 1 FROM inventory_resources r
         WHERE r.assigned_to_customer_id = v.customer_id
-      )
-      AND NOT EXISTS (
-        -- No locker currently assigned to this customer
-        SELECT 1 FROM lockers l
-        WHERE l.assigned_to_customer_id = v.customer_id
       )
   `);
 
@@ -1330,8 +1325,8 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
     const [agreementRes, customersRes, lockersRes, roomsRes, staffRes, registerRes] = await Promise.all([
       query<SimAgreement>(`SELECT id, version, title, body_text FROM agreements WHERE active = true ORDER BY created_at DESC LIMIT 1`),
       query<SimCustomer>(`SELECT id, name, membership_number, dob, membership_valid_until FROM customers ORDER BY created_at`),
-      query<SimLocker>(`SELECT id, number FROM lockers ORDER BY number`),
-      query<SimRoom>(`SELECT id, number, type FROM rooms ORDER BY number`),
+      query<SimLocker>(`SELECT id, number FROM inventory_resources WHERE kind = 'locker' ORDER BY number`),
+      query<SimRoom>(`SELECT id, number, tier FROM inventory_resources WHERE kind = 'room' ORDER BY number`),
       query<SimStaff>(`SELECT id, name FROM staff WHERE active = true ORDER BY name`),
       query<SimRegisterSession>(`SELECT id, register_number, employee_id, device_id FROM register_sessions WHERE signed_out_at IS NULL ORDER BY created_at DESC`),
     ]);
@@ -1427,27 +1422,11 @@ async function seedActiveWaitlist(client: DbClient, p: {
     `UPDATE waitlist SET status = 'CANCELLED', updated_at = NOW()
      WHERE status IN ('ACTIVE', 'OFFERED')`
   );
-  // 2. Release all room assignments and reset rooms to CLEAN
+  // 2. Release all resource assignments and reset to CLEAN
   await client.query(
-    `UPDATE rooms SET assigned_to_customer_id = NULL, status = 'CLEAN',
+    `UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'CLEAN',
             last_status_change = $1, updated_at = $1`,
     [p.now]
-  );
-  // 3. Close any open visits whose scheduled end has passed (belt-and-suspenders)
-  await client.query(
-    `UPDATE visits SET ended_at = $1, updated_at = NOW()
-     WHERE ended_at IS NULL
-       AND id IN (
-         SELECT v.id FROM visits v
-         JOIN checkin_blocks cb ON cb.visit_id = v.id
-         WHERE v.ended_at IS NULL AND cb.ends_at IS NOT NULL AND cb.ends_at <= $1
-       )`,
-    [p.now]
-  );
-  // 4. Release locker assignments from previously-seeded waitlist visits
-  await client.query(
-    `UPDATE lockers SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW()
-     WHERE assigned_to_customer_id IS NOT NULL`
   );
 
   const WAITLIST_SIZE = 6;
@@ -1467,7 +1446,7 @@ async function seedActiveWaitlist(client: DbClient, p: {
   for (const room of p.rooms) {
     const customer = p.customers[Math.floor(rng() * p.customers.length)];
     const updated = await client.query<{ id: string }>(
-      `UPDATE rooms SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = $2, updated_at = $2
+      `UPDATE inventory_resources SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = $2, updated_at = $2
        WHERE id = $3 AND assigned_to_customer_id IS NULL
        RETURNING id`,
       [customer.id, p.now, room.id]
@@ -1478,7 +1457,7 @@ async function seedActiveWaitlist(client: DbClient, p: {
     const visitId = randomUUID();
     const blockId = randomUUID();
     const signedAt = new Date(p.now.getTime() - 60 * 60 * 1000); // signed 1hr ago
-    const rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.type) ? room.type : 'STANDARD';
+    const rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.tier) ? room.tier : 'STANDARD';
 
     let start: Date;
     let scheduledEnd: Date;
@@ -1503,8 +1482,8 @@ async function seedActiveWaitlist(client: DbClient, p: {
       [visitId, start, customer.id]
     );
     await client.query(
-      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type)
-       VALUES ($1, $2, 'INITIAL', $3, $4, NULL, $5, true, $6, $7)`,
+      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type)
+       VALUES ($1, $2, 'INITIAL', $3, $4, $5, true, $6, $7)`,
       [blockId, visitId, start, scheduledEnd, room.id, signedAt, rentalType]
     );
     if (agreement) {
@@ -1550,7 +1529,7 @@ async function seedActiveWaitlist(client: DbClient, p: {
     const visitId = randomUUID();
     const blockId = randomUUID();
     const lockerId = (await client.query<{ id: string }>(
-      `SELECT id FROM lockers WHERE assigned_to_customer_id IS NULL ORDER BY number LIMIT 1`
+      `SELECT id FROM inventory_resources WHERE kind = 'locker' AND assigned_to_customer_id IS NULL ORDER BY number LIMIT 1`
     )).rows[0]?.id;
 
     if (!lockerId) continue;
@@ -1564,12 +1543,12 @@ async function seedActiveWaitlist(client: DbClient, p: {
       [visitId, start, customer.id]
     );
     await client.query(
-      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type)
-       VALUES ($1, $2, 'INITIAL', $3, $4, $5, NULL, true, $6, 'LOCKER')`,
+      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type)
+       VALUES ($1, $2, 'INITIAL', $3, $4, $5, true, $6, 'LOCKER')`,
       [blockId, visitId, start, scheduledEnd, lockerId, start]
     );
     await client.query(
-      `UPDATE lockers SET assigned_to_customer_id = $1, status = 'OCCUPIED', updated_at = NOW() WHERE id = $2`,
+      `UPDATE inventory_resources SET assigned_to_customer_id = $1, status = 'OCCUPIED', updated_at = NOW() WHERE id = $2`,
       [customer.id, lockerId]
     );
 

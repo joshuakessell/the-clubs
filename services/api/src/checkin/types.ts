@@ -71,20 +71,19 @@ export interface CustomerRow {
   id_scan_value?: string | null;
 }
 
-export interface RoomRow {
+export interface ResourceRow {
   id: string;
   number: string;
-  type: string;
+  kind: string;
+  tier?: string;
   status: string;
   assigned_to_customer_id: string | null;
 }
 
-export interface LockerRow {
-  id: string;
-  number: string;
-  status: string;
-  assigned_to_customer_id: string | null;
-}
+/** @deprecated Use ResourceRow instead */
+export type RoomRow = ResourceRow;
+/** @deprecated Use ResourceRow instead */
+export type LockerRow = ResourceRow;
 
 export interface PaymentIntentRow {
   id: string;

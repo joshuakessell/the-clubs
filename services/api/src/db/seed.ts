@@ -67,8 +67,9 @@ async function seed() {
     const desiredRoomNumbers = seedRooms.map((r) => r.number);
     const deletedRooms = await db.execute<Record<string, unknown>>(
       sql`WITH del AS (
-         DELETE FROM rooms
-         WHERE NOT (number = ANY(${desiredRoomNumbers}::text[]))
+         DELETE FROM inventory_resources
+         WHERE kind = 'room'
+           AND NOT (number = ANY(${desiredRoomNumbers}::text[]))
          RETURNING 1
        )
        SELECT COUNT(*)::text as count FROM del`
@@ -82,10 +83,10 @@ async function seed() {
 
     for (const roomSeed of seedRooms) {
       const roomResult = await db.execute<Record<string, unknown>>(
-        sql`INSERT INTO rooms (number, type, status, floor, last_status_change)
-         VALUES (${roomSeed.number}, ${roomSeed.type}, ${RoomStatus.CLEAN}, ${roomSeed.floor}, NOW())
+        sql`INSERT INTO inventory_resources (number, kind, tier, status, floor, last_status_change)
+         VALUES (${roomSeed.number}, 'room', ${roomSeed.type}, ${RoomStatus.CLEAN}, ${roomSeed.floor}, NOW())
          ON CONFLICT (number) DO UPDATE
-           SET type = EXCLUDED.type,
+           SET tier = EXCLUDED.tier,
                floor = EXCLUDED.floor,
                updated_at = NOW()
          RETURNING id`
@@ -94,11 +95,10 @@ async function seed() {
       const roomId = (roomResult.rows[0] as any)?.id ?? '';
 
       await db.execute(
-        sql`INSERT INTO key_tags (room_id, tag_type, tag_code, is_active)
+        sql`INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active)
          VALUES (${roomId}, 'QR', ${roomSeed.tagCode}, true)
          ON CONFLICT (tag_code) DO UPDATE
-           SET room_id = EXCLUDED.room_id,
-               locker_id = NULL,
+           SET resource_id = EXCLUDED.resource_id,
                is_active = true,
                updated_at = NOW()`
       );
@@ -110,8 +110,9 @@ async function seed() {
     const desiredLockerNumbers = seedLockers.map((l) => l.number);
     const deletedLockers = await db.execute<Record<string, unknown>>(
       sql`WITH del AS (
-         DELETE FROM lockers
-         WHERE NOT (number = ANY(${desiredLockerNumbers}::text[]))
+         DELETE FROM inventory_resources
+         WHERE kind = 'locker'
+           AND NOT (number = ANY(${desiredLockerNumbers}::text[]))
          RETURNING 1
        )
        SELECT COUNT(*)::text as count FROM del`
@@ -125,8 +126,8 @@ async function seed() {
 
     for (const lockerSeed of seedLockers) {
       const lockerResult = await db.execute<Record<string, unknown>>(
-        sql`INSERT INTO lockers (number, status)
-         VALUES (${lockerSeed.number}, ${RoomStatus.CLEAN})
+        sql`INSERT INTO inventory_resources (number, kind, status)
+         VALUES (${lockerSeed.number}, 'locker', ${RoomStatus.CLEAN})
          ON CONFLICT (number) DO UPDATE
            SET updated_at = NOW()
          RETURNING id`
@@ -135,11 +136,10 @@ async function seed() {
       const lockerId = (lockerResult.rows[0] as any)?.id ?? '';
 
       await db.execute(
-        sql`INSERT INTO key_tags (locker_id, tag_type, tag_code, is_active)
+        sql`INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active)
          VALUES (${lockerId}, 'QR', ${lockerSeed.tagCode}, true)
          ON CONFLICT (tag_code) DO UPDATE
-           SET locker_id = EXCLUDED.locker_id,
-               room_id = NULL,
+           SET resource_id = EXCLUDED.resource_id,
                is_active = true,
                updated_at = NOW()`
       );

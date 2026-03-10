@@ -80,51 +80,35 @@ export async function switchResource(input: SwitchResourceInput) {
     const visit = visitResult.rows[0]!;
     if (visit.ended_at) throw new HttpError(409, 'Visit is already completed') satisfies SwitchHttpError;
 
-    const blockResult = await tx.execute<{ id: string; room_id: string | null; locker_id: string | null; rental_type: string }>(
-      sql`SELECT id, room_id, locker_id, rental_type::text FROM checkin_blocks WHERE visit_id = ${input.visitId} ORDER BY ends_at DESC LIMIT 1 FOR UPDATE`
+    const blockResult = await tx.execute<{ id: string; resource_id: string | null; rental_type: string }>(
+      sql`SELECT id, resource_id, rental_type::text FROM checkin_blocks WHERE visit_id = ${input.visitId} ORDER BY ends_at DESC LIMIT 1 FOR UPDATE`
     );
     if (blockResult.rows.length === 0) throw new HttpError(404, 'No active check-in block found') satisfies SwitchHttpError;
     const block = blockResult.rows[0]!;
 
-    const currentResourceType: 'room' | 'locker' | null = block.room_id ? 'room' : block.locker_id ? 'locker' : null;
-    const currentResourceId = block.room_id || block.locker_id;
-    if (!currentResourceType || !currentResourceId) throw new HttpError(400, 'Current visit has no assigned room/locker') satisfies SwitchHttpError;
-    if (currentResourceType === input.targetResourceType && String(currentResourceId) === String(input.targetResourceId)) throw new HttpError(400, 'Selected resource is already assigned') satisfies SwitchHttpError;
+    const currentResourceId = block.resource_id;
+    if (!currentResourceId) throw new HttpError(400, 'Current visit has no assigned resource') satisfies SwitchHttpError;
+    if (String(currentResourceId) === String(input.targetResourceId)) throw new HttpError(400, 'Selected resource is already assigned') satisfies SwitchHttpError;
 
-    // Get current resource number
-    let currentResourceNumber = '';
-    if (currentResourceType === 'room') {
-      const r = await tx.execute<{ id: string; number: string }>(sql`SELECT id, number FROM rooms WHERE id = ${currentResourceId} FOR UPDATE`);
-      if (r.rows.length === 0) throw new HttpError(404, 'Current room not found') satisfies SwitchHttpError;
-      currentResourceNumber = r.rows[0]!.number;
-    } else {
-      const r = await tx.execute<{ id: string; number: string }>(sql`SELECT id, number FROM lockers WHERE id = ${currentResourceId} FOR UPDATE`);
-      if (r.rows.length === 0) throw new HttpError(404, 'Current locker not found') satisfies SwitchHttpError;
-      currentResourceNumber = r.rows[0]!.number;
-    }
+    // Get current resource info
+    const currentRes = await tx.execute<{ id: string; number: string; kind: string }>(
+      sql`SELECT id, number, kind FROM inventory_resources WHERE id = ${currentResourceId} FOR UPDATE`
+    );
+    if (currentRes.rows.length === 0) throw new HttpError(404, 'Current resource not found') satisfies SwitchHttpError;
+    const currentResourceNumber = currentRes.rows[0]!.number;
+    const currentResourceType: 'room' | 'locker' = currentRes.rows[0]!.kind === 'locker' ? 'locker' : 'room';
 
     // Validate target
     let targetResourceNumber = '';
     let targetRentalType: RentalTier;
-    if (input.targetResourceType === 'room') {
-      const r = await tx.execute<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
-        sql`SELECT id, number, status, assigned_to_customer_id FROM rooms WHERE id = ${input.targetResourceId} FOR UPDATE`
-      );
-      if (r.rows.length === 0) throw new HttpError(404, 'Target room not found') satisfies SwitchHttpError;
-      const room = r.rows[0]!;
-      if (room.status !== 'CLEAN' || room.assigned_to_customer_id) throw new HttpError(409, `Room ${room.number} is not available`) satisfies SwitchHttpError;
-      targetResourceNumber = room.number;
-      targetRentalType = getTierFromRoomNumber(room.number);
-    } else {
-      const r = await tx.execute<{ id: string; number: string; status: string; assigned_to_customer_id: string | null }>(
-        sql`SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = ${input.targetResourceId} FOR UPDATE`
-      );
-      if (r.rows.length === 0) throw new HttpError(404, 'Target locker not found') satisfies SwitchHttpError;
-      const locker = r.rows[0]!;
-      if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id) throw new HttpError(409, `Locker ${locker.number} is not available`) satisfies SwitchHttpError;
-      targetResourceNumber = locker.number;
-      targetRentalType = 'LOCKER';
-    }
+    const targetRes = await tx.execute<{ id: string; number: string; kind: string; status: string; assigned_to_customer_id: string | null }>(
+      sql`SELECT id, number, kind, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${input.targetResourceId} FOR UPDATE`
+    );
+    if (targetRes.rows.length === 0) throw new HttpError(404, 'Target resource not found') satisfies SwitchHttpError;
+    const target = targetRes.rows[0]!;
+    if (target.status !== 'CLEAN' || target.assigned_to_customer_id) throw new HttpError(409, `Resource ${target.number} is not available`) satisfies SwitchHttpError;
+    targetResourceNumber = target.number;
+    targetRentalType = target.kind === 'locker' ? 'LOCKER' : getTierFromRoomNumber(target.number);
 
     // Fee calculation
     const currentRentalType = normalizeRentalTier(block.rental_type);
@@ -156,23 +140,13 @@ export async function switchResource(input: SwitchResourceInput) {
     }
 
     // Release current resource
-    if (currentResourceType === 'room') {
-      await tx.execute(sql`UPDATE rooms SET assigned_to_customer_id = NULL, status = ${previousRoomStatus}, last_status_change = NOW(), updated_at = NOW() WHERE id = ${currentResourceId}`);
-    } else {
-      await tx.execute(sql`UPDATE lockers SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = ${currentResourceId}`);
-    }
+    await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = ${currentResourceType === 'room' ? previousRoomStatus : 'CLEAN'}, last_status_change = NOW(), updated_at = NOW() WHERE id = ${currentResourceId}`);
 
     // Assign target resource
-    if (input.targetResourceType === 'room') {
-      await tx.execute(sql`UPDATE rooms SET assigned_to_customer_id = ${visit.customer_id}, status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = ${input.targetResourceId}`);
-    } else {
-      await tx.execute(sql`UPDATE lockers SET assigned_to_customer_id = ${visit.customer_id}, status = 'OCCUPIED', updated_at = NOW() WHERE id = ${input.targetResourceId}`);
-    }
+    await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = ${visit.customer_id}, status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = ${input.targetResourceId}`);
 
     // Update checkin block
-    const blockRoomId = input.targetResourceType === 'room' ? input.targetResourceId : null;
-    const blockLockerId = input.targetResourceType === 'locker' ? input.targetResourceId : null;
-    await tx.execute(sql`UPDATE checkin_blocks SET room_id = ${blockRoomId}, locker_id = ${blockLockerId}, rental_type = ${targetRentalType}::public.rental_type, updated_at = NOW() WHERE id = ${block.id}`);
+    await tx.execute(sql`UPDATE checkin_blocks SET resource_id = ${input.targetResourceId}, rental_type = ${targetRentalType}::public.rental_type, updated_at = NOW() WHERE id = ${block.id}`);
 
     await insertAuditLogDrizzle(tx, {
       staffId: input.staffId, action: 'UPDATE', entityType: input.targetResourceType, entityId: input.targetResourceId,

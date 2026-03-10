@@ -11,33 +11,6 @@ export async function assertAssignedResourcePersistedAndUnavailable(params: {
 }): Promise<void> {
   const { client, sessionId, customerId, resourceType, resourceId, resourceNumber } = params;
 
-  if (resourceType === 'room') {
-    const row = (
-      await client.query<{
-        id: string;
-        number: string;
-        status: string;
-        assigned_to_customer_id: string | null;
-      }>(
-        `SELECT id, number, status, assigned_to_customer_id
-         FROM rooms
-         WHERE id = $1`,
-        [resourceId]
-      )
-    ).rows[0];
-
-    const number = resourceNumber ?? row?.number ?? '(unknown)';
-    const assignedOk = row?.assigned_to_customer_id === customerId;
-    const qualifiesForAvailable = row?.status === 'CLEAN' && row?.assigned_to_customer_id === null;
-    if (!assignedOk || qualifiesForAvailable) {
-      const detail = `Check-in persistence assertion failed (room): sessionId=${sessionId} customerId=${customerId} resourceId=${resourceId} resourceNumber=${number} status=${row?.status ?? '(missing)'} assigned_to_customer_id=${row?.assigned_to_customer_id ?? '(null)'}`;
-      throw new HttpError(500, 'Check-in persistence assertion failed', {
-        cause: new Error(detail),
-      });
-    }
-    return;
-  }
-
   const row = (
     await client.query<{
       id: string;
@@ -46,7 +19,7 @@ export async function assertAssignedResourcePersistedAndUnavailable(params: {
       assigned_to_customer_id: string | null;
     }>(
       `SELECT id, number, status, assigned_to_customer_id
-       FROM lockers
+       FROM inventory_resources
        WHERE id = $1`,
       [resourceId]
     )
@@ -56,8 +29,10 @@ export async function assertAssignedResourcePersistedAndUnavailable(params: {
   const assignedOk = row?.assigned_to_customer_id === customerId;
   const qualifiesForAvailable = row?.status === 'CLEAN' && row?.assigned_to_customer_id === null;
   if (!assignedOk || qualifiesForAvailable) {
-    const detail = `Check-in persistence assertion failed (locker): sessionId=${sessionId} customerId=${customerId} resourceId=${resourceId} resourceNumber=${number} status=${row?.status ?? '(missing)'} assigned_to_customer_id=${row?.assigned_to_customer_id ?? '(null)'}`;
-    throw new HttpError(500, 'Check-in persistence assertion failed', { cause: new Error(detail) });
+    const detail = `Check-in persistence assertion failed (${resourceType}): sessionId=${sessionId} customerId=${customerId} resourceId=${resourceId} resourceNumber=${number} status=${row?.status ?? '(missing)'} assigned_to_customer_id=${row?.assigned_to_customer_id ?? '(null)'}`;
+    throw new HttpError(500, 'Check-in persistence assertion failed', {
+      cause: new Error(detail),
+    });
   }
 }
 
@@ -79,37 +54,38 @@ export async function selectRoomForNewCheckin(
   );
   const activeDemandCount = parseInt(demandRes.rows[0]?.count ?? '0', 10) || 0;
 
-  // 2) OFFERED waitlist rooms are explicitly reserved (do not assign them)
-  const offeredRes = await client.query<{ room_id: string }>(
-    `SELECT w.room_id
+  // 2) OFFERED waitlist resources are explicitly reserved (do not assign them)
+  const offeredRes = await client.query<{ resource_id: string }>(
+    `SELECT w.resource_id
      FROM waitlist w
      JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
      JOIN visits v ON v.id = w.visit_id
      WHERE w.status = 'OFFERED'
        AND w.desired_tier::text = $1
-       AND w.room_id IS NOT NULL
+       AND w.resource_id IS NOT NULL
        AND v.ended_at IS NULL
        AND cb.ends_at > NOW()`,
     [rentalType]
   );
-  const offeredRoomIds = offeredRes.rows.map((r) => r.room_id).filter(Boolean);
+  const offeredResourceIds = offeredRes.rows.map((r) => r.resource_id).filter(Boolean);
 
-  // 3) Select the (activeDemandCount+1)th clean, unassigned room by number, excluding offered rooms.
+  // 3) Select the (activeDemandCount+1)th clean, unassigned resource by number, excluding offered.
   // Concurrency-safe: FOR UPDATE SKIP LOCKED
   const room = (
     await client.query<{ id: string; number: string }>(
       `SELECT id, number
-       FROM rooms
+       FROM inventory_resources
        WHERE status = 'CLEAN'
          AND assigned_to_customer_id IS NULL
-         AND type = $1
+         AND kind = 'room'
+         AND tier = $1
          AND id <> ALL($2::uuid[])
-         -- Exclude rooms "selected" by an active lane session (reservation semantics).
+         -- Exclude resources "selected" by an active lane session (reservation semantics).
          AND NOT EXISTS (
            SELECT 1
            FROM lane_sessions ls
            WHERE ls.assigned_resource_type = 'room'
-             AND ls.assigned_resource_id = rooms.id
+             AND ls.assigned_resource_id = inventory_resources.id
              AND ls.status = ANY (
                ARRAY[
                  'ACTIVE'::public.lane_session_status,
@@ -124,7 +100,7 @@ export async function selectRoomForNewCheckin(
        OFFSET $3
        LIMIT 1
        FOR UPDATE SKIP LOCKED`,
-      [rentalType, offeredRoomIds, activeDemandCount]
+      [rentalType, offeredResourceIds, activeDemandCount]
     )
   ).rows[0];
 

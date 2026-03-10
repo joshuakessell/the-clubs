@@ -28,7 +28,7 @@ import type { LocalLaneSSEClients } from './localSSE';
  * Room assignment event payload.
  */
 export interface RoomAssignedPayload {
-  roomId: string;
+  resourceId: string;
   sessionId: string;
   customerId: string;
 }
@@ -37,7 +37,7 @@ export interface RoomAssignedPayload {
  * Room released event payload.
  */
 export interface RoomReleasedPayload {
-  roomId: string;
+  resourceId: string;
   sessionId: string;
 }
 

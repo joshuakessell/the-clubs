@@ -52,10 +52,8 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
 
         const assignmentPayload: AssignmentCreatedPayload = {
           sessionId: result.sessionId,
-          roomId: result.assignedResourceType === 'room' ? result.checkinBlockId : undefined,
-          roomNumber: result.assignedResourceType === 'room' ? result.assignedResourceNumber : undefined,
-          lockerId: result.assignedResourceType === 'locker' ? result.checkinBlockId : undefined,
-          lockerNumber: result.assignedResourceType === 'locker' ? result.assignedResourceNumber : undefined,
+          resourceId: result.checkinBlockId,
+          resourceNumber: result.assignedResourceNumber || '',
           rentalType: result.rentalType,
         };
         fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, request.params.laneId);
@@ -102,10 +100,8 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
 
         const assignmentPayload: AssignmentCreatedPayload = {
           sessionId: result.sessionId,
-          roomId: result.assignedResourceType === 'room' ? result.checkinBlockId : undefined,
-          roomNumber: result.assignedResourceType === 'room' ? result.assignedResourceNumber : undefined,
-          lockerId: result.assignedResourceType === 'locker' ? result.checkinBlockId : undefined,
-          lockerNumber: result.assignedResourceType === 'locker' ? result.assignedResourceNumber : undefined,
+          resourceId: result.checkinBlockId,
+          resourceNumber: result.assignedResourceNumber || '',
           rentalType: result.rentalType,
         };
         fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, request.params.laneId);

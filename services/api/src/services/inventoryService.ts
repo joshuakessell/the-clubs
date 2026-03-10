@@ -1,13 +1,13 @@
 /**
- * Inventory service — consolidated data-fetching logic for room and locker inventory.
+ * Inventory service — consolidated data-fetching logic for inventory resources.
  *
- * Migrated to Drizzle ORM typed queries (Phase 3).
+ * Migrated to unified `inventory_resources` table (Phase 3).
  * Uses `db.select()` for type-safe reads, `db.execute(sql`...`)` for LATERAL joins.
  * This module contains ZERO HTTP/Fastify concepts.
  */
 import { db } from '../db';
-import { rooms, lockers, customers, checkinBlocks, waitlist } from '../db/schema';
-import { eq, ne, or, isNotNull, count, sql, inArray } from 'drizzle-orm';
+import { inventoryResources, customers, checkinBlocks, waitlist } from '../db/schema';
+import { eq, count, sql, inArray } from 'drizzle-orm';
 import { getRoomTierFromNumber } from '@the-clubs/shared';
 import { computeInventoryAvailable } from '../inventory/available';
 
@@ -29,23 +29,24 @@ function getRoomTier(roomNumber: string): RoomTier {
 export async function getInventorySummary() {
   const roomRows = await db
     .select({
-      status: rooms.status,
-      roomType: rooms.type,
+      status: inventoryResources.status,
+      tier: inventoryResources.tier,
       count: count(),
     })
-    .from(rooms)
-    .where(ne(rooms.type, 'LOCKER'))
-    .groupBy(rooms.status, rooms.type)
-    .orderBy(rooms.type, rooms.status);
+    .from(inventoryResources)
+    .where(eq(inventoryResources.kind, 'room'))
+    .groupBy(inventoryResources.status, inventoryResources.tier)
+    .orderBy(inventoryResources.tier, inventoryResources.status);
 
   const lockerRows = await db
     .select({
-      status: lockers.status,
+      status: inventoryResources.status,
       count: count(),
     })
-    .from(lockers)
-    .groupBy(lockers.status)
-    .orderBy(lockers.status);
+    .from(inventoryResources)
+    .where(eq(inventoryResources.kind, 'locker'))
+    .groupBy(inventoryResources.status)
+    .orderBy(inventoryResources.status);
 
   // Count active/offered waitlist entries per desired tier
   const waitlistRows = await db
@@ -75,17 +76,17 @@ export async function getInventorySummary() {
 
   for (const row of roomRows) {
     const cnt = row.count;
-    const roomType = row.roomType;
-    const status = roomType ? (row.status as string).toLowerCase() as 'clean' | 'cleaning' | 'dirty' : null;
+    const tier = row.tier;
+    const status = tier ? (row.status as string).toLowerCase() as 'clean' | 'cleaning' | 'dirty' : null;
 
-    if (!roomType || !status) continue;
+    if (!tier || !status) continue;
 
-    if (!byType[roomType]) {
-      byType[roomType] = { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 };
+    if (!byType[tier]) {
+      byType[tier] = { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 };
     }
 
-    byType[roomType][status] = cnt;
-    byType[roomType].total += cnt;
+    byType[tier][status] = cnt;
+    byType[tier].total += cnt;
 
     if (status === 'clean') overallClean += cnt;
     else if (status === 'cleaning') overallCleaning += cnt;
@@ -144,28 +145,25 @@ export async function getInventoryAvailable() {
 export async function getUnavailableOptions() {
   const roomRows = await db
     .select({
-      number: rooms.number,
-      status: rooms.status,
+      number: inventoryResources.number,
+      status: inventoryResources.status,
     })
-    .from(rooms)
+    .from(inventoryResources)
     .where(
-      sql`${rooms.type} != 'LOCKER' AND (${rooms.status} IN ('OCCUPIED', 'DIRTY', 'CLEANING') OR ${rooms.assignedToCustomerId} IS NOT NULL)`
+      sql`${inventoryResources.kind} = 'room' AND (${inventoryResources.status} IN ('OCCUPIED', 'DIRTY', 'CLEANING') OR ${inventoryResources.assignedToCustomerId} IS NOT NULL)`
     )
-    .orderBy(rooms.number);
+    .orderBy(inventoryResources.number);
 
   const lockerRows = await db
     .select({
-      number: lockers.number,
-      status: lockers.status,
+      number: inventoryResources.number,
+      status: inventoryResources.status,
     })
-    .from(lockers)
+    .from(inventoryResources)
     .where(
-      or(
-        sql`${lockers.status} IN ('OCCUPIED', 'DIRTY', 'CLEANING')`,
-        isNotNull(lockers.assignedToCustomerId)
-      )
+      sql`${inventoryResources.kind} = 'locker' AND (${inventoryResources.status} IN ('OCCUPIED', 'DIRTY', 'CLEANING') OR ${inventoryResources.assignedToCustomerId} IS NOT NULL)`
     )
-    .orderBy(lockers.number);
+    .orderBy(inventoryResources.number);
 
   const roomsByTier: Record<RoomTier, Array<{ number: string; status: string }>> = {
     SPECIAL: [],
@@ -198,19 +196,19 @@ export async function getUnavailableOptions() {
 export async function getRoomsByTier() {
   const roomRows = await db
     .select({
-      id: rooms.id,
-      number: rooms.number,
-      status: rooms.status,
-      assignedToCustomerId: rooms.assignedToCustomerId,
+      id: inventoryResources.id,
+      number: inventoryResources.number,
+      status: inventoryResources.status,
+      assignedToCustomerId: inventoryResources.assignedToCustomerId,
       checkoutAt: checkinBlocks.endsAt,
     })
-    .from(rooms)
+    .from(inventoryResources)
     .leftJoin(
       checkinBlocks,
-      sql`${checkinBlocks.roomId} = ${rooms.id} AND ${checkinBlocks.endsAt} > NOW()`
+      sql`${checkinBlocks.resourceId} = ${inventoryResources.id} AND ${checkinBlocks.endsAt} > NOW()`
     )
-    .where(ne(rooms.type, 'LOCKER'))
-    .orderBy(rooms.number);
+    .where(eq(inventoryResources.kind, 'room'))
+    .orderBy(inventoryResources.number);
 
   const now = new Date();
   const expiringSoonThreshold = new Date(now.getTime() + 30 * 60 * 1000);
@@ -255,13 +253,14 @@ export async function getRoomsByTier() {
   // Get lockers
   const lockerRows = await db
     .select({
-      id: lockers.id,
-      number: lockers.number,
-      status: lockers.status,
-      assignedToCustomerId: lockers.assignedToCustomerId,
+      id: inventoryResources.id,
+      number: inventoryResources.number,
+      status: inventoryResources.status,
+      assignedToCustomerId: inventoryResources.assignedToCustomerId,
     })
-    .from(lockers)
-    .orderBy(lockers.number);
+    .from(inventoryResources)
+    .where(eq(inventoryResources.kind, 'locker'))
+    .orderBy(inventoryResources.number);
 
   const lockerResult = {
     available: [] as Array<{ id: string; number: string }>,
@@ -285,20 +284,20 @@ export async function getRoomsByTier() {
 export async function getAllRooms() {
   const roomRows = await db
     .select({
-      id: rooms.id,
-      number: rooms.number,
-      type: rooms.type,
-      status: rooms.status,
-      floor: rooms.floor,
-      lastStatusChange: rooms.lastStatusChange,
-      assignedToCustomerId: rooms.assignedToCustomerId,
+      id: inventoryResources.id,
+      number: inventoryResources.number,
+      type: inventoryResources.tier,
+      status: inventoryResources.status,
+      floor: inventoryResources.floor,
+      lastStatusChange: inventoryResources.lastStatusChange,
+      assignedToCustomerId: inventoryResources.assignedToCustomerId,
       assignedCustomerName: customers.name,
-      overrideFlag: rooms.overrideFlag,
+      overrideFlag: inventoryResources.overrideFlag,
     })
-    .from(rooms)
-    .leftJoin(customers, eq(rooms.assignedToCustomerId, customers.id))
-    .where(ne(rooms.type, 'LOCKER'))
-    .orderBy(rooms.number);
+    .from(inventoryResources)
+    .leftJoin(customers, eq(inventoryResources.assignedToCustomerId, customers.id))
+    .where(eq(inventoryResources.kind, 'room'))
+    .orderBy(inventoryResources.number);
 
   const result = roomRows.map((row) => ({
     id: row.id,
@@ -339,7 +338,7 @@ export async function getDetailedInventory() {
   }>(sql`SELECT 
        r.id,
        r.number,
-       r.type,
+       r.tier AS type,
        r.status,
        r.floor,
        r.last_status_change,
@@ -350,18 +349,18 @@ export async function getDetailedInventory() {
        cb.visit_id as visit_id,
        cb.starts_at as checkin_at,
        cb.ends_at as checkout_at
-     FROM rooms r
+     FROM inventory_resources r
      LEFT JOIN customers c ON r.assigned_to_customer_id = c.id
      LEFT JOIN LATERAL (
        SELECT cb.id as occupancy_id, cb.visit_id, cb.starts_at, cb.ends_at
        FROM checkin_blocks cb
        JOIN visits v ON v.id = cb.visit_id
-       WHERE cb.room_id = r.id
+       WHERE cb.resource_id = r.id
          AND v.ended_at IS NULL
        ORDER BY cb.ends_at DESC
        LIMIT 1
      ) cb ON TRUE
-     WHERE r.type != 'LOCKER'
+     WHERE r.kind = 'room'
      ORDER BY 
        CASE WHEN r.status = 'CLEAN' THEN 0 ELSE 1 END,
        cb.ends_at ASC NULLS LAST,
@@ -378,30 +377,31 @@ export async function getDetailedInventory() {
     checkin_at: string | null;
     checkout_at: string | null;
   }>(sql`SELECT 
-       l.id,
-       l.number,
-       l.status,
-       l.assigned_to_customer_id,
+       r.id,
+       r.number,
+       r.status,
+       r.assigned_to_customer_id,
        c.name as assigned_customer_name,
        cb.occupancy_id as occupancy_id,
        cb.visit_id as visit_id,
        cb.starts_at as checkin_at,
        cb.ends_at as checkout_at
-     FROM lockers l
-     LEFT JOIN customers c ON l.assigned_to_customer_id = c.id
+     FROM inventory_resources r
+     LEFT JOIN customers c ON r.assigned_to_customer_id = c.id
      LEFT JOIN LATERAL (
        SELECT cb.id as occupancy_id, cb.visit_id, cb.starts_at, cb.ends_at
        FROM checkin_blocks cb
        JOIN visits v ON v.id = cb.visit_id
-       WHERE cb.locker_id = l.id
+       WHERE cb.resource_id = r.id
          AND v.ended_at IS NULL
        ORDER BY cb.ends_at DESC
        LIMIT 1
      ) cb ON TRUE
+     WHERE r.kind = 'locker'
      ORDER BY 
-       CASE WHEN l.status = 'CLEAN' THEN 0 ELSE 1 END,
+       CASE WHEN r.status = 'CLEAN' THEN 0 ELSE 1 END,
        cb.ends_at ASC NULLS LAST,
-       l.number`);
+       r.number`);
 
   const roomList = roomResult.rows.map((row) => ({
     id: row.id,

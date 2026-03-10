@@ -23,8 +23,8 @@ interface CheckinBlock {
   startsAt: string;
   endsAt: string;
   rentalType: string;
-  roomNumber: string | null;
-  lockerNumber: string | null;
+  resourceNumber: string | null;
+  resourceKind: string | null;
   agreementSigned: boolean;
   hasPdf: boolean;
   paymentTotal: number | null;
@@ -190,7 +190,7 @@ function CustomerDetail({ customer }: { customer: Customer }) {
                         {block.rentalType}
                       </td>
                       <td className="px-3 py-2 text-sm font-mono" style={{ color: 'var(--color-text-secondary)' }}>
-                        {block.roomNumber ?? block.lockerNumber ?? '—'}
+                        {block.resourceNumber ?? '—'}
                       </td>
                       <td className="px-3 py-2 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
                         {total > 0 ? `$${total.toFixed(2)}` : '—'}

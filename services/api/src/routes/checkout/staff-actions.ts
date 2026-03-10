@@ -157,9 +157,9 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
         if (fastify.broadcaster) {
           await broadcastInventoryUpdate(fastify.broadcaster);
 
-          if (result.roomId) {
+          if (result.resourceId) {
             fastify.broadcaster.broadcastRoomStatusChanged({
-              roomId: result.roomId,
+              roomId: result.resourceId,
               previousStatus: RoomStatus.CLEAN,
               newStatus: RoomStatus.DIRTY,
               changedBy: request.staff.staffId,

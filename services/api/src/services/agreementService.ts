@@ -12,9 +12,8 @@ import { sql } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import type {
   LaneSessionRow,
-  LockerRow,
+  ResourceRow,
   PaymentIntentRow,
-  RoomRow,
   RoomRentalType,
 } from '../checkin/types';
 import {
@@ -294,10 +293,9 @@ async function computeRenewalTimeBlock(
   const blocksResult = await tx.execute<{
     starts_at: Date;
     ends_at: Date;
-    room_id: string | null;
-    locker_id: string | null;
+    resource_id: string | null;
   }>(
-    sql`SELECT starts_at, ends_at, room_id, locker_id FROM checkin_blocks WHERE visit_id = ${visitId} ORDER BY ends_at DESC`
+    sql`SELECT starts_at, ends_at, resource_id FROM checkin_blocks WHERE visit_id = ${visitId} ORDER BY ends_at DESC`
   );
   if (blocksResult.rows.length === 0) {
     throw new HttpError(400, 'Visit has no blocks');
@@ -335,33 +333,22 @@ async function computeRenewalTimeBlock(
 async function resolveRenewalResource(
   tx: DrizzleTx,
   session: LaneSessionRow,
-  latestBlock: { room_id: string | null; locker_id: string | null },
+  latestBlock: { resource_id: string | null },
 ): Promise<{ assignedResourceId: string; assignedResourceType: 'room' | 'locker'; assignedResourceNumber: string | undefined }> {
-  if (latestBlock.room_id) {
-    const roomResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = ${latestBlock.room_id} LIMIT 1`
-    );
-    const room = roomResult.rows[0] as unknown as RoomRow | undefined;
-    if (!room) throw new HttpError(400, 'Renewal room assignment not found');
-    if (room.assigned_to_customer_id !== session.customer_id || room.status !== 'OCCUPIED') {
-      throw new HttpError(409, `Room ${room.number} is not currently assigned to this customer`);
-    }
-    return { assignedResourceId: room.id, assignedResourceType: 'room', assignedResourceNumber: room.number };
+  if (!latestBlock.resource_id) {
+    throw new HttpError(400, 'Active visit has no assigned resource');
   }
 
-  if (latestBlock.locker_id) {
-    const lockerResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = ${latestBlock.locker_id} LIMIT 1`
-    );
-    const locker = lockerResult.rows[0] as unknown as LockerRow | undefined;
-    if (!locker) throw new HttpError(400, 'Renewal locker assignment not found');
-    if (locker.assigned_to_customer_id !== session.customer_id || locker.status !== 'OCCUPIED') {
-      throw new HttpError(409, `Locker ${locker.number} is not currently assigned to this customer`);
-    }
-    return { assignedResourceId: locker.id, assignedResourceType: 'locker', assignedResourceNumber: locker.number };
+  const resourceResult = await tx.execute<Record<string, unknown>>(
+    sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${latestBlock.resource_id} LIMIT 1`
+  );
+  const resource = resourceResult.rows[0] as unknown as ResourceRow | undefined;
+  if (!resource) throw new HttpError(400, 'Renewal resource assignment not found');
+  if (resource.assigned_to_customer_id !== session.customer_id || resource.status !== 'OCCUPIED') {
+    throw new HttpError(409, `Resource ${resource.number} is not currently assigned to this customer`);
   }
-
-  throw new HttpError(400, 'Active visit has no assigned room or locker');
+  const resourceType = resource.kind === 'locker' ? 'locker' as const : 'room' as const;
+  return { assignedResourceId: resource.id, assignedResourceType: resourceType, assignedResourceNumber: resource.number };
 }
 
 async function resolvePreAssignedResource(
@@ -370,49 +357,26 @@ async function resolvePreAssignedResource(
   assignedResourceId: string,
   assignedResourceType: 'room' | 'locker',
 ): Promise<string> {
-  if (assignedResourceType === 'room') {
-    const roomResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = ${assignedResourceId} FOR UPDATE`
-    );
-    const room = roomResult.rows[0] as unknown as RoomRow | undefined;
-    if (!room) throw new HttpError(404, 'Selected room not found');
-    if (room.status !== 'CLEAN' || room.assigned_to_customer_id) {
-      throw new HttpError(409, `Selected room ${room.number} is no longer available`);
-    }
-    const selectedByOther = await tx.execute<{ id: string }>(
-      sql`SELECT id FROM lane_sessions
-       WHERE id <> ${session.id}
-         AND assigned_resource_type = 'room'
-         AND assigned_resource_id = ${assignedResourceId}
-         AND status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
-       LIMIT 1`
-    );
-    if (selectedByOther.rows.length > 0) {
-      throw new HttpError(409, `Selected room ${room.number} is reserved by another lane session`);
-    }
-    return room.number;
-  }
-
-  const lockerResult = await tx.execute<Record<string, unknown>>(
-    sql`SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = ${assignedResourceId} FOR UPDATE`
+  const resourceResult = await tx.execute<Record<string, unknown>>(
+    sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${assignedResourceId} FOR UPDATE`
   );
-  const locker = lockerResult.rows[0] as unknown as LockerRow | undefined;
-  if (!locker) throw new HttpError(404, 'Selected locker not found');
-  if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id) {
-    throw new HttpError(409, `Selected locker ${locker.number} is no longer available`);
+  const resource = resourceResult.rows[0] as unknown as ResourceRow | undefined;
+  if (!resource) throw new HttpError(404, `Selected ${assignedResourceType} not found`);
+  if (resource.status !== 'CLEAN' || resource.assigned_to_customer_id) {
+    throw new HttpError(409, `Selected ${assignedResourceType} ${resource.number} is no longer available`);
   }
   const selectedByOther = await tx.execute<{ id: string }>(
     sql`SELECT id FROM lane_sessions
      WHERE id <> ${session.id}
-       AND assigned_resource_type = 'locker'
+       AND assigned_resource_type = ${assignedResourceType}
        AND assigned_resource_id = ${assignedResourceId}
        AND status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
      LIMIT 1`
   );
   if (selectedByOther.rows.length > 0) {
-    throw new HttpError(409, `Selected locker ${locker.number} is reserved by another lane session`);
+    throw new HttpError(409, `Selected ${assignedResourceType} ${resource.number} is reserved by another lane session`);
   }
-  return locker.number;
+  return resource.number;
 }
 
 async function autoAssignResource(
@@ -421,18 +385,18 @@ async function autoAssignResource(
 ): Promise<{ id: string; type: 'room' | 'locker'; number: string }> {
   if (rentalType === 'LOCKER' || rentalType === 'GYM_LOCKER') {
     const lockerResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT id, number, status, assigned_to_customer_id
-       FROM lockers
-       WHERE status = 'CLEAN' AND assigned_to_customer_id IS NULL
+      sql`SELECT id, number, kind, tier, status, assigned_to_customer_id
+       FROM inventory_resources
+       WHERE kind = 'locker' AND status = 'CLEAN' AND assigned_to_customer_id IS NULL
        AND NOT EXISTS (
          SELECT 1 FROM lane_sessions ls
          WHERE ls.assigned_resource_type = 'locker'
-           AND ls.assigned_resource_id = lockers.id
+           AND ls.assigned_resource_id = inventory_resources.id
            AND ls.status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
        )
        ORDER BY number LIMIT 1 FOR UPDATE SKIP LOCKED`
     );
-    const locker = lockerResult.rows[0] as unknown as LockerRow | undefined;
+    const locker = lockerResult.rows[0] as unknown as ResourceRow | undefined;
     if (!locker) throw new HttpError(409, 'No available lockers');
     return { id: locker.id, type: 'locker', number: locker.number };
   }
@@ -451,15 +415,9 @@ async function markResourceOccupied(
   resourceId: string,
 ): Promise<void> {
   if (isRenewal) return;
-  if (resourceType === 'room') {
-    await tx.execute(
-      sql`UPDATE rooms SET status = 'OCCUPIED', assigned_to_customer_id = ${customerId}, last_status_change = NOW(), updated_at = NOW() WHERE id = ${resourceId}`
-    );
-  } else {
-    await tx.execute(
-      sql`UPDATE lockers SET status = 'OCCUPIED', assigned_to_customer_id = ${customerId}, updated_at = NOW() WHERE id = ${resourceId}`
-    );
-  }
+  await tx.execute(
+    sql`UPDATE inventory_resources SET status = 'OCCUPIED', assigned_to_customer_id = ${customerId}, last_status_change = NOW(), updated_at = NOW() WHERE id = ${resourceId}`
+  );
 }
 
 async function maybeInsertFlowCommand(
@@ -512,12 +470,10 @@ async function createVisitAndBlock(params: BlockInsertParams): Promise<{ visitId
     visitId = visitResult.rows[0].id;
   }
 
-  const roomId = params.resourceType === 'room' ? params.resourceId : null;
-  const lockerId = params.resourceType === 'locker' ? params.resourceId : null;
   const blockResult = await params.tx.execute<{ id: string }>(
     sql`INSERT INTO checkin_blocks
-     (visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id, session_id, agreement_signed, agreement_pdf, agreement_signed_at)
-     VALUES (${visitId}, ${params.blockType}, ${params.startsAt}, ${params.endsAt}, ${params.rentalType}, ${roomId}, ${lockerId}, ${params.sessionId}, true, ${params.pdfBuffer}, ${params.signedAt})
+     (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, session_id, agreement_signed, agreement_pdf, agreement_signed_at)
+     VALUES (${visitId}, ${params.blockType}, ${params.startsAt}, ${params.endsAt}, ${params.rentalType}, ${params.resourceId}, ${params.sessionId}, true, ${params.pdfBuffer}, ${params.signedAt})
      RETURNING id`
   );
 
@@ -987,23 +943,13 @@ async function lookupAssignedResource(
   resourceType: string,
   resourceId: string,
 ): Promise<{ confirmedType: string; confirmedNumber: string }> {
-  if (resourceType === 'room') {
-    const roomRes = await tx.execute<{ number: string }>(
-      sql`SELECT number FROM rooms WHERE id = ${resourceId} LIMIT 1`
-    );
-    if (roomRes.rows.length === 0) throw new HttpError(404, 'Assigned room not found');
-    return { confirmedType: getRoomTier(roomRes.rows[0].number), confirmedNumber: roomRes.rows[0].number };
-  }
-
-  if (resourceType === 'locker') {
-    const lockerRes = await tx.execute<{ number: string }>(
-      sql`SELECT number FROM lockers WHERE id = ${resourceId} LIMIT 1`
-    );
-    if (lockerRes.rows.length === 0) throw new HttpError(404, 'Assigned locker not found');
-    return { confirmedType: 'LOCKER', confirmedNumber: lockerRes.rows[0].number };
-  }
-
-  throw new HttpError(400, 'Invalid assigned resource type');
+  const res = await tx.execute<{ number: string; kind: string }>(
+    sql`SELECT number, kind FROM inventory_resources WHERE id = ${resourceId} LIMIT 1`
+  );
+  if (res.rows.length === 0) throw new HttpError(404, 'Assigned resource not found');
+  const row = res.rows[0];
+  const confirmedType = row.kind === 'locker' ? 'LOCKER' : getRoomTier(row.number);
+  return { confirmedType, confirmedNumber: row.number };
 }
 
 async function resolveDecline(
@@ -1011,15 +957,9 @@ async function resolveDecline(
   session: LaneSessionRow,
 ): Promise<CustomerConfirmResult> {
   if (session.assigned_resource_id) {
-    if (session.assigned_resource_type === 'room') {
-      await tx.execute(
-        sql`UPDATE rooms SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${session.assigned_resource_id}`
-      );
-    } else if (session.assigned_resource_type === 'locker') {
-      await tx.execute(
-        sql`UPDATE lockers SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${session.assigned_resource_id}`
-      );
-    }
+    await tx.execute(
+      sql`UPDATE inventory_resources SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${session.assigned_resource_id}`
+    );
 
     await tx.execute(
       sql`UPDATE lane_sessions SET assigned_resource_id = NULL, assigned_resource_type = NULL, updated_at = NOW() WHERE id = ${session.id}`

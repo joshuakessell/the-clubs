@@ -519,19 +519,10 @@ async function fetchAssignedResourceNumber(
   resourceId: string | null
 ): Promise<string | undefined> {
   if (!resourceId || !resourceType) return undefined;
-  if (resourceType === 'room') {
-    const roomResult = await db.execute<{ number: string }>(
-      sql`SELECT number FROM rooms WHERE id = ${resourceId} LIMIT 1`
-    );
-    return roomResult.rows[0]?.number;
-  }
-  if (resourceType === 'locker') {
-    const lockerResult = await db.execute<{ number: string }>(
-      sql`SELECT number FROM lockers WHERE id = ${resourceId} LIMIT 1`
-    );
-    return lockerResult.rows[0]?.number;
-  }
-  return undefined;
+  const result = await db.execute<{ number: string }>(
+    sql`SELECT number FROM inventory_resources WHERE id = ${resourceId} LIMIT 1`
+  );
+  return result.rows[0]?.number;
 }
 
 async function fetchWaitlistEstimates(

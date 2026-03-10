@@ -139,9 +139,9 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
           // Broadcast assignment created
           const assignmentPayload: AssignmentCreatedPayload = {
             sessionId: session.id,
-            ...(resourceType === 'room'
-              ? { roomId: resourceId, roomNumber: resourceRow.number, rentalType: roomTier! }
-              : { lockerId: resourceId, lockerNumber: resourceRow.number, rentalType: 'LOCKER' }),
+            resourceId,
+            resourceNumber: resourceRow.number,
+            rentalType: resourceType === 'locker' ? 'LOCKER' : roomTier!,
           };
           fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, laneId);
 
@@ -190,8 +190,7 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
                 const failedPayload: AssignmentFailedPayload = {
                   sessionId: sessionResult.rows[0]!.id,
                   reason: httpErr.message ?? 'Resource already assigned',
-                  requestedRoomId: resourceType === 'room' ? resourceId : undefined,
-                  requestedLockerId: resourceType === 'locker' ? resourceId : undefined,
+                  requestedResourceId: resourceId,
                 };
                 fastify.broadcaster.broadcastAssignmentFailed(failedPayload, laneId);
               }

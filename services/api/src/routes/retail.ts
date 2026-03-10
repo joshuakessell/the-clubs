@@ -22,37 +22,21 @@ export async function retailRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const result = await db.execute<Record<string, unknown>>(
           sql`
-          WITH room_guests AS (
-            SELECT DISTINCT ON (cb.room_id)
+          WITH resource_guests AS (
+            SELECT DISTINCT ON (cb.resource_id)
               v.customer_id,
               c.name as customer_name,
-              'ROOM'::text as resource_type,
+              CASE WHEN r.kind = 'locker' THEN 'LOCKER' ELSE 'ROOM' END as resource_type,
               r.number,
               v.id as visit_id,
               NULL::uuid as lane_session_id
             FROM checkin_blocks cb
             JOIN visits v ON cb.visit_id = v.id
             JOIN customers c ON v.customer_id = c.id
-            JOIN rooms r ON cb.room_id = r.id
-            WHERE cb.room_id IS NOT NULL
+            JOIN inventory_resources r ON cb.resource_id = r.id
+            WHERE cb.resource_id IS NOT NULL
               AND v.ended_at IS NULL
-            ORDER BY cb.room_id, cb.starts_at DESC
-          ),
-          locker_guests AS (
-            SELECT DISTINCT ON (cb.locker_id)
-              v.customer_id,
-              c.name as customer_name,
-              'LOCKER'::text as resource_type,
-              l.number,
-              v.id as visit_id,
-              NULL::uuid as lane_session_id
-            FROM checkin_blocks cb
-            JOIN visits v ON cb.visit_id = v.id
-            JOIN customers c ON v.customer_id = c.id
-            JOIN lockers l ON cb.locker_id = l.id
-            WHERE cb.locker_id IS NOT NULL
-              AND v.ended_at IS NULL
-            ORDER BY cb.locker_id, cb.starts_at DESC
+            ORDER BY cb.resource_id, cb.starts_at DESC
           ),
           checking_in AS (
             SELECT DISTINCT ON (ls.lane_id)
@@ -68,9 +52,7 @@ export async function retailRoutes(fastify: FastifyInstance): Promise<void> {
               AND ls.status NOT IN ('COMPLETED', 'CANCELLED')
             ORDER BY ls.lane_id, ls.created_at DESC
           )
-          SELECT * FROM room_guests
-          UNION ALL
-          SELECT * FROM locker_guests
+          SELECT * FROM resource_guests
           UNION ALL
           SELECT * FROM checking_in
           ORDER BY resource_type, number

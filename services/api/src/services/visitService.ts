@@ -4,14 +4,14 @@
  * Migrated to Drizzle ORM in Phase 3.
  *
  * Uses domain helpers from Phase 0:
- *   - domain/resourceAssignment.ts (assignRoom, assignLocker)
+ *   - domain/resourceAssignment.ts (assignResource)
  *   - domain/customerGuards.ts (assertNotBanned, assertCustomerExists)
  */
 import { db } from '../db';
 import { visits, customers, checkinBlocks, paymentIntents } from '../db/schema';
 import { eq, sql, desc } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
-import { assignRoom, assignLocker } from '../domain/resourceAssignment';
+import { assignResource } from '../domain/resourceAssignment';
 import { assertNotBanned, assertCustomerExists } from '../domain/customerGuards';
 import { HttpError } from '../errors/HttpError';
 import { roundUpToQuarterHour } from '../time/rounding';
@@ -67,8 +67,7 @@ function formatBlock(block: {
   startsAt: Date;
   endsAt: Date;
   rentalType: string;
-  roomId: string | null;
-  lockerId: string | null;
+  resourceId: string | null;
   sessionId: string | null;
   agreementSigned: boolean;
   createdAt: Date;
@@ -81,8 +80,7 @@ function formatBlock(block: {
     startsAt: block.startsAt.toISOString(),
     endsAt: block.endsAt.toISOString(),
     rentalType: block.rentalType,
-    roomId: block.roomId,
-    lockerId: block.lockerId,
+    resourceId: block.resourceId,
     sessionId: block.sessionId,
     agreementSigned: block.agreementSigned,
     createdAt: block.createdAt.toISOString(),
@@ -97,23 +95,20 @@ export type RentalType = 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'LOCKER' | 'GYM_LOC
 export interface CreateVisitInput {
   customerId: string;
   rentalType: RentalType;
-  roomId?: string;
-  lockerId?: string;
+  resourceId?: string;
 }
 
 export interface RenewVisitInput {
   visitId: string;
   rentalType: RentalType;
-  roomId?: string;
-  lockerId?: string;
+  resourceId?: string;
   renewalHours?: 2 | 6;
 }
 
 export interface FinalExtensionInput {
   visitId: string;
   rentalType: RentalType;
-  roomId?: string;
-  lockerId?: string;
+  resourceId?: string;
   staffId: string;
 }
 
@@ -150,13 +145,9 @@ export async function createVisit(input: CreateVisitInput) {
       throw new HttpError(409, 'Member already has an active visit');
     }
 
-    // 3. Handle room/locker assignment using Phase 0 helpers (now Drizzle-native)
-    const assignedRoomId = input.roomId
-      ? await assignRoom(tx, input.roomId, input.customerId)
-      : null;
-
-    const assignedLockerId = input.lockerId
-      ? await assignLocker(tx, input.lockerId, input.customerId)
+    // 3. Handle resource assignment using unified assignResource
+    const assignedResourceId = input.resourceId
+      ? await assignResource(tx, input.resourceId, input.customerId)
       : null;
 
     // 4. Create the visit
@@ -184,8 +175,7 @@ export async function createVisit(input: CreateVisitInput) {
         startsAt: now,
         endsAt: initialBlockEndsAt,
         rentalType: input.rentalType,
-        roomId: assignedRoomId,
-        lockerId: assignedLockerId,
+        resourceId: assignedResourceId,
       })
       .returning();
 
@@ -246,8 +236,7 @@ export async function renewVisit(input: RenewVisitInput) {
         startsAt: checkinBlocks.startsAt,
         endsAt: checkinBlocks.endsAt,
         rentalType: checkinBlocks.rentalType,
-        roomId: checkinBlocks.roomId,
-        lockerId: checkinBlocks.lockerId,
+        resourceId: checkinBlocks.resourceId,
         sessionId: checkinBlocks.sessionId,
         agreementSigned: checkinBlocks.agreementSigned,
       })
@@ -289,15 +278,9 @@ export async function renewVisit(input: RenewVisitInput) {
     const renewalStartsAt = latestBlockEnd;
     const renewalEndsAt = new Date(renewalStartsAt.getTime() + requestedRenewalHours * 60 * 60 * 1000);
 
-    // 6. Room/locker assignment (renewal allows reassign-to-same)
-    const assignedRoomId = input.roomId
-      ? await assignRoom(tx, input.roomId, visit.customerId, {
-          allowReassignToSame: true,
-        })
-      : null;
-
-    const assignedLockerId = input.lockerId
-      ? await assignLocker(tx, input.lockerId, visit.customerId, {
+    // 6. Resource assignment (renewal allows reassign-to-same)
+    const assignedResourceId = input.resourceId
+      ? await assignResource(tx, input.resourceId, visit.customerId, {
           allowReassignToSame: true,
         })
       : null;
@@ -311,8 +294,7 @@ export async function renewVisit(input: RenewVisitInput) {
         startsAt: renewalStartsAt,
         endsAt: renewalEndsAt,
         rentalType: input.rentalType,
-        roomId: assignedRoomId,
-        lockerId: assignedLockerId,
+        resourceId: assignedResourceId,
       })
       .returning();
 
@@ -364,8 +346,7 @@ export async function createFinalExtension(input: FinalExtensionInput) {
         startsAt: checkinBlocks.startsAt,
         endsAt: checkinBlocks.endsAt,
         rentalType: checkinBlocks.rentalType,
-        roomId: checkinBlocks.roomId,
-        lockerId: checkinBlocks.lockerId,
+        resourceId: checkinBlocks.resourceId,
       })
       .from(checkinBlocks)
       .where(eq(checkinBlocks.visitId, visit.id))
@@ -406,15 +387,9 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       throw new HttpError(400, 'Cannot determine extension start time');
     }
 
-    // 3. Room/locker assignment (reassign-to-same allowed)
-    const assignedRoomId = input.roomId
-      ? await assignRoom(tx, input.roomId, visit.customerId, {
-          allowReassignToSame: true,
-        })
-      : null;
-
-    const assignedLockerId = input.lockerId
-      ? await assignLocker(tx, input.lockerId, visit.customerId, {
+    // 3. Resource assignment (reassign-to-same allowed)
+    const assignedResourceId = input.resourceId
+      ? await assignResource(tx, input.resourceId, visit.customerId, {
           allowReassignToSame: true,
         })
       : null;
@@ -431,8 +406,7 @@ export async function createFinalExtension(input: FinalExtensionInput) {
         startsAt: extensionStartsAt,
         endsAt: extensionEndsAt,
         rentalType: input.rentalType,
-        roomId: assignedRoomId,
-        lockerId: assignedLockerId,
+        resourceId: assignedResourceId,
         agreementSigned: true,
       })
       .returning();

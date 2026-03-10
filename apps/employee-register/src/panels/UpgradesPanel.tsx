@@ -20,7 +20,7 @@ interface WaitlistEntry {
   status: string;
   createdAt: string;
   offeredAt?: string | null;
-  roomId?: string | null;
+  resourceId?: string | null;
   offeredRoomNumber?: string | null;
   displayIdentifier: string;
   currentRentalType: string;
@@ -38,7 +38,7 @@ interface FulfillResult {
   waitlistId: string;
   paymentIntentId: string;
   upgradeFee: number;
-  newRoomId: string;
+  newResourceId: string;
   newRoomNumber: string;
   newRoomTier: string;
   fromTier: string;
@@ -637,7 +637,7 @@ export function UpgradesPanel() {
       const offerRes = await fetch(getApiUrl(`/api/v1/waitlist/${entry.id}/offer`), {
         method: 'POST',
         headers: { ...h, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId }),
+        body: JSON.stringify({ resourceId: roomId }),
       });
       if (!offerRes.ok) {
         const err = await offerRes.json().catch(() => ({}));
@@ -656,12 +656,12 @@ export function UpgradesPanel() {
     setSubmitting(true);
     try {
       const h = headers();
-      if (!entry.roomId) throw new Error('No room offered');
+      if (!entry.resourceId) throw new Error('No room offered');
 
       const res = await fetch(getApiUrl('/api/v1/upgrades/fulfill'), {
         method: 'POST',
         headers: { ...h, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ waitlistId: entry.id, roomId: entry.roomId, acknowledgedDisclaimer: true }),
+        body: JSON.stringify({ waitlistId: entry.id, resourceId: entry.resourceId, acknowledgedDisclaimer: true }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));

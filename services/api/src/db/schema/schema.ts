@@ -295,54 +295,36 @@ export const webauthnChallenges = pgTable("webauthn_challenges", {
 	unique("webauthn_challenges_challenge_key").on(table.challenge),
 ]);
 
-export const lockers = pgTable("lockers", {
+export const inventoryResources = pgTable("inventory_resources", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
+	kind: inventoryResourceType().notNull(),
 	number: varchar({ length: 20 }).notNull(),
+	tier: roomType().default('STANDARD').notNull(),
 	status: roomStatus().default('CLEAN').notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
-	assignedToCustomerId: uuid("assigned_to_customer_id"),
-}, (table) => [
-	index("idx_lockers_assigned_customer").using("btree", table.assignedToCustomerId.asc().nullsLast().op("uuid_ops")).where(sql`(assigned_to_customer_id IS NOT NULL)`),
-	index("idx_lockers_status").using("btree", table.status.asc().nullsLast().op("enum_ops")),
-	foreignKey({
-			columns: [table.assignedToCustomerId],
-			foreignColumns: [customers.id],
-			name: "lockers_assigned_to_customer_id_fkey"
-		}).onDelete("set null"),
-	unique("lockers_number_key").on(table.number),
-]);
-
-export const rooms = pgTable("rooms", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	number: varchar({ length: 20 }).notNull(),
-	type: roomType().default('STANDARD').notNull(),
-	status: roomStatus().default('CLEAN').notNull(),
-	floor: integer().default(1).notNull(),
+	floor: integer(),
 	lastStatusChange: timestamp("last_status_change", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 	overrideFlag: boolean("override_flag").default(false).notNull(),
 	version: integer().default(1).notNull(),
+	assignedToCustomerId: uuid("assigned_to_customer_id"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
-	assignedToCustomerId: uuid("assigned_to_customer_id"),
 }, (table) => [
-	index("idx_rooms_assigned_customer").using("btree", table.assignedToCustomerId.asc().nullsLast().op("uuid_ops")).where(sql`(assigned_to_customer_id IS NOT NULL)`),
-	index("idx_rooms_floor").using("btree", table.floor.asc().nullsLast().op("int4_ops")),
-	index("idx_rooms_status").using("btree", table.status.asc().nullsLast().op("enum_ops")),
-	index("idx_rooms_type").using("btree", table.type.asc().nullsLast().op("enum_ops")),
+	index("idx_ir_kind").using("btree", table.kind.asc().nullsLast().op("enum_ops")),
+	index("idx_ir_status").using("btree", table.status.asc().nullsLast().op("enum_ops")),
+	index("idx_ir_tier").using("btree", table.tier.asc().nullsLast().op("enum_ops")),
+	index("idx_ir_assigned").using("btree", table.assignedToCustomerId.asc().nullsLast().op("uuid_ops")).where(sql`(assigned_to_customer_id IS NOT NULL)`),
+	index("idx_ir_floor").using("btree", table.floor.asc().nullsLast().op("int4_ops")).where(sql`(floor IS NOT NULL)`),
 	foreignKey({
 			columns: [table.assignedToCustomerId],
 			foreignColumns: [customers.id],
-			name: "rooms_assigned_to_customer_id_fkey"
+			name: "inventory_resources_assigned_to_customer_id_fkey"
 		}).onDelete("set null"),
-	unique("rooms_number_key").on(table.number),
-	check("rooms_type_no_deprecated", sql`type <> ALL (ARRAY['DELUXE'::room_type, 'VIP'::room_type])`),
+	unique("inventory_resources_number_key").on(table.number),
 ]);
 
 export const keyTags = pgTable("key_tags", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
-	roomId: uuid("room_id"),
-	lockerId: uuid("locker_id"),
+	resourceId: uuid("resource_id").notNull(),
 	tagType: keyTagType("tag_type").notNull(),
 	tagCode: varchar("tag_code", { length: 255 }).notNull(),
 	isActive: boolean("is_active").default(true).notNull(),
@@ -351,27 +333,14 @@ export const keyTags = pgTable("key_tags", {
 }, (table) => [
 	index("idx_key_tags_active").using("btree", table.isActive.asc().nullsLast().op("bool_ops")).where(sql`(is_active = true)`),
 	index("idx_key_tags_code").using("btree", table.tagCode.asc().nullsLast().op("text_ops")),
-	index("idx_key_tags_room").using("btree", table.roomId.asc().nullsLast().op("uuid_ops")),
+	index("idx_key_tags_resource").using("btree", table.resourceId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
-			columns: [table.lockerId],
-			foreignColumns: [lockers.id],
-			name: "key_tags_locker_id_fkey"
-		}).onDelete("cascade"),
-	foreignKey({
-			columns: [table.roomId],
-			foreignColumns: [rooms.id],
-			name: "key_tags_room_id_fkey"
+			columns: [table.resourceId],
+			foreignColumns: [inventoryResources.id],
+			name: "key_tags_resource_id_fkey"
 		}).onDelete("cascade"),
 	unique("key_tags_tag_code_key").on(table.tagCode),
-	check("key_tags_exactly_one_target_chk", sql`(
-CASE
-    WHEN (room_id IS NULL) THEN 0
-    ELSE 1
-END +
-CASE
-    WHEN (locker_id IS NULL) THEN 0
-    ELSE 1
-END) = 1`),
+	check("key_tags_resource_id_nn", sql`resource_id IS NOT NULL`),
 ]);
 
 export const waitlist = pgTable("waitlist", {
@@ -380,8 +349,7 @@ export const waitlist = pgTable("waitlist", {
 	checkinBlockId: uuid("checkin_block_id").notNull(),
 	desiredTier: rentalType("desired_tier").notNull(),
 	backupTier: rentalType("backup_tier").notNull(),
-	lockerOrRoomAssignedInitially: uuid("locker_or_room_assigned_initially"),
-	roomId: uuid("room_id"),
+	resourceId: uuid("resource_id"),
 	status: waitlistStatus().default('ACTIVE').notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
@@ -400,6 +368,7 @@ export const waitlist = pgTable("waitlist", {
 	index("idx_waitlist_desired_tier").using("btree", table.desiredTier.asc().nullsLast().op("enum_ops")),
 	index("idx_waitlist_desired_tiers").using("gin", table.desiredTiers.asc().nullsLast().op("array_ops")),
 	index("idx_waitlist_offered").using("btree", table.status.asc().nullsLast().op("enum_ops"), table.createdAt.asc().nullsLast().op("enum_ops")).where(sql`(status = 'OFFERED'::waitlist_status)`),
+	index("idx_waitlist_resource").using("btree", table.resourceId.asc().nullsLast().op("uuid_ops")).where(sql`(resource_id IS NOT NULL)`),
 	index("idx_waitlist_status").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	index("idx_waitlist_visit").using("btree", table.visitId.asc().nullsLast().op("uuid_ops")),
 	foreignKey({
@@ -410,9 +379,9 @@ export const waitlist = pgTable("waitlist", {
 	// FK: checkinBlockId → checkin_blocks.id (defined at DB level, omitted to avoid circular TS ref)
 
 	foreignKey({
-			columns: [table.roomId],
-			foreignColumns: [rooms.id],
-			name: "waitlist_room_id_fkey"
+			columns: [table.resourceId],
+			foreignColumns: [inventoryResources.id],
+			name: "waitlist_resource_id_fkey"
 		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.visitId],
@@ -470,8 +439,7 @@ export const checkinBlocks = pgTable("checkin_blocks", {
 	blockType: blockType("block_type").notNull(),
 	startsAt: timestamp("starts_at", { withTimezone: true, mode: 'date' }).notNull(),
 	endsAt: timestamp("ends_at", { withTimezone: true, mode: 'date' }).notNull(),
-	roomId: uuid("room_id"),
-	lockerId: uuid("locker_id"),
+	resourceId: uuid("resource_id"),
 	sessionId: uuid("session_id"),
 	agreementSigned: boolean("agreement_signed").default(false).notNull(),
 	agreementPdf: customType<{ data: Buffer; driverData: Buffer }>({
@@ -485,20 +453,16 @@ export const checkinBlocks = pgTable("checkin_blocks", {
 	rentalType: rentalType("rental_type").notNull(),
 }, (table) => [
 	index("idx_checkin_blocks_ends_at").using("btree", table.endsAt.asc().nullsLast().op("timestamptz_ops")).where(sql`(ends_at IS NOT NULL)`),
+	index("idx_checkin_blocks_resource").using("btree", table.resourceId.asc().nullsLast().op("uuid_ops")).where(sql`(resource_id IS NOT NULL)`),
 	index("idx_checkin_blocks_session").using("btree", table.sessionId.asc().nullsLast().op("uuid_ops")).where(sql`(session_id IS NOT NULL)`),
 	index("idx_checkin_blocks_tv_remote").using("btree", table.hasTvRemote.asc().nullsLast().op("bool_ops")).where(sql`(has_tv_remote = true)`),
 	index("idx_checkin_blocks_type").using("btree", table.blockType.asc().nullsLast().op("enum_ops")),
 	index("idx_checkin_blocks_visit").using("btree", table.visitId.asc().nullsLast().op("uuid_ops")),
 	index("idx_checkin_blocks_waitlist").using("btree", table.waitlistId.asc().nullsLast().op("uuid_ops")).where(sql`(waitlist_id IS NOT NULL)`),
 	foreignKey({
-			columns: [table.lockerId],
-			foreignColumns: [lockers.id],
-			name: "checkin_blocks_locker_id_fkey"
-		}).onDelete("set null"),
-	foreignKey({
-			columns: [table.roomId],
-			foreignColumns: [rooms.id],
-			name: "checkin_blocks_room_id_fkey"
+			columns: [table.resourceId],
+			foreignColumns: [inventoryResources.id],
+			name: "checkin_blocks_resource_id_fkey"
 		}).onDelete("set null"),
 	// FK: sessionId → lane_sessions.id (defined at DB level, omitted to avoid circular TS ref)
 
@@ -697,7 +661,7 @@ export const cleaningBatches = pgTable("cleaning_batches", {
 export const cleaningBatchRooms = pgTable("cleaning_batch_rooms", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	batchId: uuid("batch_id").notNull(),
-	roomId: uuid("room_id").notNull(),
+	resourceId: uuid("resource_id").notNull(),
 	statusFrom: roomStatus("status_from").notNull(),
 	statusTo: roomStatus("status_to").notNull(),
 	transitionTime: timestamp("transition_time", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
@@ -706,7 +670,7 @@ export const cleaningBatchRooms = pgTable("cleaning_batch_rooms", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 }, (table) => [
 	index("idx_cleaning_batch_rooms_batch").using("btree", table.batchId.asc().nullsLast().op("uuid_ops")),
-	index("idx_cleaning_batch_rooms_room").using("btree", table.roomId.asc().nullsLast().op("uuid_ops")),
+	index("idx_cleaning_batch_rooms_resource").using("btree", table.resourceId.asc().nullsLast().op("uuid_ops")),
 	index("idx_cleaning_batch_rooms_transition").using("btree", table.transitionTime.asc().nullsLast().op("timestamptz_ops")),
 	foreignKey({
 			columns: [table.batchId],
@@ -714,16 +678,16 @@ export const cleaningBatchRooms = pgTable("cleaning_batch_rooms", {
 			name: "cleaning_batch_rooms_batch_id_fkey"
 		}).onDelete("cascade"),
 	foreignKey({
-			columns: [table.roomId],
-			foreignColumns: [rooms.id],
-			name: "cleaning_batch_rooms_room_id_fkey"
+			columns: [table.resourceId],
+			foreignColumns: [inventoryResources.id],
+			name: "cleaning_batch_rooms_resource_id_fkey"
 		}).onDelete("cascade"),
-	unique("cleaning_batch_rooms_batch_id_room_id_key").on(table.batchId, table.roomId),
+	unique("cleaning_batch_rooms_batch_id_resource_id_key").on(table.batchId, table.resourceId),
 ]);
 
 export const cleaningEvents = pgTable("cleaning_events", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
-	roomId: uuid("room_id").notNull(),
+	resourceId: uuid("resource_id").notNull(),
 	staffId: uuid("staff_id").notNull(),
 	startedAt: timestamp("started_at", { withTimezone: true, mode: 'date' }),
 	completedAt: timestamp("completed_at", { withTimezone: true, mode: 'date' }),
@@ -737,13 +701,13 @@ export const cleaningEvents = pgTable("cleaning_events", {
 	index("idx_cleaning_events_completed").using("btree", table.completedAt.asc().nullsLast().op("timestamptz_ops")),
 	index("idx_cleaning_events_device").using("btree", table.deviceId.asc().nullsLast().op("text_ops")).where(sql`(device_id IS NOT NULL)`),
 	index("idx_cleaning_events_override").using("btree", table.overrideFlag.asc().nullsLast().op("bool_ops")).where(sql`(override_flag = true)`),
-	index("idx_cleaning_events_room").using("btree", table.roomId.asc().nullsLast().op("uuid_ops")),
+	index("idx_cleaning_events_resource").using("btree", table.resourceId.asc().nullsLast().op("uuid_ops")),
 	index("idx_cleaning_events_staff").using("btree", table.staffId.asc().nullsLast().op("uuid_ops")),
 	index("idx_cleaning_events_started").using("btree", table.startedAt.asc().nullsLast().op("timestamptz_ops")),
 	foreignKey({
-			columns: [table.roomId],
-			foreignColumns: [rooms.id],
-			name: "cleaning_events_room_id_fkey"
+			columns: [table.resourceId],
+			foreignColumns: [inventoryResources.id],
+			name: "cleaning_events_resource_id_fkey"
 		}).onDelete("cascade"),
 	foreignKey({
 			columns: [table.staffId],

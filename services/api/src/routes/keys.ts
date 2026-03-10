@@ -13,16 +13,17 @@ type ResolveKeyInput = z.infer<typeof ResolveKeySchema>;
 
 interface KeyTagRow {
   id: string;
-  room_id: string;
+  resource_id: string;
   tag_code: string;
   tag_type: string;
   is_active: boolean;
 }
 
-interface RoomRow {
+interface ResourceRow {
   id: string;
   number: string;
-  type: string;
+  kind: string;
+  tier: string;
   status: string;
   floor: number;
   override_flag: boolean;
@@ -39,7 +40,7 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
       try {
         const tagResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT id, room_id, tag_code, tag_type, is_active
+          sql`SELECT id, resource_id, tag_code, tag_type, is_active
          FROM key_tags
          WHERE tag_code = ${body.token} AND is_active = true`
         );
@@ -53,28 +54,29 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
 
         const tag = tagResult.rows[0] as unknown as KeyTagRow;
 
-        const roomResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT id, number, type, status, floor, override_flag
-         FROM rooms
-         WHERE id = ${tag.room_id}`
+        const resourceResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT id, number, kind, tier, status, floor, override_flag
+         FROM inventory_resources
+         WHERE id = ${tag.resource_id}`
         );
 
-        if (roomResult.rows.length === 0) {
+        if (resourceResult.rows.length === 0) {
           return reply.status(404).send({
-            error: 'Room not found',
+            error: 'Resource not found',
             token: body.token,
           });
         }
 
-        const room = roomResult.rows[0] as unknown as RoomRow;
+        const resource = resourceResult.rows[0] as unknown as ResourceRow;
 
         return reply.send({
-          roomId: room.id,
-          roomNumber: room.number,
-          roomType: room.type,
-          status: room.status as RoomStatus,
-          floor: room.floor,
-          overrideFlag: room.override_flag,
+          resourceId: resource.id,
+          resourceNumber: resource.number,
+          resourceKind: resource.kind,
+          resourceTier: resource.tier,
+          status: resource.status as RoomStatus,
+          floor: resource.floor,
+          overrideFlag: resource.override_flag,
           tagCode: tag.tag_code,
           tagType: tag.tag_type,
         });
