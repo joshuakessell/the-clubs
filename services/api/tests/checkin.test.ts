@@ -132,7 +132,7 @@ describe('Check-in Flow', () => {
       `DELETE FROM checkin_blocks WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
+      `DELETE FROM order_line_items WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
       `DELETE FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345')`
@@ -180,12 +180,12 @@ describe('Check-in Flow', () => {
       [customerId]
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id = $1)`,
+      `DELETE FROM order_line_items WHERE visit_id IN (SELECT id FROM visits WHERE customer_id = $1)`,
       [customerId]
     );
     await query(`DELETE FROM visits WHERE customer_id = $1`, [customerId]);
     await query(`DELETE FROM lane_sessions WHERE lane_id = $1 OR lane_id = 'LANE_2'`, [laneId]);
-    await query(`DELETE FROM payment_intents`);
+    await query(`DELETE FROM orders`);
     await query(`DELETE FROM staff_sessions WHERE staff_id = $1`, [staffId]);
     await query(`DELETE FROM customers WHERE id = $1 OR membership_number = '12345'`, [customerId]);
     await query(`DELETE FROM staff WHERE id = $1`, [staffId]);
@@ -679,7 +679,7 @@ describe('Check-in Flow', () => {
 
         const chargeCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM charges
+           FROM order_line_items
            WHERE visit_id = $1 AND checkin_block_id = $2 AND type = 'UPGRADE_FEE'`,
           [visitId, blockId]
         );
@@ -687,7 +687,7 @@ describe('Check-in Flow', () => {
 
         const paidIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM payment_intents
+           FROM orders
            WHERE status = 'PAID'
              AND quote_json->>'type' = 'SWITCH_UPCHARGE'
              AND quote_json->>'checkinBlockId' = $1`,
@@ -773,7 +773,7 @@ describe('Check-in Flow', () => {
 
         const chargeCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM charges
+           FROM order_line_items
            WHERE visit_id = $1 AND checkin_block_id = $2 AND type = 'UPGRADE_FEE'`,
           [visitId, blockId]
         );
@@ -781,7 +781,7 @@ describe('Check-in Flow', () => {
 
         const cancelledIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM payment_intents
+           FROM orders
            WHERE status = 'CANCELLED'
              AND quote_json->>'type' = 'SWITCH_UPCHARGE'
              AND quote_json->>'checkinBlockId' = $1`,
@@ -833,7 +833,7 @@ describe('Check-in Flow', () => {
 
         expect(response1.statusCode).toBe(200);
         const data1 = JSON.parse(response1.body);
-        expect(data1.paymentIntentId).toBeDefined();
+        expect(data1.orderId).toBeDefined();
         // Amount might be returned as string from database, convert to number
         const amount = typeof data1.amount === 'string' ? parseFloat(data1.amount) : data1.amount;
         expect(amount).toBeGreaterThan(0);
@@ -853,7 +853,7 @@ describe('Check-in Flow', () => {
           [laneId]
         );
         const dueCount = await query<{ count: string }>(
-          `SELECT COUNT(*)::text as count FROM payment_intents WHERE lane_session_id = $1 AND status = 'DUE'`,
+          `SELECT COUNT(*)::text as count FROM orders WHERE lane_session_id = $1 AND status = 'OPEN'`,
           [laneSession.rows[0]!.id]
         );
         expect(parseInt(dueCount.rows[0]!.count, 10)).toBe(1);
@@ -908,8 +908,8 @@ describe('Check-in Flow', () => {
           expect(last!.customerName).toBe('Test Customer');
           expect(last!.customerPrimaryLanguage).toBe('ES');
           expect(last!.customerDobMonthDay).toBe('01/15');
-          expect(last!.paymentIntentId).toBeTruthy();
-          expect(last!.paymentStatus).toBe('DUE');
+          expect(last!.orderId).toBeTruthy();
+          expect(last!.paymentStatus).toBe('OPEN');
           expect(typeof last!.paymentTotal).toBe('number');
 
           expect(typeof last!.flowVersion).toBe('number');
@@ -943,11 +943,11 @@ describe('Check-in Flow', () => {
         });
 
         const intentResult = await query<{ id: string }>(
-          `INSERT INTO payment_intents (lane_session_id, amount, status, quote_json)
+          `INSERT INTO orders (lane_session_id, amount, status, quote_json)
          VALUES (
            (SELECT id FROM lane_sessions WHERE lane_id = $1 ORDER BY created_at DESC LIMIT 1),
            50.00,
-           'DUE',
+           'OPEN',
            '{"total": 50, "lineItems": []}'
          )
          RETURNING id`,
@@ -970,7 +970,7 @@ describe('Check-in Flow', () => {
 
         // Verify in database
         const checkResult = await query<{ status: string }>(
-          `SELECT status FROM payment_intents WHERE id = $1`,
+          `SELECT status FROM orders WHERE id = $1`,
           [intentId]
         );
         expect(checkResult.rows[0]!.status).toBe('PAID');

@@ -104,7 +104,7 @@ export function ChargesTab() {
   if (currentSessionId && sp) {
     const lineItems = sp.ledgerLineItems ?? sp.paymentLineItems ?? [];
     const total = sp.ledgerTotal ?? sp.paymentTotal ?? 0;
-    const isPaid = sp.paymentStatus === 'PAID';
+    const isPaid = sp.orderStatus === 'PAID';
     const membershipChoice = sp.membershipChoice;
 
     // Detect if item is a membership fee (for showing remove/upgrade controls)

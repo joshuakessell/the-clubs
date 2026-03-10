@@ -287,7 +287,7 @@ style = {{
   activeCheckinInfo={activeCheckinInfo}
   currentSessionId={currentSessionId}
   customerId={customerId ?? sp?.customerId}
-  paymentStatus={sessionPayload?.paymentStatus}
+  orderStatus={sessionPayload?.orderStatus}
   checkingOut={checkingOut}
   onCheckout={() => void handleCheckout()}
   onStartCheckin={handleStartCheckin}
@@ -322,11 +322,11 @@ function formatIdType(idType?: string | null): string | undefined {
   return ID_TYPE_LABELS[idType] ?? idType;
 }
 
-function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymentStatus, checkingOut, onCheckout, onStartCheckin, onCancel }: Readonly<{
+function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, orderStatus, checkingOut, onCheckout, onStartCheckin, onCancel }: Readonly<{
   activeCheckinInfo: ActiveCheckinInfo | null | undefined;
   currentSessionId: string | null;
   customerId: string | null | undefined;
-  paymentStatus: string | undefined;
+  orderStatus: string | undefined;
   checkingOut: boolean;
   onCheckout: () => void;
   onStartCheckin: () => void;
@@ -382,7 +382,7 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, paymen
           Start Check-In
         </button>
       )}
-      {currentSessionId && paymentStatus !== 'PAID' && (
+      {currentSessionId && orderStatus !== 'PAID' && (
         <button
           onClick={onCancel}
           className="flex-1 rounded-lg border px-4 py-1.5 text-sm font-semibold transition-colors"

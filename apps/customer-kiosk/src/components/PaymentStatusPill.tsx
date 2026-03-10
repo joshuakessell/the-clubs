@@ -138,10 +138,10 @@ export function PaymentStatusPill({ status, declineReason }: PaymentStatusPillPr
 /** Derive the pill status from kiosk session payload fields. */
 // eslint-disable-next-line react-refresh/only-export-components
 export function derivePaymentPillStatus(
-  paymentStatus: string | undefined,
+  orderStatus: string | undefined,
   paymentFailureReason: string | undefined,
 ): PaymentPillStatus {
-  if (paymentStatus === 'PAID') return 'paid';
+  if (orderStatus === 'PAID') return 'paid';
   if (paymentFailureReason) return 'declined';
   // 'authorizing' is reserved for a future server signal
   return 'pending';

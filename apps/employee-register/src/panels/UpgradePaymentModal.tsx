@@ -14,7 +14,7 @@ interface UpgradePaymentModalProps {
   originalCharges: Array<{ description: string; amount: number }>;
   originalTotal: number | null;
   upgradeFee: number | null;
-  paymentStatus: 'DUE' | 'PAID' | null;
+  orderStatus: 'OPEN' | 'PAID' | null;
   isSubmitting: boolean;
   canComplete: boolean;
   onPayCredit: () => void;
@@ -30,7 +30,7 @@ export function UpgradePaymentModal({
   originalCharges,
   originalTotal,
   upgradeFee,
-  paymentStatus,
+  orderStatus,
   isSubmitting,
   canComplete,
   onPayCredit,
@@ -137,7 +137,7 @@ export function UpgradePaymentModal({
         </div>
 
         {/* Payment buttons */}
-        {paymentStatus !== 'PAID' && (
+        {orderStatus !== 'PAID' && (
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={onPayCredit}
@@ -162,9 +162,9 @@ export function UpgradePaymentModal({
         <div className="flex items-center justify-between">
           <span
             className="text-sm font-bold"
-            style={{ color: paymentStatus === 'PAID' ? 'var(--color-status-success)' : 'var(--color-status-warning)' }}
+            style={{ color: orderStatus === 'PAID' ? 'var(--color-status-success)' : 'var(--color-status-warning)' }}
           >
-            {paymentStatus === 'PAID' ? '✓ Payment Received' : '⏳ Payment Due'}
+            {orderStatus === 'PAID' ? '✓ Payment Received' : '⏳ Payment Due'}
           </span>
           <button
             onClick={onComplete}

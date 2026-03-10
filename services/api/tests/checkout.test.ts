@@ -637,7 +637,7 @@ describe('Checkout Flow', () => {
       await pool.query(`UPDATE customers SET past_due_balance = 0 WHERE id = $1`, [
         testCustomerId,
       ]);
-      await pool.query(`DELETE FROM charges WHERE visit_id = $1`, [testVisitId]);
+      await pool.query(`DELETE FROM order_line_items WHERE visit_id = $1`, [testVisitId]);
 
       // Create a checkout request that already has a late fee assessed + paid
       const requestResult = await pool.query(
@@ -671,14 +671,14 @@ describe('Checkout Flow', () => {
         type: string;
         amount: string;
         checkin_block_id: string;
-      }>(`SELECT type, amount, checkin_block_id FROM charges WHERE visit_id = $1`, [testVisitId]);
+      }>(`SELECT type, amount, checkin_block_id FROM order_line_items WHERE visit_id = $1`, [testVisitId]);
       expect(
         chargesRes.rows.some((r) => r.type === 'LATE_FEE' && r.checkin_block_id === testBlockId)
       ).toBe(true);
 
       // Clean up
       await pool.query('DELETE FROM checkout_requests WHERE id = $1', [requestId]);
-      await pool.query('DELETE FROM charges WHERE visit_id = $1', [testVisitId]);
+      await pool.query('DELETE FROM order_line_items WHERE visit_id = $1', [testVisitId]);
       await pool.query(`UPDATE customers SET past_due_balance = 0 WHERE id = $1`, [
         testCustomerId,
       ]);

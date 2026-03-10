@@ -102,8 +102,7 @@ export interface OrderRow {
   paid_at?: Date | null;
 }
 
-/** @deprecated Use OrderRow instead */
-export type PaymentIntentRow = OrderRow;
+
 
 /* ── Shared column-list constants ─────────────────────────────── */
 /*
@@ -137,5 +136,3 @@ export const ORDER_COLS = [
   'register_number', 'paid_by_staff_id', 'square_transaction_id', 'paid_at',
 ].join(', ');
 
-/** @deprecated Use ORDER_COLS instead */
-export const PAYMENT_INTENT_COLS = ORDER_COLS;

@@ -64,11 +64,11 @@ export function IdleScreen() {
   const lineItems = sessionPayload?.ledgerLineItems ?? sessionPayload?.paymentLineItems ?? [];
   const total = sessionPayload?.ledgerTotal ?? sessionPayload?.paymentTotal;
   const flowStep = sessionPayload?.flowStep;
-  const paymentStatus = sessionPayload?.paymentStatus;
+  const orderStatus = sessionPayload?.orderStatus;
   const paymentFailureReason = sessionPayload?.paymentFailureReason;
 
-  const showPaymentInstructions = flowStep === 'PAYMENT' && paymentStatus !== 'PAID';
-  const showPaymentReceived = paymentStatus === 'PAID';
+  const showPaymentInstructions = flowStep === 'PAYMENT' && orderStatus !== 'PAID';
+  const showPaymentReceived = orderStatus === 'PAID';
   const showTotal = isCheckinActive && flowStep === 'PAYMENT' && total != null && total > 0;
 
   const isMember = (() => {
@@ -175,7 +175,7 @@ export function IdleScreen() {
                   showPaymentReceived={showPaymentReceived}
                   isMember={isMember}
                   customerName={customerName}
-                  paymentStatus={paymentStatus}
+                  orderStatus={orderStatus}
                   paymentFailureReason={paymentFailureReason}
                 />
               </div>

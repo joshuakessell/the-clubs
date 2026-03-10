@@ -13,7 +13,7 @@ import type { PgTransaction } from 'drizzle-orm/pg-core';
 import type {
   LaneSessionRow,
   ResourceRow,
-  PaymentIntentRow,
+  OrderRow,
   RoomRentalType,
 } from '../checkin/types';
 import {
@@ -234,7 +234,7 @@ async function validatePrerequisites(
   const intentResult = await tx.execute<Record<string, unknown>>(
     sql`SELECT status FROM orders WHERE id = ${session.order_id}`
   );
-  if (intentResult.rows.length === 0 || (intentResult.rows[0] as unknown as PaymentIntentRow).status !== 'PAID') {
+  if (intentResult.rows.length === 0 || (intentResult.rows[0] as unknown as OrderRow).status !== 'PAID') {
     throw new HttpError(400, 'Payment must be marked as paid before signing agreement');
   }
 }
@@ -878,7 +878,7 @@ export async function requestAgreementBypass(input: BypassInput): Promise<Bypass
     const intentResult = await tx.execute<Record<string, unknown>>(
       sql`SELECT status FROM orders WHERE id = ${session.order_id}`
     );
-    if (intentResult.rows.length === 0 || (intentResult.rows[0] as unknown as PaymentIntentRow).status !== 'PAID') {
+    if (intentResult.rows.length === 0 || (intentResult.rows[0] as unknown as OrderRow).status !== 'PAID') {
       throw new HttpError(400, 'Payment must be marked as paid before bypassing agreement');
     }
 

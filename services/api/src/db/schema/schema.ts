@@ -15,7 +15,7 @@ export const keyTagType = pgEnum("key_tag_type", ['QR', 'NFC'])
 export const laneSessionStatus = pgEnum("lane_session_status", ['IDLE', 'ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE', 'COMPLETED', 'CANCELLED'])
 export const orderLineItemKind = pgEnum("order_line_item_kind", ['RETAIL', 'ADDON', 'UPGRADE', 'LATE_FEE', 'MANUAL', 'CHECKIN_FEE', 'RENEWAL_FEE', 'FINAL_EXTENSION'])
 export const orderStatus = pgEnum("order_status", ['OPEN', 'PAID', 'CANCELED', 'REFUNDED', 'PARTIALLY_REFUNDED'])
-export const paymentStatus = pgEnum("payment_status", ['DUE', 'PAID', 'CANCELLED', 'REFUNDED'])
+
 export const rentalType = pgEnum("rental_type", ['LOCKER', 'STANDARD', 'DOUBLE', 'SPECIAL', 'GYM_LOCKER'])
 export const roomStatus = pgEnum("room_status", ['DIRTY', 'CLEANING', 'CLEAN', 'OCCUPIED', 'OUT_OF_SERVICE'])
 export const roomType = pgEnum("room_type", ['STANDARD', 'DELUXE', 'VIP', 'LOCKER', 'DOUBLE', 'SPECIAL'])

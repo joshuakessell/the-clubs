@@ -17,7 +17,7 @@ interface ChargeItemsListProps {
   showPaymentReceived: boolean;
   isMember: boolean;
   customerName: string;
-  paymentStatus?: string;
+  orderStatus?: string;
   paymentFailureReason?: string;
 }
 
@@ -37,10 +37,10 @@ export function ChargeItemsList({
   showPaymentReceived,
   isMember,
   customerName,
-  paymentStatus,
+  orderStatus,
   paymentFailureReason,
 }: ChargeItemsListProps) {
-  const pillStatus = derivePaymentPillStatus(paymentStatus, paymentFailureReason);
+  const pillStatus = derivePaymentPillStatus(orderStatus, paymentFailureReason);
   // ── Animation state machine ──
   const [chargeItems, setChargeItems] = useState<ChargeItem[]>([]);
   const prevKeyRef = useRef('');

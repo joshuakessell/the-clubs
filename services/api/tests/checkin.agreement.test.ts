@@ -132,7 +132,7 @@ describe('Check-in Flow', () => {
       `DELETE FROM checkin_blocks WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
+      `DELETE FROM order_line_items WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
       `DELETE FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345')`
@@ -180,13 +180,13 @@ describe('Check-in Flow', () => {
       [customerId]
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id = $1)`,
+      `DELETE FROM order_line_items WHERE visit_id IN (SELECT id FROM visits WHERE customer_id = $1)`,
       [customerId]
     );
     await query(`DELETE FROM visits WHERE customer_id = $1`, [customerId]);
     await query(`DELETE FROM lane_sessions WHERE lane_id = $1 OR lane_id = 'LANE_2'`, [laneId]);
     await query(`DELETE FROM customer_spend_ledger_entries WHERE customer_id = $1`, [customerId]);
-    await query(`DELETE FROM payment_intents`);
+    await query(`DELETE FROM orders`);
     await query(`DELETE FROM staff_sessions WHERE staff_id = $1`, [staffId]);
     await query(`DELETE FROM customers WHERE id = $1 OR membership_number = '12345'`, [customerId]);
     await query(`DELETE FROM cleaning_events WHERE staff_id = $1`, [staffId]);

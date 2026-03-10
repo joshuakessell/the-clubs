@@ -141,7 +141,7 @@ describe('Upgrade payment flow attaches charges', () => {
     );
 
     const originalIntent = await pool.query<{ id: string }>(
-      `INSERT INTO payment_intents (lane_session_id, amount, status, quote_json)
+      `INSERT INTO orders (lane_session_id, amount, status, quote_json)
        VALUES ($1, 20, 'PAID', $2)
        RETURNING id`,
       [
@@ -150,7 +150,7 @@ describe('Upgrade payment flow attaches charges', () => {
       ]
     );
 
-    await pool.query(`UPDATE lane_sessions SET payment_intent_id = $1 WHERE id = $2`, [
+    await pool.query(`UPDATE lane_sessions SET order_id = $1 WHERE id = $2`, [
       originalIntent.rows[0]!.id,
       laneSession.rows[0]!.id,
     ]);
@@ -190,7 +190,7 @@ describe('Upgrade payment flow attaches charges', () => {
     }
     expect(fulfillRes.statusCode).toBe(200);
     const fulfillJson = fulfillRes.json() as {
-      paymentIntentId: string;
+      orderId: string;
       upgradeFee: number;
       originalCharges: Array<{ description: string; amount: number }>;
       originalTotal: number | null;
@@ -200,8 +200,8 @@ describe('Upgrade payment flow attaches charges', () => {
     expect(fulfillJson.originalTotal).toBe(20);
 
     // Mark upgrade intent paid and complete
-    await pool.query(`UPDATE payment_intents SET status = 'PAID' WHERE id = $1`, [
-      fulfillJson.paymentIntentId,
+    await pool.query(`UPDATE orders SET status = 'PAID' WHERE id = $1`, [
+      fulfillJson.orderId,
     ]);
 
     const completeRes = await app.inject({
@@ -209,15 +209,15 @@ describe('Upgrade payment flow attaches charges', () => {
       url: '/v1/upgrades/complete',
       payload: {
         waitlistId: waitlist.rows[0]!.id,
-        paymentIntentId: fulfillJson.paymentIntentId,
+        orderId: fulfillJson.orderId,
       },
     });
 
     expect(completeRes.statusCode).toBe(200);
 
-    const charge = await pool.query<{ type: string; amount: string; payment_intent_id: string }>(
-      `SELECT type, amount, payment_intent_id FROM charges WHERE payment_intent_id = $1`,
-      [fulfillJson.paymentIntentId]
+    const charge = await pool.query<{ type: string; amount: string; order_id: string }>(
+      `SELECT type, amount, order_id FROM order_line_items WHERE order_id = $1`,
+      [fulfillJson.orderId]
     );
     expect(charge.rows[0]?.type).toBe('UPGRADE_FEE');
     expect(parseFloat(charge.rows[0]?.amount || '0')).toBeCloseTo(fulfillJson.upgradeFee);

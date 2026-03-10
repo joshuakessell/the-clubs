@@ -6,7 +6,7 @@ export function PaymentStep() {
   const { sp } = state;
   const { sendFlowCommand } = actions;
 
-  const isPaid = sp.paymentStatus === 'PAID';
+  const isPaid = sp.orderStatus === 'PAID';
   const [loading, setLoading] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
   const totalDollars = Math.round(sp.paymentTotal ?? 0);

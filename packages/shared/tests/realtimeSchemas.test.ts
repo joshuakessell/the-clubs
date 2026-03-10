@@ -60,7 +60,7 @@ describe('SessionUpdatedPayloadSchema', () => {
       flowStep: 'PAYMENT',
       flowVersion: 3,
       flowLastActor: 'EMPLOYEE',
-      paymentStatus: 'DUE',
+      orderStatus: 'OPEN',
       pastDueBalance: 500,
       customerPrimaryLanguage: 'ES',
       allowedRentals: ['STANDARD', 'DOUBLE'],

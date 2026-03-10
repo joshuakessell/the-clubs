@@ -181,8 +181,7 @@ export async function createCheckoutOrder(laneId: string) {
   });
 }
 
-/** @deprecated Use createCheckoutOrder instead */
-export const createPaymentIntent = createCheckoutOrder;
+
 
 export interface MarkPaidInput {
   orderId: string;
@@ -191,12 +190,10 @@ export interface MarkPaidInput {
   paymentMethod?: 'CASH' | 'CREDIT';
   registerNumber?: number;
   tip?: number;
-  /** @deprecated Use orderId instead */
-  paymentIntentId?: string;
 }
 
 export async function markOrderPaid(input: MarkPaidInput) {
-  const orderId = input.orderId || input.paymentIntentId!;
+  const orderId = input.orderId;
   const resolvedPaymentMethod = input.paymentMethod === 'CASH' || input.paymentMethod === 'CREDIT'
     ? input.paymentMethod
     : input.squareTransactionId ? 'CREDIT' : undefined;
@@ -349,10 +346,7 @@ export async function markOrderPaid(input: MarkPaidInput) {
   });
 }
 
-/** @deprecated Use markOrderPaid instead */
-export async function markPaymentPaid(input: MarkPaidInput & { paymentIntentId?: string }) {
-  return markOrderPaid({ ...input, orderId: input.orderId || input.paymentIntentId! });
-}
+
 
 export async function getSessionPayload(sessionId: string) {
   return buildFullSessionUpdatedPayload(sessionId);

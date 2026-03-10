@@ -532,8 +532,8 @@ export function UpgradesPanel() {
     open: boolean;
     entry: WaitlistEntry | null;
     fulfill: FulfillResult | null;
-    paymentStatus: 'DUE' | 'PAID' | null;
-  }>({ open: false, entry: null, fulfill: null, paymentStatus: null });
+    orderStatus: 'OPEN' | 'PAID' | null;
+  }>({ open: false, entry: null, fulfill: null, orderStatus: null });
   // Room picker modal state
   const [roomPicker, setRoomPicker] = useState<{
     entry: WaitlistEntry | null;
@@ -668,7 +668,7 @@ export function UpgradesPanel() {
         throw new Error(err.error || err.message || 'Fulfill failed');
       }
       const result: FulfillResult = await res.json();
-      setPaymentModal({ open: true, entry, fulfill: result, paymentStatus: 'DUE' });
+      setPaymentModal({ open: true, entry, fulfill: result, orderStatus: 'OPEN' });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Upgrade failed');
     } finally {
@@ -691,7 +691,7 @@ export function UpgradesPanel() {
         }
       );
       if (!payRes.ok) throw new Error('Payment failed');
-      setPaymentModal((prev) => ({ ...prev, paymentStatus: 'PAID' }));
+      setPaymentModal((prev) => ({ ...prev, orderStatus: 'PAID' }));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Payment failed');
     } finally {
@@ -714,7 +714,7 @@ export function UpgradesPanel() {
         }),
       });
       if (!res.ok) throw new Error('Complete failed');
-      setPaymentModal({ open: false, entry: null, fulfill: null, paymentStatus: null });
+      setPaymentModal({ open: false, entry: null, fulfill: null, orderStatus: null });
       await fetchData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Complete failed');
@@ -881,15 +881,15 @@ export function UpgradesPanel() {
       {paymentModal.open && paymentModal.entry && paymentModal.fulfill ? (
         <UpgradePaymentModal
           isOpen={paymentModal.open}
-          onClose={() => setPaymentModal({ open: false, entry: null, fulfill: null, paymentStatus: null })}
+          onClose={() => setPaymentModal({ open: false, entry: null, fulfill: null, orderStatus: null })}
           customerLabel={paymentModal.entry.customerName}
           newRoomNumber={paymentModal.fulfill.newRoomNumber}
           originalCharges={paymentModal.fulfill.originalCharges}
           originalTotal={paymentModal.fulfill.originalTotal}
           upgradeFee={paymentModal.fulfill.upgradeFee}
-          paymentStatus={paymentModal.paymentStatus}
+          orderStatus={paymentModal.orderStatus}
           isSubmitting={submitting}
-          canComplete={paymentModal.paymentStatus === 'PAID'}
+          canComplete={paymentModal.orderStatus === 'PAID'}
           onPayCredit={() => void handlePay('CREDIT')}
           onPayCash={() => void handlePay('CASH')}
           onComplete={() => void handleComplete()}

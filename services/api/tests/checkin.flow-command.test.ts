@@ -92,9 +92,9 @@ describe('Check-in Flow Commands', () => {
 
     // Create dummy payment intents for tests that need them
     await query(
-      `INSERT INTO payment_intents (id, amount, status, quote_json)
-       VALUES ('00000000-0000-0000-0000-000000000000', 0, 'DUE', '{}'::jsonb),
-              ('11111111-1111-1111-1111-111111111111', 0, 'DUE', '{}'::jsonb)
+      `INSERT INTO orders (id, amount, status, quote_json)
+       VALUES ('00000000-0000-0000-0000-000000000000', 0, 'OPEN', '{}'::jsonb),
+              ('11111111-1111-1111-1111-111111111111', 0, 'OPEN', '{}'::jsonb)
        ON CONFLICT (id) DO NOTHING`
     );
   });
@@ -565,7 +565,7 @@ describe('Check-in Flow Commands', () => {
       `UPDATE lane_sessions
        SET flow_step = 'PAYMENT',
            flow_version = 4,
-           payment_intent_id = '00000000-0000-0000-0000-000000000000',
+           order_id = '00000000-0000-0000-0000-000000000000',
            price_quote_json = '{"total":123}',
            disclaimers_ack_json = '{"ack":true}',
            agreement_bypass_pending = true
@@ -590,13 +590,13 @@ describe('Check-in Flow Commands', () => {
 
     const updated = await query<{
       flow_step: string | null;
-      payment_intent_id: string | null;
+      order_id: string | null;
       price_quote_json: any;
       disclaimers_ack_json: any;
       agreement_bypass_pending: boolean;
     }>(
       `SELECT flow_step,
-              payment_intent_id,
+              order_id,
               price_quote_json,
               disclaimers_ack_json,
               agreement_bypass_pending
@@ -606,7 +606,7 @@ describe('Check-in Flow Commands', () => {
     );
 
     expect(updated.rows[0]!.flow_step).toBe('WAITLIST_DISCLAIMER');
-    expect(updated.rows[0]!.payment_intent_id).toBeNull();
+    expect(updated.rows[0]!.order_id).toBeNull();
     expect(updated.rows[0]!.price_quote_json).toBeNull();
     expect(updated.rows[0]!.disclaimers_ack_json).toBeNull();
     expect(updated.rows[0]!.agreement_bypass_pending).toBe(false);
@@ -630,7 +630,7 @@ describe('Check-in Flow Commands', () => {
            backup_rental_type = 'STANDARD',
            waitlist_requested_resource_number = '101',
            waitlist_requested_resource_type = 'room',
-           payment_intent_id = '11111111-1111-1111-1111-111111111111',
+           order_id = '11111111-1111-1111-1111-111111111111',
            price_quote_json = '{"total":123}',
            disclaimers_ack_json = '{"ack":true}',
            agreement_bypass_pending = true
@@ -661,7 +661,7 @@ describe('Check-in Flow Commands', () => {
       selection_confirmed: boolean;
       waitlist_desired_type: string | null;
       backup_rental_type: string | null;
-      payment_intent_id: string | null;
+      order_id: string | null;
       agreement_bypass_pending: boolean;
     }>(
       `SELECT flow_step,
@@ -670,7 +670,7 @@ describe('Check-in Flow Commands', () => {
               selection_confirmed,
               waitlist_desired_type,
               backup_rental_type,
-              payment_intent_id,
+              order_id,
               agreement_bypass_pending
        FROM lane_sessions
        WHERE id = $1`,
@@ -683,7 +683,7 @@ describe('Check-in Flow Commands', () => {
     expect(updated.rows[0]!.selection_confirmed).toBe(false);
     expect(updated.rows[0]!.waitlist_desired_type).toBeNull();
     expect(updated.rows[0]!.backup_rental_type).toBeNull();
-    expect(updated.rows[0]!.payment_intent_id).toBeNull();
+    expect(updated.rows[0]!.order_id).toBeNull();
     expect(updated.rows[0]!.agreement_bypass_pending).toBe(false);
   });
 });
