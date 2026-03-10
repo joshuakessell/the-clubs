@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 interface HealthResponse {
   status: 'ok' | 'error';
@@ -14,7 +15,7 @@ export async function healthRoutes(fastify: FastifyInstance): Promise<void> {
     // Auto-recover health status when DB connectivity returns after a startup failure.
     if (!isHealthy && process.env.SKIP_DB !== 'true') {
       try {
-        await query('SELECT 1');
+        await db.execute(sql`SELECT 1`);
         fastify.dbHealthy = true;
         isHealthy = true;
       } catch {

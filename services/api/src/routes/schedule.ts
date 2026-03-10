@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { requireAuth } from '../auth/middleware';
 
 const IsoDateTimeSchema = z.string().datetime();
@@ -17,10 +18,27 @@ type ShiftRow = {
 };
 
 /**
- * Schedule routes for authenticated staff (non-admin safe).
- *
- * These endpoints intentionally do NOT return compliance metrics.
+ * Adapter for dynamic SQL — schedule.ts builds optional WHERE clauses
+ * with positional params.
  */
+function toQueryable() {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await db.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
+
 export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{
     Querystring: { from?: string; to?: string };
@@ -35,7 +53,7 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
 
       const params: unknown[] = [];
       let i = 0;
-      let sql = `
+      let queryText = `
       SELECT
         es.id,
         es.employee_id,
@@ -52,17 +70,18 @@ export async function scheduleRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (from) {
         i++;
-        sql += ` AND es.starts_at >= $${i}`;
+        queryText += ` AND es.starts_at >= $${i}`;
         params.push(from);
       }
       if (to) {
         i++;
-        sql += ` AND es.ends_at <= $${i}`;
+        queryText += ` AND es.ends_at <= $${i}`;
         params.push(to);
       }
-      sql += ` ORDER BY es.starts_at ASC`;
+      queryText += ` ORDER BY es.starts_at ASC`;
 
-      const shifts = await query<ShiftRow>(sql, params);
+      const qClient = toQueryable();
+      const shifts = await qClient.query<ShiftRow>(queryText, params);
       return reply.send(
         shifts.rows.map((shift) => ({
           id: shift.id,

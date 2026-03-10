@@ -1,14 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { query } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { requireAdmin, requireAuth } from '../../auth/middleware';
 
 export function registerAdminRoomRoutes(fastify: FastifyInstance): void {
-  /**
-   * GET /v1/admin/rooms/expirations - Get rooms nearing or past expiration
-   *
-   * Returns active room stays (check-in blocks), sorted by expiration time.
-   * Past expiration rows are flagged and pinned to top.
-   */
   fastify.get(
     '/v1/admin/rooms/expirations',
     {
@@ -16,7 +11,7 @@ export function registerAdminRoomRoutes(fastify: FastifyInstance): void {
     },
     async (request, reply) => {
       try {
-        const result = await query<{
+        type ExpirationRow = {
           room_id: string;
           room_number: string;
           room_type: string;
@@ -25,8 +20,10 @@ export function registerAdminRoomRoutes(fastify: FastifyInstance): void {
           membership_number: string | null;
           check_in_time: Date;
           checkout_at: Date;
-        }>(
-          `SELECT
+        };
+
+        const result = await db.execute<Record<string, unknown>>(
+          sql`SELECT
           r.id as room_id,
           r.number as room_number,
           r.type as room_type,
@@ -53,7 +50,7 @@ export function registerAdminRoomRoutes(fastify: FastifyInstance): void {
         const now = new Date();
         const thirtyMinutesFromNow = new Date(now.getTime() + 30 * 60 * 1000);
 
-        const expirations = result.rows.map((row) => {
+        const expirations = (result.rows as unknown as ExpirationRow[]).map((row) => {
           const checkoutAt = new Date(row.checkout_at);
           const minutesPast = Math.floor((now.getTime() - checkoutAt.getTime()) / (60 * 1000));
           const minutesRemaining = Math.floor((checkoutAt.getTime() - now.getTime()) / (60 * 1000));
@@ -75,17 +72,14 @@ export function registerAdminRoomRoutes(fastify: FastifyInstance): void {
           };
         });
 
-        // Sort: expired first (most expired), then expiring soon, then others
         expirations.sort((a, b) => {
           if (a.isExpired && !b.isExpired) return -1;
           if (!a.isExpired && b.isExpired) return 1;
           if (a.isExpired && b.isExpired) {
-            // Most expired first
             return (b.minutesPast || 0) - (a.minutesPast || 0);
           }
           if (a.isExpiringSoon && !b.isExpiringSoon) return -1;
           if (!a.isExpiringSoon && b.isExpiringSoon) return 1;
-          // Both expiring soon or both normal - sort by remaining time
           return (a.minutesRemaining || 0) - (b.minutesRemaining || 0);
         });
 

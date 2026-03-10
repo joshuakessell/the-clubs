@@ -1,13 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { query } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { requireAdmin, requireAuth } from '../../auth/middleware';
 
 export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
-  /**
-   * GET /v1/admin/kpi - Get KPI summary for admin dashboard
-   *
-   * Returns counts for rooms (occupied, unoccupied, dirty, cleaning, clean) and lockers.
-   */
   fastify.get(
     '/v1/admin/kpi',
     {
@@ -15,35 +11,31 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
     },
     async (request, reply) => {
       try {
-        // Get room counts by status
-        const roomStatusResult = await query<{ status: string; count: string }>(
-          `SELECT status, COUNT(*) as count
+        const roomStatusResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT status, COUNT(*) as count
          FROM rooms
          WHERE type != 'LOCKER'
          GROUP BY status`
         );
 
-        // Get occupied rooms (assigned to customers)
-        const occupiedResult = await query<{ count: string }>(
-          `SELECT COUNT(*) as count
+        const occupiedResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT COUNT(*) as count
          FROM rooms
          WHERE type != 'LOCKER'
            AND assigned_to_customer_id IS NOT NULL`
         );
 
-        // Get lockers in use
-        const lockersInUseResult = await query<{ count: string }>(
-          `SELECT COUNT(*) as count
+        const lockersInUseResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT COUNT(*) as count
          FROM lockers
          WHERE assigned_to_customer_id IS NOT NULL`
         );
 
-        // Get total lockers and available lockers
-        const totalLockersResult = await query<{ count: string }>(
-          `SELECT COUNT(*) as count FROM lockers`
+        const totalLockersResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT COUNT(*) as count FROM lockers`
         );
-        const totalLockers = Number.parseInt(totalLockersResult.rows[0]?.count || '0', 10);
-        const lockersOccupied = Number.parseInt(lockersInUseResult.rows[0]?.count || '0', 10);
+        const totalLockers = Number.parseInt((totalLockersResult.rows[0] as any)?.count || '0', 10);
+        const lockersOccupied = Number.parseInt((lockersInUseResult.rows[0] as any)?.count || '0', 10);
         const lockersAvailable = totalLockers - lockersOccupied;
 
         type AdminKpi = {
@@ -58,17 +50,17 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
         };
 
         const kpi: AdminKpi = {
-          roomsOccupied: Number.parseInt(occupiedResult.rows[0]?.count || '0', 10),
+          roomsOccupied: Number.parseInt((occupiedResult.rows[0] as any)?.count || '0', 10),
           roomsUnoccupied: 0,
           roomsDirty: 0,
           roomsCleaning: 0,
           roomsClean: 0,
           lockersOccupied,
           lockersAvailable,
-          waitingListCount: 0, // Placeholder for future implementation
+          waitingListCount: 0,
         };
 
-        for (const row of roomStatusResult.rows) {
+        for (const row of roomStatusResult.rows as unknown as { status: string; count: string }[]) {
           const count = Number.parseInt(row.count, 10);
           const status = row.status.toLowerCase();
           if (status === 'dirty') kpi.roomsDirty = count;

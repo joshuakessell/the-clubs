@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
-import { query } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import type { LaneSessionRow } from '../../checkin/types';
 
 export function registerCheckinLaneSessionsRoutes(fastify: FastifyInstance): void {
@@ -17,8 +18,8 @@ export function registerCheckinLaneSessionsRoutes(fastify: FastifyInstance): voi
     },
     async (request, reply) => {
       try {
-        const result = await query<LaneSessionRow>(
-          `SELECT 
+        const result = await db.execute<Record<string, unknown>>(
+          sql`SELECT 
           ls.*,
           s.name as staff_name,
           c.name as customer_name,
@@ -34,12 +35,12 @@ export function registerCheckinLaneSessionsRoutes(fastify: FastifyInstance): voi
          ORDER BY ls.created_at DESC`
         );
 
-        const sessions = result.rows.map((session) => ({
+        const sessions = (result.rows as unknown as (LaneSessionRow & { staff_name: string; customer_name: string; room_number: string; locker_number: string })[]).map((session) => ({
           id: session.id,
           laneId: session.lane_id,
           status: session.status,
-          staffName: (session as any).staff_name,
-          customerName: session.customer_display_name || (session as any).customer_name,
+          staffName: session.staff_name,
+          customerName: session.customer_display_name || session.customer_name,
           membershipNumber: session.membership_number,
           desiredRentalType: session.desired_rental_type,
           waitlistDesiredType: session.waitlist_desired_type,
@@ -47,7 +48,7 @@ export function registerCheckinLaneSessionsRoutes(fastify: FastifyInstance): voi
           assignedResource: session.assigned_resource_id
             ? {
                 id: session.assigned_resource_id,
-                number: (session as any).room_number || (session as any).locker_number,
+                number: session.room_number || session.locker_number,
                 type: session.desired_rental_type,
               }
             : null,

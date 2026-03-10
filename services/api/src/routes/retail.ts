@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../auth/middleware';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 interface ActiveGuestRow {
   customer_id: string;
@@ -12,13 +13,6 @@ interface ActiveGuestRow {
 }
 
 export async function retailRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * GET /v1/retail/active-guests
-   *
-   * Returns all currently checked-in guests with their room/locker assignment,
-   * PLUS customers being actively checked in (via lane sessions) so employees
-   * can attribute retail purchases to their ledger before check-in completes.
-   */
   fastify.get(
     '/v1/retail/active-guests',
     { preHandler: [requireAuth] },
@@ -26,8 +20,8 @@ export async function retailRoutes(fastify: FastifyInstance): Promise<void> {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
       try {
-        const result = await query<ActiveGuestRow>(
-          `
+        const result = await db.execute<Record<string, unknown>>(
+          sql`
           WITH room_guests AS (
             SELECT DISTINCT ON (cb.room_id)
               v.customer_id,
@@ -84,7 +78,7 @@ export async function retailRoutes(fastify: FastifyInstance): Promise<void> {
         );
 
         return reply.send({
-          guests: result.rows.map((r) => ({
+          guests: (result.rows as unknown as ActiveGuestRow[]).map((r) => ({
             customerId: r.customer_id,
             customerName: r.customer_name,
             resourceType: r.resource_type,

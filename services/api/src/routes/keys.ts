@@ -1,12 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { requireAuth } from '../auth/middleware';
 import { RoomStatus } from '@the-clubs/shared';
 
-/**
- * Schema for resolving a single key tag to room information.
- */
 const ResolveKeySchema = z.object({
   token: z.string().min(1),
 });
@@ -30,17 +28,7 @@ interface RoomRow {
   override_flag: boolean;
 }
 
-/**
- * Key tag resolution routes for cleaning station workflow.
- * Supports batch scanning of QR/NFC tags.
- */
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * POST /v1/keys/resolve - Resolve a single scan token to room information
-   *
-   * Used by cleaning stations to resolve individual QR/NFC tags.
-   * Returns room information for a single token.
-   */
   fastify.post<{ Body: ResolveKeyInput }>(
     '/v1/keys/resolve',
     {
@@ -50,12 +38,10 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       const body = request.body as ResolveKeyInput;
 
       try {
-        // Find matching key tag
-        const tagResult = await query<KeyTagRow>(
-          `SELECT id, room_id, tag_code, tag_type, is_active
+        const tagResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT id, room_id, tag_code, tag_type, is_active
          FROM key_tags
-         WHERE tag_code = $1 AND is_active = true`,
-          [body.token]
+         WHERE tag_code = ${body.token} AND is_active = true`
         );
 
         if (tagResult.rows.length === 0) {
@@ -65,14 +51,12 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
-        const tag = tagResult.rows[0]!;
+        const tag = tagResult.rows[0] as unknown as KeyTagRow;
 
-        // Fetch room details
-        const roomResult = await query<RoomRow>(
-          `SELECT id, number, type, status, floor, override_flag
+        const roomResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT id, number, type, status, floor, override_flag
          FROM rooms
-         WHERE id = $1`,
-          [tag.room_id]
+         WHERE id = ${tag.room_id}`
         );
 
         if (roomResult.rows.length === 0) {
@@ -82,9 +66,8 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
           });
         }
 
-        const room = roomResult.rows[0]!;
+        const room = roomResult.rows[0] as unknown as RoomRow;
 
-        // Return single room info with all queried fields
         return reply.send({
           roomId: room.id,
           roomNumber: room.number,

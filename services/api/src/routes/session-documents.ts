@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAdmin, requireAuth } from '../auth/middleware';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 
 type SessionDocumentRow = {
-  id: string; // checkin_blocks.id (used as "documentId" for download)
+  id: string;
   created_at: Date;
   agreement_pdf: Buffer | null;
   signature_png_base64: string | null;
@@ -12,20 +13,7 @@ type SessionDocumentRow = {
   signature_created_at: Date | null;
 };
 
-/**
- * Session document verification routes.
- *
- * These are intentionally minimal "debug/verification" endpoints so staff apps can prove:
- * - agreement PDF bytes exist
- * - signature artifact exists
- */
 export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * GET /v1/documents/customers
-   *
-   * Auth required.
-   * Returns a list of customers matching a name search (for agreement lookup).
-   */
   fastify.get<{ Querystring: { name?: string } }>(
     '/v1/documents/customers',
     { preHandler: [requireAuth, requireAdmin] },
@@ -35,14 +23,8 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
         return reply.status(400).send({ message: 'name query is required' });
       }
 
-      const rows = await query<{
-        id: string;
-        name: string;
-        dob: Date | null;
-        membership_number: string | null;
-        last_visit_at: Date | null;
-      }>(
-        `SELECT
+      const rows = await db.execute<Record<string, unknown>>(
+        sql`SELECT
            c.id,
            c.name,
            c.dob,
@@ -50,14 +32,14 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
            MAX(v.started_at) as last_visit_at
          FROM customers c
          LEFT JOIN visits v ON v.customer_id = c.id
-         WHERE c.name ILIKE '%' || $1 || '%'
+         WHERE c.name ILIKE ${'%' + name + '%'}
          GROUP BY c.id
          ORDER BY c.name ASC, last_visit_at DESC NULLS LAST
-         LIMIT 50`,
-        [name]
+         LIMIT 50`
       );
 
-      const customers = rows.rows.map((r) => ({
+      type CustomerSearchRow = { id: string; name: string; dob: Date | null; membership_number: string | null; last_visit_at: Date | null };
+      const customers = (rows.rows as unknown as CustomerSearchRow[]).map((r) => ({
         id: r.id,
         name: r.name,
         dob: r.dob ? r.dob.toISOString() : null,
@@ -69,22 +51,14 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
     }
   );
 
-  /**
-   * GET /v1/documents/by-customer/:customerId
-   *
-   * Auth required.
-   * Returns a list of agreement documents for a customer.
-   */
   fastify.get<{ Params: { customerId: string } }>(
     '/v1/documents/by-customer/:customerId',
     { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const { customerId } = request.params;
 
-      const rows = await query<
-        SessionDocumentRow & { visit_started_at: Date | null; visit_ended_at: Date | null }
-      >(
-        `SELECT
+      const rows = await db.execute<Record<string, unknown>>(
+        sql`SELECT
            cb.id,
            cb.created_at,
            cb.agreement_pdf,
@@ -102,12 +76,12 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
            ORDER BY created_at DESC
            LIMIT 1
          ) sig ON TRUE
-         WHERE v.customer_id = $1
-         ORDER BY v.started_at DESC NULLS LAST, cb.created_at DESC`,
-        [customerId]
+         WHERE v.customer_id = ${customerId}
+         ORDER BY v.started_at DESC NULLS LAST, cb.created_at DESC`
       );
 
-      const documents = rows.rows.map((r) => {
+      type DocRow = SessionDocumentRow & { visit_started_at: Date | null; visit_ended_at: Date | null };
+      const documents = (rows.rows as unknown as DocRow[]).map((r) => {
         const hasSignature = Boolean(r.signature_png_base64) || Boolean(r.signature_strokes_json);
         const signatureMaterial =
           (typeof r.signature_png_base64 === 'string' && r.signature_png_base64) ||
@@ -134,20 +108,14 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
     }
   );
 
-  /**
-   * GET /v1/documents/by-session/:sessionId
-   *
-   * Auth required.
-   * Returns a list of documents tied to a lane session's check-in block.
-   */
   fastify.get<{ Params: { sessionId: string } }>(
     '/v1/documents/by-session/:sessionId',
     { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const { sessionId } = request.params;
 
-      const rows = await query<SessionDocumentRow>(
-        `SELECT
+      const rows = await db.execute<Record<string, unknown>>(
+        sql`SELECT
            cb.id,
            cb.created_at,
            cb.agreement_pdf,
@@ -162,12 +130,11 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
            ORDER BY created_at DESC
            LIMIT 1
          ) sig ON TRUE
-         WHERE cb.session_id = $1
-         ORDER BY cb.created_at DESC`,
-        [sessionId]
+         WHERE cb.session_id = ${sessionId}
+         ORDER BY cb.created_at DESC`
       );
 
-      const documents = rows.rows.map((r) => {
+      const documents = (rows.rows as unknown as SessionDocumentRow[]).map((r) => {
         const hasSignature = Boolean(r.signature_png_base64) || Boolean(r.signature_strokes_json);
         const signatureMaterial =
           (typeof r.signature_png_base64 === 'string' && r.signature_png_base64) ||
@@ -192,26 +159,19 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
     }
   );
 
-  /**
-   * GET /v1/documents/:documentId/download
-   *
-   * Auth required.
-   * Returns the raw PDF bytes for an agreement (stored on checkin_blocks.agreement_pdf).
-   */
   fastify.get<{ Params: { documentId: string } }>(
     '/v1/documents/:documentId/download',
     { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const { documentId } = request.params;
 
-      const result = await query<{ agreement_pdf: Buffer | null }>(
-        `SELECT agreement_pdf FROM checkin_blocks WHERE id = $1`,
-        [documentId]
+      const result = await db.execute<Record<string, unknown>>(
+        sql`SELECT agreement_pdf FROM checkin_blocks WHERE id = ${documentId}`
       );
       if (result.rows.length === 0) {
         return reply.status(404).send({ error: 'Document not found' });
       }
-      const pdf = result.rows[0]!.agreement_pdf;
+      const pdf = (result.rows[0] as unknown as { agreement_pdf: Buffer | null }).agreement_pdf;
       if (!pdf) {
         return reply.status(404).send({ error: 'Agreement PDF not stored for this document' });
       }

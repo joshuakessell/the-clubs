@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { requireAuth } from '../auth/middleware';
 
 const OfferableRoomsQuerySchema = z.object({
@@ -15,16 +16,7 @@ type RoomRow = {
   type: string;
 };
 
-/**
- * Room routes (offerable rooms for waitlist upgrades).
- */
 export async function roomsRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * GET /v1/rooms/offerable?tier=STANDARD|DOUBLE|SPECIAL
-   *
-   * Returns CLEAN, unassigned rooms of the given tier excluding rooms reserved by OFFERED waitlist entries.
-   * Staff-only.
-   */
   fastify.get<{ Querystring: OfferableRoomsQuery }>(
     '/v1/rooms/offerable',
     { preHandler: [requireAuth] },
@@ -44,13 +36,12 @@ export async function roomsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       try {
-        const result = await query<RoomRow>(
-          `SELECT r.id, r.number, r.type
+        const result = await db.execute<Record<string, unknown>>(
+          sql`SELECT r.id, r.number, r.type
            FROM rooms r
            WHERE r.status = 'CLEAN'
              AND r.assigned_to_customer_id IS NULL
-             AND r.type = $1
-             -- Exclude rooms "selected" by an active lane session (reservation semantics).
+             AND r.type = ${qs.tier}
              AND NOT EXISTS (
                SELECT 1
                FROM lane_sessions ls
@@ -76,11 +67,10 @@ export async function roomsRoutes(fastify: FastifyInstance): Promise<void> {
                  AND v.ended_at IS NULL
                  AND cb.ends_at > NOW()
              )
-           ORDER BY r.number ASC`,
-          [qs.tier]
+           ORDER BY r.number ASC`
         );
 
-        return reply.send({ rooms: result.rows });
+        return reply.send({ rooms: result.rows as unknown as RoomRow[] });
       } catch (error) {
         fastify.log.error(error, 'Failed to fetch offerable rooms');
         return reply.status(500).send({ error: 'Internal server error' });
