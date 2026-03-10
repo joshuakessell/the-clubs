@@ -2,27 +2,42 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { verifyPin } from '../../auth/utils';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-
 import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { insertClubEvent } from '../../activity/clubEventLog';
 import { HttpError } from '../../errors/HttpError';
 
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertClubEvent.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
+
 export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
-  /**
-   * POST /v1/checkin/lane/:laneId/past-due/demo-payment
-   *
-   * Demo endpoint for past-due payment (cash or credit).
-   */
   fastify.post<{
     Params: { laneId: string };
     Body: { outcome: 'CASH_SUCCESS' | 'CREDIT_SUCCESS' | 'CREDIT_DECLINE'; declineReason?: string };
   }>(
     '/v1/checkin/lane/:laneId/past-due/demo-payment',
-    {
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) {
         return reply.status(401).send({ error: 'Unauthorized' });
@@ -32,57 +47,49 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
       const { outcome, declineReason } = request.body;
 
       try {
-        const result = await transaction(async (client) => {
-          const sessionResult = await client.query<LaneSessionRow>(
-            `SELECT * FROM lane_sessions
-           WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT')
+        const result = await db.transaction(async (tx) => {
+          const sessionResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions
+           WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT')
            ORDER BY created_at DESC
-           LIMIT 1`,
-            [laneId]
+           LIMIT 1`
           );
 
           if (sessionResult.rows.length === 0) {
             throw new HttpError(404, 'No active session found');
           }
 
-          const session = sessionResult.rows[0]!;
+          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
 
           if (outcome === 'CASH_SUCCESS' || outcome === 'CREDIT_SUCCESS') {
-            // Clear past-due balance
             if (session.customer_id) {
-              await client.query(
-                `UPDATE customers SET past_due_balance = 0, updated_at = NOW() WHERE id = $1`,
-                [session.customer_id]
+              await tx.execute(
+                sql`UPDATE customers SET past_due_balance = 0, updated_at = NOW() WHERE id = ${session.customer_id}`
               );
             }
 
-            // Update session
-            await client.query(
-              `UPDATE lane_sessions
+            await tx.execute(
+              sql`UPDATE lane_sessions
              SET last_past_due_decline_reason = NULL,
                  last_past_due_decline_at = NULL,
                  updated_at = NOW()
-             WHERE id = $1`,
-              [session.id]
+             WHERE id = ${session.id}`
             );
           } else {
-            // CREDIT_DECLINE
-            await client.query(
-              `UPDATE lane_sessions
-             SET last_past_due_decline_reason = $1,
+            await tx.execute(
+              sql`UPDATE lane_sessions
+             SET last_past_due_decline_reason = ${declineReason || 'Payment declined'},
                  last_past_due_decline_at = NOW(),
                  updated_at = NOW()
-             WHERE id = $2`,
-              [declineReason || 'Payment declined', session.id]
+             WHERE id = ${session.id}`
             );
           }
 
           return { sessionId: session.id, success: outcome !== 'CREDIT_DECLINE', outcome };
         });
 
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 
         return reply.send(result);
@@ -102,19 +109,12 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * POST /v1/checkin/lane/:laneId/past-due/bypass
-   *
-   * Bypass past-due balance check (requires admin PIN).
-   */
   fastify.post<{
     Params: { laneId: string };
     Body: { managerId: string; managerPin: string };
   }>(
     '/v1/checkin/lane/:laneId/past-due/bypass',
-    {
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) {
         return reply.status(401).send({ error: 'Unauthorized' });
@@ -122,23 +122,19 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
 
       const { laneId } = request.params;
       const body = request.body as { managerId: string; managerPin: string };
-
       const { managerId, managerPin } = body;
 
       try {
-        const result = await transaction(async (client) => {
-          // Verify manager is ADMIN with correct PIN
-          const managerResult = await client.query<{
-            id: string;
-            role: string;
-            pin_hash: string | null;
-          }>(`SELECT id, role, pin_hash FROM staff WHERE id = $1 AND active = true`, [managerId]);
+        const result = await db.transaction(async (tx) => {
+          const managerResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT id, role, pin_hash FROM staff WHERE id = ${managerId} AND active = true`
+          );
 
           if (managerResult.rows.length === 0) {
             throw new HttpError(404, 'Manager not found');
           }
 
-          const manager = managerResult.rows[0]!;
+          const manager = managerResult.rows[0] as unknown as { id: string; role: string; pin_hash: string | null };
 
           if (manager.role !== 'ADMIN') {
             throw new HttpError(403, 'Only admins can bypass past-due balance');
@@ -149,34 +145,29 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
             throw new HttpError(401, 'Invalid PIN');
           }
 
-          // Get session
-          const sessionResult = await client.query<LaneSessionRow>(
-            `SELECT * FROM lane_sessions
-           WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT')
+          const sessionResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions
+           WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT')
            ORDER BY created_at DESC
-           LIMIT 1`,
-            [laneId]
+           LIMIT 1`
           );
 
           if (sessionResult.rows.length === 0) {
             throw new HttpError(404, 'No active session found');
           }
 
-          const session = sessionResult.rows[0]!;
+          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
 
-          // Mark as bypassed
-          await client.query(
-            `UPDATE lane_sessions
+          await tx.execute(
+            sql`UPDATE lane_sessions
            SET past_due_bypassed = true,
-               past_due_bypassed_by_staff_id = $1,
+               past_due_bypassed_by_staff_id = ${managerId},
                past_due_bypassed_at = NOW(),
                updated_at = NOW()
-           WHERE id = $2`,
-            [managerId, session.id]
+           WHERE id = ${session.id}`
           );
 
-          // Emit unified club event for analytics
-          await insertClubEvent(client, {
+          await insertClubEvent(toQueryable(tx) as any, {
             eventType: 'PAST_DUE_WAIVED',
             eventDomain: 'ADMIN',
             sourceApp: 'EMPLOYEE_REGISTER',
@@ -196,9 +187,8 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
           return { sessionId: session.id, success: true };
         });
 
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 
         return reply.send(result);

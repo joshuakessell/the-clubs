@@ -2,8 +2,31 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/middleware';
 import { getHttpError } from '../../checkin/utils';
-import { query, transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertCustomerActivityEvent.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 const ExtendBanSchema = z.object({
   bannedUntil: z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: 'Invalid ISO date' }),
@@ -15,28 +38,19 @@ const RemoveBanSchema = z.object({
 });
 
 export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance): void {
-  /**
-   * GET /v1/admin/late-checkout-ban-alerts
-   *
-   * Returns all currently banned customers (where banned_until > NOW()).
-   */
   fastify.get(
     '/v1/admin/late-checkout-ban-alerts',
     { preHandler: [requireAuth, requireAdmin] },
     async (_request, reply) => {
-      const result = await query<{
-        id: string;
-        name: string;
-        membership_number: string | null;
-        banned_until: Date;
-      }>(
-        `SELECT id, name, membership_number, banned_until
+      const result = await db.execute<Record<string, unknown>>(
+        sql`SELECT id, name, membership_number, banned_until
          FROM customers
          WHERE banned_until IS NOT NULL AND banned_until > NOW()
          ORDER BY banned_until ASC`
       );
 
-      const alerts = result.rows.map((r) => ({
+      type BanRow = { id: string; name: string; membership_number: string | null; banned_until: Date };
+      const alerts = (result.rows as unknown as BanRow[]).map((r) => ({
         id: r.id,
         customerName: r.name,
         membershipNumber: r.membership_number,
@@ -47,11 +61,6 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
     }
   );
 
-  /**
-   * POST /v1/admin/late-checkout-ban-alerts/:id/remove-ban
-   *
-   * Removes the ban entirely (sets banned_until = NULL).
-   */
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof RemoveBanSchema> }>(
     '/v1/admin/late-checkout-ban-alerts/:id/remove-ban',
     { preHandler: [requireReauthForAdmin] },
@@ -59,24 +68,22 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
       const parsed = request.body as z.infer<typeof RemoveBanSchema>;
 
       try {
-        await transaction(async (client) => {
-          const check = await client.query<{ id: string; name: string; banned_until: Date | null }>(
-            `SELECT id, name, banned_until FROM customers WHERE id = $1 FOR UPDATE`,
-            [request.params.id]
+        await db.transaction(async (tx) => {
+          const check = await tx.execute<Record<string, unknown>>(
+            sql`SELECT id, name, banned_until FROM customers WHERE id = ${request.params.id} FOR UPDATE`
           );
           if (check.rows.length === 0) {
             const err = new Error('Customer not found') as Error & { statusCode: number };
             err.statusCode = 404;
             throw err;
           }
-          const customer = check.rows[0];
+          const customer = check.rows[0] as unknown as { id: string; name: string; banned_until: Date | null };
 
-          await client.query(
-            `UPDATE customers SET banned_until = NULL, updated_at = NOW() WHERE id = $1`,
-            [customer.id]
+          await tx.execute(
+            sql`UPDATE customers SET banned_until = NULL, updated_at = NOW() WHERE id = ${customer.id}`
           );
 
-          await insertCustomerActivityEvent(client, {
+          await insertCustomerActivityEvent(toQueryable(tx) as any, {
             customerId: customer.id,
             actionType: 'BAN_REMOVED',
             actionCategory: 'ADMIN',
@@ -94,11 +101,10 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
           });
 
           if (parsed.managerNotes?.trim()) {
-            await client.query(
-              `INSERT INTO customer_notes
+            await tx.execute(
+              sql`INSERT INTO customer_notes
                 (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
-               VALUES ($1::uuid, $2::uuid, $3, 'OFFICE_DASHBOARD', $4, true)`,
-              [customer.id, request.staff!.staffId, request.staff!.name, parsed.managerNotes.trim()]
+               VALUES (${customer.id}::uuid, ${request.staff!.staffId}::uuid, ${request.staff!.name}, 'OFFICE_DASHBOARD', ${parsed.managerNotes.trim()}, true)`
             );
           }
         });
@@ -113,11 +119,6 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
     }
   );
 
-  /**
-   * POST /v1/admin/late-checkout-ban-alerts/:id/extend-ban
-   *
-   * Extends (or shortens) the ban to a specific date.
-   */
   fastify.post<{ Params: { id: string }; Body: z.infer<typeof ExtendBanSchema> }>(
     '/v1/admin/late-checkout-ban-alerts/:id/extend-ban',
     { preHandler: [requireReauthForAdmin] },
@@ -130,24 +131,22 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
       }
 
       try {
-        await transaction(async (client) => {
-          const check = await client.query<{ id: string; name: string; banned_until: Date | null }>(
-            `SELECT id, name, banned_until FROM customers WHERE id = $1 FOR UPDATE`,
-            [request.params.id]
+        await db.transaction(async (tx) => {
+          const check = await tx.execute<Record<string, unknown>>(
+            sql`SELECT id, name, banned_until FROM customers WHERE id = ${request.params.id} FOR UPDATE`
           );
           if (check.rows.length === 0) {
             const err = new Error('Customer not found') as Error & { statusCode: number };
             err.statusCode = 404;
             throw err;
           }
-          const customer = check.rows[0];
+          const customer = check.rows[0] as unknown as { id: string; name: string; banned_until: Date | null };
 
-          await client.query(
-            `UPDATE customers SET banned_until = $1, updated_at = NOW() WHERE id = $2`,
-            [newBannedUntil, customer.id]
+          await tx.execute(
+            sql`UPDATE customers SET banned_until = ${newBannedUntil}, updated_at = NOW() WHERE id = ${customer.id}`
           );
 
-          await insertCustomerActivityEvent(client, {
+          await insertCustomerActivityEvent(toQueryable(tx) as any, {
             customerId: customer.id,
             actionType: 'BAN_EXTENDED',
             actionCategory: 'ADMIN',
@@ -166,11 +165,10 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
           });
 
           if (parsed.managerNotes?.trim()) {
-            await client.query(
-              `INSERT INTO customer_notes
+            await tx.execute(
+              sql`INSERT INTO customer_notes
                 (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
-               VALUES ($1::uuid, $2::uuid, $3, 'OFFICE_DASHBOARD', $4, true)`,
-              [customer.id, request.staff!.staffId, request.staff!.name, parsed.managerNotes.trim()]
+               VALUES (${customer.id}::uuid, ${request.staff!.staffId}::uuid, ${request.staff!.name}, 'OFFICE_DASHBOARD', ${parsed.managerNotes.trim()}, true)`
             );
           }
         });

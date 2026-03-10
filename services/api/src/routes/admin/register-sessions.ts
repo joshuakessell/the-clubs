@@ -1,34 +1,39 @@
 import type { FastifyInstance } from 'fastify';
-import { query, transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { requireAdmin, requireAuth } from '../../auth/middleware';
 import { insertAuditLog } from '../../audit/auditLog';
 
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertAuditLog.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
+
 export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): void {
-  /**
-   * GET /v1/admin/register-sessions
-   *
-   * Returns array with exactly three entries (Register 1-3).
-   * Shows current status, employee info, device, and heartbeat data.
-   */
   fastify.get(
     '/v1/admin/register-sessions',
-    {
-      preHandler: [requireAuth, requireAdmin],
-    },
+    { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       try {
-        // Get active sessions for all registers
-        const activeSessions = await query<{
-          id: string;
-          employee_id: string;
-          device_id: string;
-          register_number: number;
-          created_at: Date;
-          last_heartbeat: Date;
-          employee_name: string;
-          employee_role: string;
-        }>(
-          `SELECT 
+        const activeSessions = await db.execute<Record<string, unknown>>(
+          sql`SELECT 
           rs.id,
           rs.employee_id,
           rs.device_id,
@@ -43,7 +48,17 @@ export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): vo
         ORDER BY rs.register_number`
         );
 
-        // Build result array with exactly 3 entries
+        type SessionRow = {
+          id: string;
+          employee_id: string;
+          device_id: string;
+          register_number: number;
+          created_at: Date;
+          last_heartbeat: Date;
+          employee_name: string;
+          employee_role: string;
+        };
+
         const result: Array<{
           registerNumber: 1 | 2 | 3;
           active: boolean;
@@ -60,7 +75,7 @@ export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): vo
         }> = [];
 
         for (let regNum = 1; regNum <= 3; regNum++) {
-          const session = activeSessions.rows.find((s) => s.register_number === regNum);
+          const session = (activeSessions.rows as unknown as SessionRow[]).find((s) => s.register_number === regNum);
           if (session) {
             const now = new Date();
             const heartbeatTime = new Date(session.last_heartbeat);
@@ -104,19 +119,11 @@ export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): vo
     }
   );
 
-  /**
-   * POST /v1/admin/register-sessions/:registerNumber/force-signout
-   *
-   * Forces sign-out of active session for specified register.
-   * Broadcasts REGISTER_SESSION_UPDATED event.
-   */
   fastify.post<{
     Params: { registerNumber: string };
   }>(
     '/v1/admin/register-sessions/:registerNumber/force-signout',
-    {
-      preHandler: [requireAuth, requireAdmin],
-    },
+    { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const registerNumber = Number.parseInt(request.params.registerNumber, 10);
 
@@ -128,18 +135,9 @@ export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): vo
       }
 
       try {
-        const result = await transaction(async (client) => {
-          // Find active session for this register
-          const sessionResult = await client.query<{
-            id: string;
-            employee_id: string;
-            device_id: string;
-            created_at: Date;
-            last_heartbeat: Date;
-            employee_name: string;
-            employee_role: string;
-          }>(
-            `SELECT 
+        const result = await db.transaction(async (tx) => {
+          const sessionResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT 
             rs.id,
             rs.employee_id,
             rs.device_id,
@@ -149,9 +147,8 @@ export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): vo
             s.role as employee_role
           FROM register_sessions rs
           JOIN staff s ON s.id = rs.employee_id
-          WHERE rs.register_number = $1
-          AND rs.signed_out_at IS NULL`,
-            [registerNumber]
+          WHERE rs.register_number = ${registerNumber}
+          AND rs.signed_out_at IS NULL`
           );
 
           if (sessionResult.rows.length === 0) {
@@ -172,23 +169,19 @@ export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): vo
 
           const session = sessionResult.rows[0]!;
 
-          // Sign out
-          await client.query(
-            `UPDATE register_sessions
+          await tx.execute(
+            sql`UPDATE register_sessions
            SET signed_out_at = NOW()
-           WHERE id = $1`,
-            [session.id]
+           WHERE id = ${session.id as string}`
           );
 
-          // Log audit action
-          await insertAuditLog(client, {
+          await insertAuditLog(toQueryable(tx) as any, {
             staffId: request.staff!.staffId,
             action: 'REGISTER_FORCE_SIGN_OUT',
             entityType: 'register_session',
-            entityId: session.id,
+            entityId: session.id as string,
           });
 
-          // Broadcast REGISTER_SESSION_UPDATED event
           const payload = {
             registerNumber: registerNumber as 1 | 2 | 3,
             active: false,

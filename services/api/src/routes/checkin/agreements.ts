@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth, optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
-import { transaction } from '../../db';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { getHttpError } from '../../checkin/utils';
 import { broadcastInventoryUpdate } from '../../inventory/broadcast';
@@ -28,19 +27,12 @@ function buildCtx(request: { staff?: { staffId: string; name?: string } | null; 
 }
 
 export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
-  /**
-   * POST /v1/checkin/lane/:laneId/sign-agreement
-   *
-   * Store agreement signature, generate PDF, auto-assign resource, and create check-in block.
-   */
   fastify.post<{
     Params: { laneId: string };
     Body: { signaturePayload: string; sessionId?: string };
   }>(
     '/v1/checkin/lane/:laneId/sign-agreement',
-    {
-      preHandler: [optionalAuth, requireKioskTokenOrStaff],
-    },
+    { preHandler: [optionalAuth, requireKioskTokenOrStaff] },
     async (request, reply) => {
       try {
         const result = await processAgreementSigning({
@@ -50,7 +42,6 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
           ctx: buildCtx(request),
         });
 
-        // Broadcast waitlist update if created
         if (result.waitlist) {
           fastify.broadcaster.broadcast({
             type: 'WAITLIST_UPDATED',
@@ -59,7 +50,6 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
           });
         }
 
-        // Broadcast assignment created
         const assignmentPayload: AssignmentCreatedPayload = {
           sessionId: result.sessionId,
           roomId: result.assignedResourceType === 'room' ? result.checkinBlockId : undefined,
@@ -70,10 +60,8 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
         };
         fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, request.params.laneId);
 
-        // Broadcast session updated + inventory
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
         await broadcastInventoryUpdate(fastify.broadcaster);
 
@@ -89,19 +77,12 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * POST /v1/checkin/lane/:laneId/manual-signature-override
-   *
-   * Employee override: complete agreement without customer signature.
-   */
   fastify.post<{
     Params: { laneId: string };
     Body: { sessionId?: string };
   }>(
     '/v1/checkin/lane/:laneId/manual-signature-override',
-    {
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       try {
         const result = await processAgreementSigning({
@@ -111,7 +92,6 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
           ctx: buildCtx(request),
         });
 
-        // Broadcast waitlist update if created
         if (result.waitlist) {
           fastify.broadcaster.broadcast({
             type: 'WAITLIST_UPDATED',
@@ -120,7 +100,6 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
           });
         }
 
-        // Broadcast assignment created
         const assignmentPayload: AssignmentCreatedPayload = {
           sessionId: result.sessionId,
           roomId: result.assignedResourceType === 'room' ? result.checkinBlockId : undefined,
@@ -131,10 +110,8 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
         };
         fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, request.params.laneId);
 
-        // Broadcast session updated + inventory
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
         await broadcastInventoryUpdate(fastify.broadcaster);
 
@@ -150,19 +127,12 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * POST /v1/checkin/lane/:laneId/agreement-bypass
-   *
-   * Staff-only: request bypass of digital agreement for physical signature.
-   */
   fastify.post<{
     Params: { laneId: string };
     Body: { sessionId?: string };
   }>(
     '/v1/checkin/lane/:laneId/agreement-bypass',
-    {
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -172,9 +142,8 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
           sessionId: request.body.sessionId,
         });
 
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, result.laneId);
 
         return reply.send({ success: true });
@@ -189,11 +158,6 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * POST /v1/checkin/lane/:laneId/customer-confirm
-   *
-   * Customer confirms or declines cross-type assignment.
-   */
   fastify.post<{
     Params: { laneId: string };
     Body: { sessionId: string; confirmed: boolean };
@@ -208,7 +172,6 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
           confirmed: request.body.confirmed,
         });
 
-        // Broadcast confirmation or decline
         if (result.confirmedPayload) {
           fastify.broadcaster.broadcastCustomerConfirmed(result.confirmedPayload, request.params.laneId);
         }
@@ -228,19 +191,12 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * POST /v1/checkin/lane/:laneId/kiosk-sign
-   *
-   * Lightweight: record that the customer signed digitally, without full check-in completion.
-   */
   fastify.post<{
     Params: { laneId: string };
     Body: { signaturePayload: string; sessionId?: string };
   }>(
     '/v1/checkin/lane/:laneId/kiosk-sign',
-    {
-      preHandler: [optionalAuth, requireKioskTokenOrStaff],
-    },
+    { preHandler: [optionalAuth, requireKioskTokenOrStaff] },
     async (request, reply) => {
       const { signaturePayload, sessionId } = request.body;
 
@@ -255,9 +211,8 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
           signaturePayload,
         });
 
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(updatedSessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(updatedSessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
 
         return reply.send({ success: true });

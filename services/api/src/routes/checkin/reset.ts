@@ -4,24 +4,40 @@ import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { insertClubEvent } from '../../activity/clubEventLog';
 import { HttpError } from '../../errors/HttpError';
 
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertClubEvent.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
+
 export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
-  /**
-   * POST /v1/checkin/lane/:laneId/reset
-   *
-   * Reset/complete transaction - marks session as completed and clears customer state.
-   */
   fastify.post<{
     Params: { laneId: string };
     Body: { cancelled?: boolean };
   }>(
     '/v1/checkin/lane/:laneId/reset',
-    {
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) {
         return reply.status(401).send({ error: 'Unauthorized' });
@@ -31,31 +47,28 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
       const isCancelled = !!(request.body as any)?.cancelled;
 
       try {
-        const result = await transaction(async (client) => {
-          // Grab the most recent non-cancelled session (active or already completed).
-          const sessionResult = await client.query<LaneSessionRow>(
-            `SELECT * FROM lane_sessions
-           WHERE lane_id = $1 AND status != 'CANCELLED'
+        const result = await db.transaction(async (tx) => {
+          const sessionResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions
+           WHERE lane_id = ${laneId} AND status != 'CANCELLED'
            ORDER BY created_at DESC
-           LIMIT 1`,
-            [laneId]
+           LIMIT 1`
           );
 
           if (sessionResult.rows.length === 0) {
             throw new HttpError(404, 'No active session found');
           }
 
-          const session = sessionResult.rows[0]!;
+          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
           const newStatus = isCancelled ? 'CANCELLED' : 'COMPLETED';
           request.log.info(
             { laneId, sessionId: session.id, actor: 'employee-kiosk', action: 'reset_complete', newStatus },
             `${isCancelled ? 'Cancelling' : 'Completing'} lane session (reset)`
           );
 
-          // Always clear state and mark appropriately to keep reset idempotent.
-          await client.query(
-            `UPDATE lane_sessions
-           SET status = $2,
+          await tx.execute(
+            sql`UPDATE lane_sessions
+           SET status = ${newStatus}::public.lane_session_status,
                staff_id = NULL,
                customer_id = NULL,
                customer_display_name = NULL,
@@ -79,13 +92,11 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
                flow_step = NULL,
                flow_version = 0,
                updated_at = NOW()
-           WHERE id = $1`,
-            [session.id, newStatus]
+           WHERE id = ${session.id}`
           );
 
-          // Log CHECKIN_CANCELLED club event
           if (isCancelled && session.customer_id) {
-            await insertClubEvent(client, {
+            await insertClubEvent(toQueryable(tx) as any, {
               eventType: 'CHECKIN_CANCELLED',
               eventDomain: 'CHECKIN',
               sourceApp: 'EMPLOYEE_REGISTER',
@@ -102,9 +113,8 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
           return { success: true, sessionId: session.id };
         });
 
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 
         return reply.send({ success: true });
@@ -124,58 +134,44 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * POST /v1/checkin/lane/:laneId/kiosk-ack
-   *
-   * Public kiosk acknowledgement that the customer has tapped OK on the completion screen.
-   * This must NOT clear/end the lane session. It only marks kiosk_acknowledged_at so the kiosk UI can
-   * safely return to idle while the employee-kiosk still completes the transaction.
-   *
-   * Security: optionalAuth (kiosk does not have staff token).
-   */
   fastify.post<{
     Params: { laneId: string };
   }>(
     '/v1/checkin/lane/:laneId/kiosk-ack',
-    {
-      preHandler: [optionalAuth, requireKioskTokenOrStaff],
-    },
+    { preHandler: [optionalAuth, requireKioskTokenOrStaff] },
     async (request, reply) => {
       const { laneId } = request.params;
       try {
-        const result = await transaction(async (client) => {
-          const sessionResult = await client.query<LaneSessionRow>(
-            `SELECT * FROM lane_sessions
-           WHERE lane_id = $1 AND status != 'CANCELLED'
+        const result = await db.transaction(async (tx) => {
+          const sessionResult = await tx.execute<Record<string, unknown>>(
+            sql`SELECT * FROM lane_sessions
+           WHERE lane_id = ${laneId} AND status != 'CANCELLED'
            ORDER BY created_at DESC
-           LIMIT 1`,
-            [laneId]
+           LIMIT 1`
           );
 
           if (sessionResult.rows.length === 0) {
             throw new HttpError(404, 'No session found');
           }
 
-          const session = sessionResult.rows[0]!;
+          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
           request.log.info(
             { laneId, sessionId: session.id, actor: 'kiosk', action: 'kiosk_ack' },
             'Kiosk acknowledged; marking kiosk_acknowledged_at (no session clear)'
           );
 
-          await client.query(
-            `UPDATE lane_sessions
+          await tx.execute(
+            sql`UPDATE lane_sessions
              SET kiosk_acknowledged_at = NOW(),
                  updated_at = NOW()
-             WHERE id = $1`,
-            [session.id]
+             WHERE id = ${session.id}`
           );
 
           return { sessionId: session.id };
         });
 
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(result.sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 
         return reply.send({ success: true });
