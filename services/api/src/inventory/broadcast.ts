@@ -1,5 +1,5 @@
 import type { Broadcaster } from '../realtime/broadcaster';
-import { db, query } from '../db';
+import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { computeInventoryAvailable } from './available';
 
@@ -53,10 +53,9 @@ export async function broadcastInventoryUpdate(broadcaster: Broadcaster): Promis
     else if (status === 'dirty') lockerDirty = count;
   }
 
-  // computeInventoryAvailable still accepts QueryFn — keep query import until Phase 5 refactor
   let available: Awaited<ReturnType<typeof computeInventoryAvailable>> | undefined;
   try {
-    available = await computeInventoryAvailable(query);
+    available = await computeInventoryAvailable();
   } catch {
     available = undefined;
   }

@@ -5,7 +5,7 @@
  * Uses `db.select()` for type-safe reads, `db.execute(sql`...`)` for LATERAL joins.
  * This module contains ZERO HTTP/Fastify concepts.
  */
-import { db, query } from '../db';
+import { db } from '../db';
 import { rooms, lockers, customers, checkinBlocks, waitlist } from '../db/schema';
 import { eq, ne, or, isNotNull, count, sql, inArray } from 'drizzle-orm';
 import { getRoomTierFromNumber } from '@the-clubs/shared';
@@ -135,7 +135,7 @@ export async function getInventorySummary() {
  * GET /v1/inventory/available — Delegates to existing computeInventoryAvailable.
  */
 export async function getInventoryAvailable() {
-  return computeInventoryAvailable(query);
+  return computeInventoryAvailable();
 }
 
 /**

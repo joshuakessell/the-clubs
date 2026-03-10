@@ -1,6 +1,6 @@
-import type { transaction } from '../db';
+import type pg from 'pg';
 
-export type PoolClient = Parameters<Parameters<typeof transaction>[0]>[0];
+export type PoolClient = pg.PoolClient;
 
 export type RoomRentalType = 'STANDARD' | 'DOUBLE' | 'SPECIAL';
 
