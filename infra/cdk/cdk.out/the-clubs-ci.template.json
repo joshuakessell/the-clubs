@@ -1,0 +1,193 @@
+{
+ "Description": "GitHub Actions OIDC deploy role",
+ "Resources": {
+  "GitHubActionsDeployRoleA6F4AD3D": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRoleWithWebIdentity",
+       "Condition": {
+        "StringEquals": {
+         "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+         "token.actions.githubusercontent.com:sub": "repo:joshuakessell/the-clubs:ref:refs/heads/*"
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Federated": "arn:aws:iam::146469921099:oidc-provider/token.actions.githubusercontent.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Description": "Deploy role for the-clubs — assumed by GitHub Actions via OIDC",
+    "RoleName": "the-clubs-production-github-actions-deploy",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-ci/GitHubActionsDeployRole/Resource"
+   }
+  },
+  "GitHubActionsDeployRoleDefaultPolicy3AC475A7": {
+   "Type": "AWS::IAM::Policy",
+   "Properties": {
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "s3:ListBucket",
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::ImportValue": "the-clubs-spa:ExportsOutputFnGetAttCustomerKioskBucket7C518164Arn89566544"
+        },
+        {
+         "Fn::ImportValue": "the-clubs-spa:ExportsOutputFnGetAttEmployeeRegisterBucket47FAA391ArnBBB0A10A"
+        },
+        {
+         "Fn::ImportValue": "the-clubs-spa:ExportsOutputFnGetAttOfficeDashboardBucket3632731BArnA65454E9"
+        },
+        "arn:aws:s3:::the-clubs-demo-employee-register",
+        "arn:aws:s3:::the-clubs-demo-customer-kiosk",
+        "arn:aws:s3:::the-clubs-demo-office-dashboard"
+       ],
+       "Sid": "S3ListBuckets"
+      },
+      {
+       "Action": [
+        "s3:PutObject",
+        "s3:DeleteObject"
+       ],
+       "Effect": "Allow",
+       "Resource": [
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "the-clubs-spa:ExportsOutputFnGetAttCustomerKioskBucket7C518164Arn89566544"
+           },
+           "/*"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "the-clubs-spa:ExportsOutputFnGetAttEmployeeRegisterBucket47FAA391ArnBBB0A10A"
+           },
+           "/*"
+          ]
+         ]
+        },
+        {
+         "Fn::Join": [
+          "",
+          [
+           {
+            "Fn::ImportValue": "the-clubs-spa:ExportsOutputFnGetAttOfficeDashboardBucket3632731BArnA65454E9"
+           },
+           "/*"
+          ]
+         ]
+        },
+        "arn:aws:s3:::the-clubs-demo-employee-register/*",
+        "arn:aws:s3:::the-clubs-demo-customer-kiosk/*",
+        "arn:aws:s3:::the-clubs-demo-office-dashboard/*"
+       ],
+       "Sid": "S3WriteObjects"
+      },
+      {
+       "Action": "cloudfront:CreateInvalidation",
+       "Effect": "Allow",
+       "Resource": "*",
+       "Sid": "CloudFrontInvalidate"
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "PolicyName": "GitHubActionsDeployRoleDefaultPolicy3AC475A7",
+    "Roles": [
+     {
+      "Ref": "GitHubActionsDeployRoleA6F4AD3D"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-ci/GitHubActionsDeployRole/DefaultPolicy/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/zPSMzIx1DNQTCwv1k1OydbNyUzSqw4uSUzO1glKLc4vLUpO1QHKxWcm5upVB+XnpOo4p+WB6YD8nMzkShAXwqoFMf1LSwpKS2p18vJTUvWyivXLjEz1LIDGZxVnZuoWleaVZOam6gVBaADgA2qtewAAAA=="
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-ci/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "GitHubActionsRoleArn": {
+   "Description": "IAM role ARN — set as GitHub repo secret AWS_ROLE_ARN",
+   "Value": {
+    "Fn::GetAtt": [
+     "GitHubActionsDeployRoleA6F4AD3D",
+     "Arn"
+    ]
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

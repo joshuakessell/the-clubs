@@ -1,0 +1,1051 @@
+{
+ "Description": "S3 + CloudFront for the 3 SPA frontends",
+ "Resources": {
+  "SpaCertAA287655": {
+   "Type": "AWS::CertificateManager::Certificate",
+   "Properties": {
+    "DomainName": "customer-kiosk.joshuakessell.com",
+    "SubjectAlternativeNames": [
+     "employee-register.joshuakessell.com",
+     "office-dashboard.joshuakessell.com"
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Name",
+      "Value": "the-clubs-spa/SpaCert"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ],
+    "ValidationMethod": "DNS"
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/SpaCert/Resource"
+   }
+  },
+  "CustomerKioskBucket7C518164": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "the-clubs-customer-kiosk",
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/CustomerKioskBucket/Resource"
+   }
+  },
+  "CustomerKioskBucketPolicy9C90B159": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "CustomerKioskBucket7C518164"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "s3:GetObject",
+       "Condition": {
+        "StringEquals": {
+         "AWS:SourceArn": {
+          "Fn::Join": [
+           "",
+           [
+            "arn:",
+            {
+             "Ref": "AWS::Partition"
+            },
+            ":cloudfront::",
+            {
+             "Ref": "AWS::AccountId"
+            },
+            ":distribution/",
+            {
+             "Ref": "CustomerKioskDistB186F361"
+            }
+           ]
+          ]
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "cloudfront.amazonaws.com"
+       },
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          {
+           "Fn::GetAtt": [
+            "CustomerKioskBucket7C518164",
+            "Arn"
+           ]
+          },
+          "/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/CustomerKioskBucket/Policy/Resource"
+   }
+  },
+  "CustomerKioskDefaultCache5B21C72C": {
+   "Type": "AWS::CloudFront::CachePolicy",
+   "Properties": {
+    "CachePolicyConfig": {
+     "DefaultTTL": 86400,
+     "MaxTTL": 31536000,
+     "MinTTL": 0,
+     "Name": "theclubsspaCustomerKioskDefaultCache4D8FB5B9-us-east-1",
+     "ParametersInCacheKeyAndForwardedToOrigin": {
+      "CookiesConfig": {
+       "CookieBehavior": "none"
+      },
+      "EnableAcceptEncodingBrotli": true,
+      "EnableAcceptEncodingGzip": true,
+      "HeadersConfig": {
+       "HeaderBehavior": "none"
+      },
+      "QueryStringsConfig": {
+       "QueryStringBehavior": "none"
+      }
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/CustomerKioskDefaultCache/Resource"
+   }
+  },
+  "CustomerKioskAssetsCache382EF2BD": {
+   "Type": "AWS::CloudFront::CachePolicy",
+   "Properties": {
+    "CachePolicyConfig": {
+     "DefaultTTL": 31536000,
+     "MaxTTL": 31536000,
+     "MinTTL": 31536000,
+     "Name": "theclubsspaCustomerKioskAssetsCacheB057554D-us-east-1",
+     "ParametersInCacheKeyAndForwardedToOrigin": {
+      "CookiesConfig": {
+       "CookieBehavior": "none"
+      },
+      "EnableAcceptEncodingBrotli": true,
+      "EnableAcceptEncodingGzip": true,
+      "HeadersConfig": {
+       "HeaderBehavior": "none"
+      },
+      "QueryStringsConfig": {
+       "QueryStringBehavior": "none"
+      }
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/CustomerKioskAssetsCache/Resource"
+   }
+  },
+  "CustomerKioskDistOrigin1S3OriginAccessControl84FAD19E": {
+   "Type": "AWS::CloudFront::OriginAccessControl",
+   "Properties": {
+    "OriginAccessControlConfig": {
+     "Name": "theclubsspaCustomerKioskDistOrigin1S3OriginAccessControlCB41FEEA",
+     "OriginAccessControlOriginType": "s3",
+     "SigningBehavior": "always",
+     "SigningProtocol": "sigv4"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/CustomerKioskDist/Origin1/S3OriginAccessControl/Resource"
+   }
+  },
+  "CustomerKioskDistOrigin2S3OriginAccessControl848A30DD": {
+   "Type": "AWS::CloudFront::OriginAccessControl",
+   "Properties": {
+    "OriginAccessControlConfig": {
+     "Name": "theclubsspaCustomerKioskDistOrigin2S3OriginAccessControlE77CB435",
+     "OriginAccessControlOriginType": "s3",
+     "SigningBehavior": "always",
+     "SigningProtocol": "sigv4"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/CustomerKioskDist/Origin2/S3OriginAccessControl/Resource"
+   }
+  },
+  "CustomerKioskDistB186F361": {
+   "Type": "AWS::CloudFront::Distribution",
+   "Properties": {
+    "DistributionConfig": {
+     "Aliases": [
+      "customer-kiosk.joshuakessell.com"
+     ],
+     "CacheBehaviors": [
+      {
+       "CachePolicyId": {
+        "Ref": "CustomerKioskAssetsCache382EF2BD"
+       },
+       "Compress": true,
+       "PathPattern": "/assets/*",
+       "TargetOriginId": "theclubsspaCustomerKioskDistOrigin2B1E3ABE5",
+       "ViewerProtocolPolicy": "redirect-to-https"
+      }
+     ],
+     "Comment": "the-clubs customer-kiosk",
+     "CustomErrorResponses": [
+      {
+       "ErrorCode": 403,
+       "ResponseCode": 200,
+       "ResponsePagePath": "/index.html"
+      },
+      {
+       "ErrorCode": 404,
+       "ResponseCode": 200,
+       "ResponsePagePath": "/index.html"
+      }
+     ],
+     "DefaultCacheBehavior": {
+      "CachePolicyId": {
+       "Ref": "CustomerKioskDefaultCache5B21C72C"
+      },
+      "Compress": true,
+      "TargetOriginId": "theclubsspaCustomerKioskDistOrigin106F152DC",
+      "ViewerProtocolPolicy": "redirect-to-https"
+     },
+     "DefaultRootObject": "index.html",
+     "Enabled": true,
+     "HttpVersion": "http2and3",
+     "IPV6Enabled": true,
+     "Origins": [
+      {
+       "DomainName": {
+        "Fn::GetAtt": [
+         "CustomerKioskBucket7C518164",
+         "RegionalDomainName"
+        ]
+       },
+       "Id": "theclubsspaCustomerKioskDistOrigin106F152DC",
+       "OriginAccessControlId": {
+        "Fn::GetAtt": [
+         "CustomerKioskDistOrigin1S3OriginAccessControl84FAD19E",
+         "Id"
+        ]
+       },
+       "S3OriginConfig": {
+        "OriginAccessIdentity": ""
+       }
+      },
+      {
+       "DomainName": {
+        "Fn::GetAtt": [
+         "CustomerKioskBucket7C518164",
+         "RegionalDomainName"
+        ]
+       },
+       "Id": "theclubsspaCustomerKioskDistOrigin2B1E3ABE5",
+       "OriginAccessControlId": {
+        "Fn::GetAtt": [
+         "CustomerKioskDistOrigin2S3OriginAccessControl848A30DD",
+         "Id"
+        ]
+       },
+       "S3OriginConfig": {
+        "OriginAccessIdentity": ""
+       }
+      }
+     ],
+     "PriceClass": "PriceClass_100",
+     "ViewerCertificate": {
+      "AcmCertificateArn": {
+       "Ref": "SpaCertAA287655"
+      },
+      "MinimumProtocolVersion": "TLSv1.2_2021",
+      "SslSupportMethod": "sni-only"
+     }
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/CustomerKioskDist/Resource"
+   }
+  },
+  "EmployeeRegisterBucket47FAA391": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "the-clubs-employee-register",
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/EmployeeRegisterBucket/Resource"
+   }
+  },
+  "EmployeeRegisterBucketPolicy3E49C466": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "EmployeeRegisterBucket47FAA391"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "s3:GetObject",
+       "Condition": {
+        "StringEquals": {
+         "AWS:SourceArn": {
+          "Fn::Join": [
+           "",
+           [
+            "arn:",
+            {
+             "Ref": "AWS::Partition"
+            },
+            ":cloudfront::",
+            {
+             "Ref": "AWS::AccountId"
+            },
+            ":distribution/",
+            {
+             "Ref": "EmployeeRegisterDist46BEA83E"
+            }
+           ]
+          ]
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "cloudfront.amazonaws.com"
+       },
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          {
+           "Fn::GetAtt": [
+            "EmployeeRegisterBucket47FAA391",
+            "Arn"
+           ]
+          },
+          "/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/EmployeeRegisterBucket/Policy/Resource"
+   }
+  },
+  "EmployeeRegisterDefaultCache6907B342": {
+   "Type": "AWS::CloudFront::CachePolicy",
+   "Properties": {
+    "CachePolicyConfig": {
+     "DefaultTTL": 86400,
+     "MaxTTL": 31536000,
+     "MinTTL": 0,
+     "Name": "theclubsspaEmployeeRegisterDefaultCache108A33CE-us-east-1",
+     "ParametersInCacheKeyAndForwardedToOrigin": {
+      "CookiesConfig": {
+       "CookieBehavior": "none"
+      },
+      "EnableAcceptEncodingBrotli": true,
+      "EnableAcceptEncodingGzip": true,
+      "HeadersConfig": {
+       "HeaderBehavior": "none"
+      },
+      "QueryStringsConfig": {
+       "QueryStringBehavior": "none"
+      }
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/EmployeeRegisterDefaultCache/Resource"
+   }
+  },
+  "EmployeeRegisterAssetsCacheCA59F869": {
+   "Type": "AWS::CloudFront::CachePolicy",
+   "Properties": {
+    "CachePolicyConfig": {
+     "DefaultTTL": 31536000,
+     "MaxTTL": 31536000,
+     "MinTTL": 31536000,
+     "Name": "theclubsspaEmployeeRegisterAssetsCache30EF9E98-us-east-1",
+     "ParametersInCacheKeyAndForwardedToOrigin": {
+      "CookiesConfig": {
+       "CookieBehavior": "none"
+      },
+      "EnableAcceptEncodingBrotli": true,
+      "EnableAcceptEncodingGzip": true,
+      "HeadersConfig": {
+       "HeaderBehavior": "none"
+      },
+      "QueryStringsConfig": {
+       "QueryStringBehavior": "none"
+      }
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/EmployeeRegisterAssetsCache/Resource"
+   }
+  },
+  "EmployeeRegisterDistOrigin1S3OriginAccessControl3AD93DFF": {
+   "Type": "AWS::CloudFront::OriginAccessControl",
+   "Properties": {
+    "OriginAccessControlConfig": {
+     "Name": "theclubsspaEmployeeRegisterDOrigin1S3OriginAccessControlA264F230",
+     "OriginAccessControlOriginType": "s3",
+     "SigningBehavior": "always",
+     "SigningProtocol": "sigv4"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/EmployeeRegisterDist/Origin1/S3OriginAccessControl/Resource"
+   }
+  },
+  "EmployeeRegisterDistOrigin2S3OriginAccessControl3DD7CA56": {
+   "Type": "AWS::CloudFront::OriginAccessControl",
+   "Properties": {
+    "OriginAccessControlConfig": {
+     "Name": "theclubsspaEmployeeRegisterDOrigin2S3OriginAccessControl21C198CE",
+     "OriginAccessControlOriginType": "s3",
+     "SigningBehavior": "always",
+     "SigningProtocol": "sigv4"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/EmployeeRegisterDist/Origin2/S3OriginAccessControl/Resource"
+   }
+  },
+  "EmployeeRegisterDist46BEA83E": {
+   "Type": "AWS::CloudFront::Distribution",
+   "Properties": {
+    "DistributionConfig": {
+     "Aliases": [
+      "employee-register.joshuakessell.com"
+     ],
+     "CacheBehaviors": [
+      {
+       "CachePolicyId": {
+        "Ref": "EmployeeRegisterAssetsCacheCA59F869"
+       },
+       "Compress": true,
+       "PathPattern": "/assets/*",
+       "TargetOriginId": "theclubsspaEmployeeRegisterDistOrigin260A2D0D6",
+       "ViewerProtocolPolicy": "redirect-to-https"
+      }
+     ],
+     "Comment": "the-clubs employee-register",
+     "CustomErrorResponses": [
+      {
+       "ErrorCode": 403,
+       "ResponseCode": 200,
+       "ResponsePagePath": "/index.html"
+      },
+      {
+       "ErrorCode": 404,
+       "ResponseCode": 200,
+       "ResponsePagePath": "/index.html"
+      }
+     ],
+     "DefaultCacheBehavior": {
+      "CachePolicyId": {
+       "Ref": "EmployeeRegisterDefaultCache6907B342"
+      },
+      "Compress": true,
+      "TargetOriginId": "theclubsspaEmployeeRegisterDistOrigin116E32BF2",
+      "ViewerProtocolPolicy": "redirect-to-https"
+     },
+     "DefaultRootObject": "index.html",
+     "Enabled": true,
+     "HttpVersion": "http2and3",
+     "IPV6Enabled": true,
+     "Origins": [
+      {
+       "DomainName": {
+        "Fn::GetAtt": [
+         "EmployeeRegisterBucket47FAA391",
+         "RegionalDomainName"
+        ]
+       },
+       "Id": "theclubsspaEmployeeRegisterDistOrigin116E32BF2",
+       "OriginAccessControlId": {
+        "Fn::GetAtt": [
+         "EmployeeRegisterDistOrigin1S3OriginAccessControl3AD93DFF",
+         "Id"
+        ]
+       },
+       "S3OriginConfig": {
+        "OriginAccessIdentity": ""
+       }
+      },
+      {
+       "DomainName": {
+        "Fn::GetAtt": [
+         "EmployeeRegisterBucket47FAA391",
+         "RegionalDomainName"
+        ]
+       },
+       "Id": "theclubsspaEmployeeRegisterDistOrigin260A2D0D6",
+       "OriginAccessControlId": {
+        "Fn::GetAtt": [
+         "EmployeeRegisterDistOrigin2S3OriginAccessControl3DD7CA56",
+         "Id"
+        ]
+       },
+       "S3OriginConfig": {
+        "OriginAccessIdentity": ""
+       }
+      }
+     ],
+     "PriceClass": "PriceClass_100",
+     "ViewerCertificate": {
+      "AcmCertificateArn": {
+       "Ref": "SpaCertAA287655"
+      },
+      "MinimumProtocolVersion": "TLSv1.2_2021",
+      "SslSupportMethod": "sni-only"
+     }
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/EmployeeRegisterDist/Resource"
+   }
+  },
+  "OfficeDashboardBucket3632731B": {
+   "Type": "AWS::S3::Bucket",
+   "Properties": {
+    "BucketEncryption": {
+     "ServerSideEncryptionConfiguration": [
+      {
+       "ServerSideEncryptionByDefault": {
+        "SSEAlgorithm": "AES256"
+       }
+      }
+     ]
+    },
+    "BucketName": "the-clubs-office-dashboard",
+    "PublicAccessBlockConfiguration": {
+     "BlockPublicAcls": true,
+     "BlockPublicPolicy": true,
+     "IgnorePublicAcls": true,
+     "RestrictPublicBuckets": true
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/OfficeDashboardBucket/Resource"
+   }
+  },
+  "OfficeDashboardBucketPolicy9FE57346": {
+   "Type": "AWS::S3::BucketPolicy",
+   "Properties": {
+    "Bucket": {
+     "Ref": "OfficeDashboardBucket3632731B"
+    },
+    "PolicyDocument": {
+     "Statement": [
+      {
+       "Action": "s3:GetObject",
+       "Condition": {
+        "StringEquals": {
+         "AWS:SourceArn": {
+          "Fn::Join": [
+           "",
+           [
+            "arn:",
+            {
+             "Ref": "AWS::Partition"
+            },
+            ":cloudfront::",
+            {
+             "Ref": "AWS::AccountId"
+            },
+            ":distribution/",
+            {
+             "Ref": "OfficeDashboardDist6941F458"
+            }
+           ]
+          ]
+         }
+        }
+       },
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "cloudfront.amazonaws.com"
+       },
+       "Resource": {
+        "Fn::Join": [
+         "",
+         [
+          {
+           "Fn::GetAtt": [
+            "OfficeDashboardBucket3632731B",
+            "Arn"
+           ]
+          },
+          "/*"
+         ]
+        ]
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/OfficeDashboardBucket/Policy/Resource"
+   }
+  },
+  "OfficeDashboardDefaultCache244F7CB8": {
+   "Type": "AWS::CloudFront::CachePolicy",
+   "Properties": {
+    "CachePolicyConfig": {
+     "DefaultTTL": 86400,
+     "MaxTTL": 31536000,
+     "MinTTL": 0,
+     "Name": "theclubsspaOfficeDashboardDefaultCacheF65B242D-us-east-1",
+     "ParametersInCacheKeyAndForwardedToOrigin": {
+      "CookiesConfig": {
+       "CookieBehavior": "none"
+      },
+      "EnableAcceptEncodingBrotli": true,
+      "EnableAcceptEncodingGzip": true,
+      "HeadersConfig": {
+       "HeaderBehavior": "none"
+      },
+      "QueryStringsConfig": {
+       "QueryStringBehavior": "none"
+      }
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/OfficeDashboardDefaultCache/Resource"
+   }
+  },
+  "OfficeDashboardAssetsCache3FE16851": {
+   "Type": "AWS::CloudFront::CachePolicy",
+   "Properties": {
+    "CachePolicyConfig": {
+     "DefaultTTL": 31536000,
+     "MaxTTL": 31536000,
+     "MinTTL": 31536000,
+     "Name": "theclubsspaOfficeDashboardAssetsCache39301934-us-east-1",
+     "ParametersInCacheKeyAndForwardedToOrigin": {
+      "CookiesConfig": {
+       "CookieBehavior": "none"
+      },
+      "EnableAcceptEncodingBrotli": true,
+      "EnableAcceptEncodingGzip": true,
+      "HeadersConfig": {
+       "HeaderBehavior": "none"
+      },
+      "QueryStringsConfig": {
+       "QueryStringBehavior": "none"
+      }
+     }
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/OfficeDashboardAssetsCache/Resource"
+   }
+  },
+  "OfficeDashboardDistOrigin1S3OriginAccessControlABC4A0B9": {
+   "Type": "AWS::CloudFront::OriginAccessControl",
+   "Properties": {
+    "OriginAccessControlConfig": {
+     "Name": "theclubsspaOfficeDashboardDiOrigin1S3OriginAccessControl26142B93",
+     "OriginAccessControlOriginType": "s3",
+     "SigningBehavior": "always",
+     "SigningProtocol": "sigv4"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/OfficeDashboardDist/Origin1/S3OriginAccessControl/Resource"
+   }
+  },
+  "OfficeDashboardDistOrigin2S3OriginAccessControl5618FC1C": {
+   "Type": "AWS::CloudFront::OriginAccessControl",
+   "Properties": {
+    "OriginAccessControlConfig": {
+     "Name": "theclubsspaOfficeDashboardDiOrigin2S3OriginAccessControl1F0689BA",
+     "OriginAccessControlOriginType": "s3",
+     "SigningBehavior": "always",
+     "SigningProtocol": "sigv4"
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/OfficeDashboardDist/Origin2/S3OriginAccessControl/Resource"
+   }
+  },
+  "OfficeDashboardDist6941F458": {
+   "Type": "AWS::CloudFront::Distribution",
+   "Properties": {
+    "DistributionConfig": {
+     "Aliases": [
+      "office-dashboard.joshuakessell.com"
+     ],
+     "CacheBehaviors": [
+      {
+       "CachePolicyId": {
+        "Ref": "OfficeDashboardAssetsCache3FE16851"
+       },
+       "Compress": true,
+       "PathPattern": "/assets/*",
+       "TargetOriginId": "theclubsspaOfficeDashboardDistOrigin2A4953119",
+       "ViewerProtocolPolicy": "redirect-to-https"
+      }
+     ],
+     "Comment": "the-clubs office-dashboard",
+     "CustomErrorResponses": [
+      {
+       "ErrorCode": 403,
+       "ResponseCode": 200,
+       "ResponsePagePath": "/index.html"
+      },
+      {
+       "ErrorCode": 404,
+       "ResponseCode": 200,
+       "ResponsePagePath": "/index.html"
+      }
+     ],
+     "DefaultCacheBehavior": {
+      "CachePolicyId": {
+       "Ref": "OfficeDashboardDefaultCache244F7CB8"
+      },
+      "Compress": true,
+      "TargetOriginId": "theclubsspaOfficeDashboardDistOrigin1C91E9A12",
+      "ViewerProtocolPolicy": "redirect-to-https"
+     },
+     "DefaultRootObject": "index.html",
+     "Enabled": true,
+     "HttpVersion": "http2and3",
+     "IPV6Enabled": true,
+     "Origins": [
+      {
+       "DomainName": {
+        "Fn::GetAtt": [
+         "OfficeDashboardBucket3632731B",
+         "RegionalDomainName"
+        ]
+       },
+       "Id": "theclubsspaOfficeDashboardDistOrigin1C91E9A12",
+       "OriginAccessControlId": {
+        "Fn::GetAtt": [
+         "OfficeDashboardDistOrigin1S3OriginAccessControlABC4A0B9",
+         "Id"
+        ]
+       },
+       "S3OriginConfig": {
+        "OriginAccessIdentity": ""
+       }
+      },
+      {
+       "DomainName": {
+        "Fn::GetAtt": [
+         "OfficeDashboardBucket3632731B",
+         "RegionalDomainName"
+        ]
+       },
+       "Id": "theclubsspaOfficeDashboardDistOrigin2A4953119",
+       "OriginAccessControlId": {
+        "Fn::GetAtt": [
+         "OfficeDashboardDistOrigin2S3OriginAccessControl5618FC1C",
+         "Id"
+        ]
+       },
+       "S3OriginConfig": {
+        "OriginAccessIdentity": ""
+       }
+      }
+     ],
+     "PriceClass": "PriceClass_100",
+     "ViewerCertificate": {
+      "AcmCertificateArn": {
+       "Ref": "SpaCertAA287655"
+      },
+      "MinimumProtocolVersion": "TLSv1.2_2021",
+      "SslSupportMethod": "sni-only"
+     }
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/OfficeDashboardDist/Resource"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/3WQwQ6CMBBEv8V7qQqaeFW8a+QDTFkKrpTWtFuNafrvgpjAxdPsvJ3Zw6Y83az5aiFeLoGqTRSWPBQkoGU9ugaQlrBGECQ7oUUjLQ/5xFhe65mNzGU8HDy0kobVbxrlbBTCe8KjjwyU8VVtjab+tICbnIJze0RHFktPaDQrspPFBvUeQDqX911r1ND4g+flGL9BTw9PkWlTSX53y2e65bv+EXeHmFivCTvJL6N+AGwamrYlAQAA"
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-spa/CDKMetadata/Default"
+   }
+  }
+ },
+ "Outputs": {
+  "CustomerKioskBucketName": {
+   "Description": "S3 bucket for customer-kiosk",
+   "Value": {
+    "Ref": "CustomerKioskBucket7C518164"
+   }
+  },
+  "CustomerKioskDistributionId": {
+   "Description": "CloudFront distribution ID for customer-kiosk",
+   "Value": {
+    "Ref": "CustomerKioskDistB186F361"
+   }
+  },
+  "CustomerKioskDistributionDomain": {
+   "Description": "CloudFront domain for customer-kiosk",
+   "Value": {
+    "Fn::GetAtt": [
+     "CustomerKioskDistB186F361",
+     "DomainName"
+    ]
+   }
+  },
+  "EmployeeRegisterBucketName": {
+   "Description": "S3 bucket for employee-register",
+   "Value": {
+    "Ref": "EmployeeRegisterBucket47FAA391"
+   }
+  },
+  "EmployeeRegisterDistributionId": {
+   "Description": "CloudFront distribution ID for employee-register",
+   "Value": {
+    "Ref": "EmployeeRegisterDist46BEA83E"
+   }
+  },
+  "EmployeeRegisterDistributionDomain": {
+   "Description": "CloudFront domain for employee-register",
+   "Value": {
+    "Fn::GetAtt": [
+     "EmployeeRegisterDist46BEA83E",
+     "DomainName"
+    ]
+   }
+  },
+  "OfficeDashboardBucketName": {
+   "Description": "S3 bucket for office-dashboard",
+   "Value": {
+    "Ref": "OfficeDashboardBucket3632731B"
+   }
+  },
+  "OfficeDashboardDistributionId": {
+   "Description": "CloudFront distribution ID for office-dashboard",
+   "Value": {
+    "Ref": "OfficeDashboardDist6941F458"
+   }
+  },
+  "OfficeDashboardDistributionDomain": {
+   "Description": "CloudFront domain for office-dashboard",
+   "Value": {
+    "Fn::GetAtt": [
+     "OfficeDashboardDist6941F458",
+     "DomainName"
+    ]
+   }
+  },
+  "ExportsOutputFnGetAttCustomerKioskBucket7C518164Arn89566544": {
+   "Value": {
+    "Fn::GetAtt": [
+     "CustomerKioskBucket7C518164",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "the-clubs-spa:ExportsOutputFnGetAttCustomerKioskBucket7C518164Arn89566544"
+   }
+  },
+  "ExportsOutputFnGetAttEmployeeRegisterBucket47FAA391ArnBBB0A10A": {
+   "Value": {
+    "Fn::GetAtt": [
+     "EmployeeRegisterBucket47FAA391",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "the-clubs-spa:ExportsOutputFnGetAttEmployeeRegisterBucket47FAA391ArnBBB0A10A"
+   }
+  },
+  "ExportsOutputFnGetAttOfficeDashboardBucket3632731BArnA65454E9": {
+   "Value": {
+    "Fn::GetAtt": [
+     "OfficeDashboardBucket3632731B",
+     "Arn"
+    ]
+   },
+   "Export": {
+    "Name": "the-clubs-spa:ExportsOutputFnGetAttOfficeDashboardBucket3632731BArnA65454E9"
+   }
+  }
+ },
+ "Parameters": {
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

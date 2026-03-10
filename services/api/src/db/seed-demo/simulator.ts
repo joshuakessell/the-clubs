@@ -738,14 +738,14 @@ async function simulateVisits(params: {
       const piId = randomUUID();
       const chargeId = randomUUID();
       await client.query(
-        `INSERT INTO orders (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
-         VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
+        `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at)
+         VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
         [piId, price, { type: 'CHECKIN', rentalType, price }, signedAt]
       );
       await client.query(
-        `INSERT INTO order_line_items (id, visit_id, checkin_block_id, type, amount, order_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [chargeId, visitId, blockId, rentalType, price, piId, signedAt]
+        `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
+         VALUES ($1,$2,'CHECKIN_FEE',$3,1,$4,0,0,$4)`,
+        [chargeId, piId, rentalLabel(rentalType), price]
       );
 
       // --- Checkout Activity Event ---
@@ -919,9 +919,9 @@ async function insertUpgrade(client: DbClient, p: {
 
   // Waitlist entry for upgrade (must insert before checkin_blocks FK)
   await client.query(
-    `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially, resource_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
-     VALUES ($1,$2,$3,$4::rental_type,'LOCKER'::rental_type,$5,$6,'COMPLETED',$7,$8,$9,$10,$9,1,$8)`,
-    [wlId, p.visitId, p.blockId, p.roomType, p.lockerId, p.roomId,
+    `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, resource_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
+     VALUES ($1,$2,$3,$4::rental_type,'LOCKER'::rental_type,$5,'COMPLETED',$6,$7,$8,$9,$8,1,$7)`,
+    [wlId, p.visitId, p.blockId, p.roomType, p.roomId,
      new Date(p.ugAt.getTime() - 5 * 60 * 1000), p.ugAt,
      new Date(p.ugAt.getTime() - 3 * 60 * 1000), new Date(p.ugAt.getTime() + 7 * 60 * 1000)]
   );
@@ -940,14 +940,14 @@ async function insertUpgrade(client: DbClient, p: {
 
   // Payment + Charge
   await client.query(
-    `INSERT INTO orders (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
-     VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
+    `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at)
+     VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
     [piId, ugPrice, { type: 'UPGRADE', from: 'LOCKER', to: p.roomType, price: ugPrice }, p.ugAt]
   );
   await client.query(
-    `INSERT INTO order_line_items (id, visit_id, checkin_block_id, type, amount, order_id, created_at)
-     VALUES ($1,$2,$3,'UPGRADE',$4,$5,$6)`,
-    [cId, p.visitId, renewalId, ugPrice, piId, p.ugAt]
+    `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
+     VALUES ($1,$2,'UPGRADE','Upgrade Fee',1,$3,0,0,$3)`,
+    [cId, piId, ugPrice]
   );
 
   // Activity events: UPGRADE_STARTED, UPGRADE_COMPLETED, ROOM_CHANGED
@@ -1016,13 +1016,13 @@ async function insertLateCheckout(client: DbClient, p: {
     const piId = randomUUID();
     const cId = randomUUID();
     await client.query(
-      `INSERT INTO orders (id, amount, tip, status, quote_json, paid_at, created_at, updated_at) VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
+      `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at) VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
       [piId, p.feeAmount, { type: 'LATE_FEE', lateMinutes: p.lateMins, feeAmount: p.feeAmount }, p.at]
     );
     await client.query(
-      `INSERT INTO order_line_items (id, visit_id, checkin_block_id, type, amount, order_id, created_at)
-       VALUES ($1,(SELECT visit_id FROM checkin_blocks WHERE id = $2),$2,'LATE_FEE',$3,$4,$5)`,
-      [cId, p.blockId, p.feeAmount, piId, p.at]
+      `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
+       VALUES ($1,$2,'LATE_FEE','Late Fee',1,$3,0,0,$3)`,
+      [cId, piId, p.feeAmount]
     );
     const lateStaff = p.staff[0];
     await insertActivityEvent(client, {
@@ -1557,11 +1557,11 @@ async function seedActiveWaitlist(client: DbClient, p: {
 
     await client.query(
       `INSERT INTO waitlist
-         (id, visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially,
+         (id, visit_id, checkin_block_id, desired_tier, backup_tier,
           status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts)
-       VALUES ($1, $2, $3, $4::rental_type, 'LOCKER'::rental_type, $5,
-               'ACTIVE', $6, $6, NULL, NULL, NULL, 0)`,
-      [wlId, visitId, blockId, desiredTier, lockerId, createdAt]
+       VALUES ($1, $2, $3, $4::rental_type, 'LOCKER'::rental_type,
+               'ACTIVE', $5, $5, NULL, NULL, NULL, 0)`,
+      [wlId, visitId, blockId, desiredTier, createdAt]
     );
   }
 }

@@ -35,13 +35,44 @@ ALTER TABLE orders
   ADD COLUMN IF NOT EXISTS failure_reason    TEXT,
   ADD COLUMN IF NOT EXISTS failure_at        TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS register_number   INT,
-  ADD COLUMN IF NOT EXISTS square_transaction_id VARCHAR(255);
+  ADD COLUMN IF NOT EXISTS square_transaction_id VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 -- Indexes for the new columns
 CREATE INDEX IF NOT EXISTS idx_orders_visit
   ON orders USING btree (visit_id) WHERE visit_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_orders_lane_session
   ON orders USING btree (lane_session_id) WHERE lane_session_id IS NOT NULL;
+
+-- Rename _cents columns to match Drizzle schema (baseline used _cents suffix)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'orders' AND column_name = 'subtotal_cents'
+  ) THEN
+    ALTER TABLE orders RENAME COLUMN subtotal_cents TO subtotal;
+    ALTER TABLE orders RENAME COLUMN discount_cents TO discount;
+    ALTER TABLE orders RENAME COLUMN tax_cents TO tax;
+    ALTER TABLE orders RENAME COLUMN tip_cents TO tip;
+    ALTER TABLE orders RENAME COLUMN total_cents TO total;
+    RAISE NOTICE 'Renamed orders money columns from _cents to plain names';
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'order_line_items' AND column_name = 'unit_price_cents'
+  ) THEN
+    ALTER TABLE order_line_items RENAME COLUMN unit_price_cents TO unit_price;
+    ALTER TABLE order_line_items RENAME COLUMN discount_cents TO discount;
+    ALTER TABLE order_line_items RENAME COLUMN tax_cents TO tax;
+    ALTER TABLE order_line_items RENAME COLUMN total_cents TO total;
+    RAISE NOTICE 'Renamed order_line_items money columns from _cents to plain names';
+  END IF;
+END $$;
 
 -- Change money columns from integer to numeric(10,2) if they are still integer.
 -- This is safe because all values are whole dollars (no fractional cents).
@@ -240,6 +271,8 @@ ALTER TABLE charges DROP CONSTRAINT IF EXISTS charges_checkin_block_id_fkey;
 ALTER TABLE charges DROP CONSTRAINT IF EXISTS charges_visit_id_fkey;
 ALTER TABLE payment_intents DROP CONSTRAINT IF EXISTS payment_intents_lane_session_id_fkey;
 ALTER TABLE payment_intents DROP CONSTRAINT IF EXISTS payment_intents_paid_by_staff_id_fkey;
+ALTER TABLE lane_sessions DROP CONSTRAINT IF EXISTS fk_lane_sessions_payment_intent;
+ALTER TABLE lane_sessions DROP CONSTRAINT IF EXISTS lane_sessions_payment_intent_id_fkey;
 
 -- Drop the tables
 DROP TABLE IF EXISTS charges;

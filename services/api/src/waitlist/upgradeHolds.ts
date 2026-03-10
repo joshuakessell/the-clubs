@@ -156,7 +156,7 @@ export async function processUpgradeHoldsTick(
           FROM lane_sessions ls
           WHERE ls.assigned_resource_type = 'room'
             AND ls.assigned_resource_id = r.id
-            AND ls.status = ANY (${ACTIVE_LANE_SESSION_STATUSES}::lane_session_status[])
+            AND ls.status = ANY (ARRAY[${sql.raw(ACTIVE_LANE_SESSION_STATUSES.map((s) => `'${s}'::lane_session_status`).join(','))}])
         )
       ORDER BY r.number ASC
       LIMIT ${holdBatchSize}

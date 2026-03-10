@@ -1,0 +1,340 @@
+{
+ "Description": "EC2 API server + PostgreSQL",
+ "Resources": {
+  "ApiSg8419ACD7": {
+   "Type": "AWS::EC2::SecurityGroup",
+   "Properties": {
+    "GroupDescription": "API server — SSH, HTTP/S, API port",
+    "GroupName": "the-clubs-api-sg",
+    "SecurityGroupEgress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "Allow all outbound traffic by default",
+      "IpProtocol": "-1"
+     }
+    ],
+    "SecurityGroupIngress": [
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "SSH",
+      "FromPort": 22,
+      "IpProtocol": "tcp",
+      "ToPort": 22
+     },
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "HTTP",
+      "FromPort": 80,
+      "IpProtocol": "tcp",
+      "ToPort": 80
+     },
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "HTTPS",
+      "FromPort": 443,
+      "IpProtocol": "tcp",
+      "ToPort": 443
+     },
+     {
+      "CidrIp": "0.0.0.0/0",
+      "Description": "API",
+      "FromPort": 3000,
+      "IpProtocol": "tcp",
+      "ToPort": 3000
+     }
+    ],
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ],
+    "VpcId": "vpc-0a21ba8fbf9b5342c"
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-api/ApiSg/Resource"
+   }
+  },
+  "DeployKey5586FB14": {
+   "Type": "AWS::EC2::KeyPair",
+   "Properties": {
+    "KeyFormat": "pem",
+    "KeyName": "the-clubs-deploy",
+    "KeyType": "rsa",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-api/DeployKey/Resource"
+   }
+  },
+  "ApiInstanceInstanceRole773E5DE7": {
+   "Type": "AWS::IAM::Role",
+   "Properties": {
+    "AssumeRolePolicyDocument": {
+     "Statement": [
+      {
+       "Action": "sts:AssumeRole",
+       "Effect": "Allow",
+       "Principal": {
+        "Service": "ec2.amazonaws.com"
+       }
+      }
+     ],
+     "Version": "2012-10-17"
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Name",
+      "Value": "the-clubs-api"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     },
+     {
+      "Key": "Service",
+      "Value": "api"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-api/ApiInstance/InstanceRole/Resource"
+   }
+  },
+  "ApiInstanceInstanceProfile94217A34": {
+   "Type": "AWS::IAM::InstanceProfile",
+   "Properties": {
+    "Roles": [
+     {
+      "Ref": "ApiInstanceInstanceRole773E5DE7"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-api/ApiInstance/InstanceProfile"
+   }
+  },
+  "ApiInstanceA5ED4E58": {
+   "Type": "AWS::EC2::Instance",
+   "Properties": {
+    "AvailabilityZone": "us-east-1a",
+    "BlockDeviceMappings": [
+     {
+      "DeviceName": "/dev/xvda",
+      "Ebs": {
+       "VolumeSize": 20,
+       "VolumeType": "gp3"
+      }
+     }
+    ],
+    "IamInstanceProfile": {
+     "Ref": "ApiInstanceInstanceProfile94217A34"
+    },
+    "ImageId": {
+     "Ref": "SsmParameterValueawsserviceamiamazonlinuxlatestal2023amikernel61x8664C96584B6F00A464EAD1953AFF4B05118Parameter"
+    },
+    "InstanceType": "t3.micro",
+    "KeyName": {
+     "Ref": "DeployKey5586FB14"
+    },
+    "SecurityGroupIds": [
+     {
+      "Fn::GetAtt": [
+       "ApiSg8419ACD7",
+       "GroupId"
+      ]
+     }
+    ],
+    "SubnetId": "subnet-0ddca4eda7141f239",
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Name",
+      "Value": "the-clubs-api"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     },
+     {
+      "Key": "Service",
+      "Value": "api"
+     }
+    ],
+    "UserData": {
+     "Fn::Base64": "#!/bin/bash\n#!/bin/bash\nset -e\nyum update -y\nyum install -y docker git\nsystemctl enable docker\nsystemctl start docker\nusermod -aG docker ec2-user\n\n# Docker Compose v2\nmkdir -p /usr/local/lib/docker/cli-plugins\ncurl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \\\n  -o /usr/local/lib/docker/cli-plugins/docker-compose\nchmod +x /usr/local/lib/docker/cli-plugins/docker-compose\n\n# Production .env — DB_PASSWORD should come from SSM or Secrets Manager\ncat > /home/ec2-user/.env <<EOF\nDB_NAME=club_operations\nDB_USER=clubops\nNODE_ENV=production\nCORS_ORIGINS=*\nEOF\nchown ec2-user:ec2-user /home/ec2-user/.env"
+    }
+   },
+   "DependsOn": [
+    "ApiInstanceInstanceRole773E5DE7"
+   ],
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-api/ApiInstance/Resource"
+   }
+  },
+  "ApiEip": {
+   "Type": "AWS::EC2::EIP",
+   "Properties": {
+    "Domain": "vpc",
+    "InstanceId": {
+     "Ref": "ApiInstanceA5ED4E58"
+    },
+    "Tags": [
+     {
+      "Key": "Environment",
+      "Value": "production"
+     },
+     {
+      "Key": "ManagedBy",
+      "Value": "cdk"
+     },
+     {
+      "Key": "Name",
+      "Value": "the-clubs-api-eip"
+     },
+     {
+      "Key": "Project",
+      "Value": "the-clubs"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-api/ApiEip"
+   }
+  },
+  "CDKMetadata": {
+   "Type": "AWS::CDK::Metadata",
+   "Properties": {
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1WPywrCMBBFv8V9GjUouBeR0oWhfoCM6RSmj6TkoZSSfzetFHR1L+cMF0Zwcdjz3QbeLlNVm3X05NPdg2pZic4Eq5Al95hQiSRQBUt+vFoTBnau9T8ocJRAdhZrzbXzoNNIYr/9ksvICHo+laZbyJrrlbSmpg5jnKEECz16XLZvwQ/BR6ZNhbxx25c48lP6oXFEmQ3aU4+8/OYHE7goieAAAAA="
+   },
+   "Metadata": {
+    "aws:cdk:path": "the-clubs-api/CDKMetadata/Default"
+   }
+  }
+ },
+ "Parameters": {
+  "SsmParameterValueawsserviceamiamazonlinuxlatestal2023amikernel61x8664C96584B6F00A464EAD1953AFF4B05118Parameter": {
+   "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+   "Default": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
+ "Outputs": {
+  "ApiPublicIp": {
+   "Description": "Elastic IP of the API server",
+   "Value": {
+    "Fn::GetAtt": [
+     "ApiEip",
+     "PublicIp"
+    ]
+   }
+  },
+  "ApiInstanceId": {
+   "Description": "EC2 instance ID",
+   "Value": {
+    "Ref": "ApiInstanceA5ED4E58"
+   }
+  },
+  "SshCommand": {
+   "Description": "SSH command to access the API server",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "ssh -i the-clubs-deploy.pem ec2-user@",
+      {
+       "Fn::GetAtt": [
+        "ApiEip",
+        "PublicIp"
+       ]
+      }
+     ]
+    ]
+   }
+  },
+  "SshKeyParameterName": {
+   "Description": "SSM parameter path for the SSH private key",
+   "Value": {
+    "Fn::Join": [
+     "",
+     [
+      "/ec2/keypair/",
+      {
+       "Fn::GetAtt": [
+        "DeployKey5586FB14",
+        "KeyPairId"
+       ]
+      }
+     ]
+    ]
+   }
+  }
+ },
+ "Rules": {
+  "CheckBootstrapVersion": {
+   "Assertions": [
+    {
+     "Assert": {
+      "Fn::Not": [
+       {
+        "Fn::Contains": [
+         [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+         ],
+         {
+          "Ref": "BootstrapVersion"
+         }
+        ]
+       }
+      ]
+     },
+     "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI."
+    }
+   ]
+  }
+ }
+}

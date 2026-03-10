@@ -25,7 +25,7 @@ interface CiStackProps extends cdk.StackProps {
  *   - Inline policy: S3 (list + write) + CloudFront (invalidate)
  */
 export class CiStack extends cdk.Stack {
-  public readonly deployRole: iam.IRole;
+  public readonly deployRole: iam.Role;
 
   constructor(scope: Construct, id: string, props: CiStackProps) {
     super(scope, id, props);

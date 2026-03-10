@@ -65,11 +65,12 @@ async function seed() {
 
     // Enforce facility inventory contract (delete any invalid legacy rooms)
     const desiredRoomNumbers = seedRooms.map((r) => r.number);
+    const roomArrayLiteral = `ARRAY[${desiredRoomNumbers.map((n) => `'${n}'`).join(',')}]::text[]`;
     const deletedRooms = await db.execute<Record<string, unknown>>(
       sql`WITH del AS (
          DELETE FROM inventory_resources
          WHERE kind = 'room'
-           AND NOT (number = ANY(${desiredRoomNumbers}::text[]))
+           AND NOT (number = ANY(${sql.raw(roomArrayLiteral)}))
          RETURNING 1
        )
        SELECT COUNT(*)::text as count FROM del`
@@ -108,11 +109,12 @@ async function seed() {
 
     // Enforce facility inventory contract (delete any invalid legacy lockers)
     const desiredLockerNumbers = seedLockers.map((l) => l.number);
+    const lockerArrayLiteral = `ARRAY[${desiredLockerNumbers.map((n) => `'${n}'`).join(',')}]::text[]`;
     const deletedLockers = await db.execute<Record<string, unknown>>(
       sql`WITH del AS (
          DELETE FROM inventory_resources
          WHERE kind = 'locker'
-           AND NOT (number = ANY(${desiredLockerNumbers}::text[]))
+           AND NOT (number = ANY(${sql.raw(lockerArrayLiteral)}))
          RETURNING 1
        )
        SELECT COUNT(*)::text as count FROM del`
