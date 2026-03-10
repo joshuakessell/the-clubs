@@ -21,8 +21,51 @@ import {
   RoomType,
 } from '@the-clubs/shared';
 import { loadEnvFromDotEnvIfPresent } from '../../env/loadEnv';
-import { closeDatabase, query, transaction } from '../index';
+import { closeDatabase, db, getPool } from '../index';
+import { sql } from 'drizzle-orm';
 import { SeedProgress } from './progress';
+
+// ── Drizzle shims ───────────────────────────────────────────────────────────
+// Local wrappers that match the old raw-PG signatures so the simulator
+// (1600+ LOC of positional-param SQL) needs zero further changes.
+
+async function query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number | null }> {
+  const result = await db.execute<Record<string, unknown>>(
+    params && params.length > 0
+      ? sql.raw(text.replace(/\$(\d+)/g, (_, idx) => {
+          const val = params[Number(idx) - 1];
+          if (val === null || val === undefined) return 'NULL';
+          if (val instanceof Date) return `'${val.toISOString()}'`;
+          if (typeof val === 'object') return `'${JSON.stringify(val).replace(/'/g, "''")}'`;
+          if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+          return `'${String(val).replace(/'/g, "''")}'`;
+        }))
+      : sql.raw(text)
+  );
+  return { rows: result.rows as unknown as T[], rowCount: result.rowCount };
+}
+
+async function transaction<T>(callback: (client: { query: typeof query }) => Promise<T>): Promise<T> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const wrappedClient = {
+      async query<R = unknown>(text: string, params?: unknown[]): Promise<{ rows: R[]; rowCount: number | null }> {
+        const result = await client.query(text, params);
+        return { rows: result.rows as R[], rowCount: result.rowCount };
+      },
+    };
+    const result = await callback(wrappedClient);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
 
 loadEnvFromDotEnvIfPresent();
 

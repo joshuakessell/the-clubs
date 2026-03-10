@@ -187,72 +187,14 @@ export async function closeDatabase(): Promise<void> {
   }
 }
 
-/**
- * Execute a query with automatic client acquisition and release.
- */
-export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
-  text: string,
-  params?: unknown[]
-): Promise<pg.QueryResult<T>> {
-  const dbPool = getPool();
-  const start = Date.now();
-  const result = await dbPool.query<T>(text, params);
-  const duration = Date.now() - start;
-
-  if (process.env.DB_LOG_QUERIES === 'true') {
-    if (process.env.NODE_ENV === 'production') {
-      // In production, only log duration and row count to avoid leaking schema details
-      console.log('Executed query', { duration, rows: result.rowCount });
-    } else {
-      console.log('Executed query', { text, duration, rows: result.rowCount });
-    }
-  }
-
-  return result;
-}
-
-/**
- * Execute a transaction with automatic commit/rollback.
- */
-export async function transaction<T>(callback: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-  const dbPool = getPool();
-  const client = await dbPool.connect();
-
-  try {
-    await client.query('BEGIN');
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Execute a serializable transaction for critical operations like bookings.
- * This provides the highest isolation level to prevent race conditions.
- */
-export async function serializableTransaction<T>(
-  callback: (client: pg.PoolClient) => Promise<T>
-): Promise<T> {
-  const dbPool = getPool();
-  const client = await dbPool.connect();
-
-  try {
-    await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
+// ──────────────────────────────────────────────────────────────────────────────
+// Raw PG helpers (query, transaction, serializableTransaction) have been
+// removed. All application and seed code now uses Drizzle ORM exclusively:
+//   import { db } from '../db';
+//   import { sql } from 'drizzle-orm';
+//   await db.execute(sql`...`);
+//   await db.transaction(async (tx) => { ... });
+// ──────────────────────────────────────────────────────────────────────────────
 
 export { pg };
 

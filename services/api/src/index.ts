@@ -210,8 +210,9 @@ function setupPeriodicJobs(fastify: FastifyInstance) {
   const i3 = setInterval(() => {
     void (async () => {
       try {
-        const { query: dbQuery } = await import('./db');
-        const result = await dbQuery(`DELETE FROM idempotency_keys WHERE expires_at < NOW()`);
+        const { db: dbInstance } = await import('./db');
+        const { sql: sqlTag } = await import('drizzle-orm');
+        const result = await dbInstance.execute(sqlTag`DELETE FROM idempotency_keys WHERE expires_at < NOW()`);
         if (result.rowCount && result.rowCount > 0) fastify.log.info(`Cleaned up ${result.rowCount} expired idempotency key(s)`);
       } catch { /* ignore */ }
     })();
@@ -274,17 +275,18 @@ async function registerAllRoutes(fastify: FastifyInstance) {
 
 async function verifyDatabaseHealth(fastify: FastifyInstance) {
   try {
-    const { query: healthQuery } = await import('./db');
-    const healthRes = await healthQuery<{ tbl: string; cnt: string }>(`
-      SELECT 'staff' as tbl, COUNT(*)::text as cnt FROM staff
+    const { db: dbInstance } = await import('./db');
+    const { sql: sqlTag } = await import('drizzle-orm');
+    const healthRes = await dbInstance.execute<Record<string, unknown>>(
+      sqlTag`SELECT 'staff' as tbl, COUNT(*)::text as cnt FROM staff
       UNION ALL SELECT 'rooms', COUNT(*)::text FROM rooms
       UNION ALL SELECT 'lockers', COUNT(*)::text FROM lockers
       UNION ALL SELECT 'customers', COUNT(*)::text FROM customers
       UNION ALL SELECT 'agreements', COUNT(*)::text FROM agreements WHERE active = true
       UNION ALL SELECT 'devices', COUNT(*)::text FROM devices
-      UNION ALL SELECT 'staff_sessions', COUNT(*)::text FROM staff_sessions WHERE revoked_at IS NULL AND expires_at > NOW()
-    `);
-    const counts = Object.fromEntries(healthRes.rows.map(r => [r.tbl, Number.parseInt(r.cnt, 10)]));
+      UNION ALL SELECT 'staff_sessions', COUNT(*)::text FROM staff_sessions WHERE revoked_at IS NULL AND expires_at > NOW()`
+    );
+    const counts = Object.fromEntries((healthRes.rows as unknown as { tbl: string; cnt: string }[]).map(r => [r.tbl, Number.parseInt(r.cnt, 10)]));
     const critical = ['staff', 'rooms', 'lockers', 'agreements', 'devices'];
     const missing = critical.filter(t => (counts[t] ?? 0) === 0);
 
