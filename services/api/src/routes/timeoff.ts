@@ -1,8 +1,31 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { query, transaction } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../auth/middleware';
 import { insertAuditLog } from '../audit/auditLog';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertAuditLog.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 const IsoDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -20,7 +43,7 @@ type TimeOffRow = {
   id: string;
   employee_id: string;
   employee_name: string;
-  day: string | Date; // pg may return DATE as string or Date depending on driver settings
+  day: string | Date;
   reason: string | null;
   status: 'PENDING' | 'APPROVED' | 'DENIED';
   decided_by: string | null;
@@ -31,23 +54,19 @@ type TimeOffRow = {
 };
 
 export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * Employee/self (and admin) endpoints
-   */
   fastify.get<{
     Querystring: { from?: string; to?: string };
   }>(
     '/v1/schedule/time-off-requests',
-    {
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const from = request.query.from ? IsoDaySchema.parse(request.query.from) : undefined;
       const to = request.query.to ? IsoDaySchema.parse(request.query.to) : undefined;
 
+      // Dynamic SQL with Drizzle — use toQueryable adapter for parameterized queries
       const params: unknown[] = [];
       let i = 0;
-      let sql = `
+      let sqlText = `
       SELECT
         r.*,
         s.name as employee_name
@@ -60,17 +79,17 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (from) {
         i++;
-        sql += ` AND r.day >= $${i}`;
+        sqlText += ` AND r.day >= $${i}`;
         params.push(from);
       }
       if (to) {
         i++;
-        sql += ` AND r.day <= $${i}`;
+        sqlText += ` AND r.day <= $${i}`;
         params.push(to);
       }
-      sql += ` ORDER BY r.day ASC`;
+      sqlText += ` ORDER BY r.day ASC`;
 
-      const rows = await query<TimeOffRow>(sql, params);
+      const rows = await toQueryable(db).query<TimeOffRow>(sqlText, params);
       return reply.send({
         requests: rows.rows.map((r) => ({
           id: r.id,
@@ -93,22 +112,19 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
     Body: z.infer<typeof CreateTimeOffRequestSchema>;
   }>(
     '/v1/schedule/time-off-requests',
-    {
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const body = request.body as z.infer<typeof CreateTimeOffRequestSchema>;
 
       try {
-        const inserted = await transaction(async (client) => {
-          const res = await client.query<Pick<TimeOffRow, 'id'>>(
-            `INSERT INTO time_off_requests (employee_id, day, reason)
-           VALUES ($1, $2, $3)
-           RETURNING id`,
-            [request.staff!.staffId, body.day, body.reason ?? null]
+        const inserted = await db.transaction(async (tx) => {
+          const res = await tx.execute<Pick<TimeOffRow, 'id'>>(
+            sql`INSERT INTO time_off_requests (employee_id, day, reason)
+           VALUES (${request.staff!.staffId}, ${body.day}, ${body.reason ?? null})
+           RETURNING id`
           );
 
-          await insertAuditLog(client, {
+          await insertAuditLog(toQueryable(tx) as any, {
             staffId: request.staff!.staffId,
             userId: request.staff!.staffId,
             userRole: request.staff!.role,
@@ -123,7 +139,6 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
 
         return reply.status(201).send({ id: inserted });
       } catch (err: unknown) {
-        // Unique violation: one per employee per day
         const dbErr = err as { code?: string };
         if (dbErr?.code === '23505') {
           return reply
@@ -136,16 +151,11 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  /**
-   * Admin endpoints (management approval)
-   */
   fastify.get<{
     Querystring: { status?: string; from?: string; to?: string };
   }>(
     '/v1/admin/time-off-requests',
-    {
-      preHandler: [requireAuth, requireAdmin],
-    },
+    { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const status = request.query.status
         ? z.enum(['PENDING', 'APPROVED', 'DENIED']).parse(request.query.status)
@@ -155,7 +165,7 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
 
       const params: unknown[] = [];
       let i = 0;
-      let sql = `
+      let sqlText = `
       SELECT
         r.*,
         s.name as employee_name
@@ -166,22 +176,22 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (status) {
         i++;
-        sql += ` AND r.status = $${i}`;
+        sqlText += ` AND r.status = $${i}`;
         params.push(status);
       }
       if (from) {
         i++;
-        sql += ` AND r.day >= $${i}`;
+        sqlText += ` AND r.day >= $${i}`;
         params.push(from);
       }
       if (to) {
         i++;
-        sql += ` AND r.day <= $${i}`;
+        sqlText += ` AND r.day <= $${i}`;
         params.push(to);
       }
-      sql += ` ORDER BY r.day ASC, s.name ASC`;
+      sqlText += ` ORDER BY r.day ASC, s.name ASC`;
 
-      const rows = await query<TimeOffRow>(sql, params);
+      const rows = await toQueryable(db).query<TimeOffRow>(sqlText, params);
       return reply.send({
         requests: rows.rows.map((r) => ({
           id: r.id,
@@ -205,37 +215,34 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
     Body: z.infer<typeof AdminDecisionSchema>;
   }>(
     '/v1/admin/time-off-requests/:requestId',
-    {
-      preHandler: [requireAuth, requireAdmin],
-    },
+    { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const { requestId } = request.params;
       const body = request.body as z.infer<typeof AdminDecisionSchema>;
 
       try {
-        const updated = await transaction(async (client) => {
-          const current = await client.query<
+        const updated = await db.transaction(async (tx) => {
+          const current = await tx.execute<
             Pick<TimeOffRow, 'status' | 'employee_id' | 'day' | 'reason'>
-          >(`SELECT status, employee_id, day, reason FROM time_off_requests WHERE id = $1`, [
-            requestId,
-          ]);
+          >(
+            sql`SELECT status, employee_id, day, reason FROM time_off_requests WHERE id = ${requestId}`
+          );
           if (current.rows.length === 0) {
             return null;
           }
 
-          await client.query(
-            `UPDATE time_off_requests
-           SET status = $1,
-               decided_by = $2,
+          await tx.execute(
+            sql`UPDATE time_off_requests
+           SET status = ${body.status},
+               decided_by = ${request.staff!.staffId},
                decided_at = NOW(),
-               decision_notes = $3,
+               decision_notes = ${body.decisionNotes ?? null},
                updated_at = NOW()
-           WHERE id = $4`,
-            [body.status, request.staff!.staffId, body.decisionNotes ?? null, requestId]
+           WHERE id = ${requestId}`
           );
 
           const action = body.status === 'APPROVED' ? 'TIME_OFF_APPROVED' : 'TIME_OFF_DENIED';
-          await insertAuditLog(client, {
+          await insertAuditLog(toQueryable(tx) as any, {
             staffId: request.staff!.staffId,
             userId: request.staff!.staffId,
             userRole: request.staff!.role,

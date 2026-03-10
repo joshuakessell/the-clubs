@@ -2,9 +2,32 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware';
 import { idempotencyKey } from '../middleware/idempotency';
-import { transaction } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { insertClubEvent } from '../activity/clubEventLog';
 import { HttpError } from '../errors/HttpError';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by activity/audit helpers.
+ */
+function toQueryable(tx: any) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const parts = queryText.split(/\$\d+/);
+      const values = params ?? [];
+      let built = sql.empty();
+      for (let i = 0; i < parts.length; i++) {
+        built = sql`${built}${sql.raw(parts[i]!)}`;
+        if (i < values.length) {
+          built = sql`${built}${values[i]}`;
+        }
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 const StartBreakSchema = z.object({
   breakType: z.enum(['MEAL', 'REST', 'OTHER']),
@@ -29,8 +52,6 @@ type StaffBreakRow = {
 export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
   /**
    * POST /v1/breaks/start
-   *
-   * Start a break for the authenticated staff member.
    */
   fastify.post('/v1/breaks/start', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
@@ -38,41 +59,37 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
     const body = request.body as z.infer<typeof StartBreakSchema>;
 
     try {
-      const result = await transaction(async (client) => {
-        const openBreak = await client.query<StaffBreakRow>(
-          `SELECT * FROM staff_break_sessions
-             WHERE staff_id = $1 AND status = 'OPEN'
+      const result = await db.transaction(async (tx) => {
+        const openBreak = await tx.execute<StaffBreakRow>(
+          sql`SELECT * FROM staff_break_sessions
+             WHERE staff_id = ${request.staff!.staffId} AND status = 'OPEN'
              ORDER BY started_at DESC
-             LIMIT 1`,
-          [request.staff!.staffId]
+             LIMIT 1`
         );
         if (openBreak.rows.length > 0) {
           throw new HttpError(409, 'Break already in progress');
         }
 
-        const timeclock = await client.query<{ id: string }>(
-          `SELECT id FROM timeclock_sessions
-             WHERE employee_id = $1 AND clock_out_at IS NULL
+        const timeclock = await tx.execute<{ id: string }>(
+          sql`SELECT id FROM timeclock_sessions
+             WHERE employee_id = ${request.staff!.staffId} AND clock_out_at IS NULL
              ORDER BY clock_in_at DESC
-             LIMIT 1`,
-          [request.staff!.staffId]
+             LIMIT 1`
         );
         if (timeclock.rows.length === 0) {
           throw new HttpError(400, 'No active timeclock session');
         }
 
-        const insert = await client.query<StaffBreakRow>(
-          `INSERT INTO staff_break_sessions
+        const insert = await tx.execute<StaffBreakRow>(
+          sql`INSERT INTO staff_break_sessions
              (staff_id, timeclock_session_id, break_type, status, notes)
-             VALUES ($1, $2, $3, 'OPEN', $4)
-             RETURNING *`,
-          [request.staff!.staffId, timeclock.rows[0]!.id, body.breakType, body.notes || null]
+             VALUES (${request.staff!.staffId}, ${timeclock.rows[0]!.id}, ${body.breakType}, 'OPEN', ${body.notes || null})
+             RETURNING *`
         );
 
         const breakRow = insert.rows[0]!;
 
-        // Emit club event for analytics
-        await insertClubEvent(client, {
+        await insertClubEvent(toQueryable(tx) as any, {
           eventType: 'BREAK_START',
           eventDomain: 'HR',
           sourceApp: 'EMPLOYEE_REGISTER',
@@ -111,8 +128,6 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
 
   /**
    * POST /v1/breaks/end
-   *
-   * End the currently open break for the authenticated staff member.
    */
   fastify.post('/v1/breaks/end', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
@@ -120,34 +135,31 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
     const body = request.body as z.infer<typeof EndBreakSchema>;
 
     try {
-      const result = await transaction(async (client) => {
-        const openBreak = await client.query<StaffBreakRow>(
-          `SELECT * FROM staff_break_sessions
-             WHERE staff_id = $1 AND status = 'OPEN'
+      const result = await db.transaction(async (tx) => {
+        const openBreak = await tx.execute<StaffBreakRow>(
+          sql`SELECT * FROM staff_break_sessions
+             WHERE staff_id = ${request.staff!.staffId} AND status = 'OPEN'
              ORDER BY started_at DESC
              LIMIT 1
-             FOR UPDATE`,
-          [request.staff!.staffId]
+             FOR UPDATE`
         );
         if (openBreak.rows.length === 0) {
           throw new HttpError(404, 'No active break found');
         }
 
         const current = openBreak.rows[0]!;
-        const updated = await client.query<StaffBreakRow>(
-          `UPDATE staff_break_sessions
+        const updated = await tx.execute<StaffBreakRow>(
+          sql`UPDATE staff_break_sessions
              SET status = 'CLOSED',
                  ended_at = NOW(),
-                 notes = COALESCE($1, notes)
-             WHERE id = $2
-             RETURNING *`,
-          [body.notes ?? null, current.id]
+                 notes = COALESCE(${body.notes ?? null}, notes)
+             WHERE id = ${current.id}
+             RETURNING *`
         );
 
         const endedBreak = updated.rows[0]!;
 
-        // Emit club event for analytics
-        await insertClubEvent(client, {
+        await insertClubEvent(toQueryable(tx) as any, {
           eventType: 'BREAK_END',
           eventDomain: 'HR',
           sourceApp: 'EMPLOYEE_REGISTER',
