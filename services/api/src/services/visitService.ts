@@ -8,7 +8,7 @@
  *   - domain/customerGuards.ts (assertNotBanned, assertCustomerExists)
  */
 import { db } from '../db';
-import { visits, customers, checkinBlocks, paymentIntents } from '../db/schema';
+import { visits, customers, checkinBlocks, orders, orderLineItems } from '../db/schema';
 import { eq, sql, desc } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import { assignResource } from '../domain/resourceAssignment';
@@ -413,12 +413,17 @@ export async function createFinalExtension(input: FinalExtensionInput) {
 
     if (!block) throw new HttpError(500, 'Failed to create extension block');
 
-    // 5. Create payment intent for $20 flat fee
-    const [paymentIntent] = await tx
-      .insert(paymentIntents)
+    // 5. Create order for $20 flat fee (replaces paymentIntents)
+    const [order] = await tx
+      .insert(orders)
       .values({
-        amount: '20.00',
-        status: 'DUE',
+        customerId: visit.customerId,
+        visitId: visit.id,
+        status: 'OPEN',
+        subtotal: '20.00',
+        discount: '0',
+        tax: '0',
+        total: '20.00',
         quoteJson: {
           type: 'FINAL_EXTENSION',
           visitId: visit.id,
@@ -429,7 +434,16 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       })
       .returning();
 
-    if (!paymentIntent) throw new HttpError(500, 'Failed to create payment intent');
+    if (!order) throw new HttpError(500, 'Failed to create extension order');
+
+    await tx.insert(orderLineItems).values({
+      orderId: order.id,
+      kind: 'FINAL_EXTENSION',
+      name: 'Final 2-Hour Extension',
+      quantity: 1,
+      unitPrice: '20.00',
+      total: '20.00',
+    });
 
     // 6. Audit log — Drizzle-native, type-safe insert
     await insertAuditLogDrizzle(tx, {
@@ -446,7 +460,7 @@ export async function createFinalExtension(input: FinalExtensionInput) {
         blockType: 'FINAL2H',
         extensionHours: 2,
         newEndsAt: extensionEndsAt.toISOString(),
-        paymentIntentId: paymentIntent.id,
+        orderId: order.id,
         rentalType: input.rentalType,
       },
     });
@@ -461,10 +475,10 @@ export async function createFinalExtension(input: FinalExtensionInput) {
         updatedAt: new Date().toISOString(),
       },
       block: formatBlock(block),
-      paymentIntentId: paymentIntent.id,
-      amount: typeof paymentIntent.amount === 'string'
-        ? Number.parseFloat(paymentIntent.amount)
-        : Number(paymentIntent.amount),
+      orderId: order.id,
+      amount: typeof order.total === 'string'
+        ? Number.parseFloat(order.total)
+        : Number(order.total),
     };
   }, { isolationLevel: 'serializable' });
 }

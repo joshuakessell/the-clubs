@@ -235,7 +235,7 @@ export async function startLaneSession(
          waitlist_requested_resource_number = NULL, waitlist_requested_resource_type = NULL,
          assigned_resource_id = NULL, assigned_resource_type = NULL, membership_choice = NULL,
          membership_purchase_intent = NULL, membership_purchase_requested_at = NULL,
-         payment_intent_id = NULL, price_quote_json = NULL, disclaimers_ack_json = NULL,
+         order_id = NULL, price_quote_json = NULL, disclaimers_ack_json = NULL,
          kiosk_acknowledged_at = NULL, proposed_rental_type = NULL, proposed_by = NULL,
          selection_confirmed = ${selectionConfirmedForSession}, selection_confirmed_by = ${selectionConfirmedByForSession}, selection_locked_at = ${selectionLockedAtForSession},
          flow_step = ${flowStepForSession}, flow_version = 0, updated_at = NOW()

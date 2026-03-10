@@ -17,23 +17,24 @@ import { HttpError } from '../errors/HttpError';
 
 type OrderRow = {
   id: string; customer_id: string | null; register_session_id: string | null; created_by_staff_id: string | null;
-  created_at: Date; status: string; subtotal: number; discount: number; tax: number; tip: number; total: number;
+  created_at: Date; status: string; subtotal: string; discount: string; tax: string; tip: string; total: string;
   currency: string; metadata_json: unknown | null;
 };
 
 type LineItemRow = {
   id: string; order_id: string; kind: string; sku: string | null; name: string; quantity: number;
-  unit_price: number; discount: number; tax: number; total: number; metadata_json: unknown | null;
+  unit_price: string; discount: string; tax: string; total: string; metadata_json: unknown | null;
 };
 
-export interface LineItemInput { kind: 'RETAIL' | 'ADDON' | 'UPGRADE' | 'LATE_FEE' | 'MANUAL'; sku?: string | null; name: string; quantity: number; unitPrice: number; discount?: number | null; tax?: number | null; }
+export interface LineItemInput { kind: 'RETAIL' | 'ADDON' | 'UPGRADE' | 'LATE_FEE' | 'MANUAL'; sku?: string | null; name: string; quantity: number; unitPrice: string; discount?: number | null; tax?: number | null; }
 
 function toNumber(value: unknown): number { const n = typeof value === 'number' ? value : Number(value); return Number.isFinite(n) ? n : 0; }
 
 function computeLineTotal(item: LineItemInput) {
   const discount = item.discount ?? 0; const tax = item.tax ?? 0;
-  const subtotal = item.quantity * item.unitPrice;
-  return { subtotal, discount, tax, total: subtotal - discount + tax };
+  const unitPrice = typeof item.unitPrice === 'string' ? Number(item.unitPrice) : item.unitPrice;
+  const subtotal = item.quantity * unitPrice;
+  return { subtotal: subtotal.toString(), discount: discount.toString(), tax: tax.toString(), total: (subtotal - discount + tax).toString() };
 }
 
 function buildReceiptNumber(order: { created_at: Date; id: string }): string {
@@ -53,11 +54,11 @@ export async function createOrder(input: CreateOrderInput, staffId: string) {
       registerSessionId: input.registerSessionId ?? null,
       createdByStaffId: staffId,
       status: 'OPEN',
-      subtotal: 0,
-      discount: 0,
-      tax: 0,
-      tip: 0,
-      total: 0,
+      subtotal: '0',
+      discount: '0',
+      tax: '0',
+      tip: '0',
+      total: '0',
       currency: 'USD',
       metadataJson: input.metadataJson ?? null,
     })
@@ -97,13 +98,14 @@ export async function addLineItems(orderId: string, items: LineItemInput[]) {
       inserted.push({ id: row.id, order_id: row.orderId, kind: row.kind, sku: row.sku, name: row.name, quantity: row.quantity, unit_price: row.unitPrice, discount: row.discount, tax: row.tax, total: row.total, metadata_json: row.metadataJson });
     }
 
-    const totalsResult = await tx.execute<{ subtotal: number; discount: number; tax: number; total: number }>(sql`SELECT COALESCE(SUM(quantity * unit_price), 0) as subtotal, COALESCE(SUM(discount), 0) as discount, COALESCE(SUM(tax), 0) as tax, COALESCE(SUM(total), 0) as total FROM order_line_items WHERE order_id = ${order.id}`);
+    const totalsResult = await tx.execute<{ subtotal: string; discount: string; tax: string; total: string }>(sql`SELECT COALESCE(SUM(quantity * unit_price), 0) as subtotal, COALESCE(SUM(discount), 0) as discount, COALESCE(SUM(tax), 0) as tax, COALESCE(SUM(total), 0) as total FROM order_line_items WHERE order_id = ${order.id}`);
     const totals = totalsResult.rows[0]!;
     const subtotal = toNumber(totals.subtotal); const discount = toNumber(totals.discount);
     const tax = toNumber(totals.tax); const itemsTotal = toNumber(totals.total);
-    await tx.update(orders).set({ subtotal, discount, tax, total: itemsTotal + order.tip }).where(eq(orders.id, order.id));
+    const tipNum = toNumber(order.tip);
+    await tx.update(orders).set({ subtotal: subtotal.toString(), discount: discount.toString(), tax: tax.toString(), total: (itemsTotal + tipNum).toString() }).where(eq(orders.id, order.id));
 
-    return { orderId: order.id, itemsAdded: inserted.length, subtotal, discount, tax, total: itemsTotal + order.tip };
+    return { orderId: order.id, itemsAdded: inserted.length, subtotal, discount, tax, total: itemsTotal + tipNum };
   });
 }
 
@@ -116,18 +118,18 @@ export async function markOrderPaid(orderId: string, staff: StaffContext) {
     const order = orderResult.rows[0]!;
     if (order.status !== 'OPEN') throw new HttpError(409, `Order is ${order.status}`);
 
-    const totalsResult = await tx.execute<{ subtotal: number; discount: number; tax: number; total: number }>(sql`SELECT COALESCE(SUM(quantity * unit_price), 0) as subtotal, COALESCE(SUM(discount), 0) as discount, COALESCE(SUM(tax), 0) as tax, COALESCE(SUM(total), 0) as total FROM order_line_items WHERE order_id = ${order.id}`);
+    const totalsResult = await tx.execute<{ subtotal: string; discount: string; tax: string; total: string }>(sql`SELECT COALESCE(SUM(quantity * unit_price), 0) as subtotal, COALESCE(SUM(discount), 0) as discount, COALESCE(SUM(tax), 0) as tax, COALESCE(SUM(total), 0) as total FROM order_line_items WHERE order_id = ${order.id}`);
     const totals = totalsResult.rows[0]!;
     const subtotal = toNumber(totals.subtotal); const discount = toNumber(totals.discount);
     const tax = toNumber(totals.tax); const tip = 0; const total = subtotal - discount + tax + tip;
 
-    const updated = await tx.update(orders).set({ status: 'PAID', subtotal, discount, tax, tip, total }).where(eq(orders.id, order.id)).returning();
+    const updated = await tx.update(orders).set({ status: 'PAID', subtotal: subtotal.toString(), discount: discount.toString(), tax: tax.toString(), tip: tip.toString(), total: total.toString() }).where(eq(orders.id, order.id)).returning();
     const paidOrder = updated[0]!;
 
     if (paidOrder.customerId) {
       const ledger = await insertCustomerSpendLedgerEntryDrizzle(tx, {
         customerId: paidOrder.customerId, visitId: (paidOrder.metadataJson as any)?.visitId ?? null,
-        entryType: 'ORDER_PAID', amount: paidOrder.total, sourceApp: 'EMPLOYEE_REGISTER',
+        entryType: 'ORDER_PAID', amount: toNumber(paidOrder.total), sourceApp: 'EMPLOYEE_REGISTER',
         actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
         summary: 'Retail purchase', metadata: { orderId: paidOrder.id, registerSessionId: paidOrder.registerSessionId, total: paidOrder.total },
         dedupeKey: `LEDGER:ORDER_PAID:${paidOrder.id}`,
@@ -135,7 +137,7 @@ export async function markOrderPaid(orderId: string, staff: StaffContext) {
       await insertCustomerActivityEventDrizzle(tx, {
         customerId: paidOrder.customerId, actionType: 'ORDER_PAID', actionCategory: 'PURCHASE', sourceApp: 'EMPLOYEE_REGISTER',
         actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
-        summary: `Retail purchase ($${paidOrder.total.toFixed(2)})`,
+        summary: `Retail purchase ($${Number(paidOrder.total).toFixed(2)})`,
         metadata: { orderId: paidOrder.id, total: paidOrder.total, spendLedgerEntryId: ledger.id },
         dedupeKey: `ACT:ORDER_PAID:${paidOrder.id}`, searchParts: [paidOrder.id],
       });
@@ -164,8 +166,8 @@ export async function markOrderPaid(orderId: string, staff: StaffContext) {
       registerId, staffId: staff.staffId, staffName: staff.name,
       customerId: paidOrder.customerId, customerName,
       visitId: (paidOrder.metadataJson as any)?.visitId ?? null, orderId: paidOrder.id,
-      amount: paidOrder.total,
-      summary: `${saleEventType === 'ADDON_SOLD' ? 'Add-on' : saleEventType === 'UPGRADE_PAID' ? 'Upgrade' : 'Sale'} — $${paidOrder.total.toFixed(2)}`,
+      amount: toNumber(paidOrder.total),
+      summary: `${saleEventType === 'ADDON_SOLD' ? 'Add-on' : saleEventType === 'UPGRADE_PAID' ? 'Upgrade' : 'Sale'} — $${Number(paidOrder.total).toFixed(2)}`,
       metadata: { subtotal: paidOrder.subtotal, discount: paidOrder.discount, tax: paidOrder.tax, total: paidOrder.total, registerSessionId: paidOrder.registerSessionId, lineItemCount: lineItemsResult.length, itemKinds: Array.from(kinds) },
       dedupeKey: `CLUB:SALE:${paidOrder.id}`,
     });

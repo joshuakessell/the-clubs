@@ -148,8 +148,8 @@ export const SessionUpdatedPayloadSchema =
       pastDueBalance: z.number().optional(),
       pastDueBlocked: z.boolean().optional(),
       pastDueBypassed: z.boolean().optional(),
-      paymentIntentId: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),
-      paymentStatus: z.enum(['DUE', 'PAID']).optional(),
+      orderId: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),
+      orderStatus: z.enum(['OPEN', 'PAID']).optional(),
       paymentMethod: z.enum(['CASH', 'CREDIT']).optional(),
       paymentTotal: z.number().optional(),
       paymentLineItems: z

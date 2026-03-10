@@ -20,7 +20,7 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
         const result = await createPaymentIntent(request.params.laneId);
         const { payload } = await getSessionPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
-        return reply.send({ paymentIntentId: result.paymentIntentId, amount: result.amount, quote: result.quote });
+        return reply.send({ orderId: result.orderId, amount: result.amount, quote: result.quote });
       } catch (error: unknown) {
         request.log.error(error, 'Failed to create payment intent');
         const httpErr = getHttpError(error);
@@ -39,7 +39,7 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
 
     try {
       const result = await markPaymentPaid({
-        paymentIntentId: request.params.id,
+        orderId: request.params.id,
         staffId: request.staff.staffId,
         ...request.body,
       });

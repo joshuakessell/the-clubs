@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import type { LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
+import type { LaneSessionRow, OrderRow } from '../../checkin/types';
 import { getHttpError, parsePriceQuote, roundToWhole, toNumber } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -114,25 +114,25 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
             throw new HttpError(400, 'Selection must be confirmed before payment');
           }
 
-          if (!session.payment_intent_id) {
+          if (!session.order_id) {
             throw new HttpError(400, 'Payment intent must be created first');
           }
 
           const intentResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT * FROM payment_intents WHERE id = ${session.payment_intent_id}`
+            sql`SELECT * FROM orders WHERE id = ${session.order_id}`
           );
 
           if (intentResult.rows.length === 0) {
             throw new HttpError(404, 'Payment intent not found');
           }
 
-          const intent = intentResult.rows[0] as unknown as PaymentIntentRow;
+          const intent = intentResult.rows[0] as unknown as OrderRow;
 
           const normalizedSplitAmount =
             outcome === 'CREDIT_SUCCESS' ? toNumber(splitCardAmount) : undefined;
 
           if (outcome === 'CREDIT_SUCCESS' && normalizedSplitAmount !== undefined) {
-            if (intent.status !== 'DUE') {
+            if (intent.status !== 'OPEN') {
               throw new HttpError(409, 'Payment intent is not payable');
             }
 
@@ -146,7 +146,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
             const nextQuoteJson = JSON.stringify(nextQuote);
 
             await tx.execute(
-              sql`UPDATE payment_intents
+              sql`UPDATE orders
              SET amount = ${remainingTotal}, quote_json = ${nextQuoteJson}, failure_reason = NULL, failure_at = NULL, updated_at = NOW()
              WHERE id = ${intent.id}`
             );
@@ -158,7 +158,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
             return {
               sessionId: session.id,
               success: true,
-              paymentIntentId: intent.id,
+              orderId: intent.id,
               status: intent.status,
               quote: nextQuote,
             };
@@ -170,7 +170,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
 
           if (isSuccess) {
             await tx.execute(
-              sql`UPDATE payment_intents
+              sql`UPDATE orders
              SET status = 'PAID',
                  paid_at = NOW(),
                  payment_method = ${paymentMethod},
@@ -202,7 +202,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
                   metadata: {
                     laneId,
                     laneSessionId: session.id,
-                    paymentIntentId: intent.id,
+                    orderId: intent.id,
                     paymentMethod,
                     amount: amount,
                   },
@@ -221,7 +221,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
                       source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
                    VALUES
                      (NOW(), ${session.customer_id}::uuid, ${activeVisitId}::uuid, 'RENTAL_FEE', ${amountInt}::bigint, 'USD',
-                      ${request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK'}, ${request.staff ? 'STAFF' : 'CUSTOMER'}, ${staffId}::uuid, ${request.staff?.name ?? null}, ${`Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`}, ${JSON.stringify({ paymentIntentId: intent.id, paymentMethod, laneSessionId: session.id })}::jsonb, ${'LEDGER:RENTAL_FEE:' + intent.id})
+                      ${request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK'}, ${request.staff ? 'STAFF' : 'CUSTOMER'}, ${staffId}::uuid, ${request.staff?.name ?? null}, ${`Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`}, ${JSON.stringify({ orderId: intent.id, paymentMethod, laneSessionId: session.id })}::jsonb, ${'LEDGER:RENTAL_FEE:' + intent.id})
                    ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`
                 );
                 await tx.execute(sql.raw('RELEASE SAVEPOINT activity_logging'));
@@ -233,7 +233,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
           } else {
             // CREDIT_DECLINE
             await tx.execute(
-              sql`UPDATE payment_intents
+              sql`UPDATE orders
              SET failure_reason = ${declineReason || 'Payment declined'},
                  failure_at = NOW(),
                  updated_at = NOW()
@@ -264,7 +264,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
                   metadata: {
                     laneId,
                     laneSessionId: session.id,
-                    paymentIntentId: intent.id,
+                    orderId: intent.id,
                     declineReason: declineReason || 'Payment declined',
                   },
                   dedupeKey: `ACT:PAYMENT_DECLINED:${intent.id}:${Date.now()}`,
@@ -283,7 +283,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
               paymentMethod,
               amount: intent.amount,
               sessionId: session.id,
-              paymentIntentId: intent.id,
+              orderId: intent.id,
               customerId: session.customer_id,
               laneId,
             },
@@ -293,7 +293,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
           return {
             sessionId: session.id,
             success: isSuccess,
-            paymentIntentId: intent.id,
+            orderId: intent.id,
             status: isSuccess ? 'PAID' : intent.status,
           };
         });
@@ -304,7 +304,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
 
         return reply.send({
           success: result.success,
-          paymentIntentId: result.paymentIntentId,
+          orderId: result.orderId,
           status: result.status,
           quote: 'quote' in result ? result.quote : undefined,
         });

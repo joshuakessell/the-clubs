@@ -113,7 +113,7 @@ export async function switchResource(input: SwitchResourceInput) {
     // Fee calculation
     const currentRentalType = normalizeRentalTier(block.rental_type);
     const additionalFee = computeAdditionalFee(currentRentalType, targetRentalType);
-    let paymentIntentId: string | null = null;
+    let orderId: string | null = null;
 
     if (additionalFee > 0) {
       if (!input.paymentOutcome) {
@@ -133,10 +133,10 @@ export async function switchResource(input: SwitchResourceInput) {
 
       const quoteJson = JSON.stringify({ type: 'SWITCH_UPCHARGE', method: input.paymentOutcome, visitId: input.visitId, checkinBlockId: block.id, currentRentalType, targetRentalType, targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber });
       const pr = await tx.execute<{ id: string }>(
-        sql`INSERT INTO payment_intents (amount, status, quote_json, paid_at) VALUES (${additionalFee}, 'PAID', ${quoteJson}::jsonb, NOW()) RETURNING id`
+        sql`INSERT INTO orders (amount, status, quote_json, paid_at) VALUES (${additionalFee}, 'PAID', ${quoteJson}::jsonb, NOW()) RETURNING id`
       );
-      paymentIntentId = pr.rows[0]!.id;
-      await tx.execute(sql`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES (${input.visitId}, ${block.id}, 'UPGRADE_FEE', ${additionalFee}, ${paymentIntentId})`);
+      orderId = pr.rows[0]!.id;
+      await tx.execute(sql`INSERT INTO order_line_items (visit_id, checkin_block_id, type, amount, order_id) VALUES (${input.visitId}, ${block.id}, 'UPGRADE_FEE', ${additionalFee}, ${orderId})`);
     }
 
     // Release current resource
@@ -151,14 +151,14 @@ export async function switchResource(input: SwitchResourceInput) {
     await insertAuditLogDrizzle(tx, {
       staffId: input.staffId, action: 'UPDATE', entityType: input.targetResourceType, entityId: input.targetResourceId,
       oldValue: { visitId: input.visitId, checkinBlockId: block.id, resourceType: currentResourceType, resourceId: currentResourceId, resourceNumber: currentResourceNumber, rentalType: currentRentalType, previousRoomStatus: currentResourceType === 'room' ? previousRoomStatus : null },
-      newValue: { resourceType: input.targetResourceType, resourceId: input.targetResourceId, resourceNumber: targetResourceNumber, rentalType: targetRentalType, additionalFee, paymentIntentId },
+      newValue: { resourceType: input.targetResourceType, resourceId: input.targetResourceId, resourceNumber: targetResourceNumber, rentalType: targetRentalType, additionalFee, orderId },
     });
 
     return {
       visitId: input.visitId, checkinBlockId: block.id,
       previousResourceType: currentResourceType, previousResourceId: currentResourceId, previousResourceNumber: currentResourceNumber, previousRentalType: currentRentalType,
       newResourceType: input.targetResourceType, newResourceId: input.targetResourceId, newResourceNumber: targetResourceNumber, newRentalType: targetRentalType,
-      additionalFee, paymentIntentId,
+      additionalFee, orderId,
     };
   }, { isolationLevel: 'serializable' });
 }
@@ -181,7 +181,7 @@ export async function logResourceSwitch(result: Awaited<ReturnType<typeof switch
         visitId: result.visitId, checkinBlockId: result.checkinBlockId,
         fromResourceType: result.previousResourceType, fromResourceId: result.previousResourceId, fromResourceNumber: result.previousResourceNumber,
         toResourceType: result.newResourceType, toResourceId: result.newResourceId, toResourceNumber: result.newResourceNumber,
-        additionalFee: result.additionalFee, paymentIntentId: result.paymentIntentId,
+        additionalFee: result.additionalFee, orderId: result.orderId,
       },
       dedupeKey: `ACT:${actionType}:${result.checkinBlockId}:${result.newResourceId}`,
       searchParts: [result.newResourceNumber, result.previousResourceNumber ?? ''],
@@ -198,5 +198,5 @@ export async function persistDeclinedSwitchPayment(err: SwitchHttpError) {
     targetResourceType: err.targetResourceType, targetResourceId: err.targetResourceId,
     targetResourceNumber: err.targetResourceNumber, declineReason: err.message,
   });
-  await db.execute(sql`INSERT INTO payment_intents (amount, status, quote_json) VALUES (${err.additionalFee ?? 0}, 'CANCELLED', ${quoteJson}::jsonb)`);
+  await db.execute(sql`INSERT INTO orders (amount, status, quote_json) VALUES (${err.additionalFee ?? 0}, 'CANCELED', ${quoteJson}::jsonb)`);
 }

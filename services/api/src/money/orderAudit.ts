@@ -26,7 +26,7 @@ export type OrderTotalsInput = {
 };
 
 export type TenderSnapshot = {
-  paymentIntentId?: string | null;
+  orderId?: string | null;
   paymentMethod?: string | null;
   amount?: number | null;
   tip?: number | null;

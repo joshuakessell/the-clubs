@@ -79,7 +79,7 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
                assigned_resource_id = NULL,
                assigned_resource_type = NULL,
                price_quote_json = NULL,
-               payment_intent_id = NULL,
+               order_id = NULL,
                membership_purchase_intent = NULL,
                membership_purchase_requested_at = NULL,
                kiosk_acknowledged_at = NULL,

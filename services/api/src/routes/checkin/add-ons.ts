@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { AddOnsSchema } from '../../checkin/schemas';
-import type { LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
+import type { LaneSessionRow, OrderRow } from '../../checkin/types';
 import { getHttpError, parsePriceQuote, roundToWhole } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -55,23 +55,23 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
         const session = sessionResult.rows[0] as unknown as LaneSessionRow;
         const resolvedLaneId = session.lane_id || laneId;
 
-        if (!session.payment_intent_id) {
+        if (!session.order_id) {
           throw new HttpError(400, 'No payment intent for session');
         }
 
         const intentResult = await tx.execute<Record<string, unknown>>(
-          sql`SELECT * FROM payment_intents WHERE id = ${session.payment_intent_id} LIMIT 1`
+          sql`SELECT * FROM orders WHERE id = ${session.order_id} LIMIT 1`
         );
-        const paymentIntent = intentResult.rows[0] as unknown as PaymentIntentRow | undefined;
-        if (!paymentIntent) {
+        const pendingOrder = intentResult.rows[0] as unknown as OrderRow | undefined;
+        if (!pendingOrder) {
           throw new HttpError(404, 'Payment intent not found');
         }
-        if (paymentIntent.status !== 'DUE') {
+        if (pendingOrder.status !== 'OPEN') {
           throw new HttpError(409, 'Payment intent is not payable');
         }
 
         const baseQuote =
-          parsePriceQuote(session.price_quote_json) ?? parsePriceQuote(paymentIntent.quote_json);
+          parsePriceQuote(session.price_quote_json) ?? parsePriceQuote(pendingOrder.quote_json);
         if (!baseQuote) {
           throw new HttpError(400, 'No price quote available for session');
         }
@@ -95,11 +95,11 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
 
         const nextQuoteJson = JSON.stringify(nextQuote);
         await tx.execute(
-          sql`UPDATE payment_intents
+          sql`UPDATE orders
              SET amount = ${nextTotal},
                  quote_json = ${nextQuoteJson},
                  updated_at = NOW()
-             WHERE id = ${paymentIntent.id}`
+             WHERE id = ${pendingOrder.id}`
         );
 
         await tx.execute(

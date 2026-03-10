@@ -112,7 +112,7 @@ async function buildRegisterCloseoutSummary(
 ) {
   const payments = await tx.execute<Record<string, unknown>>(
     sql`SELECT id, amount, tip, payment_method, quote_json
-     FROM payment_intents
+     FROM orders
      WHERE status = 'PAID'
        AND register_number = ${session.register_number}
        AND paid_at >= ${session.created_at}

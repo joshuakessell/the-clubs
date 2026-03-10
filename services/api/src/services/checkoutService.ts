@@ -336,20 +336,20 @@ export async function completeManualCheckout(
     if (feeAmount > 0) {
       if (payAtCheckout) {
         const quoteJson = JSON.stringify({ type: 'LATE_FEE', total: feeAmount });
-        const paymentIntent = await tx.execute<{ id: string }>(
-          sql`INSERT INTO payment_intents (amount, status, quote_json, payment_method, paid_at, paid_by_staff_id)
+        const existingOrder = await tx.execute<{ id: string }>(
+          sql`INSERT INTO orders (amount, status, quote_json, payment_method, paid_at, paid_by_staff_id)
            VALUES (${feeAmount}, 'PAID', ${quoteJson}::jsonb, ${paymentMethod ?? null}, NOW(), ${staff.staffId}) RETURNING id`
         );
-        const paymentIntentId = paymentIntent.rows[0]!.id;
-        const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM charges WHERE checkin_block_id = ${row.occupancy_id} AND type = 'LATE_FEE' LIMIT 1`);
+        const orderId = existingOrder.rows[0]!.id;
+        const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE checkin_block_id = ${row.occupancy_id} AND type = 'LATE_FEE' LIMIT 1`);
         if (existingLate.rows.length === 0) {
-          await tx.execute(sql`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES (${row.visit_id}, ${row.occupancy_id}, 'LATE_FEE', ${feeAmount}, ${paymentIntentId})`);
+          await tx.execute(sql`INSERT INTO order_line_items (visit_id, checkin_block_id, type, amount, order_id) VALUES (${row.visit_id}, ${row.occupancy_id}, 'LATE_FEE', ${feeAmount}, ${orderId})`);
         }
       } else {
         await tx.execute(sql`UPDATE customers SET past_due_balance = past_due_balance + ${feeAmount}, updated_at = NOW() WHERE id = ${row.customer_id}`);
-        const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM charges WHERE checkin_block_id = ${row.occupancy_id} AND type = 'LATE_FEE' LIMIT 1`);
+        const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE checkin_block_id = ${row.occupancy_id} AND type = 'LATE_FEE' LIMIT 1`);
         if (existingLate.rows.length === 0) {
-          await tx.execute(sql`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES (${row.visit_id}, ${row.occupancy_id}, 'LATE_FEE', ${feeAmount}, ${null})`);
+          await tx.execute(sql`INSERT INTO order_line_items (visit_id, checkin_block_id, type, amount, order_id) VALUES (${row.visit_id}, ${row.occupancy_id}, 'LATE_FEE', ${feeAmount}, ${null})`);
         }
       }
 
@@ -538,14 +538,14 @@ export async function markFeePaid(
           messages: body.note ? [body.note] : [],
         });
 
-        const paymentIntent = await tx.execute<Record<string, unknown>>(
-          sql`INSERT INTO payment_intents
+        const existingOrder = await tx.execute<Record<string, unknown>>(
+          sql`INSERT INTO orders
            (amount, status, quote_json, payment_method, register_number, tip, paid_at, paid_by_staff_id)
            VALUES (${feeAmount}, 'PAID', ${quoteJson}::jsonb, ${body.paymentMethod ?? null}, ${resolvedRegisterNumber}, ${body.tip ?? 0}, NOW(), ${staff.staffId})
            RETURNING id, amount, payment_method, register_number, tip`
         );
 
-        const intent = paymentIntent.rows[0] as unknown as { id: string; amount: number | string; payment_method?: string | null; register_number?: number | null; tip?: number | null };
+        const intent = existingOrder.rows[0] as unknown as { id: string; amount: number | string; payment_method?: string | null; register_number?: number | null; tip?: number | null };
         const lineItems = [{ kind: 'LATE_FEE' as const, name: 'Late Fee', quantity: 1, unitPrice: feeAmount, total: feeAmount }];
         const totals = computeOrderTotals(lineItems, feeAmount, intent.tip ?? 0);
 
@@ -558,12 +558,12 @@ export async function markFeePaid(
           lineItems,
           metadata: {
             checkoutRequestId: requestId,
-            paymentIntentId: intent.id,
+            orderId: intent.id,
             paymentMethod: intent.payment_method ?? null,
             registerNumber: intent.register_number ?? null,
           },
           tender: {
-            paymentIntentId: intent.id,
+            orderId: intent.id,
             paymentMethod: intent.payment_method ?? null,
             amount: feeAmount,
             tip: intent.tip ?? 0,
@@ -590,7 +590,6 @@ export async function markFeePaid(
             metadata: {
               checkoutRequestId: requestId,
               orderId: ensured.order.id,
-              paymentIntentId: intent.id,
               total: ensured.order.total,
               visitId,
             },
@@ -609,7 +608,6 @@ export async function markFeePaid(
             metadata: {
               checkoutRequestId: requestId,
               orderId: ensured.order.id,
-              paymentIntentId: intent.id,
               visitId,
             },
             dedupeKey: `ACT:CHECKOUT_FEE_PAID:${requestId}`,
@@ -635,7 +633,6 @@ export async function markFeePaid(
             metadata: {
               checkoutRequestId: requestId,
               orderId: ensured.order.id,
-              paymentIntentId: intent.id,
               feeAmount,
             },
             dedupeKey: `CLUB:LATE_FEE_CHARGED:${requestId}`,
@@ -784,9 +781,9 @@ export async function completeStaffCheckout(
     if (feeAmount > 0) {
       await tx.execute(sql`UPDATE customers SET past_due_balance = past_due_balance + ${feeAmount}, updated_at = NOW() WHERE id = ${checkoutRequest.customer_id}`);
 
-      const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM charges WHERE checkin_block_id = ${block.id} AND type = 'LATE_FEE' LIMIT 1`);
+      const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE checkin_block_id = ${block.id} AND type = 'LATE_FEE' LIMIT 1`);
       if (existingLate.rows.length === 0) {
-        await tx.execute(sql`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES (${block.visit_id}, ${block.id}, 'LATE_FEE', ${feeAmount}, ${null})`);
+        await tx.execute(sql`INSERT INTO order_line_items (visit_id, checkin_block_id, type, amount, order_id) VALUES (${block.visit_id}, ${block.id}, 'LATE_FEE', ${feeAmount}, ${null})`);
       }
 
       await insertCustomerSpendLedgerEntryDrizzle(tx, {

@@ -39,13 +39,13 @@ export async function upgradeRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  fastify.post<{ Body: { waitlistId: string; paymentIntentId: string } }>(
+  fastify.post<{ Body: { waitlistId: string; orderId: string } }>(
     '/v1/upgrades/complete', { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
       try {
-        const result = await completeUpgrade(request.body.waitlistId, request.body.paymentIntentId, { staffId: request.staff.staffId, name: request.staff.name });
+        const result = await completeUpgrade(request.body.waitlistId, request.body.orderId, { staffId: request.staff.staffId, name: request.staff.name });
         if (fastify.broadcaster) {
           await broadcastInventoryUpdate(fastify.broadcaster);
           fastify.broadcaster.broadcast({ type: 'WAITLIST_UPDATED', payload: { waitlistId: result.waitlistId, status: 'COMPLETED' }, timestamp: new Date().toISOString() });

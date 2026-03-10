@@ -36,7 +36,7 @@ interface RoomAvailability {
 
 interface FulfillResult {
   waitlistId: string;
-  paymentIntentId: string;
+  orderId: string;
   upgradeFee: number;
   newResourceId: string;
   newRoomNumber: string;
@@ -683,7 +683,7 @@ export function UpgradesPanel() {
     try {
       const h = headers();
       const payRes = await fetch(
-        getApiUrl(`/api/v1/payments/${paymentModal.fulfill.paymentIntentId}/mark-paid`),
+        getApiUrl(`/api/v1/payments/${paymentModal.fulfill.orderId}/mark-paid`),
         {
           method: 'POST',
           headers: { ...h, 'Content-Type': 'application/json' },
@@ -710,7 +710,7 @@ export function UpgradesPanel() {
         headers: { ...h, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           waitlistId: paymentModal.fulfill.waitlistId,
-          paymentIntentId: paymentModal.fulfill.paymentIntentId,
+          orderId: paymentModal.fulfill.orderId,
         }),
       });
       if (!res.ok) throw new Error('Complete failed');

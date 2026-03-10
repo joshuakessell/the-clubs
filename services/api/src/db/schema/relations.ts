@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm/relations";
-import { customers, visits, staff, employeeDocuments, staffSessions, employeeShifts, shiftTemplates, staffWebauthnCredentials, timeOffRequests, timeclockSessions, webauthnChallenges, inventoryResources, keyTags, waitlist, checkinBlocks, agreements, agreementSignatures, laneSessions, inventoryReservations, charges, paymentIntents, registerSessions, checkoutRequests, cleaningBatches, cleaningBatchRooms, cleaningEvents, lateCheckoutEvents, auditLog, cashDrawerSessions, cashDrawerEvents, staffBreakSessions, orders, orderLineItems, receipts, customerNotes, customerActivityEvents, customerSpendLedgerEntries, lateCheckoutBanAlerts, schedulePatterns, clubEvents, laneSessionCommands } from "./schema";
+import { customers, visits, staff, employeeDocuments, staffSessions, employeeShifts, shiftTemplates, staffWebauthnCredentials, timeOffRequests, timeclockSessions, webauthnChallenges, inventoryResources, keyTags, waitlist, checkinBlocks, agreements, agreementSignatures, laneSessions, inventoryReservations, registerSessions, checkoutRequests, cleaningBatches, cleaningBatchRooms, cleaningEvents, lateCheckoutEvents, auditLog, cashDrawerSessions, cashDrawerEvents, staffBreakSessions, orders, orderLineItems, receipts, customerNotes, customerActivityEvents, customerSpendLedgerEntries, lateCheckoutBanAlerts, schedulePatterns, clubEvents, laneSessionCommands } from "./schema";
 
 export const visitsRelations = relations(visits, ({one, many}) => ({
 	customer: one(customers, {
@@ -8,7 +8,7 @@ export const visitsRelations = relations(visits, ({one, many}) => ({
 	}),
 	waitlists: many(waitlist),
 	checkinBlocks: many(checkinBlocks),
-	charges: many(charges),
+	orders: many(orders),
 	customerSpendLedgerEntries: many(customerSpendLedgerEntries),
 	lateCheckoutBanAlerts: many(lateCheckoutBanAlerts),
 }));
@@ -72,7 +72,6 @@ export const staffRelations = relations(staff, ({many}) => ({
 	}),
 	webauthnChallenges: many(webauthnChallenges),
 	waitlists: many(waitlist),
-	paymentIntents: many(paymentIntents),
 	registerSessions: many(registerSessions),
 	checkoutRequests: many(checkoutRequests),
 	cleaningEvents: many(cleaningEvents),
@@ -261,7 +260,6 @@ export const checkinBlocksRelations = relations(checkinBlocks, ({one, many}) => 
 		references: [waitlist.id],
 		relationName: "checkinBlocks_waitlistId_waitlist_id"
 	}),
-	charges: many(charges),
 	lateCheckoutBanAlerts: many(lateCheckoutBanAlerts),
 }));
 
@@ -283,13 +281,9 @@ export const agreementsRelations = relations(agreements, ({many}) => ({
 export const laneSessionsRelations = relations(laneSessions, ({one, many}) => ({
 	checkinBlocks: many(checkinBlocks),
 	inventoryReservations: many(inventoryReservations),
-	paymentIntents: many(paymentIntents, {
-		relationName: "paymentIntents_laneSessionId_laneSessions_id"
-	}),
-	paymentIntent: one(paymentIntents, {
-		fields: [laneSessions.paymentIntentId],
-		references: [paymentIntents.id],
-		relationName: "laneSessions_paymentIntentId_paymentIntents_id"
+	order: one(orders, {
+		fields: [laneSessions.orderId],
+		references: [orders.id],
 	}),
 	customer: one(customers, {
 		fields: [laneSessions.customerId],
@@ -319,36 +313,7 @@ export const inventoryReservationsRelations = relations(inventoryReservations, (
 	}),
 }));
 
-export const chargesRelations = relations(charges, ({one}) => ({
-	checkinBlock: one(checkinBlocks, {
-		fields: [charges.checkinBlockId],
-		references: [checkinBlocks.id]
-	}),
-	paymentIntent: one(paymentIntents, {
-		fields: [charges.paymentIntentId],
-		references: [paymentIntents.id]
-	}),
-	visit: one(visits, {
-		fields: [charges.visitId],
-		references: [visits.id]
-	}),
-}));
 
-export const paymentIntentsRelations = relations(paymentIntents, ({one, many}) => ({
-	charges: many(charges),
-	laneSession: one(laneSessions, {
-		fields: [paymentIntents.laneSessionId],
-		references: [laneSessions.id],
-		relationName: "paymentIntents_laneSessionId_laneSessions_id"
-	}),
-	staff: one(staff, {
-		fields: [paymentIntents.paidByStaffId],
-		references: [staff.id]
-	}),
-	laneSessions: many(laneSessions, {
-		relationName: "laneSessions_paymentIntentId_paymentIntents_id"
-	}),
-}));
 
 export const registerSessionsRelations = relations(registerSessions, ({one, many}) => ({
 	staff: one(staff, {
@@ -465,16 +430,27 @@ export const ordersRelations = relations(orders, ({one, many}) => ({
 		fields: [orders.customerId],
 		references: [customers.id]
 	}),
+	visit: one(visits, {
+		fields: [orders.visitId],
+		references: [visits.id]
+	}),
 	registerSession: one(registerSessions, {
 		fields: [orders.registerSessionId],
 		references: [registerSessions.id]
 	}),
-	staff: one(staff, {
+	staff_createdBy: one(staff, {
 		fields: [orders.createdByStaffId],
-		references: [staff.id]
+		references: [staff.id],
+		relationName: "orders_createdByStaffId_staff_id"
+	}),
+	staff_paidBy: one(staff, {
+		fields: [orders.paidByStaffId],
+		references: [staff.id],
+		relationName: "orders_paidByStaffId_staff_id"
 	}),
 	orderLineItems: many(orderLineItems),
 	receipts: many(receipts),
+	laneSessions: many(laneSessions),
 }));
 
 export const orderLineItemsRelations = relations(orderLineItems, ({one}) => ({

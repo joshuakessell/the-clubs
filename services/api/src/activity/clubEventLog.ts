@@ -10,7 +10,7 @@ const SEARCHABLE_METADATA_KEYS = [
   'orderId',
   'laneId',
   'laneSessionId',
-  'paymentIntentId',
+  'orderId',
   'checkoutRequestId',
   'waitlistId',
   'roomNumber',

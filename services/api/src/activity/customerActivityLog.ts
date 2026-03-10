@@ -14,7 +14,7 @@ export const SEARCHABLE_METADATA_KEYS = [
   'laneId',
   'laneSessionId',
   'orderId',
-  'paymentIntentId',
+  'orderId',
   'checkoutRequestId',
   'waitlistId',
   'roomNumber',

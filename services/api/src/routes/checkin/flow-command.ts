@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
-import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
+import type { CustomerRow, LaneSessionRow, OrderRow } from '../../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -353,7 +353,7 @@ async function applyFlowPaymentSideEffects(
 ): Promise<void> {
   const { session, sessionId, type, payload } = params;
 
-  if (session.flow_step === 'PAYMENT' && !session.payment_intent_id) {
+  if (session.flow_step === 'PAYMENT' && !session.order_id) {
     let rentalType = (session.desired_rental_type ?? session.proposed_rental_type ?? 'LOCKER') as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
     if (session.waitlist_desired_type && session.backup_rental_type) {
       rentalType = session.backup_rental_type as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
@@ -393,29 +393,29 @@ async function applyFlowPaymentSideEffects(
       ? calculateRenewalQuote({ ...pricingInput, renewalHours })
       : calculatePriceQuote(pricingInput);
 
-    const intentResult = await client.query<PaymentIntentRow>(
-      `INSERT INTO payment_intents (lane_session_id, amount, status, quote_json) VALUES ($1, $2, 'DUE', $3) RETURNING *`,
+    const intentResult = await client.query<OrderRow>(
+      `INSERT INTO orders (lane_session_id, amount, status, quote_json) VALUES ($1, $2, 'OPEN', $3) RETURNING *`,
       [sessionId, quote.total, JSON.stringify(quote)],
     );
     const intent = intentResult.rows[0]!;
 
     await client.query(
-      `UPDATE lane_sessions SET payment_intent_id = $1, price_quote_json = $2, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = $3`,
+      `UPDATE lane_sessions SET order_id = $1, price_quote_json = $2, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = $3`,
       [intent.id, JSON.stringify(quote), sessionId],
     );
   }
 
-  if (session.flow_step === 'AGREEMENT' && session.payment_intent_id && type === 'SET_STEP') {
+  if (session.flow_step === 'AGREEMENT' && session.order_id && type === 'SET_STEP') {
     const requestedMethod = payload?.['paymentMethod'] as string | undefined;
     if (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT') {
       const intentStatusRes = await client.query<{ status: string }>(
-        `SELECT status FROM payment_intents WHERE id = $1`,
-        [session.payment_intent_id],
+        `SELECT status FROM orders WHERE id = $1`,
+        [session.order_id],
       );
       if (intentStatusRes.rows[0]?.status !== 'PAID') {
         await client.query(
-          `UPDATE payment_intents SET status = 'PAID', payment_method = $1, paid_at = NOW(), updated_at = NOW() WHERE id = $2`,
-          [requestedMethod, session.payment_intent_id],
+          `UPDATE orders SET status = 'PAID', payment_method = $1, paid_at = NOW(), updated_at = NOW() WHERE id = $2`,
+          [requestedMethod, session.order_id],
         );
         await client.query(
           `UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`,
@@ -425,11 +425,11 @@ async function applyFlowPaymentSideEffects(
     }
   }
 
-  if (session.flow_step === 'PAYMENT' && session.payment_intent_id && type === 'SET_STEP' && payload?.['paymentFailed']) {
+  if (session.flow_step === 'PAYMENT' && session.order_id && type === 'SET_STEP' && payload?.['paymentFailed']) {
     const failureReason = (payload['failureReason'] as string) || 'Payment failed';
     await client.query(
-      `UPDATE payment_intents SET failure_reason = $1, updated_at = NOW() WHERE id = $2`,
-      [failureReason, session.payment_intent_id],
+      `UPDATE orders SET failure_reason = $1, updated_at = NOW() WHERE id = $2`,
+      [failureReason, session.order_id],
     );
   }
 }
@@ -673,7 +673,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
                  backup_rental_type = CASE WHEN $13 THEN NULL ELSE $16::public.rental_type END,
                  waitlist_requested_resource_number = CASE WHEN $13 THEN NULL ELSE $17 END,
                  waitlist_requested_resource_type = CASE WHEN $13 THEN NULL ELSE $18::public.inventory_resource_type END,
-                 payment_intent_id = CASE WHEN $19 THEN NULL ELSE payment_intent_id END,
+                 order_id = CASE WHEN $19 THEN NULL ELSE order_id END,
                  price_quote_json = CASE WHEN $19 THEN NULL ELSE price_quote_json END,
                  disclaimers_ack_json = CASE WHEN $19 THEN NULL ELSE disclaimers_ack_json END,
                  agreement_bypass_pending = CASE WHEN $20 THEN false ELSE agreement_bypass_pending END,

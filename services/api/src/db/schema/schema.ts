@@ -13,7 +13,7 @@ export const inventoryReservationKind = pgEnum("inventory_reservation_kind", ['L
 export const inventoryResourceType = pgEnum("inventory_resource_type", ['room', 'locker'])
 export const keyTagType = pgEnum("key_tag_type", ['QR', 'NFC'])
 export const laneSessionStatus = pgEnum("lane_session_status", ['IDLE', 'ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE', 'COMPLETED', 'CANCELLED'])
-export const orderLineItemKind = pgEnum("order_line_item_kind", ['RETAIL', 'ADDON', 'UPGRADE', 'LATE_FEE', 'MANUAL'])
+export const orderLineItemKind = pgEnum("order_line_item_kind", ['RETAIL', 'ADDON', 'UPGRADE', 'LATE_FEE', 'MANUAL', 'CHECKIN_FEE', 'RENEWAL_FEE', 'FINAL_EXTENSION'])
 export const orderStatus = pgEnum("order_status", ['OPEN', 'PAID', 'CANCELED', 'REFUNDED', 'PARTIALLY_REFUNDED'])
 export const paymentStatus = pgEnum("payment_status", ['DUE', 'PAID', 'CANCELLED', 'REFUNDED'])
 export const rentalType = pgEnum("rental_type", ['LOCKER', 'STANDARD', 'DOUBLE', 'SPECIAL', 'GYM_LOCKER'])
@@ -507,65 +507,7 @@ export const inventoryReservations = pgTable("inventory_reservations", {
 	check("inventory_reservations_waitlist_required", sql`(kind <> 'UPGRADE_HOLD'::inventory_reservation_kind) OR (waitlist_id IS NOT NULL)`),
 ]);
 
-export const charges = pgTable("charges", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	visitId: uuid("visit_id").notNull(),
-	checkinBlockId: uuid("checkin_block_id"),
-	type: varchar({ length: 50 }).notNull(),
-	amount: numeric({ precision: 10, scale:  2 }).notNull(),
-	paymentIntentId: uuid("payment_intent_id"),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
-}, (table) => [
-	index("idx_charges_block").using("btree", table.checkinBlockId.asc().nullsLast().op("uuid_ops")).where(sql`(checkin_block_id IS NOT NULL)`),
-	uniqueIndex("idx_charges_payment_intent").using("btree", table.paymentIntentId.asc().nullsLast().op("uuid_ops")).where(sql`(payment_intent_id IS NOT NULL)`),
-	index("idx_charges_visit").using("btree", table.visitId.asc().nullsLast().op("uuid_ops")),
-	foreignKey({
-			columns: [table.checkinBlockId],
-			foreignColumns: [checkinBlocks.id],
-			name: "charges_checkin_block_id_fkey"
-		}).onDelete("set null"),
-	foreignKey({
-			columns: [table.paymentIntentId],
-			foreignColumns: [paymentIntents.id],
-			name: "charges_payment_intent_id_fkey"
-		}),
-	foreignKey({
-			columns: [table.visitId],
-			foreignColumns: [visits.id],
-			name: "charges_visit_id_fkey"
-		}).onDelete("cascade"),
-]);
-
-export const paymentIntents = pgTable("payment_intents", {
-	id: uuid().defaultRandom().primaryKey().notNull(),
-	laneSessionId: uuid("lane_session_id"),
-	amount: numeric({ precision: 10, scale:  2 }).notNull(),
-	tip: integer("tip").default(0).notNull(),
-	status: paymentStatus().default('DUE').notNull(),
-	quoteJson: jsonb("quote_json").$type<Record<string, unknown>>().notNull(),
-	squareTransactionId: varchar("square_transaction_id", { length: 255 }),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
-	paidAt: timestamp("paid_at", { withTimezone: true, mode: 'date' }),
-	paidByStaffId: uuid("paid_by_staff_id"),
-	paymentMethod: text("payment_method"),
-	failureReason: text("failure_reason"),
-	failureAt: timestamp("failure_at", { withTimezone: true, mode: 'date' }),
-	registerNumber: integer("register_number"),
-}, (table) => [
-	index("idx_payment_intents_due").using("btree", table.status.asc().nullsLast().op("enum_ops")).where(sql`(status = 'DUE'::payment_status)`),
-	index("idx_payment_intents_lane_session").using("btree", table.laneSessionId.asc().nullsLast().op("uuid_ops")),
-	index("idx_payment_intents_paid_by_staff").using("btree", table.paidByStaffId.asc().nullsLast().op("uuid_ops")).where(sql`(paid_by_staff_id IS NOT NULL)`),
-	index("idx_payment_intents_status").using("btree", table.status.asc().nullsLast().op("enum_ops")),
-	// FK: laneSessionId → lane_sessions.id (defined at DB level, omitted to avoid circular TS ref)
-
-	foreignKey({
-			columns: [table.paidByStaffId],
-			foreignColumns: [staff.id],
-			name: "payment_intents_paid_by_staff_id_fkey"
-		}).onDelete("set null"),
-	check("payment_intents_payment_method_check", sql`payment_method = ANY (ARRAY['CASH'::text, 'CREDIT'::text])`),
-]);
+// charges and paymentIntents tables removed — unified into orders/orderLineItems
 
 export const devices = pgTable("devices", {
 	deviceId: varchar("device_id", { length: 255 }).primaryKey().notNull(),
@@ -858,23 +800,36 @@ export const staffBreakSessions = pgTable("staff_break_sessions", {
 export const orders = pgTable("orders", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	customerId: uuid("customer_id"),
+	visitId: uuid("visit_id"),
+	laneSessionId: uuid("lane_session_id"),
 	registerSessionId: uuid("register_session_id"),
 	createdByStaffId: uuid("created_by_staff_id"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 	status: orderStatus().default('OPEN').notNull(),
-	subtotal: integer("subtotal").notNull(),
-	discount: integer("discount").notNull(),
-	tax: integer("tax").notNull(),
-	tip: integer("tip").default(0).notNull(),
-	total: integer("total").notNull(),
+	subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
+	discount: numeric("discount", { precision: 10, scale: 2 }).notNull(),
+	tax: numeric("tax", { precision: 10, scale: 2 }).notNull(),
+	tip: numeric("tip", { precision: 10, scale: 2 }).default('0').notNull(),
+	total: numeric("total", { precision: 10, scale: 2 }).notNull(),
 	currency: varchar({ length: 3 }).default('USD').notNull(),
+	paymentMethod: text("payment_method"),
+	squareTransactionId: varchar("square_transaction_id", { length: 255 }),
+	paidAt: timestamp("paid_at", { withTimezone: true, mode: 'date' }),
+	paidByStaffId: uuid("paid_by_staff_id"),
+	quoteJson: jsonb("quote_json").$type<Record<string, unknown>>(),
+	failureReason: text("failure_reason"),
+	failureAt: timestamp("failure_at", { withTimezone: true, mode: 'date' }),
+	registerNumber: integer("register_number"),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 	metadataJson: jsonb("metadata_json"),
 }, (table) => [
 	index("idx_orders_created_at").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 	index("idx_orders_created_by").using("btree", table.createdByStaffId.asc().nullsLast().op("uuid_ops")).where(sql`(created_by_staff_id IS NOT NULL)`),
 	index("idx_orders_customer").using("btree", table.customerId.asc().nullsLast().op("uuid_ops")).where(sql`(customer_id IS NOT NULL)`),
+	index("idx_orders_lane_session").using("btree", table.laneSessionId.asc().nullsLast().op("uuid_ops")).where(sql`(lane_session_id IS NOT NULL)`),
 	index("idx_orders_register_session").using("btree", table.registerSessionId.asc().nullsLast().op("uuid_ops")).where(sql`(register_session_id IS NOT NULL)`),
 	index("idx_orders_status").using("btree", table.status.asc().nullsLast().op("enum_ops")),
+	index("idx_orders_visit").using("btree", table.visitId.asc().nullsLast().op("uuid_ops")).where(sql`(visit_id IS NOT NULL)`),
 	foreignKey({
 			columns: [table.customerId],
 			foreignColumns: [customers.id],
@@ -890,6 +845,18 @@ export const orders = pgTable("orders", {
 			foreignColumns: [staff.id],
 			name: "orders_created_by_staff_id_fkey"
 		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.paidByStaffId],
+			foreignColumns: [staff.id],
+			name: "orders_paid_by_staff_id_fkey"
+		}).onDelete("set null"),
+	foreignKey({
+			columns: [table.visitId],
+			foreignColumns: [visits.id],
+			name: "orders_visit_id_fkey"
+		}).onDelete("set null"),
+	// FK: laneSessionId → lane_sessions.id (defined at DB level, omitted to avoid circular TS ref)
+	check("orders_payment_method_check", sql`payment_method IS NULL OR payment_method = ANY (ARRAY['CASH'::text, 'CREDIT'::text])`),
 ]);
 
 export const orderLineItems = pgTable("order_line_items", {
@@ -899,10 +866,10 @@ export const orderLineItems = pgTable("order_line_items", {
 	sku: text(),
 	name: text().notNull(),
 	quantity: integer().notNull(),
-	unitPrice: integer("unit_price").notNull(),
-	discount: integer("discount").default(0).notNull(),
-	tax: integer("tax").default(0).notNull(),
-	total: integer("total").notNull(),
+	unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
+	discount: numeric("discount", { precision: 10, scale: 2 }).default('0').notNull(),
+	tax: numeric("tax", { precision: 10, scale: 2 }).default('0').notNull(),
+	total: numeric("total", { precision: 10, scale: 2 }).notNull(),
 	metadataJson: jsonb("metadata_json"),
 }, (table) => [
 	index("idx_order_line_items_order").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
@@ -1192,7 +1159,7 @@ export const laneSessions = pgTable("lane_sessions", {
 	assignedResourceType: varchar("assigned_resource_type", { length: 20 }),
 	priceQuoteJson: jsonb("price_quote_json"),
 	disclaimersAckJson: jsonb("disclaimers_ack_json"),
-	paymentIntentId: uuid("payment_intent_id"),
+	orderId: uuid("order_id"),
 	membershipPurchaseIntent: varchar("membership_purchase_intent", { length: 20 }),
 	membershipPurchaseRequestedAt: timestamp("membership_purchase_requested_at", { withTimezone: true, mode: 'date' }),
 	membershipChoice: varchar("membership_choice", { length: 20 }),
@@ -1231,9 +1198,9 @@ export const laneSessions = pgTable("lane_sessions", {
 	index("idx_lane_sessions_staff").using("btree", table.staffId.asc().nullsLast().op("uuid_ops")).where(sql`(staff_id IS NOT NULL)`),
 	index("idx_lane_sessions_status").using("btree", table.status.asc().nullsLast().op("enum_ops")),
 	foreignKey({
-			columns: [table.paymentIntentId],
-			foreignColumns: [paymentIntents.id],
-			name: "fk_lane_sessions_payment_intent"
+			columns: [table.orderId],
+			foreignColumns: [orders.id],
+			name: "fk_lane_sessions_order"
 		}).onDelete("set null"),
 	foreignKey({
 			columns: [table.customerId],

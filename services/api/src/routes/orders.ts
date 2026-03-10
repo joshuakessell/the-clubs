@@ -18,7 +18,7 @@ export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Params: { orderId: string } }>('/v1/orders/:orderId/line-items', { preHandler: [requireAuth] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof AddLineItemsSchema>;
-    return reply.send(await addLineItems(request.params.orderId, body.items));
+    return reply.send(await addLineItems(request.params.orderId, body.items.map(i => ({ ...i, unitPrice: i.unitPrice.toString() }))));
   });
 
   fastify.post<{ Params: { orderId: string } }>('/v1/orders/:orderId/mark-paid', { preHandler: [requireAuth] }, async (request, reply) => {

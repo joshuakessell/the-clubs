@@ -10,7 +10,7 @@ import {
   calculateRenewalQuote,
   type PricingInput,
 } from '../pricing/engine';
-import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from '../checkin/types';
+import type { CustomerRow, LaneSessionRow, OrderRow } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { calculateAge } from '../checkin/identity';
 import { toDate } from '../checkin/utils';
@@ -54,13 +54,13 @@ async function recomputeQuoteIfNeeded(
   session: LaneSessionRow,
   intent: 'PURCHASE' | 'RENEW' | 'NONE',
 ) {
-  if (!session.payment_intent_id || !session.selection_confirmed) return;
+  if (!session.order_id || !session.selection_confirmed) return;
 
   const intentResult = await tx.execute<Record<string, unknown>>(
-    sql`SELECT * FROM payment_intents WHERE id = ${session.payment_intent_id} LIMIT 1`
+    sql`SELECT * FROM orders WHERE id = ${session.order_id} LIMIT 1`
   );
-  const pi = intentResult.rows[0] as unknown as PaymentIntentRow | undefined;
-  if (pi?.status !== 'DUE') return;
+  const pi = intentResult.rows[0] as unknown as OrderRow | undefined;
+  if (pi?.status !== 'OPEN') return;
 
   const customerResult = await tx.execute<Record<string, unknown>>(
     sql`SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = ${session.customer_id}`
@@ -85,7 +85,7 @@ async function recomputeQuoteIfNeeded(
   const quote = isRenewal ? calculateRenewalQuote({ ...pricingInput, renewalHours }) : calculatePriceQuote(pricingInput);
   const quoteJson = JSON.stringify(quote);
 
-  await tx.execute(sql`UPDATE payment_intents SET amount = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${pi.id}`);
+  await tx.execute(sql`UPDATE orders SET amount = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${pi.id}`);
   await tx.execute(sql`UPDATE lane_sessions SET price_quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${session.id}`);
 }
 
@@ -141,11 +141,11 @@ export async function completeMembershipPurchase(
     const resolvedLaneId = session.lane_id || laneId;
     if (!session.customer_id) throw new ServiceError(400, 'Session has no customer');
 
-    if (session.payment_intent_id) {
+    if (session.order_id) {
       const intentResult = await tx.execute<Record<string, unknown>>(
-        sql`SELECT * FROM payment_intents WHERE id = ${session.payment_intent_id} LIMIT 1`
+        sql`SELECT * FROM orders WHERE id = ${session.order_id} LIMIT 1`
       );
-      const pi = intentResult.rows[0] as unknown as PaymentIntentRow | undefined;
+      const pi = intentResult.rows[0] as unknown as OrderRow | undefined;
       if (pi && pi.status !== 'PAID') {
         throw new ServiceError(400, 'Payment intent must be PAID before completing membership');
       }

@@ -227,12 +227,12 @@ async function validatePrerequisites(
   }
 
   // Check payment is paid
-  if (!session.payment_intent_id) {
+  if (!session.order_id) {
     throw new HttpError(400, 'Payment intent must be created before signing agreement');
   }
 
   const intentResult = await tx.execute<Record<string, unknown>>(
-    sql`SELECT status FROM payment_intents WHERE id = ${session.payment_intent_id}`
+    sql`SELECT status FROM orders WHERE id = ${session.order_id}`
   );
   if (intentResult.rows.length === 0 || (intentResult.rows[0] as unknown as PaymentIntentRow).status !== 'PAID') {
     throw new HttpError(400, 'Payment must be marked as paid before signing agreement');
@@ -871,12 +871,12 @@ export async function requestAgreementBypass(input: BypassInput): Promise<Bypass
       throw new HttpError(400, 'Selection must be confirmed before bypassing agreement');
     }
 
-    if (!session.payment_intent_id) {
+    if (!session.order_id) {
       throw new HttpError(400, 'Payment intent must be created before bypassing agreement');
     }
 
     const intentResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT status FROM payment_intents WHERE id = ${session.payment_intent_id}`
+      sql`SELECT status FROM orders WHERE id = ${session.order_id}`
     );
     if (intentResult.rows.length === 0 || (intentResult.rows[0] as unknown as PaymentIntentRow).status !== 'PAID') {
       throw new HttpError(400, 'Payment must be marked as paid before bypassing agreement');

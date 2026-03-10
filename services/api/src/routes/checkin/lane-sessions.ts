@@ -51,7 +51,7 @@ export function registerCheckinLaneSessionsRoutes(fastify: FastifyInstance): voi
               }
             : null,
           priceQuote: session.price_quote_json,
-          paymentIntentId: session.payment_intent_id,
+          orderId: session.order_id,
           createdAt: session.created_at,
           updatedAt: session.updated_at,
         }));

@@ -208,8 +208,8 @@ export interface SessionUpdatedPayload {
   pastDueBalance?: number;
   pastDueBlocked?: boolean;
   pastDueBypassed?: boolean;
-  paymentIntentId?: string;
-  paymentStatus?: 'DUE' | 'PAID';
+  orderId?: string;
+  orderStatus?: 'OPEN' | 'PAID';
   paymentMethod?: 'CASH' | 'CREDIT';
   paymentTotal?: number;
   paymentLineItems?: Array<{

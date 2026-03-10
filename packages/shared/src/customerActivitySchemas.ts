@@ -81,7 +81,7 @@ export const CustomerActivityMetadataSchemas = {
     renewalHours: z.union([z.literal(2), z.literal(6)]).nullable().optional(),
     amount: MoneySchema,
     currency: z.enum(['USD']),
-    paymentIntentId: uuidSchema.nullable().optional(),
+    orderId: uuidSchema.nullable().optional(),
     waitlistId: uuidSchema.nullable().optional(),
   }),
   CHECKOUT_REQUEST_CREATED: z.object({
@@ -97,7 +97,7 @@ export const CustomerActivityMetadataSchemas = {
     charges: MoneySchema,
     paid: MoneySchema,
     tip: z.number().int().min(0).max(2_000_000_000).nullable().optional(),
-    paymentIntentId: uuidSchema.nullable().optional(),
+    orderId: uuidSchema.nullable().optional(),
     paymentMethod: z.enum(['CASH', 'CARD', 'SPLIT', 'OTHER']).nullable().optional(),
   }),
   UPGRADE_STARTED: z.object({
@@ -128,7 +128,7 @@ export const CustomerActivityMetadataSchemas = {
       }),
     amount: MoneySchema,
     currency: z.enum(['USD']),
-    paymentIntentId: uuidSchema.nullable().optional(),
+    orderId: uuidSchema.nullable().optional(),
   }),
   ORDER_PAID: z.object({
     orderId: uuidSchema,
@@ -138,7 +138,6 @@ export const CustomerActivityMetadataSchemas = {
     tax: MoneySchema.nullable().optional(),
     tip: MoneySchema.nullable().optional(),
     discount: MoneySchema.nullable().optional(),
-    paymentIntentId: uuidSchema.nullable().optional(),
     paymentMethod: z.enum(['CASH', 'CARD', 'SPLIT', 'OTHER']).nullable().optional(),
     registerNumber: z.number().int().min(1).max(20).nullable().optional(),
     deviceId: z.string().max(255).nullable().optional(),
@@ -172,7 +171,7 @@ export const CustomerActivityMetadataSchemas = {
       .max(50),
     total: MoneySchema,
     currency: z.enum(['USD']),
-    paymentIntentId: uuidSchema.nullable().optional(),
+    orderId: uuidSchema.nullable().optional(),
   }),
   ROOM_CHANGED: z.object({
     visitId: uuidSchema,

@@ -1,6 +1,6 @@
 import type { CustomerIdType, SessionUpdatedPayload } from '@the-clubs/shared';
 import { getIdScanIssue } from './identity';
-import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from './types';
+import type { CustomerRow, LaneSessionRow, OrderRow } from './types';
 import { toDate, toNumber } from './utils';
 import { calculatePriceQuote, type RentalType } from '../pricing/engine';
 import { db } from '../db';
@@ -225,20 +225,20 @@ export async function buildFullSessionUpdatedPayload(
   const assignedResourceType = session.assigned_resource_type as 'room' | 'locker' | null;
   const assignedResourceNumber = await fetchAssignedResourceNumber(assignedResourceType, session.assigned_resource_id);
 
-  let paymentIntent: PaymentIntentRow | undefined;
-  if (session.payment_intent_id) {
+  let paymentIntent: OrderRow | undefined;
+  if (session.order_id) {
     const intentResult = await db.execute<Record<string, unknown>>(
-      sql`SELECT * FROM payment_intents WHERE id = ${session.payment_intent_id} LIMIT 1`
+      sql`SELECT * FROM orders WHERE id = ${session.order_id} LIMIT 1`
     );
-    paymentIntent = intentResult.rows[0] as unknown as PaymentIntentRow | undefined;
+    paymentIntent = intentResult.rows[0] as unknown as OrderRow | undefined;
   } else {
     const intentResult = await db.execute<Record<string, unknown>>(
-      sql`SELECT * FROM payment_intents
+      sql`SELECT * FROM orders
        WHERE lane_session_id = ${session.id}
        ORDER BY created_at DESC
        LIMIT 1`
     );
-    paymentIntent = intentResult.rows[0] as unknown as PaymentIntentRow | undefined;
+    paymentIntent = intentResult.rows[0] as unknown as OrderRow | undefined;
   }
 
   const paymentTotalRaw = toNumber(paymentIntent?.amount);
@@ -301,8 +301,8 @@ export async function buildFullSessionUpdatedPayload(
     pastDueBalance: pastDueBalance > 0 ? pastDueBalance : undefined,
     pastDueBlocked,
     pastDueBypassed,
-    paymentIntentId: paymentIntent?.id,
-    paymentStatus: (paymentIntent?.status as 'DUE' | 'PAID' | undefined) || undefined,
+    orderId: paymentIntent?.id,
+    orderStatus: (paymentIntent?.status as 'OPEN' | 'PAID' | undefined) || undefined,
     paymentMethod: (paymentIntent?.payment_method as 'CASH' | 'CREDIT' | undefined) || undefined,
     paymentTotal,
     paymentLineItems,
@@ -372,13 +372,13 @@ async function buildLedgerLineItems(
         quote_json: unknown;
         amount: number | string;
       }>(sql`
-        SELECT pi.quote_json, pi.amount
-         FROM payment_intents pi
-         JOIN lane_sessions ls ON ls.id = pi.lane_session_id
+        SELECT o.quote_json, o.total as amount
+         FROM orders o
+         JOIN lane_sessions ls ON ls.id = o.lane_session_id
          JOIN checkin_blocks cb ON cb.session_id = ls.id
          WHERE cb.visit_id = ${checkinVisitId}
-           AND pi.status = 'PAID'
-           AND pi.paid_at >= date_trunc('day', NOW())
+           AND o.status = 'PAID'
+           AND o.paid_at >= date_trunc('day', NOW())
       `);
 
       for (const intent of paidIntents.rows) {
@@ -398,10 +398,12 @@ async function buildLedgerLineItems(
       }
 
       const charges = await db.execute<{ type: string; amount: number | string }>(sql`
-        SELECT type, amount
-         FROM charges
-         WHERE visit_id = ${checkinVisitId}
-           AND created_at >= date_trunc('day', NOW())
+        SELECT kind as type, total as amount
+         FROM order_line_items oli
+         JOIN orders o ON o.id = oli.order_id
+         WHERE o.visit_id = ${checkinVisitId}
+           AND oli.kind IN ('CHECKIN_FEE', 'RENEWAL_FEE', 'FINAL_EXTENSION', 'UPGRADE', 'LATE_FEE')
+           AND o.created_at >= date_trunc('day', NOW())
       `);
 
       for (const charge of charges.rows) {
@@ -480,10 +482,12 @@ async function buildLedgerLineItems(
 
     if (checkinVisitId) {
       const charges = await db.execute<{ type: string; amount: number | string }>(sql`
-        SELECT type, amount
-         FROM charges
-         WHERE visit_id = ${checkinVisitId}
-           AND created_at >= date_trunc('day', NOW())
+        SELECT kind as type, total as amount
+         FROM order_line_items oli
+         JOIN orders o ON o.id = oli.order_id
+         WHERE o.visit_id = ${checkinVisitId}
+           AND oli.kind IN ('CHECKIN_FEE', 'RENEWAL_FEE', 'FINAL_EXTENSION', 'UPGRADE', 'LATE_FEE')
+           AND o.created_at >= date_trunc('day', NOW())
       `);
 
       for (const charge of charges.rows) {

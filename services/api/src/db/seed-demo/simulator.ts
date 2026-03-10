@@ -738,12 +738,12 @@ async function simulateVisits(params: {
       const piId = randomUUID();
       const chargeId = randomUUID();
       await client.query(
-        `INSERT INTO payment_intents (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
+        `INSERT INTO orders (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
          VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
         [piId, price, { type: 'CHECKIN', rentalType, price }, signedAt]
       );
       await client.query(
-        `INSERT INTO charges (id, visit_id, checkin_block_id, type, amount, payment_intent_id, created_at)
+        `INSERT INTO order_line_items (id, visit_id, checkin_block_id, type, amount, order_id, created_at)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [chargeId, visitId, blockId, rentalType, price, piId, signedAt]
       );
@@ -940,12 +940,12 @@ async function insertUpgrade(client: DbClient, p: {
 
   // Payment + Charge
   await client.query(
-    `INSERT INTO payment_intents (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
+    `INSERT INTO orders (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
      VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
     [piId, ugPrice, { type: 'UPGRADE', from: 'LOCKER', to: p.roomType, price: ugPrice }, p.ugAt]
   );
   await client.query(
-    `INSERT INTO charges (id, visit_id, checkin_block_id, type, amount, payment_intent_id, created_at)
+    `INSERT INTO order_line_items (id, visit_id, checkin_block_id, type, amount, order_id, created_at)
      VALUES ($1,$2,$3,'UPGRADE',$4,$5,$6)`,
     [cId, p.visitId, renewalId, ugPrice, piId, p.ugAt]
   );
@@ -962,7 +962,7 @@ async function insertUpgrade(client: DbClient, p: {
     at: p.ugAt, customerId: p.customerId,
     action: 'UPGRADE_COMPLETED', category: 'UPGRADE', staffId: p.staffId, staffName: emp.name,
     summary: `Upgrade completed: Locker → ${p.roomType}`,
-    metadata: { visitId: p.visitId, fromType: 'LOCKER', toType: p.roomType, roomId: p.roomId, paymentIntentId: piId, price: ugPrice },
+    metadata: { visitId: p.visitId, fromType: 'LOCKER', toType: p.roomType, roomId: p.roomId, orderId: piId, price: ugPrice },
     dedupeKey: `ACT:SIM:UPGRADE_COMPLETED:${p.visitId}`,
   });
   await insertActivityEvent(client, {
@@ -978,7 +978,7 @@ async function insertUpgrade(client: DbClient, p: {
     at: p.ugAt, customerId: p.customerId, visitId: p.visitId,
     type: 'UPGRADE_FEE', amount: ugPrice, staffId: p.staffId, staffName: emp.name,
     summary: 'Upgrade fee paid',
-    metadata: { paymentIntentId: piId, fromType: 'LOCKER', toType: p.roomType, price: ugPrice },
+    metadata: { orderId: piId, fromType: 'LOCKER', toType: p.roomType, price: ugPrice },
     dedupeKey: `LEDGER:SIM:UPGRADE_FEE:${p.visitId}`,
   });
 }
@@ -1016,11 +1016,11 @@ async function insertLateCheckout(client: DbClient, p: {
     const piId = randomUUID();
     const cId = randomUUID();
     await client.query(
-      `INSERT INTO payment_intents (id, amount, tip, status, quote_json, paid_at, created_at, updated_at) VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
+      `INSERT INTO orders (id, amount, tip, status, quote_json, paid_at, created_at, updated_at) VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
       [piId, p.feeAmount, { type: 'LATE_FEE', lateMinutes: p.lateMins, feeAmount: p.feeAmount }, p.at]
     );
     await client.query(
-      `INSERT INTO charges (id, visit_id, checkin_block_id, type, amount, payment_intent_id, created_at)
+      `INSERT INTO order_line_items (id, visit_id, checkin_block_id, type, amount, order_id, created_at)
        VALUES ($1,(SELECT visit_id FROM checkin_blocks WHERE id = $2),$2,'LATE_FEE',$3,$4,$5)`,
       [cId, p.blockId, p.feeAmount, piId, p.at]
     );
@@ -1029,14 +1029,14 @@ async function insertLateCheckout(client: DbClient, p: {
       at: p.at, customerId: p.customerId, action: 'CHECKOUT_FEE_PAID', category: 'CHECKOUT',
       staffId: lateStaff.id, staffName: lateStaff.name,
       summary: `Late fee paid: $${p.feeAmount.toFixed(2)} (${p.lateMins} min late)`,
-      metadata: { checkinBlockId: p.blockId, lateMinutes: p.lateMins, feeAmount: p.feeAmount, paymentIntentId: piId },
+      metadata: { checkinBlockId: p.blockId, lateMinutes: p.lateMins, feeAmount: p.feeAmount, orderId: piId },
       dedupeKey: `ACT:SIM:CHECKOUT_FEE_PAID:${p.blockId}`,
     });
     await insertLedgerEntry(client, {
       at: p.at, customerId: p.customerId, visitId: p.visitId,
       type: 'LATE_FEE', amount: Math.round(p.feeAmount), staffId: lateStaff.id, staffName: lateStaff.name,
       summary: 'Late checkout fee',
-      metadata: { paymentIntentId: piId, lateMinutes: p.lateMins, feeAmount: p.feeAmount },
+      metadata: { orderId: piId, lateMinutes: p.lateMins, feeAmount: p.feeAmount },
       dedupeKey: `LEDGER:SIM:LATE_FEE:${p.blockId}`,
     });
   }

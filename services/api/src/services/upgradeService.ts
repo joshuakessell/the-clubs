@@ -97,16 +97,16 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     let originalLineItems: Array<{ description: string; amount: number }> | undefined;
     let originalTotal: number | undefined;
     if (block.session_id) {
-      const laneSessionResult = await tx.execute<{ id: string; price_quote_json: unknown; payment_intent_id: string | null }>(
-        sql`SELECT id, price_quote_json, payment_intent_id FROM lane_sessions WHERE id = ${block.session_id} LIMIT 1`
+      const laneSessionResult = await tx.execute<{ id: string; price_quote_json: unknown; order_id: string | null }>(
+        sql`SELECT id, price_quote_json, order_id FROM lane_sessions WHERE id = ${block.session_id} LIMIT 1`
       );
       const laneSession = laneSessionResult.rows[0];
       let originalIntent: { amount?: number | string; quote_json?: unknown } | undefined;
-      if (laneSession?.payment_intent_id) {
-        const intentResult = await tx.execute<{ id: string; amount: number | string; quote_json: unknown }>(sql`SELECT id, amount, quote_json FROM payment_intents WHERE id = ${laneSession.payment_intent_id} LIMIT 1`);
+      if (laneSession?.order_id) {
+        const intentResult = await tx.execute<{ id: string; amount: number | string; quote_json: unknown }>(sql`SELECT id, amount, quote_json FROM orders WHERE id = ${laneSession.order_id} LIMIT 1`);
         originalIntent = intentResult.rows[0];
       } else {
-        const intentResult = await tx.execute<{ id: string; amount: number | string; quote_json: unknown }>(sql`SELECT id, amount, quote_json FROM payment_intents WHERE lane_session_id = ${block.session_id} ORDER BY created_at DESC LIMIT 1`);
+        const intentResult = await tx.execute<{ id: string; amount: number | string; quote_json: unknown }>(sql`SELECT id, amount, quote_json FROM orders WHERE lane_session_id = ${block.session_id} ORDER BY created_at DESC LIMIT 1`);
         originalIntent = intentResult.rows[0];
       }
       originalLineItems = extractPaymentLineItems(laneSession?.price_quote_json) ?? extractPaymentLineItems(originalIntent?.quote_json);
@@ -125,21 +125,21 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
     const quoteJson = JSON.stringify({ type: 'UPGRADE', fromTier: block.rental_type, toTier: newRoomTier, amount: upgradeFee, waitlistId, newRoomId: roomId, newRoomNumber: newRoom.number });
     const intentResult = await tx.execute<{ id: string; amount: number | string }>(
-      sql`INSERT INTO payment_intents (amount, status, quote_json) VALUES (${upgradeFee}, 'DUE', ${quoteJson}::jsonb) RETURNING id, amount`
+      sql`INSERT INTO orders (amount, status, quote_json) VALUES (${upgradeFee}, 'OPEN', ${quoteJson}::jsonb) RETURNING id, amount`
     );
-    const paymentIntent = intentResult.rows[0]!;
+    const pendingOrder = intentResult.rows[0]!;
 
     await insertAuditLogDrizzle(tx, {
       staffId: staff.staffId, action: 'UPGRADE_STARTED', entityType: 'waitlist', entityId: waitlistId,
       oldValue: { status: waitlist.status, currentRentalType: block.rental_type, currentResourceId: block.resource_id },
-      newValue: { desiredTier: waitlist.desired_tier, newRoomId: roomId, newRoomNumber: newRoom.number, upgradeFee, paymentIntentId: paymentIntent.id, disclaimerAcknowledged: true },
+      newValue: { desiredTier: waitlist.desired_tier, newRoomId: roomId, newRoomNumber: newRoom.number, upgradeFee, orderId: pendingOrder.id, disclaimerAcknowledged: true },
     });
 
     const customerId = (await tx.execute<{ customer_id: string }>(sql`SELECT customer_id FROM visits WHERE id = ${waitlist.visit_id} LIMIT 1`)).rows[0]!.customer_id;
 
     return {
-      waitlistId, paymentIntentId: paymentIntent.id,
-      upgradeFee: typeof paymentIntent.amount === 'string' ? Number.parseFloat(paymentIntent.amount) : paymentIntent.amount,
+      waitlistId, orderId: pendingOrder.id,
+      upgradeFee: typeof pendingOrder.amount === 'string' ? Number.parseFloat(pendingOrder.amount) : pendingOrder.amount,
       newRoomId: roomId, newRoomNumber: newRoom.number, newRoomTier, fromTier: block.rental_type,
       originalCharges: originalLineItems || [], originalTotal: originalTotal ?? null,
       visitId: waitlist.visit_id, customerId,
@@ -153,16 +153,16 @@ export async function logUpgradeStarted(result: Awaited<ReturnType<typeof fulfil
       customerId: result.customerId, actionType: 'UPGRADE_STARTED', actionCategory: 'UPGRADE', sourceApp: 'EMPLOYEE_REGISTER',
       actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
       summary: `Upgrade started: ${result.fromTier} → ${result.newRoomTier} (Room ${result.newRoomNumber})`,
-      metadata: { visitId: result.visitId, waitlistId: result.waitlistId, paymentIntentId: result.paymentIntentId, fromTier: result.fromTier, toTier: result.newRoomTier, newRoomNumber: result.newRoomNumber, upgradeFee: result.upgradeFee },
+      metadata: { visitId: result.visitId, waitlistId: result.waitlistId, orderId: result.orderId, fromTier: result.fromTier, toTier: result.newRoomTier, newRoomNumber: result.newRoomNumber, upgradeFee: result.upgradeFee },
       dedupeKey: `ACT:UPGRADE_STARTED:${result.waitlistId}`,
-      searchParts: [result.waitlistId, result.paymentIntentId, result.newRoomNumber],
+      searchParts: [result.waitlistId, result.orderId, result.newRoomNumber],
     });
   });
 }
 
-export async function completeUpgrade(waitlistId: string, paymentIntentId: string, staff: StaffContext) {
+export async function completeUpgrade(waitlistId: string, orderId: string, staff: StaffContext) {
   return db.transaction(async (tx) => {
-    const intentResult = await tx.execute<{ id: string; amount: number | string; status: string; quote_json: unknown }>(sql`SELECT id, amount, status, quote_json FROM payment_intents WHERE id = ${paymentIntentId}`);
+    const intentResult = await tx.execute<{ id: string; amount: number | string; status: string; quote_json: unknown }>(sql`SELECT id, amount, status, quote_json FROM orders WHERE id = ${orderId}`);
     if (intentResult.rows.length === 0) throw new HttpError(404, 'Payment intent not found');
     const intent = intentResult.rows[0]!;
     if (intent.status !== 'PAID') throw new HttpError(400, `Payment must be PAID (current: ${intent.status})`);
@@ -206,16 +206,16 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
     await tx.execute(sql`UPDATE waitlist SET status = 'COMPLETED', completed_at = NOW(), updated_at = NOW() WHERE id = ${waitlistId}`);
 
     if (upgradeAmount !== undefined) {
-      const existingCharge = await tx.execute<{ id: string }>(sql`SELECT id FROM charges WHERE payment_intent_id = ${paymentIntentId} LIMIT 1`);
+      const existingCharge = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE order_id = ${orderId} LIMIT 1`);
       if (existingCharge.rows.length === 0) {
-        await tx.execute(sql`INSERT INTO charges (visit_id, checkin_block_id, type, amount, payment_intent_id) VALUES (${waitlist.visit_id}, ${block.id}, 'UPGRADE_FEE', ${upgradeAmount}, ${paymentIntentId})`);
+        await tx.execute(sql`INSERT INTO order_line_items (visit_id, checkin_block_id, type, amount, order_id) VALUES (${waitlist.visit_id}, ${block.id}, 'UPGRADE_FEE', ${upgradeAmount}, ${orderId})`);
       }
     }
 
     await insertAuditLogDrizzle(tx, {
       staffId: staff.staffId, action: 'UPGRADE_COMPLETED', entityType: 'waitlist', entityId: waitlistId,
       oldValue: { oldResourceId, oldRentalType: block.rental_type },
-      newValue: { newRoomId, newRoomNumber: newRoom.number, newRentalType: waitlist.desired_tier, paymentIntentId, blockEndsAt: block.ends_at.toISOString() },
+      newValue: { newRoomId, newRoomNumber: newRoom.number, newRentalType: waitlist.desired_tier, orderId, blockEndsAt: block.ends_at.toISOString() },
     });
 
     const customerIdRow = await tx.execute<{ customer_id: string; name: string }>(sql`SELECT v.customer_id, c.name FROM visits v JOIN customers c ON c.id = v.customer_id WHERE v.id = ${waitlist.visit_id} LIMIT 1`);
@@ -226,9 +226,9 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
       customerId, actionType: 'UPGRADE_COMPLETED', actionCategory: 'UPGRADE', sourceApp: 'EMPLOYEE_REGISTER',
       actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
       summary: `Upgrade completed: Room ${newRoom.number}`,
-      metadata: { visitId: waitlist.visit_id, waitlistId, paymentIntentId, newRoomId, newRoomNumber: newRoom.number },
+      metadata: { visitId: waitlist.visit_id, waitlistId, orderId, newRoomId, newRoomNumber: newRoom.number },
       dedupeKey: `ACT:UPGRADE_COMPLETED:${waitlistId}`,
-      searchParts: [waitlistId, paymentIntentId, newRoom.number],
+      searchParts: [waitlistId, orderId, newRoom.number],
     });
 
     await insertClubEventDrizzle(tx, {
@@ -244,7 +244,7 @@ export async function completeUpgrade(waitlistId: string, paymentIntentId: strin
       summary: `Upgrade completed: ${block.rental_type} → ${waitlist.desired_tier} (Room ${newRoom.number})`,
       metadata: {
         waitlistId,
-        paymentIntentId,
+        orderId,
         fromTier: block.rental_type,
         toTier: waitlist.desired_tier,
         newRoomId,

@@ -22,7 +22,7 @@ export interface LaneSessionRow {
   assigned_resource_type: string | null;
   price_quote_json: unknown;
   disclaimers_ack_json: unknown;
-  payment_intent_id: string | null;
+  order_id: string | null;
   agreement_bypass_pending?: boolean;
   agreement_signed_method?: string | null;
   membership_purchase_intent?: 'PURCHASE' | 'RENEW' | null;
@@ -85,9 +85,10 @@ export type RoomRow = ResourceRow;
 /** @deprecated Use ResourceRow instead */
 export type LockerRow = ResourceRow;
 
-export interface PaymentIntentRow {
+export interface OrderRow {
   id: string;
-  lane_session_id: string;
+  lane_session_id: string | null;
+  visit_id: string | null;
   amount: number | string;
   tip?: number | null;
   status: string;
@@ -97,7 +98,12 @@ export interface PaymentIntentRow {
   failure_at?: Date | null;
   register_number?: number | null;
   paid_by_staff_id?: string | null;
+  square_transaction_id?: string | null;
+  paid_at?: Date | null;
 }
+
+/** @deprecated Use OrderRow instead */
+export type PaymentIntentRow = OrderRow;
 
 /* ── Shared column-list constants ─────────────────────────────── */
 /*
@@ -113,7 +119,7 @@ export const LANE_SESSION_COLS = [
   'backup_rental_type', 'waitlist_requested_resource_number', 'waitlist_requested_resource_type',
   'assigned_resource_id', 'assigned_resource_type',
   'price_quote_json', 'disclaimers_ack_json',
-  'payment_intent_id', 'agreement_bypass_pending', 'agreement_signed_method',
+  'order_id', 'agreement_bypass_pending', 'agreement_signed_method',
   'membership_purchase_intent', 'membership_purchase_requested_at', 'membership_choice',
   'kiosk_acknowledged_at', 'checkin_mode', 'renewal_hours',
   'proposed_rental_type', 'proposed_by',
@@ -125,9 +131,11 @@ export const LANE_SESSION_COLS = [
   'created_at', 'updated_at',
 ].join(', ');
 
-export const PAYMENT_INTENT_COLS = [
-  'id', 'lane_session_id', 'amount', 'tip', 'status',
-  'quote_json', 'payment_method', 'failure_reason', 'failure_at',
-  'register_number', 'paid_by_staff_id',
+export const ORDER_COLS = [
+  'id', 'lane_session_id', 'visit_id', 'subtotal', 'discount', 'tax', 'tip',
+  'total', 'status', 'quote_json', 'payment_method', 'failure_reason', 'failure_at',
+  'register_number', 'paid_by_staff_id', 'square_transaction_id', 'paid_at',
 ].join(', ');
 
+/** @deprecated Use ORDER_COLS instead */
+export const PAYMENT_INTENT_COLS = ORDER_COLS;

@@ -65,7 +65,7 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
           sku: item.sku ?? null,
           name: item.name,
           quantity: item.quantity,
-          unitPrice: item.unitPrice,
+          unitPrice: item.unitPrice.toString(),
         }));
 
         await addLineItems(orderResult.orderId, lineItems);
