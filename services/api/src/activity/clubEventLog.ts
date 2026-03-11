@@ -198,7 +198,7 @@ export async function insertClubEventDrizzle(
       searchBlob,
       dedupeKey: input.dedupeKey ?? null,
     })
-    .onConflictDoNothing({ target: clubEvents.dedupeKey })
+    .onConflictDoNothing({ target: clubEvents.dedupeKey, where: sql`${clubEvents.dedupeKey} IS NOT NULL` })
     .returning({ id: clubEvents.id });
 
   if (result.length > 0) {
