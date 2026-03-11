@@ -57,8 +57,7 @@ export function Sidebar() {
 }
     >
   {/* Brand */ }
-  < div className = "flex items-center gap-2.5 border-b px-5 py-4"
-style = {{ borderColor: 'var(--color-border-default)' }}
+  < div className="flex items-center gap-2.5 border-b px-5 py-4 border-(--color-border-default)"
       >
   <div
           className="flex h-8 w-8 items-center justify-center overflow-hidden shrink-0"
@@ -69,7 +68,7 @@ style = {{ borderColor: 'var(--color-border-default)' }}
     <span className="text-sm font-bold block uppercase" style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}>
       Club Dallas
         </span>
-        < span className = "text-[10px] uppercase tracking-wider" style = {{ color: 'var(--color-text-muted)' }}>
+        < span className = "text-[10px] uppercase tracking-wider text-(--color-text-muted)">
           Dashboard
           </span>
           </div>
@@ -102,11 +101,11 @@ style = {({ isActive }) => ({
   </nav>
 
 {/* Footer: session info */ }
-<div className="border-t px-4 py-3" style = {{ borderColor: 'var(--color-border-default)' }}>
-  <div className="text-[11px]" style = {{ color: 'var(--color-text-muted)' }}>
+<div className="border-t px-4 py-3 border-(--color-border-default)">
+  <div className="text-[11px] text-(--color-text-muted)">
     Signed in as
     </div>
-    < div className = "mt-0.5 text-xs font-medium" style = {{ color: 'var(--color-text-secondary)' }}>
+    < div className = "mt-0.5 text-xs font-medium text-(--color-text-secondary)">
       { session?.name ?? 'Unknown'}
 </div>
   < div className = "mt-0.5 inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide"

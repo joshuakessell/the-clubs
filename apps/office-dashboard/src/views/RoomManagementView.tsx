@@ -175,38 +175,21 @@ export function RoomManagementView() {
   const floors = [...new Set(allRooms.map((r) => r.floor))].sort((a, b) => a - b);
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1100, margin: '0 auto' }}>
+    <div className="mx-auto max-w-[1100px] p-6">
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div className="mb-5 flex items-center justify-between">
         <div>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 700,
-              fontFamily: 'var(--font-display)',
-              color: 'var(--color-text-primary)',
-              margin: 0,
-            }}
-          >
+          <h1 className="m-0 text-[22px] font-bold font-(--font-display) text-(--color-text-primary)">
             Room Management
           </h1>
-          <p style={{ fontSize: 13, color: 'var(--color-text-muted)', margin: '4px 0 0' }}>
+          <p className="mt-1 mb-0 text-[13px] text-(--color-text-muted)">
             Add, edit, or disable rooms and lockers
           </p>
         </div>
         <button
           onClick={() => void refetch()}
           disabled={loading}
-          style={{
-            padding: '6px 14px',
-            fontSize: 12,
-            fontWeight: 600,
-            borderRadius: 6,
-            border: '1px solid var(--color-border-default)',
-            backgroundColor: 'var(--color-surface-overlay)',
-            color: 'var(--color-text-secondary)',
-            cursor: 'pointer',
-          }}
+          className="cursor-pointer rounded-md border px-3.5 py-1.5 text-xs font-semibold border-(--color-border-default) bg-(--color-surface-overlay) text-(--color-text-secondary)"
         >
           {loading ? 'Loading…' : '↻ Refresh'}
         </button>
@@ -230,8 +213,8 @@ export function RoomManagementView() {
       )}
 
       {/* Tab bar + controls */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, borderBottom: '1px solid var(--color-border-default)' }}>
-        <div style={{ display: 'flex', gap: 0 }}>
+      <div className="mb-5 flex items-center justify-between border-b border-(--color-border-default)">
+        <div className="flex">
           {(['rooms', 'lockers'] as Tab[]).map((t) => (
             <button
               key={t}
@@ -253,7 +236,7 @@ export function RoomManagementView() {
           ))}
         </div>
         {tab === 'rooms' && (
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 6 }}>
+          <div className="flex items-center gap-2 pb-1.5">
             {/* Floor filter */}
             {floors.length > 1 && (
               <select
@@ -289,7 +272,7 @@ export function RoomManagementView() {
       {/* ─── ROOMS TAB ─────────────────────────────────────────── */}
       {tab === 'rooms' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div className="mb-3 flex items-center justify-between">
             {/* Bulk action bar */}
             {selectedRoomIds.size > 0 && (
               <div style={{
@@ -306,7 +289,7 @@ export function RoomManagementView() {
                 <ActionButton label="Clear" onClick={() => setSelectedRoomIds(new Set())} disabled={false} />
               </div>
             )}
-            <div style={{ marginLeft: 'auto' }}>
+            <div className="ml-auto">
               <button
                 onClick={() => setShowAddRoom(!showAddRoom)}
                 disabled={mutating}
@@ -340,8 +323,8 @@ export function RoomManagementView() {
                 alignItems: 'flex-end',
               }}
             >
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+              <div className="flex-1">
+                <label className="mb-1 block text-[11px] font-semibold text-(--color-text-muted)">
                   Number (3 digits)
                 </label>
                 <input
@@ -361,8 +344,8 @@ export function RoomManagementView() {
                   }}
                 />
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+              <div className="flex-1">
+                <label className="mb-1 block text-[11px] font-semibold text-(--color-text-muted)">
                   Type
                 </label>
                 <select
@@ -383,8 +366,8 @@ export function RoomManagementView() {
                   <option value="SPECIAL">Special</option>
                 </select>
               </div>
-              <div style={{ width: 80 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+              <div className="w-20">
+                <label className="mb-1 block text-[11px] font-semibold text-(--color-text-muted)">
                   Floor
                 </label>
                 <input
@@ -437,23 +420,23 @@ export function RoomManagementView() {
                 border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, var(--color-border-default))',
                 backgroundColor: 'color-mix(in oklch, var(--color-status-error) 4%, transparent)',
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-status-error)' }}>
+                <div className="mb-2.5 flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-(--color-status-error)">
                     🧹 Cleaning Queue ({dirtyRooms.length})
                   </span>
-                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Sorted by tier priority</span>
+                  <span className="text-[10px] text-(--color-text-muted)">Sorted by tier priority</span>
                 </div>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <div className="flex flex-wrap gap-2">
                   {dirtyRooms.map((room) => (
                     <div key={room.id} style={{
                       display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8,
                       border: '1px solid var(--color-border-default)',
                       backgroundColor: 'var(--color-surface-overlay)',
                     }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+                      <span className="text-[13px] font-bold font-(--font-display) text-(--color-text-primary)">
                         {room.number}
                       </span>
-                      <span style={{ fontSize: 10, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                      <span className="text-[10px] uppercase text-(--color-text-muted)">
                         {TYPE_LABELS[room.type] ?? room.type}
                       </span>
                       <ActionButton label="✓ Clean" onClick={() => handleSetRoomStatus(room.id, 'CLEAN')} disabled={mutating} accent />
@@ -466,7 +449,7 @@ export function RoomManagementView() {
 
           {viewMode === 'grid' ? (
             /* ── Grid Mode ── */
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-2.5">
               {rooms.map((room) => {
                 const sc = STATUS_COLORS[room.status] ?? STATUS_COLORS.CLEAN;
                 return (
@@ -475,10 +458,10 @@ export function RoomManagementView() {
                     backgroundColor: sc.bg, position: 'relative',
                     transition: 'transform 0.1s, box-shadow 0.1s',
                   }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+                    <div className="text-base font-bold font-(--font-display) text-(--color-text-primary)">
                       Room {room.number}
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                    <div className="mt-0.5 text-[11px] text-(--color-text-muted)">
                       {TYPE_LABELS[room.type] ?? room.type} · Floor {room.floor}
                     </div>
                     <span style={{
@@ -488,12 +471,12 @@ export function RoomManagementView() {
                       {sc.label}
                     </span>
                     {!room.isOccupied && room.status !== 'OUT_OF_SERVICE' && (
-                      <div style={{ marginTop: 8, display: 'flex', gap: 4 }}>
+                      <div className="mt-2 flex gap-1">
                         <ActionButton label="OOS" onClick={() => handleSetRoomStatus(room.id, 'OUT_OF_SERVICE')} disabled={mutating} danger />
                       </div>
                     )}
                     {room.status === 'OUT_OF_SERVICE' && (
-                      <div style={{ marginTop: 8 }}>
+                      <div className="mt-2">
                         <ActionButton label="Restore" onClick={() => handleSetRoomStatus(room.id, 'CLEAN')} disabled={mutating} accent />
                       </div>
                     )}
@@ -501,20 +484,14 @@ export function RoomManagementView() {
                 );
               })}
               {rooms.length === 0 && (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 32, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                <div className="col-span-full p-8 text-center text-[13px] text-(--color-text-muted)">
                   No rooms configured
                 </div>
               )}
             </div>
           ) : (
             /* ── Table Mode ── */
-            <div
-              style={{
-                borderRadius: 8,
-                border: '1px solid var(--color-border-default)',
-                overflow: 'hidden',
-              }}
-            >
+            <div className="overflow-hidden rounded-lg border border-(--color-border-default)">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ backgroundColor: 'var(--color-surface-overlay)' }}>
@@ -587,7 +564,7 @@ export function RoomManagementView() {
                           </span>
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right' }}>
-                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                          <div className="flex justify-end gap-1.5">
                             {isEditing ? (
                               <>
                                 <ActionButton label="Save" onClick={() => handleEditRoom(room.id)} disabled={mutating} accent />
@@ -631,7 +608,7 @@ export function RoomManagementView() {
       {/* ─── LOCKERS TAB ───────────────────────────────────────── */}
       {tab === 'lockers' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <div className="mb-3 flex justify-end">
             <button
               onClick={() => setShowAddLocker(!showAddLocker)}
               disabled={mutating}
@@ -664,8 +641,8 @@ export function RoomManagementView() {
                 alignItems: 'flex-end',
               }}
             >
-              <div style={{ flex: 1 }}>
-                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+              <div className="flex-1">
+                <label className="mb-1 block text-[11px] font-semibold text-(--color-text-muted)">
                   Number (3 digits)
                 </label>
                 <input
@@ -706,13 +683,7 @@ export function RoomManagementView() {
           )}
 
           {/* Lockers table */}
-          <div
-            style={{
-              borderRadius: 8,
-              border: '1px solid var(--color-border-default)',
-              overflow: 'hidden',
-            }}
-          >
+          <div className="overflow-hidden rounded-lg border border-(--color-border-default)">
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ backgroundColor: 'var(--color-surface-overlay)' }}>
@@ -747,7 +718,7 @@ export function RoomManagementView() {
                         </span>
                       </td>
                       <td style={{ ...tdStyle, textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <div className="flex justify-end gap-1.5">
                           {locker.status === 'OUT_OF_SERVICE' ? (
                             <ActionButton label="Restore" onClick={() => handleSetLockerStatus(locker.id, 'CLEAN')} disabled={mutating} accent />
                           ) : !locker.isOccupied ? (

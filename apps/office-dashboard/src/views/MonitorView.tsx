@@ -125,7 +125,7 @@ export function MonitorView() {
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
               Live Monitor
             </h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm text-(--color-text-muted)">
               {rooms.length} active session{rooms.length === 1 ? '' : 's'} ·{' '}
               {activeLanes.length}/3 registers active
               {expiredCount > 0 && <span style={{ color: 'var(--color-status-error)' }}> · {expiredCount} overdue</span>}
@@ -150,7 +150,7 @@ export function MonitorView() {
         <>
           {/* Room Occupancy Grid */}
           <div>
-            <h3 className="mb-3 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">
               Room Occupancy
             </h3>
             {rooms.length > 0 ? (
@@ -182,7 +182,7 @@ export function MonitorView() {
                         <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text-secondary)' }}>
                           {room.customerName}
                         </p>
-                        <p className="text-[10px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                        <p className="text-[10px] tabular-nums text-(--color-text-muted)">
                           Checkout: {new Date(room.checkoutAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                         </p>
                       </div>
@@ -192,7 +192,7 @@ export function MonitorView() {
               </div>
             ) : (
               <div className="rounded-xl border p-6 text-center" style={{ borderColor: 'var(--color-border-default)' }}>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No active room sessions</p>
+                <p className="text-sm text-(--color-text-muted)">No active room sessions</p>
               </div>
             )}
           </div>
@@ -200,7 +200,7 @@ export function MonitorView() {
           {/* Locker Occupancy Summary */}
           {lockerList.length > 0 && (
             <div>
-              <h3 className="mb-3 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+              <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">
                 Locker Occupancy
               </h3>
               <div className="grid grid-cols-4 gap-3">
@@ -215,7 +215,7 @@ export function MonitorView() {
           {/* Kiosk Lane Sessions */}
           {kioskSessions.length > 0 && (
             <div>
-              <h3 className="mb-3 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+              <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">
                 Kiosk Sessions ({kioskSessions.length})
               </h3>
               <div className="grid grid-cols-3 gap-3">
@@ -233,7 +233,7 @@ export function MonitorView() {
                         </span>
                         <Badge color={statusColor} variant="light" size="sm">{ks.status.replace(/_/g, ' ')}</Badge>
                       </div>
-                      <div className="mt-2 flex flex-col gap-0.5 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                      <div className="mt-2 flex flex-col gap-0.5 text-[10px] text-(--color-text-muted)">
                         {ks.desiredRentalType && <span>Type: {ks.desiredRentalType}</span>}
                         {ks.assignedResource && <span>Room: {ks.assignedResource.number}</span>}
                         <span>{elapsed}m elapsed</span>
@@ -247,7 +247,7 @@ export function MonitorView() {
 
           {/* Register Lanes */}
           <div>
-            <h3 className="mb-3 text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">
               Register Lanes
             </h3>
             <div className="grid grid-cols-3 gap-4">
@@ -263,18 +263,18 @@ export function MonitorView() {
                   {lane.employee ? (
                     <div className="mt-3 flex flex-col gap-1.5">
                       <div className="flex items-center justify-between text-xs">
-                        <span style={{ color: 'var(--color-text-muted)' }}>Employee</span>
+                        <span className="text-(--color-text-muted)">Employee</span>
                         <span className="font-semibold" style={{ color: 'var(--color-text-secondary)' }}>{lane.employee.displayName}</span>
                       </div>
                       {lane.deviceId && (
                         <div className="flex items-center justify-between text-xs">
-                          <span style={{ color: 'var(--color-text-muted)' }}>Device</span>
+                          <span className="text-(--color-text-muted)">Device</span>
                           <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{lane.deviceId}</span>
                         </div>
                       )}
                       {lane.secondsSinceHeartbeat !== null && (
                         <div className="flex items-center justify-between text-xs">
-                          <span style={{ color: 'var(--color-text-muted)' }}>Heartbeat</span>
+                          <span className="text-(--color-text-muted)">Heartbeat</span>
                           <span style={{ color: lane.secondsSinceHeartbeat > 120 ? 'var(--color-status-error)' : 'var(--color-text-secondary)' }}>
                             {lane.secondsSinceHeartbeat}s ago
                           </span>
@@ -282,7 +282,7 @@ export function MonitorView() {
                       )}
                     </div>
                   ) : (
-                    <p className="mt-3 text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>No active session</p>
+                    <p className="mt-3 text-center text-xs text-(--color-text-muted)">No active session</p>
                   )}
                 </div>
               ))}
@@ -299,7 +299,7 @@ export function MonitorView() {
 function StatCard({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
     <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--color-border-default)' }}>
-      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">{label}</p>
       <p className="mt-1 text-2xl font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)', color }}>{value}</p>
     </div>
   );

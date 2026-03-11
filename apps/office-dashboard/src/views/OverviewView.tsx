@@ -69,7 +69,7 @@ export function OverviewView() {
             <line x1="12" y1="9" x2="12" y2="13" />
             <line x1="12" y1="17" x2="12.01" y2="17" />
           </svg>
-          <span className="flex-1 text-sm font-semibold" style={{ color: 'var(--color-status-error)' }}>
+          <span className="flex-1 text-sm font-semibold text-(--color-status-error)">
             {kpi.overdueCount} guest{kpi.overdueCount === 1 ? '' : 's'} overdue — click to view
           </span>
           <Badge color="error" variant="light" size="sm">Action Required</Badge>
@@ -87,7 +87,7 @@ export function OverviewView() {
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-status-warning)' }}>
+          <span className="text-sm font-semibold text-(--color-status-warning)">
             Low room availability — only {kpi.roomsClean} clean room{kpi.roomsClean === 1 ? '' : 's'} remaining
           </span>
         </div>
@@ -104,7 +104,7 @@ export function OverviewView() {
             <line x1="12" y1="8" x2="12" y2="12" />
             <line x1="12" y1="16" x2="12.01" y2="16" />
           </svg>
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-status-warning)' }}>
+          <span className="text-sm font-semibold text-(--color-status-warning)">
             Low locker availability — only {kpi.lockersAvailable} locker{kpi.lockersAvailable === 1 ? '' : 's'} remaining
           </span>
         </div>
@@ -112,7 +112,7 @@ export function OverviewView() {
 
       {/* Quick links grid */}
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Quick Access</h2>
+        <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Quick Access</h2>
         <div className="mt-4 grid grid-cols-3 gap-3">
           {QUICK_LINKS.map((link) => (
             <button key={link.path} type="button" className="flex items-center gap-3 rounded-lg border p-4 text-left transition"
@@ -122,8 +122,8 @@ export function OverviewView() {
               onClick={() => navigate(link.path)}>
               <span className="text-xl">{link.icon}</span>
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{link.label}</span>
-                <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{link.desc}</span>
+                <span className="text-sm font-semibold text-(--color-text-primary)">{link.label}</span>
+                <span className="text-xs text-(--color-text-muted)">{link.desc}</span>
               </div>
             </button>
           ))}
@@ -139,7 +139,7 @@ function KpiCard({ label, value, color, large }: Readonly<{ label: string; value
   return (
     <div className="rounded-xl border p-5"
       style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">{label}</p>
       <p className={`mt-2 font-extrabold tabular-nums ${large ? 'text-3xl' : 'text-2xl'}`}
         style={{ fontFamily: 'var(--font-display)', color }}>{value}</p>
     </div>
