@@ -96,8 +96,8 @@ export function ProductsView() {
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Products</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{products.length} items</p>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Products</h2>
+            <p className="text-sm text-(--color-text-muted)">{products.length} items</p>
           </div>
           <Button size="sm" onClick={() => setShowCreate(!showCreate)}>+ Add Product</Button>
         </div>
@@ -105,14 +105,14 @@ export function ProductsView() {
         {showCreate && (
           <div className="mt-4 flex items-end gap-3 rounded-lg border p-4" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-input)' }}>
             <div className="flex-1">
-              <label htmlFor="productName" className="mb-1 block text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Name</label>
+              <label htmlFor="productName" className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">Name</label>
               <input id="productName" className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
                 placeholder="e.g. Energy Drink" value={newName} onChange={(e) => setNewName(e.target.value)} />
-              {newName && <p className="mt-1 text-[10px] font-mono" style={{ color: 'var(--color-text-muted)' }}>SKU: {autoSku(newName)}</p>}
+              {newName && <p className="mt-1 text-[10px] font-mono text-(--color-text-muted)">SKU: {autoSku(newName)}</p>}
             </div>
             <div className="w-28">
-              <label htmlFor="productPrice" className="mb-1 block text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Price ($)</label>
+              <label htmlFor="productPrice" className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">Price ($)</label>
               <input id="productPrice" className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
                 placeholder="0.00" type="number" step="0.01" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} />
@@ -159,7 +159,7 @@ export function ProductsView() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                 {['Name', 'SKU', 'Category', 'Price', 'Status', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -175,10 +175,10 @@ export function ProductsView() {
                         value={editName} onChange={(e) => setEditName(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); if (e.key === 'Escape') setEditingId(null); }} />
                     ) : (
-                      <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{p.name}</span>
+                      <span className="text-sm font-semibold text-(--color-text-primary)">{p.name}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm font-mono" style={{ color: 'var(--color-text-muted)' }}>{p.sku ?? '—'}</td>
+                  <td className="px-4 py-3 text-sm font-mono text-(--color-text-muted)">{p.sku ?? '—'}</td>
                   <td className="px-4 py-3"><Badge color="gray" variant="light" size="sm">{p.category}</Badge></td>
                   <td className="px-4 py-3">
                     {editingId === p.id ? (
@@ -187,7 +187,7 @@ export function ProductsView() {
                         type="number" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); if (e.key === 'Escape') setEditingId(null); }} />
                     ) : (
-                      <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>${p.price.toFixed(2)}</span>
+                      <span className="text-sm font-bold tabular-nums text-(--color-accent-primary)">${p.price.toFixed(2)}</span>
                     )}
                   </td>
                   <td className="px-4 py-3"><Badge color={p.isActive ? 'success' : 'gray'} variant="light" size="sm">{p.isActive ? 'Active' : 'Inactive'}</Badge></td>
@@ -212,7 +212,7 @@ export function ProductsView() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
                     No products found
                   </td>
                 </tr>

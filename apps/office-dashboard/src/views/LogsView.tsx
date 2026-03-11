@@ -193,8 +193,8 @@ export function LogsView() {
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Activity Log</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Activity Log</h2>
+            <p className="text-sm text-(--color-text-muted)">
               {events.length} event{events.length === 1 ? '' : 's'} displayed
               {hasFilters ? ' (filtered)' : ''}
             </p>
@@ -229,7 +229,7 @@ export function LogsView() {
         <div className="mt-4 flex flex-wrap items-end gap-3">
           {/* Domain filter */}
           <div className="flex flex-col gap-1">
-            <label htmlFor="log-domain" className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Domain</label>
+            <label htmlFor="log-domain" className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">Domain</label>
             <select id="log-domain" className="rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={selectStyle} value={domain} onChange={(e) => handleDomainChange(e.target.value)}>
               {DOMAINS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
@@ -239,7 +239,7 @@ export function LogsView() {
           {/* Event type filter (conditional on domain) */}
           {availableEventTypes.length > 0 && (
             <div className="flex flex-col gap-1">
-              <label htmlFor="log-event-type" className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>Event Type</label>
+              <label htmlFor="log-event-type" className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">Event Type</label>
               <select id="log-event-type" className="rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={selectStyle} value={eventType} onChange={(e) => { setEventType(e.target.value); handleFilterChange(); }}>
                 <option value="">All Types</option>
@@ -250,12 +250,12 @@ export function LogsView() {
 
           {/* Date range */}
           <div className="flex flex-col gap-1">
-            <label htmlFor="log-from" className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>From</label>
+            <label htmlFor="log-from" className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">From</label>
             <input id="log-from" type="date" className="rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={selectStyle} value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); handleFilterChange(); }} />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="log-to" className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>To</label>
+            <label htmlFor="log-to" className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">To</label>
             <input id="log-to" type="date" className="rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={selectStyle} value={dateTo} onChange={(e) => { setDateTo(e.target.value); handleFilterChange(); }} />
           </div>
@@ -283,7 +283,7 @@ export function LogsView() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                 {['Time', 'Staff', 'Summary', 'Domain', 'Type', 'Amount'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -292,22 +292,22 @@ export function LogsView() {
                 <tr key={ev.id} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm tabular-nums whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
+                  <td className="px-4 py-3 text-sm tabular-nums whitespace-nowrap text-(--color-text-muted)">
                     {formatEventTime(ev.occurredAt)}
                   </td>
-                  <td className="px-4 py-3 text-sm font-semibold whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-4 py-3 text-sm font-semibold whitespace-nowrap text-(--color-text-secondary)">
                     {ev.staffName ?? 'System'}
                   </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                  <td className="px-4 py-3 text-sm text-(--color-text-primary)">
                     {ev.summary}
                     {ev.customerName && (
-                      <span className="ml-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>— {ev.customerName}</span>
+                      <span className="ml-1 text-xs text-(--color-text-muted)">— {ev.customerName}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     <Badge color={DOMAIN_COLOR[ev.eventDomain] ?? 'gray'} variant="light" size="sm">{ev.eventDomain}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: 'var(--color-text-muted)' }}>
+                  <td className="px-4 py-3 text-xs whitespace-nowrap text-(--color-text-muted)">
                     {formatEventType(ev.eventType)}
                   </td>
                   <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: ev.amount ? 'var(--color-accent-primary)' : 'var(--color-text-muted)' }}>
@@ -317,7 +317,7 @@ export function LogsView() {
               ))}
               {events.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
                     {hasFilters ? 'No events match the current filters' : 'No log entries'}
                   </td>
                 </tr>
@@ -333,7 +333,7 @@ export function LogsView() {
           <Button size="sm" variant="outline" disabled={history.length === 0} onClick={handlePrevPage}>
             ← Previous
           </Button>
-          <span className="text-xs font-semibold tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+          <span className="text-xs font-semibold tabular-nums text-(--color-text-muted)">
             Page {pageNumber}
           </span>
           <Button size="sm" variant="outline" disabled={!data?.hasMore} onClick={handleNextPage}>

@@ -98,8 +98,8 @@ export function TimeclockView() {
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Timeclock</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Timeclock</h2>
+            <p className="text-sm text-(--color-text-muted)">
               {activeCount} clocked in · {formatDuration(totalHours)} total
               {missedPunches.length > 0 && (
                 <span style={{ color: 'var(--color-status-error)', fontWeight: 600 }}> · ⚠ {missedPunches.length} missed punch{missedPunches.length === 1 ? '' : 'es'}</span>
@@ -130,7 +130,7 @@ export function TimeclockView() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                 {['Employee', 'Clock In', 'Clock Out', 'Hours', 'Breaks', 'Status', 'Notes', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -139,14 +139,14 @@ export function TimeclockView() {
                 <tr key={e.id} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{e.staffName}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">{e.staffName}</td>
                   <td className="px-4 py-3">
                     {editingId === e.id ? (
                       <input type="time" className="rounded border px-2 py-1 text-sm"
                         style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-accent-primary)', color: 'var(--color-text-primary)' }}
                         value={editClockIn} onChange={(ev) => setEditClockIn(ev.target.value)} />
                     ) : (
-                      <span className="text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(e.clockIn)}</span>
+                      <span className="text-sm tabular-nums text-(--color-text-secondary)">{formatTime(e.clockIn)}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -160,10 +160,10 @@ export function TimeclockView() {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                  <td className="px-4 py-3 text-sm font-bold tabular-nums text-(--color-accent-primary)">
                     {formatDuration(e.totalMinutes)}
                   </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td className="px-4 py-3 text-sm text-(--color-text-muted)">
                     {e.breaks && e.breaks.length > 0 ? (
                       <div className="flex flex-col gap-0.5">
                         {e.breaks.map((b) => (
@@ -190,7 +190,7 @@ export function TimeclockView() {
                         style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-accent-primary)', color: 'var(--color-text-primary)' }}
                         placeholder="Adjustment reason…" value={editNotes} onChange={(ev) => setEditNotes(ev.target.value)} />
                     ) : (
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{e.notes ?? '—'}</span>
+                      <span className="text-xs text-(--color-text-muted)">{e.notes ?? '—'}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -212,7 +212,7 @@ export function TimeclockView() {
               ))}
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
                     No timeclock entries for {dateFilter}
                   </td>
                 </tr>

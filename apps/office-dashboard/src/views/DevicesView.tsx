@@ -95,11 +95,11 @@ export function DevicesView() {
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Devices</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              {list.length} registered · <span style={{ color: 'var(--color-status-success)' }}>{onlineCount} online</span>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Devices</h2>
+            <p className="text-sm text-(--color-text-muted)">
+              {list.length} registered · <span className="text-(--color-status-success)">{onlineCount} online</span>
               {offlineCount > 0 && (
-                <span style={{ color: 'var(--color-status-error)' }}> · {offlineCount} offline</span>
+                <span className="text-(--color-status-error)"> · {offlineCount} offline</span>
               )}
             </p>
           </div>
@@ -140,7 +140,7 @@ export function DevicesView() {
             <line x1="12" y1="9" x2="12" y2="13" />
             <line x1="12" y1="17" x2="12.01" y2="17" />
           </svg>
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-status-error)' }}>
+          <span className="text-sm font-semibold text-(--color-status-error)">
             {offlineCount} device{offlineCount === 1 ? '' : 's'} offline — no heartbeat received in 90+ seconds
           </span>
         </div>
@@ -162,7 +162,7 @@ export function DevicesView() {
                 (e.currentTarget as HTMLElement).style.borderColor = deviceBorderColor(d);
               }}>
               <div className="flex items-center justify-between">
-                <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>{d.displayName}</span>
+                <span className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">{d.displayName}</span>
                 {/* Pulse dot for online status */}
                 {d.enabled && d.lastHeartbeatAt && (
                   <span className="relative inline-flex h-2.5 w-2.5">
@@ -173,25 +173,25 @@ export function DevicesView() {
               </div>
               <div className="mt-3 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs">
-                  <span style={{ color: 'var(--color-text-muted)' }}>Status</span>
+                  <span className="text-(--color-text-muted)">Status</span>
                   <Badge color={deviceStatusBadge(d).color} variant="light" size="sm">
                     {deviceStatusBadge(d).label}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span style={{ color: 'var(--color-text-muted)' }}>Heartbeat</span>
+                  <span className="text-(--color-text-muted)">Heartbeat</span>
                   <span className="font-semibold tabular-nums" style={{ color: heartbeatColor(d) }}>
                     {formatHeartbeat(d.secondsSinceHeartbeat)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span style={{ color: 'var(--color-text-muted)' }}>ID</span>
-                  <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{d.deviceId}</span>
+                  <span className="text-(--color-text-muted)">ID</span>
+                  <span className="font-mono text-[10px] text-(--color-text-secondary)">{d.deviceId}</span>
                 </div>
                 {d.lastLaneId && (
                   <div className="flex items-center justify-between text-xs">
-                    <span style={{ color: 'var(--color-text-muted)' }}>Lane</span>
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{d.lastLaneId}</span>
+                    <span className="text-(--color-text-muted)">Lane</span>
+                    <span className="font-mono text-[10px] text-(--color-text-secondary)">{d.lastLaneId}</span>
                   </div>
                 )}
               </div>
@@ -204,8 +204,8 @@ export function DevicesView() {
             </div>
           ))}
           {list.length === 0 && (
-            <div className="col-span-3 rounded-xl border p-8 text-center" style={{ borderColor: 'var(--color-border-default)' }}>
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No devices registered</p>
+            <div className="col-span-3 rounded-xl border p-8 text-center border-(--color-border-default)">
+              <p className="text-sm text-(--color-text-muted)">No devices registered</p>
             </div>
           )}
         </div>
