@@ -227,7 +227,7 @@ export function getDb() {
       schema, 
       logger: {
         logQuery(query: string, params: unknown[]) {
-          if (process.env.DB_LOG_QUERIES !== 'false') {
+          if (process.env.DB_LOG_QUERIES === 'true') {
              console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
           }
         }

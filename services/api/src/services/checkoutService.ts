@@ -471,13 +471,13 @@ export async function completeManualCheckout(
         const feeAmountCents = Math.round(feeAmount * 100);
         const metadata = { type: 'LATE_FEE', total: feeAmount, paymentMethod: paymentMethod ?? null, occupancyId: row.occupancy_id };
         const existingOrder = await tx.execute<{ id: string }>(
-          sql`INSERT INTO orders (customer_id, created_by_staff_id, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency, metadata_json)
-           VALUES (${row.customer_id}, ${staff.staffId}, 'PAID', ${feeAmountCents}, 0, 0, 0, ${feeAmountCents}, 'USD', ${JSON.stringify(metadata)}::jsonb) RETURNING id`
+          sql`INSERT INTO orders (customer_id, created_by_staff_id, status, subtotal, discount, tax, tip, total, currency, metadata_json, payment_method, paid_at, quote_json)
+           VALUES (${row.customer_id}, ${staff.staffId}, 'PAID', ${feeAmountCents}, 0, 0, 0, ${feeAmountCents}, 'USD', ${JSON.stringify(metadata)}::jsonb, ${paymentMethod ?? null}, NOW(), ${JSON.stringify(metadata)}::jsonb) RETURNING id`
         );
         const orderId = existingOrder.rows[0]!.id;
         const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE order_id = ${orderId} AND kind = 'LATE_FEE' LIMIT 1`);
         if (existingLate.rows.length === 0) {
-          await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price_cents, discount_cents, tax_cents, total_cents) VALUES (${orderId}, 'LATE_FEE', 'Late Fee', 1, ${feeAmountCents}, 0, 0, ${feeAmountCents})`);
+          await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, discount, tax, total) VALUES (${orderId}, 'LATE_FEE', 'Late Fee', 1, ${feeAmountCents}, 0, 0, ${feeAmountCents})`);
         }
       } else {
         await tx.execute(sql`UPDATE customers SET past_due_balance = past_due_balance + ${feeAmount}, updated_at = NOW() WHERE id = ${row.customer_id}`);
