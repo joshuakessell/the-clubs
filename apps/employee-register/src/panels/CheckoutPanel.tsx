@@ -29,7 +29,7 @@ type ResolvedDetails = LateFeeDetails;
 
 /* ── Helpers ────────────────────────────────────────── */
 
-function formatTime(iso: string, timeZone: string = 'America/New_York') {
+function formatTime(iso: string, timeZone: string = 'America/Chicago') {
   try {
     return new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',

@@ -1472,7 +1472,7 @@ async function seedActiveWaitlist(client: DbClient, p: {
     } else {
       const minIn = 30 + Math.floor(rng() * 90); // checked in 30–120 min ago
       start = new Date(p.now.getTime() - minIn * 60 * 1000);
-      const hoursTotal = 2 + Math.floor(rng() * 2); // 2 or 3 hour rental
+      const hoursTotal = 6; // all stays are 6 hours
       scheduledEnd = ceilTo15Min(new Date(start.getTime() + hoursTotal * 60 * 60 * 1000));
     }
 
