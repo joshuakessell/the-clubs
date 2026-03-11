@@ -199,6 +199,16 @@ export async function closeDatabase(): Promise<void> {
 export { pg };
 
 /**
+ * Shared Drizzle transaction type.
+ * Use this instead of `PgTransaction<any, any, any>` for type-safe transaction parameters.
+ *
+ * Usage:
+ *   import { type DrizzleTx } from '../db';
+ *   async function doStuff(tx: DrizzleTx) { ... }
+ */
+export type DrizzleTx = Parameters<Parameters<ReturnType<typeof drizzle<typeof schema>>['transaction']>[0]>[0];
+
+/**
  * Drizzle ORM client wrapping the shared pg.Pool.
  * Provides type-safe queries via the auto-generated schema.
  *

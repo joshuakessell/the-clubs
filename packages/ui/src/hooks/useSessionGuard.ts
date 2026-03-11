@@ -17,8 +17,8 @@ import { getApiUrl } from '@the-clubs/shared';
  * Call this once at the top of your app (e.g., in App.tsx).
  */
 export function useSessionGuard() {
-    const validateSession = useAuthStore((s: { validateSession: any }) => s.validateSession);
-    const session = useAuthStore((s: { session: any }) => s.session);
+    const validateSession = useAuthStore((s) => s.validateSession);
+    const session = useAuthStore((s) => s.session);
     const patchedRef = useRef(false);
     // Track whether the session just changed (e.g. fresh login).
     // Skip the immediate validateSession call for freshly-created sessions
@@ -66,18 +66,25 @@ export function useSessionGuard() {
         if (patchedRef.current) return;
         patchedRef.current = true;
 
-        const originalFetch = window.fetch;
+        const originalFetch = globalThis.fetch;
         let confirmationInFlight = false;
 
-        window.fetch = async function patchedFetch(
+        globalThis.fetch = async function patchedFetch(
             input: RequestInfo | URL,
             init?: RequestInit,
         ): Promise<Response> {
-            const response = await originalFetch.call(window, input, init);
+            const response = await originalFetch.call(globalThis, input, init);
 
             // Only intercept 401s on API calls (not third-party requests)
             if (response.status === 401) {
-                const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+                let url: string;
+                if (typeof input === 'string') {
+                    url = input;
+                } else if (input instanceof URL) {
+                    url = input.href;
+                } else {
+                    url = input.url;
+                }
                 const isApiCall = url.includes('/api/') || url.includes('/v1/');
                 const isExcluded = url.includes('/auth/login')
                     || url.includes('/auth/me')
@@ -91,7 +98,7 @@ export function useSessionGuard() {
                         // This prevents race conditions and transient 401s from
                         // kicking the user back to the lock screen.
                         try {
-                            const meRes = await originalFetch.call(window, getApiUrl('/api/v1/auth/me'), {
+                            const meRes = await originalFetch.call(globalThis, getApiUrl('/api/v1/auth/me'), {
                                 headers: { Authorization: `Bearer ${currentSession.sessionToken}` },
                             });
                             if (meRes.status === 401) {
@@ -114,7 +121,7 @@ export function useSessionGuard() {
         };
 
         return () => {
-            window.fetch = originalFetch;
+            globalThis.fetch = originalFetch;
             patchedRef.current = false;
         };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps

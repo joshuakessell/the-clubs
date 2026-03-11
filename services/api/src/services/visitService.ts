@@ -7,10 +7,9 @@
  *   - domain/resourceAssignment.ts (assignResource)
  *   - domain/customerGuards.ts (assertNotBanned, assertCustomerExists)
  */
-import { db } from '../db';
+import { db, type DrizzleTx } from '../db';
 import { visits, customers, checkinBlocks, orders, orderLineItems } from '../db/schema';
 import { eq, sql, desc } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
 import { assignResource } from '../domain/resourceAssignment';
 import { assertNotBanned, assertCustomerExists } from '../domain/customerGuards';
 import { HttpError } from '../errors/HttpError';
@@ -23,7 +22,7 @@ import {
 } from '../visits/utils';
 
 // Drizzle transaction type
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 // ── Types ──
 

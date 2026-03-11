@@ -9,7 +9,7 @@
  */
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 import type {
   LaneSessionRow,
   ResourceRow,
@@ -28,7 +28,7 @@ import { insertClubEventDrizzle } from '../activity/clubEventLog';
 import { AGREEMENT_LEGAL_BODY_HTML_BY_LANG } from '@the-clubs/shared';
 import { HttpError } from '../errors/HttpError';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the Queryable/PoolClient interface

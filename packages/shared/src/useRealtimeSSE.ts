@@ -119,7 +119,7 @@ export function useRealtimeSSE({
       try {
         const data: unknown = JSON.parse(event.data);
         // Skip HEARTBEAT events — they are keepalive pings, not app events
-        if (typeof data === 'object' && data !== null && (data as any).type === 'HEARTBEAT') return;
+        if (typeof data === 'object' && data !== null && (data as Record<string, unknown>).type === 'HEARTBEAT') return;
         
         const parsed = safeParseRealtimeEvent(data);
         if (!parsed) return;

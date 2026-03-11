@@ -1,7 +1,7 @@
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 class Logger {
-  private format(level: LogLevel, args: any[]) {
+  private format(level: LogLevel, args: unknown[]) {
     const timestamp = new Date().toISOString();
     
     let color = '';
@@ -18,21 +18,21 @@ class Logger {
     return [prefix, style, ...args];
   }
 
-  debug(...args: any[]) {
+  debug(...args: unknown[]) {
     if (import.meta.env.DEV) {
       console.debug(...this.format('debug', args));
     }
   }
 
-  info(...args: any[]) {
+  info(...args: unknown[]) {
     console.info(...this.format('info', args));
   }
 
-  warn(...args: any[]) {
+  warn(...args: unknown[]) {
     console.warn(...this.format('warn', args));
   }
 
-  error(...args: any[]) {
+  error(...args: unknown[]) {
     console.error(...this.format('error', args));
   }
 }

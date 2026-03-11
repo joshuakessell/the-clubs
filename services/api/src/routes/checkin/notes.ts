@@ -4,31 +4,11 @@ import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import type { CustomerRow, LaneSessionRow } from '../../checkin/types';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
-import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
-import { insertClubEvent } from '../../activity/clubEventLog';
+import { insertCustomerActivityEventDrizzle } from '../../activity/customerActivityLog';
+import { insertClubEventDrizzle } from '../../activity/clubEventLog';
 import { HttpError } from '../../errors/HttpError';
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by activity/audit helpers.
- */
-function toQueryable(tx: any) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const parts = queryText.split(/\$\d+/);
-      const values = params ?? [];
-      let built = sql.empty();
-      for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
-        if (i < values.length) {
-          built = sql`${built}${values[i]}`;
-        }
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
+
 
 export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
   /**
@@ -94,7 +74,7 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
 
           const noteId = inserted.rows[0]!.id;
           const preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
-          await insertCustomerActivityEvent(toQueryable(tx) as any, {
+          await insertCustomerActivityEventDrizzle(tx, {
             customerId: session.customer_id,
             actionType: 'NOTE_ADDED',
             actionCategory: 'NOTE',
@@ -110,7 +90,7 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
           });
 
           // Emit unified club event for analytics
-          await insertClubEvent(toQueryable(tx) as any, {
+          await insertClubEventDrizzle(tx, {
             eventType: 'NOTE_ADDED',
             eventDomain: 'NOTE',
             sourceApp: 'EMPLOYEE_REGISTER',

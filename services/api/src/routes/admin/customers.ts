@@ -1,17 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { getHttpError } from '../../checkin/utils';
 import { z } from 'zod';
-import { db } from '../../db';
+import { db, type DrizzleTx } from '../../db';
 import { sql } from 'drizzle-orm';
 import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/middleware';
-import { insertAuditLog } from '../../audit/auditLog';
+import { insertAuditLogDrizzle } from '../../audit/auditLog';
 import { HttpError } from '../../errors/HttpError';
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by insertAuditLog.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);
@@ -73,7 +73,7 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
           const queryText = `UPDATE customers SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING id, name, membership_number, primary_language, past_due_balance`;
           const updated = await toQueryable(tx).query<{ id: string; name: string; membership_number: string | null; primary_language: string | null; past_due_balance: string | number | null }>(queryText, params);
           const after = updated.rows[0]!;
-          await insertAuditLog(toQueryable(tx) as any, { staffId: request.staff!.staffId, userId: request.staff!.staffId, userRole: request.staff!.role, action: 'UPDATE', entityType: 'customer', entityId: request.params.id, oldValue: { pastDueBalance: Number.parseFloat(String(before.past_due_balance || 0)) }, newValue: { pastDueBalance: Number.parseFloat(String(after.past_due_balance || 0)) } });
+          await insertAuditLogDrizzle(tx, { staffId: request.staff!.staffId, userId: request.staff!.staffId, userRole: request.staff!.role, action: 'UPDATE', entityType: 'customer', entityId: request.params.id, oldValue: { pastDueBalance: Number.parseFloat(String(before.past_due_balance || 0)) }, newValue: { pastDueBalance: Number.parseFloat(String(after.past_due_balance || 0)) } });
           return after;
         });
         return reply.send({ id: result.id, name: result.name, membershipNumber: result.membership_number, primaryLanguage: (result.primary_language as 'EN' | 'ES' | null) || null, pastDueBalance: Number.parseFloat(String(result.past_due_balance || 0)) });
@@ -96,12 +96,13 @@ export function registerAdminCustomerRoutes(fastify: FastifyInstance): void {
         );
         if (visitsResult.rows.length === 0) return reply.send({ visits: [] });
         const visitIds = visitsResult.rows.map((v) => v.id);
-        const blocksResult = await db.execute<any>(
+        type AgreementBlockRow = { id: string; visit_id: string; block_type: string; starts_at: Date; ends_at: Date; rental_type: string | null; resource_number: string | null; resource_kind: string | null; agreement_signed: boolean; agreement_signed_at: Date | null; has_pdf: boolean; payment_total: string | null; payment_method: string | null; signature_png_base64: string | null; signature_strokes_json: unknown; signature_created_at: Date | null; agreement_version: string | null; agreement_text_snapshot: string | null };
+        const blocksResult = await db.execute<AgreementBlockRow>(
           sql`SELECT cb.id, cb.visit_id, cb.block_type::text as block_type, cb.starts_at, cb.ends_at, cb.rental_type::text as rental_type, r.number as resource_number, r.kind as resource_kind, cb.agreement_signed, cb.agreement_signed_at, (cb.agreement_pdf IS NOT NULL) as has_pdf, pi.amount as payment_total, pi.payment_method, sig.signature_png_base64, sig.signature_strokes_json, sig.created_at as signature_created_at, sig.agreement_version, sig.agreement_text_snapshot FROM checkin_blocks cb LEFT JOIN inventory_resources r ON r.id = cb.resource_id LEFT JOIN lane_sessions ls ON ls.id = cb.session_id LEFT JOIN orders pi ON pi.id = ls.order_id LEFT JOIN LATERAL (SELECT signature_png_base64, signature_strokes_json, created_at, agreement_version, agreement_text_snapshot FROM agreement_signatures WHERE checkin_block_id = cb.id ORDER BY created_at DESC LIMIT 1) sig ON TRUE WHERE cb.visit_id = ANY(${visitIds}::uuid[]) ORDER BY cb.starts_at DESC, cb.id DESC`
         );
-        const blocksByVisit = new Map<string, any[]>();
+        const blocksByVisit = new Map<string, AgreementBlockRow[]>();
         for (const b of blocksResult.rows) { const arr = blocksByVisit.get(b.visit_id) ?? []; arr.push(b); blocksByVisit.set(b.visit_id, arr); }
-        return reply.send({ visits: visitsResult.rows.map((v) => ({ visitId: v.id, visitStartedAt: v.started_at.toISOString(), visitEndedAt: v.ended_at?.toISOString() ?? null, checkinBlocks: (blocksByVisit.get(v.id) ?? []).map((b: any) => ({ checkinBlockId: b.id, blockType: b.block_type, startsAt: b.starts_at.toISOString(), endsAt: b.ends_at.toISOString(), rentalType: b.rental_type, resourceNumber: b.resource_number, resourceKind: b.resource_kind, agreementSigned: b.agreement_signed, agreementSignedAt: b.agreement_signed_at?.toISOString() ?? null, hasPdf: b.has_pdf, paymentTotal: b.payment_total ? Number.parseFloat(b.payment_total) : null, paymentMethod: b.payment_method, hasSignature: Boolean(b.signature_png_base64) || Boolean(b.signature_strokes_json), signatureCreatedAt: b.signature_created_at?.toISOString() ?? null, agreementVersion: b.agreement_version, agreementTitle: null })) })) });
+        return reply.send({ visits: visitsResult.rows.map((v) => ({ visitId: v.id, visitStartedAt: v.started_at.toISOString(), visitEndedAt: v.ended_at?.toISOString() ?? null, checkinBlocks: (blocksByVisit.get(v.id) ?? []).map((b) => ({ checkinBlockId: b.id, blockType: b.block_type, startsAt: b.starts_at.toISOString(), endsAt: b.ends_at.toISOString(), rentalType: b.rental_type, resourceNumber: b.resource_number, resourceKind: b.resource_kind, agreementSigned: b.agreement_signed, agreementSignedAt: b.agreement_signed_at?.toISOString() ?? null, hasPdf: b.has_pdf, paymentTotal: b.payment_total ? Number.parseFloat(b.payment_total) : null, paymentMethod: b.payment_method, hasSignature: Boolean(b.signature_png_base64) || Boolean(b.signature_strokes_json), signatureCreatedAt: b.signature_created_at?.toISOString() ?? null, agreementVersion: b.agreement_version, agreementTitle: null })) })) });
       } catch (e) { request.log.error(e, 'Failed to fetch customer agreements'); return reply.status(500).send({ error: 'Internal server error' }); }
     }
   );

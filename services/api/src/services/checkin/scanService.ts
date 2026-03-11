@@ -30,9 +30,9 @@ import { toDate } from '../../checkin/utils';
 import { enrichCustomerIdentity } from '../../domain/customerEnrichment';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../../db';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the Queryable/PoolClient interface

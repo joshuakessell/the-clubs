@@ -14,9 +14,9 @@ import type { CustomerRow, LaneSessionRow, OrderRow } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { calculateAge } from '../checkin/identity';
 import { toDate } from '../checkin/utils';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 // ── Error helper ──
 

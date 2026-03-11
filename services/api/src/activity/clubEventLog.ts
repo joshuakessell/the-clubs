@@ -160,10 +160,10 @@ export async function insertClubEvent(
 // Drizzle-native insert
 // ---------------------------------------------------------------------------
 
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 import { clubEvents } from '../db/schema';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 /**
  * Drizzle-native club event writer — uses tx.insert() for type-safe inserts.

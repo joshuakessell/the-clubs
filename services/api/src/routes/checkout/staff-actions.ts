@@ -76,7 +76,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
         if (fastify.broadcaster) {
           const payload: CheckoutUpdatedPayload = {
             requestId: result.requestId,
-            itemsConfirmed: (result as any).itemsConfirmed ?? false,
+            itemsConfirmed: result.itemsConfirmed ?? false,
             feePaid: result.feePaid,
           };
           fastify.broadcaster.broadcast({

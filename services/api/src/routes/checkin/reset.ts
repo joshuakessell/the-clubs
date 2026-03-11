@@ -6,30 +6,10 @@ import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
-import { insertClubEvent } from '../../activity/clubEventLog';
+import { insertClubEventDrizzle } from '../../activity/clubEventLog';
 import { HttpError } from '../../errors/HttpError';
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by insertClubEvent.
- */
-function toQueryable(tx: any) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const parts = queryText.split(/\$\d+/);
-      const values = params ?? [];
-      let built = sql.empty();
-      for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
-        if (i < values.length) {
-          built = sql`${built}${values[i]}`;
-        }
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
+
 
 export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
   fastify.post<{
@@ -44,7 +24,7 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
       }
 
       const { laneId } = request.params;
-      const isCancelled = !!(request.body as any)?.cancelled;
+      const isCancelled = !!(request.body)?.cancelled;
 
       try {
         const result = await db.transaction(async (tx) => {
@@ -96,7 +76,7 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
           );
 
           if (isCancelled && session.customer_id) {
-            await insertClubEvent(toQueryable(tx) as any, {
+            await insertClubEventDrizzle(tx, {
               eventType: 'CHECKIN_CANCELLED',
               eventDomain: 'CHECKIN',
               sourceApp: 'EMPLOYEE_REGISTER',

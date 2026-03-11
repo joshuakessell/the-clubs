@@ -6,8 +6,8 @@ const PIN_LENGTH = 6;
 type Step = 'enter' | 'confirm';
 
 export function ChangePinScreen() {
-  const session = useAuthStore((s: { session: any }) => s.session);
-  const setSession = useAuthStore((s: { setSession: any }) => s.setSession);
+  const session = useAuthStore((s) => s.session);
+  const setSession = useAuthStore((s) => s.setSession);
 
   const [step, setStep] = useState<Step>('enter');
   const [digits, setDigits] = useState<string[]>(['', '', '', '', '', '']);
@@ -60,7 +60,7 @@ export function ChangePinScreen() {
       });
 
       if (!response.ok) {
-        const payload: any = await response.json().catch(() => null);
+        const payload = await response.json().catch(() => null) as Record<string, string> | null;
         throw new Error(payload?.error || 'Failed to change PIN');
       }
 

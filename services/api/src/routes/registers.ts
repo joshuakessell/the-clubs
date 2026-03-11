@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { Broadcaster } from '../realtime/broadcaster';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware';
 import {
@@ -51,7 +52,7 @@ const CloseoutFinalizeSchema = z.object({
  * Register management routes — thin wrappers around registerService.
  */
 export async function registerRoutes(
-  fastify: FastifyInstance & { broadcaster: any }
+  fastify: FastifyInstance & { broadcaster: Broadcaster }
 ): Promise<void> {
   // GET /v1/employees/available
   fastify.get('/v1/employees/available', async (_request: FastifyRequest, reply: FastifyReply) => {
@@ -262,7 +263,7 @@ export async function registerRoutes(
  * Re-exported for scheduler use. Delegates to registerService.cleanupAbandonedSessions.
  */
 export async function cleanupAbandonedRegisterSessions(
-  fastify?: FastifyInstance & { broadcaster: any }
+  fastify?: FastifyInstance & { broadcaster: Broadcaster }
 ): Promise<number> {
   try {
     const result = await cleanupAbandonedSessions();

@@ -24,9 +24,9 @@ import { insertClubEventDrizzle } from '../activity/clubEventLog';
 import { insertCustomerSpendLedgerEntryDrizzle } from '../ledger/customerSpendLedger';
 import { computeOrderTotals, ensureOrderWithReceipt } from '../money/orderAudit';
 import { HttpError } from '../errors/HttpError';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the Queryable interface
@@ -109,6 +109,7 @@ export interface ClaimResult {
 export interface MarkFeePaidResult {
   requestId: string;
   feePaid: boolean;
+  itemsConfirmed: boolean;
 }
 
 export interface ConfirmItemsResult {

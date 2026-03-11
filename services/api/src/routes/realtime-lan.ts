@@ -3,7 +3,7 @@ import type { WebSocket } from 'ws';
 import { requireKioskTokenOrStaff } from '../auth/kioskToken';
 import { optionalAuth } from '../auth/middleware';
 import type { LocalLaneSockets } from '../realtime/localSockets';
-import { db } from '../db';
+import { db, type DrizzleTx } from '../db';
 import { sql } from 'drizzle-orm';
 import { getLaneFeatureFlags } from '../checkin/laneFeatureFlags';
 
@@ -11,7 +11,7 @@ import { getLaneFeatureFlags } from '../checkin/laneFeatureFlags';
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by getLaneFeatureFlags.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);

@@ -2,16 +2,16 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/middleware';
 import { getHttpError } from '../../checkin/utils';
-import { db } from '../../db';
+import { db, type DrizzleTx } from '../../db';
 import { sql } from 'drizzle-orm';
-import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
+import { insertCustomerActivityEventDrizzle } from '../../activity/customerActivityLog';
 import { calculateLateFee } from '../../checkout/utils';
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by insertCustomerActivityEvent.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);
@@ -143,7 +143,7 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
             sql`UPDATE customers SET banned_until = NULL, updated_at = NOW() WHERE id = ${customer.id}`
           );
 
-          await insertCustomerActivityEvent(toQueryable(tx) as any, {
+          await insertCustomerActivityEventDrizzle(tx, {
             customerId: customer.id,
             actionType: 'BAN_REMOVED',
             actionCategory: 'ADMIN',
@@ -206,7 +206,7 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
             sql`UPDATE customers SET banned_until = ${newBannedUntil}, updated_at = NOW() WHERE id = ${customer.id}`
           );
 
-          await insertCustomerActivityEvent(toQueryable(tx) as any, {
+          await insertCustomerActivityEventDrizzle(tx, {
             customerId: customer.id,
             actionType: 'BAN_EXTENDED',
             actionCategory: 'ADMIN',

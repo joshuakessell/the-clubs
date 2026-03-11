@@ -26,9 +26,9 @@ import {
   ensureOrderWithReceipt,
   toDollars,
 } from '../money/orderAudit';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 // ── Helpers ──
 

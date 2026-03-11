@@ -38,7 +38,7 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
          ORDER BY date ASC`
         );
 
-        const avgTimeResult = await db.execute<Record<string, unknown>>(
+        const avgTimeResult = await db.execute<{ avg_minutes: string | null }>(
           sql`SELECT 
            AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 60)::numeric(10, 2) as avg_minutes
          FROM waitlist
@@ -70,8 +70,8 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
             date: row.date,
             count: Number.parseInt(row.count, 10),
           })),
-          averageWaitlistTimeMinutes: (avgTimeResult.rows[0] as any)?.avg_minutes
-            ? Number.parseFloat((avgTimeResult.rows[0] as any).avg_minutes)
+          averageWaitlistTimeMinutes: avgTimeResult.rows[0]?.avg_minutes
+            ? Number.parseFloat(avgTimeResult.rows[0].avg_minutes)
             : 0,
           upgradesByTier: (tierCountResult.rows as unknown as { desired_tier: string; count: string }[]).map((row) => ({
             tier: row.desired_tier,
@@ -99,15 +99,15 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       try {
-        const activeCountResult = await db.execute<Record<string, unknown>>(
+        const activeCountResult = await db.execute<{ count: string }>(
           sql`SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'ACTIVE'`
         );
 
-        const offeredCountResult = await db.execute<Record<string, unknown>>(
+        const offeredCountResult = await db.execute<{ count: string }>(
           sql`SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'OFFERED'`
         );
 
-        const avgWaitResult = await db.execute<Record<string, unknown>>(
+        const avgWaitResult = await db.execute<{ avg_minutes: string | null }>(
           sql`SELECT 
            AVG(EXTRACT(EPOCH FROM (NOW() - created_at)) / 60)::numeric(10, 2) as avg_minutes
          FROM waitlist
@@ -115,10 +115,10 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
         );
 
         return reply.send({
-          activeCount: Number.parseInt((activeCountResult.rows[0] as any)?.count || '0', 10),
-          offeredCount: Number.parseInt((offeredCountResult.rows[0] as any)?.count || '0', 10),
-          averageWaitTimeMinutes: (avgWaitResult.rows[0] as any)?.avg_minutes
-            ? Number.parseFloat((avgWaitResult.rows[0] as any).avg_minutes)
+          activeCount: Number.parseInt(activeCountResult.rows[0]?.count || '0', 10),
+          offeredCount: Number.parseInt(offeredCountResult.rows[0]?.count || '0', 10),
+          averageWaitTimeMinutes: avgWaitResult.rows[0]?.avg_minutes
+            ? Number.parseFloat(avgWaitResult.rows[0].avg_minutes)
             : 0,
         });
       } catch (error: unknown) {

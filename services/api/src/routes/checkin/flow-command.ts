@@ -4,7 +4,7 @@ import { optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import type { CustomerRow, LaneSessionRow, OrderRow } from '../../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import { db } from '../../db';
+import { db, type DrizzleTx } from '../../db';
 import { sql } from 'drizzle-orm';
 import { calculatePriceQuote, calculateRenewalQuote, type PricingInput } from '../../pricing/engine';
 import { calculateAge } from '../../checkin/identity';
@@ -18,7 +18,7 @@ import { writeOfflineOutboxRecord } from '../../checkin/offlineOutbox';
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by getLaneFeatureFlags, assertLaneWriteAuthority, writeOfflineOutboxRecord.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);
@@ -596,7 +596,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
               return trimmed.length > 0 ? trimmed : null;
             };
 
-            const p = payload as Record<string, any>;
+            const p = payload as Record<string, unknown>;
             const desired = normalizeString(p?.['waitlistDesiredType'] ?? p?.['desiredTier']);
             const backup = normalizeString(p?.['backupRentalType'] ?? p?.['backupTier']);
             const requestedNumber = normalizeString(p?.['waitlistRequestedResourceNumber'] ?? p?.['requestedResourceNumber']);
@@ -623,7 +623,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
           const { nextStep, clear } = computeFlowUpdate({ currentStep, type, payload });
           const nextVersion = currentVersion + 1;
 
-          const stringifyIfObject = (val: any) => {
+          const stringifyIfObject = (val: unknown) => {
             if (val === null || val === undefined) return null;
             if (typeof val === 'string') return val;
             return JSON.stringify(val);

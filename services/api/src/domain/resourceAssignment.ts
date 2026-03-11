@@ -9,10 +9,10 @@
 import { HttpError } from '../errors/HttpError';
 import { inventoryResources } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 
 // Drizzle transaction type — flexible enough to accept any tx from db.transaction()
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 /**
  * Assign an inventory resource (room or locker) to a customer within a Drizzle transaction.

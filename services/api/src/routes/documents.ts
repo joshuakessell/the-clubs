@@ -5,29 +5,9 @@ import { requireAuth, requireAdmin } from '../auth/middleware';
 import { createHash, randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { insertAuditLog } from '../audit/auditLog';
+import { insertAuditLogDrizzle } from '../audit/auditLog';
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by insertAuditLog.
- */
-function toQueryable(tx: any) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const parts = queryText.split(/\$\d+/);
-      const values = params ?? [];
-      let built = sql.empty();
-      for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
-        if (i < values.length) {
-          built = sql`${built}${values[i]}`;
-        }
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
+
 
 interface DocumentRow {
   id: string;
@@ -157,7 +137,7 @@ export async function documentsRoutes(fastify: FastifyInstance): Promise<void> {
            RETURNING *`
           );
 
-          await insertAuditLog(toQueryable(tx) as any, {
+          await insertAuditLogDrizzle(tx, {
             staffId,
             action: 'DOCUMENT_UPLOADED',
             entityType: 'employee_document',

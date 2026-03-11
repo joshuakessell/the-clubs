@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../auth/middleware';
-import { insertAuditLog } from '../audit/auditLog';
+import { insertAuditLogDrizzle } from '../audit/auditLog';
+import { type DrizzleTx } from '../db';
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by insertAuditLog.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx | typeof db) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);
@@ -124,7 +125,7 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
            RETURNING id`
           );
 
-          await insertAuditLog(toQueryable(tx) as any, {
+          await insertAuditLogDrizzle(tx, {
             staffId: request.staff!.staffId,
             userId: request.staff!.staffId,
             userRole: request.staff!.role,
@@ -242,7 +243,7 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
           );
 
           const action = body.status === 'APPROVED' ? 'TIME_OFF_APPROVED' : 'TIME_OFF_DENIED';
-          await insertAuditLog(toQueryable(tx) as any, {
+          await insertAuditLogDrizzle(tx, {
             staffId: request.staff!.staffId,
             userId: request.staff!.staffId,
             userRole: request.staff!.role,

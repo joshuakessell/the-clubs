@@ -191,11 +191,11 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       });
 
       if (!response.ok) {
-        const payload: any = await response.json().catch(() => null);
+        const payload = await response.json().catch(() => null) as Record<string, string> | null;
         throw new Error(payload?.error || payload?.message || 'Login failed');
       }
 
-      const data: any = await response.json();
+      const data = await response.json() as { staffId: string; name: string; role: 'STAFF' | 'ADMIN'; sessionToken: string; mustChangePin?: boolean };
       const session: StaffSession = {
         staffId: data.staffId,
         name: data.name,

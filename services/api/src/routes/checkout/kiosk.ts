@@ -1,11 +1,11 @@
 import type { FastifyInstance } from 'fastify';
-import { db } from '../../db';
+import { db, type DrizzleTx } from '../../db';
 import { sql } from 'drizzle-orm';
 import {
   type ResolveKeyInput,
   type CreateCheckoutRequestInput,
 } from '../../checkout/schemas';
-import { insertClubEvent } from '../../activity/clubEventLog';
+import { insertClubEventDrizzle } from '../../activity/clubEventLog';
 import type {
   CheckinBlockRow,
   CheckoutRequestRow,
@@ -25,7 +25,7 @@ import { HttpError } from '../../errors/HttpError';
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by insertClubEvent.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);
@@ -289,7 +289,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
         // Log club event for checkout requested
         await db.transaction(async (tx) => {
           const resourceLabel = resourceNumber ? ` (${block.rental_type === 'LOCKER' ? 'Locker' : 'Room'} ${resourceNumber})` : '';
-          await insertClubEvent(toQueryable(tx) as any, {
+          await insertClubEventDrizzle(tx, {
             eventType: 'CHECKOUT_REQUESTED',
             eventDomain: 'CHECKOUT',
             sourceApp: 'CUSTOMER_KIOSK',

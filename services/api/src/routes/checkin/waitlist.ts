@@ -6,7 +6,8 @@ import { getHttpError } from '../../checkin/utils';
 import { computeWaitlistInfo, getRoomTier } from '../../checkin/waitlist';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
-import { insertAuditLog } from '../../audit/auditLog';
+import { insertAuditLogDrizzle } from '../../audit/auditLog';
+import { type DrizzleTx } from '../../db';
 import type {
   AssignmentCreatedPayload,
   AssignmentFailedPayload,
@@ -17,7 +18,7 @@ import type {
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by session helpers, audit log, and waitlist helpers.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);
@@ -66,7 +67,7 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
           let upgradeFee: number | null = null;
           if (currentTier) {
             const { getUpgradeFee } = await import('../../pricing/engine');
-            upgradeFee = getUpgradeFee(currentTier as any, desiredTier as any) || null;
+            upgradeFee = getUpgradeFee(currentTier as import('../../pricing/engine').RentalType, desiredTier as import('../../pricing/engine').RentalType) || null;
           }
 
           return { position, estimatedReadyAt: estimatedReadyAt ? estimatedReadyAt.toISOString() : null, upgradeFee };
@@ -127,7 +128,7 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
           await recordResourceSelection(qClient, { sessionId: session.id, resourceType, resourceId });
 
           // Audit log
-          await insertAuditLog(qClient, {
+          await insertAuditLogDrizzle(tx, {
             staffId,
             action: 'ASSIGN',
             entityType: resourceType,

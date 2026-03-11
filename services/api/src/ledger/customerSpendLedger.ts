@@ -91,12 +91,12 @@ export async function insertCustomerSpendLedgerEntry(
 
 // ── Drizzle-native insert version ──
 
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+
 import { customerSpendLedgerEntries } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
-import { db } from '../db';
+import { db, type DrizzleTx } from '../db';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 /**
  * Drizzle-native version of insertCustomerSpendLedgerEntry.

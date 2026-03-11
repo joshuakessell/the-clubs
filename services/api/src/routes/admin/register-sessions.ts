@@ -1,14 +1,14 @@
 import type { FastifyInstance } from 'fastify';
-import { db } from '../../db';
+import { db, type DrizzleTx } from '../../db';
 import { sql } from 'drizzle-orm';
 import { requireAdmin, requireAuth } from '../../auth/middleware';
-import { insertAuditLog } from '../../audit/auditLog';
+import { insertAuditLogDrizzle } from '../../audit/auditLog';
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by insertAuditLog.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);
@@ -175,7 +175,7 @@ export function registerAdminRegisterSessionRoutes(fastify: FastifyInstance): vo
            WHERE id = ${session.id as string}`
           );
 
-          await insertAuditLog(toQueryable(tx) as any, {
+          await insertAuditLogDrizzle(tx, {
             staffId: request.staff!.staffId,
             action: 'REGISTER_FORCE_SIGN_OUT',
             entityType: 'register_session',

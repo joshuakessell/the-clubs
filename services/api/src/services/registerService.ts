@@ -13,9 +13,9 @@ import { insertClubEventDrizzle } from '../activity/clubEventLog';
 import { buildTenderSummaryFromPayments } from '../money/tenderSummary';
 import { buildCloseoutSnapshot, type CashDrawerSessionRow } from '../money/closeout';
 import { HttpError } from '../errors/HttpError';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 // ── Types ──
 

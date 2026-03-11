@@ -11,12 +11,13 @@ import { db } from '../../db';
 import { sql } from 'drizzle-orm';
 import { processCheckinScan } from '../../services/checkin/scanService';
 import { processScanId } from '../../services/checkin/scanIdService';
+import { type DrizzleTx } from '../../db';
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by scanIdService.processScanId.
  */
-function toQueryable(tx: any) {
+function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       const parts = queryText.split(/\$\d+/);

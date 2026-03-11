@@ -258,7 +258,7 @@ export async function buildFullSessionUpdatedPayload(
   const ledgerTotal = total > 0 ? total : undefined;
 
 
-  const membershipValidUntilRaw = (customer as any)?.membership_valid_until as unknown;
+  const membershipValidUntilRaw: unknown = customer?.membership_valid_until;
   let customerMembershipValidUntil: string | undefined;
   if (membershipValidUntilRaw instanceof Date) {
     customerMembershipValidUntil = membershipValidUntilRaw.toISOString().slice(0, 10);
@@ -425,8 +425,8 @@ async function buildLedgerLineItems(
         total += item.amount;
       }
     } else {
-      const membershipCardType = (customer as any)?.membership_card_type as string | undefined;
-      const membershipValidUntilRaw = toDate((customer as any)?.membership_valid_until);
+      const membershipCardType = customer?.membership_card_type;
+      const membershipValidUntilRaw = toDate(customer?.membership_valid_until);
       const membershipNumber = customer?.membership_number || session.membership_number;
       const hasMembership =
         !!membershipNumber ||
@@ -462,8 +462,8 @@ async function buildLedgerLineItems(
           rentalType: rentalType as RentalType,
           customerAge,
           checkInTime: new Date(),
-          membershipCardType: (customer as any)?.membership_card_type as 'NONE' | 'SIX_MONTH' | undefined,
-          membershipValidUntil: toDate((customer as any)?.membership_valid_until) || undefined,
+          membershipCardType: customer?.membership_card_type as 'NONE' | 'SIX_MONTH' | undefined,
+          membershipValidUntil: toDate(customer?.membership_valid_until) || undefined,
           includeSixMonthMembershipPurchase: session.membership_choice === 'SIX_MONTH',
         });
         const label = rentalLabel[rentalType] ?? rentalType;

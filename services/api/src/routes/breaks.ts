@@ -4,30 +4,10 @@ import { requireAuth } from '../auth/middleware';
 import { idempotencyKey } from '../middleware/idempotency';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
-import { insertClubEvent } from '../activity/clubEventLog';
+import { insertClubEventDrizzle } from '../activity/clubEventLog';
 import { HttpError } from '../errors/HttpError';
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by activity/audit helpers.
- */
-function toQueryable(tx: any) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const parts = queryText.split(/\$\d+/);
-      const values = params ?? [];
-      let built = sql.empty();
-      for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
-        if (i < values.length) {
-          built = sql`${built}${values[i]}`;
-        }
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
+
 
 const StartBreakSchema = z.object({
   breakType: z.enum(['MEAL', 'REST', 'OTHER']),
@@ -89,7 +69,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
 
         const breakRow = insert.rows[0]!;
 
-        await insertClubEvent(toQueryable(tx) as any, {
+        await insertClubEventDrizzle(tx, {
           eventType: 'BREAK_START',
           eventDomain: 'HR',
           sourceApp: 'EMPLOYEE_REGISTER',
@@ -159,7 +139,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
 
         const endedBreak = updated.rows[0]!;
 
-        await insertClubEvent(toQueryable(tx) as any, {
+        await insertClubEventDrizzle(tx, {
           eventType: 'BREAK_END',
           eventDomain: 'HR',
           sourceApp: 'EMPLOYEE_REGISTER',

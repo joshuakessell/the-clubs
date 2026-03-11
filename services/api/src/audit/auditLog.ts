@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { auditLog } from '../db/schema';
 import { sql } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 
 export type AuditLogAction = string;
 
@@ -67,8 +67,7 @@ export async function insertAuditLog(
   return insertAuditLogQuery(client.query.bind(client), input);
 }
 
-// Drizzle transaction type
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 function toJsonbRecord(value: unknown): Record<string, unknown> | null {
   if (value === undefined || value === null) return null;

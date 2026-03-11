@@ -128,11 +128,11 @@ export async function insertCustomerActivityEvent(
 
 // ── Drizzle-native version ──
 
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 import { customerActivityEvents } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
 
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 /**
  * Drizzle-native version of insertCustomerActivityEvent.

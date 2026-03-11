@@ -6,30 +6,10 @@ import type { LaneSessionRow, OrderRow } from '../../checkin/types';
 import { getHttpError, parsePriceQuote, roundToWhole, toNumber } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
-import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
+import { insertCustomerActivityEventDrizzle } from '../../activity/customerActivityLog';
 import { HttpError } from '../../errors/HttpError';
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by insertCustomerActivityEvent.
- */
-function toQueryable(tx: any) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const parts = queryText.split(/\$\d+/);
-      const values = params ?? [];
-      let built = sql.empty();
-      for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
-        if (i < values.length) {
-          built = sql`${built}${values[i]}`;
-        }
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
+
 
 const SPLIT_CARD_LINE_ITEM = 'Card Payment';
 
@@ -84,7 +64,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
 
       try {
         const result = await db.transaction(async (tx) => {
-          const qClient = toQueryable(tx);
+
 
           let sessionResult: { rows: Record<string, unknown>[] };
           if (sessionId) {
@@ -190,7 +170,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
             if (session.customer_id) {
               try {
                 await tx.execute(sql.raw('SAVEPOINT activity_logging'));
-                await insertCustomerActivityEvent(qClient as any, {
+                await insertCustomerActivityEventDrizzle(tx, {
                   customerId: session.customer_id,
                   actionType: 'PAYMENT_COMPLETED',
                   actionCategory: 'PAYMENT',
@@ -252,7 +232,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
             if (session.customer_id) {
               try {
                 await tx.execute(sql.raw('SAVEPOINT decline_activity_logging'));
-                await insertCustomerActivityEvent(qClient as any, {
+                await insertCustomerActivityEventDrizzle(tx, {
                   customerId: session.customer_id,
                   actionType: 'PAYMENT_DECLINED',
                   actionCategory: 'PAYMENT',

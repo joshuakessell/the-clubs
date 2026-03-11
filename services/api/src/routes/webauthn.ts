@@ -172,10 +172,10 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
           | undefined
       );
 
-      const credRow = await db.execute<Record<string, unknown>>(
+      const credRow = await db.execute<{ id: string }>(
         sql`SELECT id FROM staff_webauthn_credentials WHERE staff_id = ${body.staffId} AND credential_id = ${credentialId} LIMIT 1`
       );
-      const credentialRowId = (credRow.rows[0] as any)?.id;
+      const credentialRowId = credRow.rows[0]?.id;
       if (!credentialRowId) {
         return reply
           .status(500)
@@ -312,12 +312,12 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
       const expiresAt = getSessionExpiry();
       const tokenHash = hashSessionToken(sessionToken);
 
-      const sessionResult = await db.execute<Record<string, unknown>>(
+      const sessionResult = await db.execute<{ id: string }>(
         sql`INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
          VALUES (${staff.id}, ${body.deviceId}, 'tablet', ${tokenHash}, ${expiresAt})
          RETURNING id`
       );
-      const sessionId = (sessionResult.rows[0] as any).id;
+      const sessionId = sessionResult.rows[0]!.id;
 
       await insertAuditLogQuery(drizzleQueryFn, {
         staffId: staff.id,
@@ -327,12 +327,12 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
       });
 
       // Create or update timeclock session for cleaning station sign-in
-      const registerSession = await db.execute<Record<string, unknown>>(
+      const registerSession = await db.execute<{ count: string }>(
         sql`SELECT COUNT(*) as count FROM register_sessions
          WHERE employee_id = ${staff.id} AND signed_out_at IS NULL`
       );
 
-      if (Number.parseInt((registerSession.rows[0] as any)?.count || '0', 10) === 0) {
+      if (Number.parseInt(registerSession.rows[0]?.count || '0', 10) === 0) {
         const now = new Date();
         const shiftResult = await db.execute<Record<string, unknown>>(
           sql`SELECT id, starts_at, ends_at
@@ -350,7 +350,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
         const shiftRow = shiftResult.rows[0] as unknown as { id: string; starts_at: Date; ends_at: Date } | undefined;
         const shiftId = shiftRow ? shiftRow.id : null;
 
-        const existingTimeclock = await db.execute<Record<string, unknown>>(
+        const existingTimeclock = await db.execute<{ id: string }>(
           sql`SELECT id FROM timeclock_sessions
            WHERE employee_id = ${staff.id} AND clock_out_at IS NULL`
         );
@@ -362,7 +362,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
              VALUES (${staff.id}, ${shiftId}, ${now}, 'OFFICE_DASHBOARD', NULL)`
           );
         } else if (shiftId) {
-          const existingId = (existingTimeclock.rows[0] as any).id;
+          const existingId = existingTimeclock.rows[0]!.id;
           await db.execute(
             sql`UPDATE timeclock_sessions
              SET shift_id = ${shiftId}
@@ -453,7 +453,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
       try {
         const { credentialId } = request.params;
 
-        const credentialResult = await db.execute<Record<string, unknown>>(
+        const credentialResult = await db.execute<{ id: string; staff_id: string }>(
           sql`SELECT id, staff_id FROM staff_webauthn_credentials WHERE credential_id = ${credentialId}`
         );
 
@@ -472,7 +472,7 @@ export async function webauthnRoutes(fastify: FastifyInstance): Promise<void> {
           staffId: staff.staffId,
           action: 'STAFF_WEBAUTHN_REVOKED',
           entityType: 'staff_webauthn_credential',
-          entityId: (credentialResult.rows[0] as any).id,
+          entityId: credentialResult.rows[0]!.id,
         });
 
         return reply.send({ success: true });
