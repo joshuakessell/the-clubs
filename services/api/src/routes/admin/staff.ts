@@ -5,7 +5,7 @@ import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/mid
 import { searchStaff, createStaffMember, updateStaffMember, resetStaffPin, type CreateStaffInput, type UpdateStaffInput } from '../../services/staffAdminService';
 
 const CreateStaffSchema = z.object({ name: z.string().min(1), role: z.enum(['STAFF', 'ADMIN']), pin: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'), active: z.boolean().optional().default(true) });
-const UpdateStaffSchema = z.object({ name: z.string().min(1).optional(), role: z.enum(['STAFF', 'ADMIN']).optional(), active: z.boolean().optional() });
+const UpdateStaffSchema = z.object({ name: z.string().min(1).optional(), role: z.enum(['STAFF', 'ADMIN']).optional(), active: z.boolean().optional(), forcePinChange: z.boolean().optional() });
 
 export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
   fastify.get<{ Querystring: { search?: string; role?: string; active?: string } }>('/v1/admin/staff', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {

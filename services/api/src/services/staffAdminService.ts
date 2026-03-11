@@ -14,7 +14,7 @@ import { HttpError } from '../errors/HttpError';
 
 export interface SearchStaffInput { search?: string; role?: string; active?: string; }
 export interface CreateStaffInput { name: string; role: 'STAFF' | 'ADMIN'; pin: string; active: boolean; }
-export interface UpdateStaffInput { name?: string; role?: 'STAFF' | 'ADMIN'; active?: boolean; }
+export interface UpdateStaffInput { name?: string; role?: 'STAFF' | 'ADMIN'; active?: boolean; forcePinChange?: boolean; }
 
 // ── Service Methods ──
 
@@ -38,13 +38,14 @@ export async function searchStaff(input: SearchStaffInput) {
       name: staff.name,
       role: staff.role,
       active: staff.active,
+      forcePinChange: staff.forcePinChange,
       createdAt: staff.createdAt,
       lastLogin: max(staffSessions.createdAt),
     })
     .from(staff)
     .leftJoin(staffSessions, eq(staff.id, staffSessions.staffId))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .groupBy(staff.id, staff.name, staff.role, staff.active, staff.createdAt)
+    .groupBy(staff.id, staff.name, staff.role, staff.active, staff.forcePinChange, staff.createdAt)
     .orderBy(asc(staff.name));
 
   return rows.map((row) => ({
@@ -52,6 +53,7 @@ export async function searchStaff(input: SearchStaffInput) {
     name: row.name,
     role: row.role,
     active: row.active,
+    forcePinChange: row.forcePinChange,
     createdAt: row.createdAt,
     lastLogin: row.lastLogin || null,
   }));
@@ -90,6 +92,7 @@ export async function updateStaffMember(staffId: string, input: UpdateStaffInput
   if (input.name !== undefined) updates.name = input.name;
   if (input.role !== undefined) updates.role = input.role;
   if (input.active !== undefined) updates.active = input.active;
+  if (input.forcePinChange !== undefined) updates.forcePinChange = input.forcePinChange;
 
   if (Object.keys(updates).length <= 1) throw new HttpError(400, 'No fields to update');
 

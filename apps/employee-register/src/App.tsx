@@ -116,7 +116,7 @@ export default function App() {
 
   function renderScreen() {
     if (isValidating) return <ValidatingScreen />;
-    if (!session) return <LockScreen appTitle="Club Dallas" />;
+    if (!session) return <LockScreen appTitle="Employee Register" />;
     if (session.mustChangePin) return <ChangePinScreen />;
     return <AppLayout />;
   }

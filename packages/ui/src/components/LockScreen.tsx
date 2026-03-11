@@ -467,7 +467,7 @@ style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
         Club Dallas
           </h2>
           <p className="mt-4 text-xl" style={{ color: 'var(--color-text-secondary)' }}>
-            Employee Register
+            {appTitle}
           </p>
     </div>
 

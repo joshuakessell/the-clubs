@@ -44,6 +44,7 @@ export async function listWaitlistEntries(status?: string, fastifyInstance?: Fas
     checkin_starts_at: Date; checkin_ends_at: Date;
     offered_resource_number: string | null; current_resource_number: string | null;
     customer_id: string; customer_name: string; membership_number: string | null;
+    offer_expires_at: Date | null;
   };
   const rows = result.rows as unknown as EnrichedRow[];
 
@@ -53,6 +54,7 @@ export async function listWaitlistEntries(status?: string, fastifyInstance?: Fas
     status: row.status, createdAt: row.created_at, checkinAt: row.checkin_starts_at, checkoutAt: row.checkin_ends_at,
     offeredAt: row.offered_at, completedAt: row.completed_at, resourceId: row.offered_resource_id,
     offeredRoomNumber: row.offered_resource_number,
+    offerExpiresAt: row.offer_expires_at,
     displayIdentifier: row.current_resource_number || `***${row.id.substring(0, 8)}`,
     currentRentalType: row.current_rental_type, currentRoomTier: row.current_resource_tier ?? null, customerName: row.customer_name || 'Customer',
   }));

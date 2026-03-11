@@ -33,17 +33,29 @@ export function registerAdminDeviceRoutes(fastify: FastifyInstance): void {
     async (request, reply) => {
       try {
         const result = await db.execute<Record<string, unknown>>(
-          sql`SELECT device_id, display_name, enabled
+          sql`SELECT device_id, display_name, enabled, last_heartbeat, last_lane_id, created_at
              FROM devices
              ORDER BY created_at DESC`
         );
 
+        const now = Date.now();
+        const OFFLINE_THRESHOLD_MS = 90_000; // 90 seconds without heartbeat = offline
+
         return reply.send(
-          result.rows.map((row) => ({
-            deviceId: row.device_id as string,
-            displayName: row.display_name as string,
-            enabled: row.enabled as boolean,
-          }))
+          result.rows.map((row) => {
+            const lastHeartbeat = row.last_heartbeat ? new Date(row.last_heartbeat as string).getTime() : 0;
+            const secondsSinceHeartbeat = lastHeartbeat > 0 ? Math.round((now - lastHeartbeat) / 1000) : null;
+            const online = lastHeartbeat > 0 && (now - lastHeartbeat) < OFFLINE_THRESHOLD_MS;
+            return {
+              deviceId: row.device_id as string,
+              displayName: row.display_name as string,
+              enabled: row.enabled as boolean,
+              lastHeartbeatAt: lastHeartbeat > 0 ? new Date(lastHeartbeat).toISOString() : null,
+              secondsSinceHeartbeat,
+              online,
+              lastLaneId: (row.last_lane_id as string | null) ?? null,
+            };
+          })
         );
       } catch (error) {
         request.log.error(error, 'Failed to fetch devices');

@@ -5,6 +5,7 @@ import { getHttpError } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
 import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
+import { calculateLateFee } from '../../checkout/utils';
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
@@ -38,6 +39,65 @@ const RemoveBanSchema = z.object({
 });
 
 export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance): void {
+
+  // ── Overdue Alerts — real-time list of guests past checkout time ──
+  fastify.get(
+    '/v1/admin/overdue-alerts',
+    { preHandler: [requireAuth, requireAdmin] },
+    async (_request, reply) => {
+      const result = await db.execute<Record<string, unknown>>(
+        sql`SELECT DISTINCT ON (cb.resource_id)
+          cb.id as occupancy_id,
+          cb.visit_id,
+          c.id as customer_id,
+          c.name as customer_name,
+          CASE WHEN ir.kind = 'room' THEN 'ROOM' ELSE 'LOCKER' END as resource_type,
+          ir.number as resource_number,
+          cb.starts_at as checkin_at,
+          cb.ends_at as scheduled_checkout_at,
+          EXTRACT(EPOCH FROM (NOW() - cb.ends_at)) / 60 as late_minutes_raw
+        FROM checkin_blocks cb
+        JOIN visits v ON cb.visit_id = v.id
+        JOIN customers c ON v.customer_id = c.id
+        JOIN inventory_resources ir ON cb.resource_id = ir.id
+        WHERE cb.resource_id IS NOT NULL
+          AND v.ended_at IS NULL
+          AND cb.ends_at < NOW()
+        ORDER BY cb.resource_id, cb.ends_at DESC`
+      );
+
+      type OverdueRow = {
+        occupancy_id: string; visit_id: string; customer_id: string; customer_name: string;
+        resource_type: string; resource_number: string; checkin_at: Date; scheduled_checkout_at: Date;
+        late_minutes_raw: number | string;
+      };
+
+      const alerts = (result.rows as unknown as OverdueRow[]).map((r) => {
+        const lateMinutes = Math.max(0, Math.floor(Number(r.late_minutes_raw)));
+        const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
+        return {
+          occupancyId: r.occupancy_id,
+          visitId: r.visit_id,
+          customerId: r.customer_id,
+          customerName: r.customer_name,
+          resourceType: r.resource_type,
+          resourceNumber: r.resource_number,
+          checkinAt: r.checkin_at instanceof Date ? r.checkin_at.toISOString() : String(r.checkin_at),
+          scheduledCheckoutAt: r.scheduled_checkout_at instanceof Date ? r.scheduled_checkout_at.toISOString() : String(r.scheduled_checkout_at),
+          lateMinutes,
+          estimatedFee: feeAmount,
+          banWouldApply: banApplied,
+        };
+      });
+
+      // Sort by most overdue first
+      alerts.sort((a, b) => b.lateMinutes - a.lateMinutes);
+
+      return reply.send({ alerts });
+    }
+  );
+
+  // ── Ban Alerts — existing banned customer list ──
   fastify.get(
     '/v1/admin/late-checkout-ban-alerts',
     { preHandler: [requireAuth, requireAdmin] },

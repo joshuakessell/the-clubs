@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Badge, Button } from '@the-clubs/ui';
-import { useAuthStore } from '@the-clubs/ui';
+import { Badge, Button, useAuthStore } from '@the-clubs/ui';
 import { getApiUrl } from '@the-clubs/shared';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
 import { ViewSpinner } from '../components/ViewSpinner';
@@ -29,6 +28,14 @@ interface CheckinBlock {
   hasPdf: boolean;
   paymentTotal: number | null;
   paymentMethod: string | null;
+}
+
+interface CustomerNote {
+  id: string;
+  note: string;
+  isImportant: boolean;
+  createdByStaffName: string;
+  createdAt: string;
 }
 
 interface Visit {
@@ -65,12 +72,35 @@ function formatMembership(type: string | null, validUntil: string | null): { lab
 
 /* ── Customer Detail Panel ─────────────────────────────────────── */
 
-function CustomerDetail({ customer }: { customer: Customer }) {
+function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
   const { data, loading, error } = useDashboardFetch<{ visits: Visit[] }>(
     `/api/v1/admin/customers/${customer.id}/agreements`,
   );
   const visits = data?.visits ?? [];
   const membership = formatMembership(customer.membershipCardType, customer.membershipValidUntil);
+  const lifetimeSpend = visits.reduce((sum, v) => sum + v.checkinBlocks.reduce((bs, b) => bs + (b.paymentTotal ?? 0), 0), 0);
+
+  // Notes
+  const { data: notesData, loading: notesLoading, refetch: refetchNotes } = useDashboardFetch<{ notes: CustomerNote[] }>(
+    `/api/v1/customers/${customer.id}/notes`,
+  );
+  const notes = notesData?.notes ?? [];
+  const [newNote, setNewNote] = useState('');
+  const [isImportant, setIsImportant] = useState(false);
+  const [addingNote, setAddingNote] = useState(false);
+
+  const handleAddNote = useCallback(async () => {
+    if (!newNote.trim()) return;
+    setAddingNote(true);
+    try {
+      await dashboardMutate(`/api/v1/customers/${customer.id}/notes`, 'POST', {
+        note: newNote.trim(), isImportant, sourceApp: 'OFFICE_DASHBOARD',
+      });
+      setNewNote(''); setIsImportant(false);
+      refetchNotes();
+    } catch { /* ignore */ }
+    setAddingNote(false);
+  }, [customer.id, newNote, isImportant, refetchNotes]);
 
   const handleDownloadPdf = useCallback(async (blockId: string) => {
     const token = useAuthStore.getState().session?.sessionToken;
@@ -137,7 +167,80 @@ function CustomerDetail({ customer }: { customer: Customer }) {
             </span>
             <p style={{ color: 'var(--color-text-secondary)' }}>{customer.lastVisit ? formatDate(customer.lastVisit) : '—'}</p>
           </div>
+          <div>
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+              Lifetime Spend
+            </span>
+            <p className="font-bold tabular-nums" style={{ color: 'var(--color-status-success)' }}>
+              ${lifetimeSpend.toFixed(2)}
+            </p>
+          </div>
+          {customer.membershipCardType && customer.membershipCardType !== 'NONE' && (
+            <div>
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                Card Type
+              </span>
+              <p><Badge color="primary" variant="light" size="sm">{customer.membershipCardType.replace(/_/g, ' ')}</Badge></p>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Quick Actions — Ban Toggle + ID Verification */}
+      <div className="flex items-center gap-3 rounded-lg border px-4 py-3"
+        style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-overlay)' }}>
+        <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Actions</span>
+        <BanToggle customerId={customer.id} />
+        <IdVerificationToggle customerId={customer.id} />
+      </div>
+
+      {/* Notes Section */}
+      <div>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+          Notes ({notes.length})
+        </h4>
+
+        {/* Add note form */}
+        <div className="mb-3 flex gap-2">
+          <input
+            className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
+            style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+            placeholder="Add a note…" value={newNote} onChange={(e) => setNewNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void handleAddNote(); }}
+          />
+          <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold"
+            style={{ borderColor: isImportant ? 'var(--color-status-warning)' : 'var(--color-border-default)', color: isImportant ? 'var(--color-status-warning)' : 'var(--color-text-muted)' }}>
+            <input type="checkbox" checked={isImportant} onChange={(e) => setIsImportant(e.target.checked)} className="sr-only" />
+            ⚠️ Important
+          </label>
+          <Button size="sm" onClick={() => void handleAddNote()} disabled={addingNote || !newNote.trim()}>
+            {addingNote ? 'Adding…' : 'Add'}
+          </Button>
+        </div>
+
+        {notesLoading ? (
+          <div className="py-2 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading notes…</div>
+        ) : notes.length === 0 ? (
+          <div className="py-2 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No notes yet</div>
+        ) : (
+          <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+            {notes.map((n) => (
+              <div key={n.id} className="rounded-lg border px-3 py-2"
+                style={{
+                  borderColor: n.isImportant ? 'color-mix(in oklch, var(--color-status-warning) 30%, var(--color-border-default))' : 'var(--color-border-subtle)',
+                  backgroundColor: n.isImportant ? 'color-mix(in oklch, var(--color-status-warning) 4%, transparent)' : 'transparent',
+                }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                    {n.createdByStaffName} · {formatDate(n.createdAt)}
+                  </span>
+                  {n.isImportant && <Badge color="warning" variant="light" size="sm">Important</Badge>}
+                </div>
+                <p className="mt-0.5 text-sm" style={{ color: 'var(--color-text-primary)' }}>{n.note}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Visit History */}
@@ -198,6 +301,7 @@ function CustomerDetail({ customer }: { customer: Customer }) {
                       <td className="px-3 py-2">
                         {block.hasPdf ? (
                           <button
+                            type="button"
                             onClick={() => void handleDownloadPdf(block.checkinBlockId)}
                             className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition hover:opacity-80"
                             style={{
@@ -351,6 +455,67 @@ export function CustomersView() {
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ── Ban Toggle ────────────────────────────────────────────────── */
+
+function BanToggle({ customerId }: Readonly<{ customerId: string }>) {
+  const [banning, setBanning] = useState(false);
+
+  const handleBan = useCallback(async () => {
+    setBanning(true);
+    const thirtyDays = new Date(Date.now() + 30 * 86_400_000).toISOString();
+    try {
+      await dashboardMutate(`/api/v1/admin/ban-alerts/${customerId}/extend`, 'POST', { bannedUntil: thirtyDays });
+    } catch { /* ignore */ }
+    setBanning(false);
+  }, [customerId]);
+
+  const handleUnban = useCallback(async () => {
+    setBanning(true);
+    try {
+      await dashboardMutate(`/api/v1/admin/ban-alerts/${customerId}/remove`, 'DELETE');
+    } catch { /* ignore */ }
+    setBanning(false);
+  }, [customerId]);
+
+  return (
+    <div className="flex gap-2">
+      <Button size="sm" variant="ghost" onClick={() => void handleBan()} disabled={banning}
+        style={{ color: 'var(--color-status-error)' }}>
+        {banning ? '…' : '🚫 Ban (30d)'}
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => void handleUnban()} disabled={banning}
+        style={{ color: 'var(--color-status-success)' }}>
+        {banning ? '…' : '✅ Unban'}
+      </Button>
+    </div>
+  );
+}
+/* ── ID Verification Toggle ───────────────────────────────────── */
+
+function IdVerificationToggle({ customerId }: Readonly<{ customerId: string }>) {
+  const storageKey = `id-verified:${customerId}`;
+  const [verified, setVerified] = useState(() => localStorage.getItem(storageKey) === 'true');
+
+  const toggle = useCallback(() => {
+    const next = !verified;
+    if (next) {
+      localStorage.setItem(storageKey, 'true');
+    } else {
+      localStorage.removeItem(storageKey);
+    }
+    setVerified(next);
+  }, [verified, storageKey]);
+
+  return (
+    <div className="flex items-center gap-2">
+      {verified && <Badge color="success" variant="light" size="sm">🪪 ID Verified</Badge>}
+      <Button size="sm" variant={verified ? 'ghost' : 'outline'} onClick={toggle}>
+        {verified ? 'Unverify ID' : '🪪 Verify ID'}
+      </Button>
     </div>
   );
 }

@@ -394,7 +394,7 @@ async function applyFlowPaymentSideEffects(
       : calculatePriceQuote(pricingInput);
 
     const intentResult = await client.query<OrderRow>(
-      `INSERT INTO orders (lane_session_id, amount, status, quote_json) VALUES ($1, $2, 'OPEN', $3) RETURNING *`,
+      `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, status, quote_json) VALUES ($1, $2, 0, 0, 0, $2, 'OPEN', $3) RETURNING *`,
       [sessionId, quote.total, JSON.stringify(quote)],
     );
     const intent = intentResult.rows[0]!;

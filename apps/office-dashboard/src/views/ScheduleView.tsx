@@ -133,6 +133,14 @@ export function ScheduleView() {
   const [tradeSelectedShiftId, setTradeSelectedShiftId] = useState<string>('');
   const [tradeSubmitting, setTradeSubmitting] = useState(false);
 
+  // Shift templates (localStorage)
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
+  // Drag-and-drop state
+  const [dragShiftId, setDragShiftId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ day: string; code: string } | null>(null);
+
   // ─── Computed dates ───
   const weekStart = useMemo(() => {
     const base = getMonday(new Date());
@@ -360,6 +368,99 @@ export function ScheduleView() {
     } catch { /* ignore */ }
   }, [refetchTrades, refetchAll]);
 
+  // ─── Shift Template Handlers (localStorage) ───
+  const TEMPLATE_STORAGE_KEY = 'schedule-templates';
+
+  const getSavedTemplates = useCallback((): { name: string; shifts: { dayOfWeek: number; shiftCode: string; employeeId: string }[] }[] => {
+    try { return JSON.parse(localStorage.getItem(TEMPLATE_STORAGE_KEY) ?? '[]'); }
+    catch { return []; }
+  }, []);
+
+  const handleSaveTemplate = useCallback(() => {
+    if (!templateName.trim()) return;
+    const pattern = shifts
+      .filter(s => s.status !== 'CANCELED')
+      .map(s => ({
+        dayOfWeek: new Date(s.scheduledStart).getDay(),
+        shiftCode: s.shiftCode,
+        employeeId: s.employeeId,
+      }));
+    const templates = getSavedTemplates();
+    templates.push({ name: templateName.trim(), shifts: pattern });
+    localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+    setTemplateName('');
+    setShowTemplateMenu(false);
+  }, [templateName, shifts, getSavedTemplates]);
+
+  const handleLoadTemplate = useCallback(async (templateIndex: number) => {
+    const templates = getSavedTemplates();
+    const tpl = templates[templateIndex];
+    if (!tpl) return;
+    // Map dayOfWeek + shiftCode to actual dates for this week
+    const bulkShifts = tpl.shifts.map(s => {
+      // getDay() → 0=Sun, 1=Mon...
+      // weekDays[0] is Monday
+      const targetDayIndex = s.dayOfWeek === 0 ? 6 : s.dayOfWeek - 1;
+      const targetDay = weekDays[targetDayIndex];
+      if (!targetDay) return null;
+      const startHour = SHIFT_START_HOUR[s.shiftCode] ?? 16;
+      const d = new Date(targetDay + 'T00:00:00');
+      const startsAt = new Date(d);
+      startsAt.setHours(startHour, 0, 0, 0);
+      const endsAt = new Date(d);
+      if (s.shiftCode === 'C') {
+        endsAt.setDate(endsAt.getDate() + 1);
+        endsAt.setHours(0, 0, 0, 0);
+      } else {
+        endsAt.setHours(startHour + 8, 0, 0, 0);
+      }
+      return {
+        employee_id: s.employeeId,
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt.toISOString(),
+        shift_code: s.shiftCode,
+      };
+    }).filter(Boolean);
+    if (bulkShifts.length === 0) return;
+    try {
+      await dashboardMutate('/api/v1/admin/shifts/bulk', 'POST', { shifts: bulkShifts });
+      setShowTemplateMenu(false);
+      setTimeout(refetchAll, 300);
+    } catch { /* ignore */ }
+  }, [getSavedTemplates, weekDays, refetchAll]);
+
+  const handleDeleteTemplate = useCallback((index: number) => {
+    const templates = getSavedTemplates();
+    templates.splice(index, 1);
+    localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+    setShowTemplateMenu(s => s); // re-render
+  }, [getSavedTemplates]);
+
+  // ─── Drag-and-Drop Handlers ───
+  const handleDragDrop = useCallback(async (shiftId: string, targetDay: string, targetCode: string) => {
+    const shift = shifts.find(s => s.id === shiftId);
+    if (!shift) return;
+    const startHour = SHIFT_START_HOUR[targetCode] ?? 16;
+    const d = new Date(targetDay + 'T00:00:00');
+    const startsAt = new Date(d);
+    startsAt.setHours(startHour, 0, 0, 0);
+    const endsAt = new Date(d);
+    if (targetCode === 'C') {
+      endsAt.setDate(endsAt.getDate() + 1);
+      endsAt.setHours(0, 0, 0, 0);
+    } else {
+      endsAt.setHours(startHour + 8, 0, 0, 0);
+    }
+    try {
+      await dashboardMutate(`/api/v1/admin/shifts/${shiftId}`, 'PATCH', {
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt.toISOString(),
+        shift_code: targetCode,
+      });
+      refetchAll();
+    } catch { /* ignore */ }
+  }, [shifts, refetchAll]);
+
   const todayStr = formatDate(new Date());
 
   // ─── Render ───
@@ -415,9 +516,41 @@ export function ScheduleView() {
         <>
           {/* Actions bar — admin only */}
           {isAdmin && (
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={handleCopyWeek}>Copy to Next Week</Button>
-              <Button size="sm" variant="outline" onClick={refetchAll}>↻ Refresh</Button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleCopyWeek}>Copy to Next Week</Button>
+                <Button size="sm" variant="outline" onClick={() => globalThis.print()}>🖨️ Print Schedule</Button>
+                <Button size="sm" variant="outline" onClick={() => setShowTemplateMenu(!showTemplateMenu)}>📋 Templates</Button>
+                <Button size="sm" variant="outline" onClick={refetchAll}>↻ Refresh</Button>
+              </div>
+              {showTemplateMenu && (
+                <div className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="rounded-lg border px-3 py-1.5 text-sm outline-none"
+                      style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)', flex: 1 }}
+                      placeholder="Template name…" aria-label="Template name"
+                      value={templateName} onChange={(e) => setTemplateName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTemplate(); }}
+                    />
+                    <Button size="sm" variant="primary" onClick={handleSaveTemplate} disabled={!templateName.trim()}>Save Current Week</Button>
+                  </div>
+                  {getSavedTemplates().length > 0 && (
+                    <div className="mt-3 flex flex-col gap-1">
+                      <span className="text-xs font-semibold uppercase" style={{ color: 'var(--color-text-muted)' }}>Saved Templates</span>
+                      {getSavedTemplates().map((tpl, idx) => (
+                        <div key={tpl.name} className="flex items-center justify-between rounded-md border px-3 py-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                          <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>{tpl.name} ({tpl.shifts.length} shifts)</span>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => void handleLoadTemplate(idx)}>Load</Button>
+                            <Button size="sm" variant="ghost" onClick={() => handleDeleteTemplate(idx)} style={{ color: 'var(--color-status-error)' }}>✕</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -461,10 +594,22 @@ export function ScheduleView() {
                             <div
                               className="flex min-h-[56px] flex-col gap-1 rounded-lg p-2 transition"
                               style={{
-                                backgroundColor: dayShifts.length > 0 ? SHIFT_COLORS[code] : 'transparent',
-                                border: `1px dashed ${dayShifts.length > 0 ? SHIFT_ACCENTS[code]! + '40' : 'var(--color-border-subtle)'}`,
+                                backgroundColor: dropTarget?.day === day && dropTarget?.code === code
+                                  ? 'color-mix(in oklch, var(--color-accent-primary) 12%, transparent)'
+                                  : dayShifts.length > 0 ? SHIFT_COLORS[code] : 'transparent',
+                                border: dropTarget?.day === day && dropTarget?.code === code
+                                  ? '2px solid var(--color-accent-primary)'
+                                  : `1px dashed ${dayShifts.length > 0 ? SHIFT_ACCENTS[code]! + '40' : 'var(--color-border-subtle)'}`,
                                 cursor: isAdmin || dayShifts.some(s => s.employeeId === myStaffId) ? 'pointer' : 'default',
                               }}
+                              onDragOver={isAdmin ? (e) => { e.preventDefault(); setDropTarget({ day, code }); } : undefined}
+                              onDragLeave={isAdmin ? () => setDropTarget(null) : undefined}
+                              onDrop={isAdmin ? (e) => {
+                                e.preventDefault();
+                                setDropTarget(null);
+                                const shiftId = e.dataTransfer.getData('text/plain');
+                                if (shiftId) void handleDragDrop(shiftId, day, code);
+                              } : undefined}
                               onClick={() => {
                                 if (isAdmin) {
                                   // Admin: open assign/edit modals
@@ -486,7 +631,11 @@ export function ScheduleView() {
 
                                 return (
                                   <div key={s.id}
-                                    className={`flex flex-col gap-0.5${isAdmin ? '' : ' cursor-pointer rounded px-1 -mx-1 hover:bg-white/10'}`}
+                                    draggable={isAdmin}
+                                    onDragStart={isAdmin ? (e) => { e.dataTransfer.setData('text/plain', s.id); e.dataTransfer.effectAllowed = 'move'; setDragShiftId(s.id); } : undefined}
+                                    onDragEnd={isAdmin ? () => { setDragShiftId(null); setDropTarget(null); } : undefined}
+                                    className={`flex flex-col gap-0.5${isAdmin ? ' cursor-grab active:cursor-grabbing' : ' cursor-pointer rounded px-1 -mx-1 hover:bg-white/10'}`}
+                                    style={{ opacity: dragShiftId === s.id ? 0.4 : 1 }}
                                     onClick={isAdmin ? undefined : (e) => {
                                       e.stopPropagation();
                                       if (isMe) {

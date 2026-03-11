@@ -16,7 +16,7 @@
   --color-surface-base: var(--background);
   --color-surface-raised: var(--background-1);
   --color-surface-overlay: var(--background-2);
-  --color-surface-input: var(--background-1);
+  --color-surface-input: var(--surface);
 
   --color-border-default: var(--border);
   --color-border-subtle: var(--border-line-1);
@@ -47,9 +47,18 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
-input, textarea, select {
-  color: var(--color-text-primary);
-  background-color: var(--color-surface-input);
+/* ── Input text on light backgrounds ─────────────────── */
+input,
+textarea,
+select {
+  color: #1f2937;
+}
+
+/* ── Placeholder text ────────────────────────────────── */
+input::placeholder,
+textarea::placeholder {
+  color: #9ca3af;
+  opacity: 1;
 }
 
 body {
@@ -68,6 +77,17 @@ h1, h2, h3, h4 {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+
+/* ── Touch: prevent double-tap zoom delay ────────────── */
+button, a, [role="button"], input, select, textarea, label {
+  touch-action: manipulation;
+}
+
+/* ── Tabular numbers for data columns ────────────────── */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
 
 :focus-visible {
   outline: 2px solid var(--color-accent-primary);

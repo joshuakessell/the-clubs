@@ -39,6 +39,38 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
         const lockersOccupied = Number.parseInt((lockersInUseResult.rows[0] as any)?.count || '0', 10);
         const lockersAvailable = totalLockers - lockersOccupied;
 
+        // Today's revenue — sum of paid orders created today
+        const revenueResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT COALESCE(SUM(total), 0) as total
+           FROM orders
+           WHERE status = 'PAID'
+             AND paid_at >= CURRENT_DATE`
+        );
+        const todayRevenue = Number.parseFloat((revenueResult.rows[0] as any)?.total || '0');
+
+        // Active session count — open visits (not yet checked out)
+        const activeSessionResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT COUNT(*) as count FROM visits WHERE ended_at IS NULL`
+        );
+        const activeSessionCount = Number.parseInt((activeSessionResult.rows[0] as any)?.count || '0', 10);
+
+        // Overdue guests — active visits past scheduled checkout
+        const overdueResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT COUNT(DISTINCT cb.resource_id) as count
+           FROM checkin_blocks cb
+           JOIN visits v ON cb.visit_id = v.id
+           WHERE cb.resource_id IS NOT NULL
+             AND v.ended_at IS NULL
+             AND cb.ends_at < NOW()`
+        );
+        const overdueCount = Number.parseInt((overdueResult.rows[0] as any)?.count || '0', 10);
+
+        // Waitlist count
+        const waitlistResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT COUNT(*) as count FROM waitlist WHERE status IN ('ACTIVE', 'OFFERED')`
+        );
+        const waitingListCount = Number.parseInt((waitlistResult.rows[0] as any)?.count || '0', 10);
+
         type AdminKpi = {
           roomsOccupied: number;
           roomsUnoccupied: number;
@@ -48,6 +80,9 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
           lockersOccupied: number;
           lockersAvailable: number;
           waitingListCount: number;
+          todayRevenue: number;
+          activeSessionCount: number;
+          overdueCount: number;
         };
 
         const kpi: AdminKpi = {
@@ -58,7 +93,10 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
           roomsClean: 0,
           lockersOccupied,
           lockersAvailable,
-          waitingListCount: 0,
+          waitingListCount,
+          todayRevenue,
+          activeSessionCount,
+          overdueCount,
         };
 
         for (const row of roomStatusResult.rows as unknown as { status: string; count: string }[]) {

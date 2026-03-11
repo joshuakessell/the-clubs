@@ -1,19 +1,70 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Badge, Button } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
 import { ViewSpinner } from '../components/ViewSpinner';
+
+/* ── Types ─────────────────────────────────────────────────────── */
 
 interface Device {
   deviceId: string;
   displayName: string;
   enabled: boolean;
+  lastHeartbeatAt: string | null;
+  secondsSinceHeartbeat: number | null;
+  online: boolean;
+  lastLaneId: string | null;
 }
+
+/* ── Helpers ───────────────────────────────────────────────────── */
+
+const POLL_MS = 15_000;
+
+function formatHeartbeat(seconds: number | null): string {
+  if (seconds === null) return 'Never';
+  if (seconds < 60) return `${seconds}s ago`;
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m ago`;
+}
+
+function heartbeatColor(device: Device): string {
+  if (!device.enabled) return 'var(--color-text-muted)';
+  if (!device.lastHeartbeatAt) return 'var(--color-text-muted)';
+  if (device.online) return 'var(--color-status-success)';
+  return 'var(--color-status-error)';
+}
+
+function deviceBorderColor(d: Device): string {
+  if (!d.enabled) return 'color-mix(in oklch, var(--color-status-error) 20%, transparent)';
+  if (d.online) return 'color-mix(in oklch, var(--color-status-success) 25%, var(--color-border-default))';
+  return 'var(--color-border-default)';
+}
+
+function deviceStatusBadge(d: Device): { color: 'error' | 'success' | 'gray'; label: string } {
+  if (!d.enabled) return { color: 'error', label: 'Disabled' };
+  if (d.online) return { color: 'success', label: 'Online' };
+  if (d.lastHeartbeatAt) return { color: 'gray', label: 'Offline' };
+  return { color: 'gray', label: 'No Heartbeat' };
+}
+
+/* ── Component ─────────────────────────────────────────────────── */
 
 export function DevicesView() {
   const { data: devices, loading, error, refetch } = useDashboardFetch<Device[]>(
     '/api/v1/admin/devices',
   );
   const list = devices ?? [];
+  const onlineCount = list.filter((d) => d.online && d.enabled).length;
+  const offlineCount = list.filter((d) => !d.online && d.enabled && d.lastHeartbeatAt).length;
+
+  // Auto-refresh every 15s to keep heartbeat indicators current
+  const refetchRef = useRef(refetch);
+  useEffect(() => { refetchRef.current = refetch; }, [refetch]);
+  useEffect(() => {
+    const id = setInterval(() => void refetchRef.current(), POLL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   /* ── Add form state ── */
   const [showAdd, setShowAdd] = useState(false);
@@ -27,26 +78,35 @@ export function DevicesView() {
       setNewId(''); setNewName('');
       setShowAdd(false);
       refetch();
-    } catch { /* ignore */ }
+    } catch { /* logged by dashboardMutate */ }
   }, [newId, newName, refetch]);
 
   const handleToggle = useCallback(async (deviceId: string, enabled: boolean) => {
     try {
       await dashboardMutate(`/api/v1/admin/devices/${deviceId}`, 'PATCH', { enabled: !enabled });
       refetch();
-    } catch { /* ignore */ }
+    } catch { /* logged by dashboardMutate */ }
   }, [refetch]);
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Header */}
       <div className="rounded-xl border p-6"
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Devices</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{list.length} registered devices</p>
+            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              {list.length} registered · <span style={{ color: 'var(--color-status-success)' }}>{onlineCount} online</span>
+              {offlineCount > 0 && (
+                <span style={{ color: 'var(--color-status-error)' }}> · {offlineCount} offline</span>
+              )}
+            </p>
           </div>
-          <Button size="sm" onClick={() => setShowAdd(!showAdd)}>+ Add Device</Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => refetch()}>Refresh</Button>
+            <Button size="sm" onClick={() => setShowAdd(!showAdd)}>+ Add Device</Button>
+          </div>
         </div>
 
         {showAdd && (
@@ -68,6 +128,24 @@ export function DevicesView() {
         </div>
       )}
 
+      {/* Offline alert banner */}
+      {offlineCount > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border px-5 py-3"
+          style={{
+            backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)',
+            borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)',
+          }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-error)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <span className="text-sm font-semibold" style={{ color: 'var(--color-status-error)' }}>
+            {offlineCount} device{offlineCount === 1 ? '' : 's'} offline — no heartbeat received in 90+ seconds
+          </span>
+        </div>
+      )}
+
       {loading && list.length === 0 ? (
         <ViewSpinner />
       ) : (
@@ -76,23 +154,46 @@ export function DevicesView() {
             <div key={d.deviceId} className="rounded-xl border p-5 transition"
               style={{
                 backgroundColor: 'var(--color-surface-raised)',
-                borderColor: d.enabled ? 'var(--color-border-default)' : 'color-mix(in oklch, var(--color-status-error) 20%, transparent)',
+                borderColor: deviceBorderColor(d),
                 opacity: d.enabled ? 1 : 0.7,
               }}
               onMouseEnter={(e) => { if (d.enabled) (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-accent-primary)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = d.enabled ? 'var(--color-border-default)' : 'color-mix(in oklch, var(--color-status-error) 20%, transparent)'; }}>
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.borderColor = deviceBorderColor(d);
+              }}>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>{d.displayName}</span>
+                {/* Pulse dot for online status */}
+                {d.enabled && d.lastHeartbeatAt && (
+                  <span className="relative inline-flex h-2.5 w-2.5">
+                    {d.online && <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-75" style={{ backgroundColor: 'var(--color-status-success)' }} />}
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ backgroundColor: heartbeatColor(d) }} />
+                  </span>
+                )}
               </div>
               <div className="mt-3 flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span style={{ color: 'var(--color-text-muted)' }}>Status</span>
-                  <Badge color={d.enabled ? 'success' : 'error'} variant="light" size="sm">{d.enabled ? 'Enabled' : 'Disabled'}</Badge>
+                  <Badge color={deviceStatusBadge(d).color} variant="light" size="sm">
+                    {deviceStatusBadge(d).label}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span style={{ color: 'var(--color-text-muted)' }}>Heartbeat</span>
+                  <span className="font-semibold tabular-nums" style={{ color: heartbeatColor(d) }}>
+                    {formatHeartbeat(d.secondsSinceHeartbeat)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span style={{ color: 'var(--color-text-muted)' }}>ID</span>
                   <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{d.deviceId}</span>
                 </div>
+                {d.lastLaneId && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span style={{ color: 'var(--color-text-muted)' }}>Lane</span>
+                    <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{d.lastLaneId}</span>
+                  </div>
+                )}
               </div>
               <div className="mt-3">
                 <Button size="sm" variant={d.enabled ? 'ghost' : 'primary'} className="w-full"

@@ -63,6 +63,43 @@ export function RoomManagementView() {
   const [editingRoomId, setEditingRoomId] = useState<string | null>(null);
   const [editType, setEditType] = useState<'STANDARD' | 'DOUBLE' | 'SPECIAL'>('STANDARD');
 
+  /* ── Floor filter + view mode ── */
+  const [floorFilter, setFloorFilter] = useState<number | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+
+  /* ── Bulk selection state ── */
+  const [selectedRoomIds, setSelectedRoomIds] = useState<Set<string>>(new Set());
+
+  const selectableRooms = (data?.rooms ?? []).filter((r) => !r.isOccupied);
+  const allSelected = selectableRooms.length > 0 && selectableRooms.every((r) => selectedRoomIds.has(r.id));
+
+  const toggleRoom = (id: string) => {
+    setSelectedRoomIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedRoomIds(new Set());
+    } else {
+      setSelectedRoomIds(new Set(selectableRooms.map((r) => r.id)));
+    }
+  };
+
+  const handleBulkStatus = (status: string) => {
+    void doMutate(async () => {
+      await Promise.all(
+        [...selectedRoomIds].map((id) =>
+          dashboardMutate(`/api/v1/admin/room-management/rooms/${id}/set-status`, 'POST', { status })
+        ),
+      );
+      setSelectedRoomIds(new Set());
+    });
+  };
+
   const doMutate = useCallback(async (fn: () => Promise<unknown>) => {
     setMutating(true);
     setMutateError(null);
@@ -132,8 +169,10 @@ export function RoomManagementView() {
     );
   };
 
-  const rooms = data?.rooms ?? [];
+  const rooms = (data?.rooms ?? []).filter((r) => floorFilter == null || r.floor === floorFilter);
+  const allRooms = data?.rooms ?? [];
   const lockers = data?.lockers ?? [];
+  const floors = [...new Set(allRooms.map((r) => r.floor))].sort((a, b) => a - b);
 
   return (
     <div style={{ padding: '24px', maxWidth: 1100, margin: '0 auto' }}>
@@ -190,49 +229,101 @@ export function RoomManagementView() {
         </div>
       )}
 
-      {/* Tab bar */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid var(--color-border-default)' }}>
-        {(['rooms', 'lockers'] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              padding: '10px 20px',
-              fontSize: 13,
-              fontWeight: 600,
-              border: 'none',
-              borderBottom: tab === t ? '2px solid var(--color-accent-primary)' : '2px solid transparent',
-              backgroundColor: 'transparent',
-              color: tab === t ? 'var(--color-accent-primary)' : 'var(--color-text-muted)',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            {t === 'rooms' ? `Rooms (${rooms.length})` : `Lockers (${lockers.length})`}
-          </button>
-        ))}
+      {/* Tab bar + controls */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, borderBottom: '1px solid var(--color-border-default)' }}>
+        <div style={{ display: 'flex', gap: 0 }}>
+          {(['rooms', 'lockers'] as Tab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                padding: '10px 20px',
+                fontSize: 13,
+                fontWeight: 600,
+                border: 'none',
+                borderBottom: tab === t ? '2px solid var(--color-accent-primary)' : '2px solid transparent',
+                backgroundColor: 'transparent',
+                color: tab === t ? 'var(--color-accent-primary)' : 'var(--color-text-muted)',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              {t === 'rooms' ? `Rooms (${rooms.length})` : `Lockers (${lockers.length})`}
+            </button>
+          ))}
+        </div>
+        {tab === 'rooms' && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingBottom: 6 }}>
+            {/* Floor filter */}
+            {floors.length > 1 && (
+              <select
+                value={floorFilter ?? ''}
+                onChange={(e) => setFloorFilter(e.target.value ? Number(e.target.value) : null)}
+                style={{
+                  padding: '4px 8px', fontSize: 11, fontWeight: 600, borderRadius: 4,
+                  border: '1px solid var(--color-border-default)',
+                  backgroundColor: 'var(--color-surface-input)', color: 'var(--color-text-primary)',
+                }}
+              >
+                <option value="">All Floors</option>
+                {floors.map((f) => <option key={f} value={f}>Floor {f}</option>)}
+              </select>
+            )}
+            {/* View mode toggle */}
+            <div style={{ display: 'flex', gap: 0, borderRadius: 4, overflow: 'hidden', border: '1px solid var(--color-border-default)' }}>
+              {(['table', 'grid'] as const).map((m) => (
+                <button key={m} type="button" onClick={() => setViewMode(m)}
+                  style={{
+                    padding: '4px 10px', fontSize: 11, fontWeight: 600, border: 'none', cursor: 'pointer',
+                    backgroundColor: viewMode === m ? 'var(--color-accent-primary)' : 'var(--color-surface-overlay)',
+                    color: viewMode === m ? '#fff' : 'var(--color-text-muted)',
+                  }}>
+                  {m === 'table' ? '☰ Table' : '⊞ Grid'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ─── ROOMS TAB ─────────────────────────────────────────── */}
       {tab === 'rooms' && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-            <button
-              onClick={() => setShowAddRoom(!showAddRoom)}
-              disabled={mutating}
-              style={{
-                padding: '7px 16px',
-                fontSize: 12,
-                fontWeight: 600,
-                borderRadius: 6,
-                border: '1px solid var(--color-accent-primary)',
-                backgroundColor: showAddRoom ? 'transparent' : 'var(--color-accent-primary)',
-                color: showAddRoom ? 'var(--color-accent-primary)' : '#fff',
-                cursor: 'pointer',
-              }}
-            >
-              {showAddRoom ? 'Cancel' : '+ Add Room'}
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            {/* Bulk action bar */}
+            {selectedRoomIds.size > 0 && (
+              <div style={{
+                display: 'flex', gap: 8, alignItems: 'center', padding: '6px 14px',
+                borderRadius: 8, border: '1px solid var(--color-accent-primary)',
+                backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 6%, transparent)',
+              }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--color-accent-primary)' }}>
+                  {selectedRoomIds.size} selected
+                </span>
+                <ActionButton label="Set Clean" onClick={() => handleBulkStatus('CLEAN')} disabled={mutating} accent />
+                <ActionButton label="Set Dirty" onClick={() => handleBulkStatus('DIRTY')} disabled={mutating} danger />
+                <ActionButton label="Set OOS" onClick={() => handleBulkStatus('OUT_OF_SERVICE')} disabled={mutating} />
+                <ActionButton label="Clear" onClick={() => setSelectedRoomIds(new Set())} disabled={false} />
+              </div>
+            )}
+            <div style={{ marginLeft: 'auto' }}>
+              <button
+                onClick={() => setShowAddRoom(!showAddRoom)}
+                disabled={mutating}
+                style={{
+                  padding: '7px 16px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  borderRadius: 6,
+                  border: '1px solid var(--color-accent-primary)',
+                  backgroundColor: showAddRoom ? 'transparent' : 'var(--color-accent-primary)',
+                  color: showAddRoom ? 'var(--color-accent-primary)' : '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                {showAddRoom ? 'Cancel' : '+ Add Room'}
+              </button>
+            </div>
           </div>
 
           {/* Add Room form */}
@@ -333,113 +424,207 @@ export function RoomManagementView() {
             </div>
           )}
 
-          {/* Rooms table */}
-          <div
-            style={{
-              borderRadius: 8,
-              border: '1px solid var(--color-border-default)',
-              overflow: 'hidden',
-            }}
-          >
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--color-surface-overlay)' }}>
-                  <th style={thStyle}>Room</th>
-                  <th style={thStyle}>Type</th>
-                  <th style={thStyle}>Floor</th>
-                  <th style={thStyle}>Status</th>
-                  <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rooms.map((room) => {
-                  const sc = STATUS_COLORS[room.status] ?? STATUS_COLORS.CLEAN;
-                  const isEditing = editingRoomId === room.id;
-                  return (
-                    <tr key={room.id} style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
-                      <td style={tdStyle}>
-                        <span style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
-                          Room {room.number}
-                        </span>
-                      </td>
-                      <td style={tdStyle}>
-                        {isEditing ? (
-                          <select
-                            value={editType}
-                            onChange={(e) => setEditType(e.target.value as 'STANDARD' | 'DOUBLE' | 'SPECIAL')}
+          {/* ── Cleaning Queue Priority ── */}
+          {(() => {
+            const TIER_PRIORITY: Record<string, number> = { SPECIAL: 0, DOUBLE: 1, STANDARD: 2 };
+            const dirtyRooms = rooms
+              .filter((r) => r.status === 'DIRTY')
+              .sort((a, b) => (TIER_PRIORITY[a.type] ?? 9) - (TIER_PRIORITY[b.type] ?? 9));
+            if (dirtyRooms.length === 0) return null;
+            return (
+              <div style={{
+                marginBottom: 16, padding: 14, borderRadius: 10,
+                border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, var(--color-border-default))',
+                backgroundColor: 'color-mix(in oklch, var(--color-status-error) 4%, transparent)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--color-status-error)' }}>
+                    🧹 Cleaning Queue ({dirtyRooms.length})
+                  </span>
+                  <span style={{ fontSize: 10, color: 'var(--color-text-muted)' }}>Sorted by tier priority</span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {dirtyRooms.map((room) => (
+                    <div key={room.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 8,
+                      border: '1px solid var(--color-border-default)',
+                      backgroundColor: 'var(--color-surface-overlay)',
+                    }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+                        {room.number}
+                      </span>
+                      <span style={{ fontSize: 10, color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                        {TYPE_LABELS[room.type] ?? room.type}
+                      </span>
+                      <ActionButton label="✓ Clean" onClick={() => handleSetRoomStatus(room.id, 'CLEAN')} disabled={mutating} accent />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {viewMode === 'grid' ? (
+            /* ── Grid Mode ── */
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+              {rooms.map((room) => {
+                const sc = STATUS_COLORS[room.status] ?? STATUS_COLORS.CLEAN;
+                return (
+                  <div key={room.id} style={{
+                    padding: 14, borderRadius: 10, border: `1px solid ${sc.text}30`,
+                    backgroundColor: sc.bg, position: 'relative',
+                    transition: 'transform 0.1s, box-shadow 0.1s',
+                  }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+                      Room {room.number}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
+                      {TYPE_LABELS[room.type] ?? room.type} · Floor {room.floor}
+                    </div>
+                    <span style={{
+                      display: 'inline-block', marginTop: 8, padding: '2px 8px', borderRadius: 999,
+                      fontSize: 10, fontWeight: 600, backgroundColor: `${sc.text}20`, color: sc.text,
+                    }}>
+                      {sc.label}
+                    </span>
+                    {!room.isOccupied && room.status !== 'OUT_OF_SERVICE' && (
+                      <div style={{ marginTop: 8, display: 'flex', gap: 4 }}>
+                        <ActionButton label="OOS" onClick={() => handleSetRoomStatus(room.id, 'OUT_OF_SERVICE')} disabled={mutating} danger />
+                      </div>
+                    )}
+                    {room.status === 'OUT_OF_SERVICE' && (
+                      <div style={{ marginTop: 8 }}>
+                        <ActionButton label="Restore" onClick={() => handleSetRoomStatus(room.id, 'CLEAN')} disabled={mutating} accent />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {rooms.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: 32, color: 'var(--color-text-muted)', fontSize: 13 }}>
+                  No rooms configured
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ── Table Mode ── */
+            <div
+              style={{
+                borderRadius: 8,
+                border: '1px solid var(--color-border-default)',
+                overflow: 'hidden',
+              }}
+            >
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--color-surface-overlay)' }}>
+                    <th style={{ ...thStyle, width: 36 }}>
+                      <input type="checkbox" checked={allSelected} onChange={toggleAll}
+                        style={{ accentColor: 'var(--color-accent-primary)', cursor: 'pointer' }} />
+                    </th>
+                    <th style={thStyle}>Room</th>
+                    <th style={thStyle}>Type</th>
+                    <th style={thStyle}>Floor</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rooms.map((room) => {
+                    const sc = STATUS_COLORS[room.status] ?? STATUS_COLORS.CLEAN;
+                    const isEditing = editingRoomId === room.id;
+                    return (
+                      <tr key={room.id} style={{ borderBottom: '1px solid var(--color-border-subtle)' }}>
+                        <td style={{ ...tdStyle, width: 36 }}>
+                          {!room.isOccupied && (
+                            <input type="checkbox" checked={selectedRoomIds.has(room.id)} onChange={() => toggleRoom(room.id)}
+                              style={{ accentColor: 'var(--color-accent-primary)', cursor: 'pointer' }} />
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{ fontWeight: 700, fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+                            Room {room.number}
+                          </span>
+                        </td>
+                        <td style={tdStyle}>
+                          {isEditing ? (
+                            <select
+                              value={editType}
+                              onChange={(e) => setEditType(e.target.value as 'STANDARD' | 'DOUBLE' | 'SPECIAL')}
+                              style={{
+                                padding: '3px 6px',
+                                fontSize: 12,
+                                borderRadius: 4,
+                                border: '1px solid var(--color-border-default)',
+                                backgroundColor: 'var(--color-surface-input)',
+                                color: 'var(--color-text-primary)',
+                              }}
+                            >
+                              <option value="STANDARD">Standard</option>
+                              <option value="DOUBLE">Double</option>
+                              <option value="SPECIAL">Special</option>
+                            </select>
+                          ) : (
+                            <span style={{ color: 'var(--color-text-secondary)' }}>{TYPE_LABELS[room.type] ?? room.type}</span>
+                          )}
+                        </td>
+                        <td style={tdStyle}>
+                          <span style={{ color: 'var(--color-text-muted)' }}>{room.floor}</span>
+                        </td>
+                        <td style={tdStyle}>
+                          <span
                             style={{
-                              padding: '3px 6px',
-                              fontSize: 12,
-                              borderRadius: 4,
-                              border: '1px solid var(--color-border-default)',
-                              backgroundColor: 'var(--color-surface-input)',
-                              color: 'var(--color-text-primary)',
+                              display: 'inline-block',
+                              padding: '2px 8px',
+                              borderRadius: 999,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              backgroundColor: sc.bg,
+                              color: sc.text,
                             }}
                           >
-                            <option value="STANDARD">Standard</option>
-                            <option value="DOUBLE">Double</option>
-                            <option value="SPECIAL">Special</option>
-                          </select>
-                        ) : (
-                          <span style={{ color: 'var(--color-text-secondary)' }}>{TYPE_LABELS[room.type] ?? room.type}</span>
-                        )}
-                      </td>
-                      <td style={tdStyle}>
-                        <span style={{ color: 'var(--color-text-muted)' }}>{room.floor}</span>
-                      </td>
-                      <td style={tdStyle}>
-                        <span
-                          style={{
-                            display: 'inline-block',
-                            padding: '2px 8px',
-                            borderRadius: 999,
-                            fontSize: 11,
-                            fontWeight: 600,
-                            backgroundColor: sc.bg,
-                            color: sc.text,
-                          }}
-                        >
-                          {sc.label}
-                        </span>
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: 'right' }}>
-                        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                          {isEditing ? (
-                            <>
-                              <ActionButton label="Save" onClick={() => handleEditRoom(room.id)} disabled={mutating} accent />
-                              <ActionButton label="Cancel" onClick={() => setEditingRoomId(null)} disabled={mutating} />
-                            </>
-                          ) : (
-                            <>
-                              {!room.isOccupied && room.status !== 'OUT_OF_SERVICE' && (
-                                <ActionButton
-                                  label="Edit Type"
-                                  onClick={() => { setEditingRoomId(room.id); setEditType(room.type as 'STANDARD' | 'DOUBLE' | 'SPECIAL'); }}
-                                  disabled={mutating}
-                                />
-                              )}
-                              {room.status === 'OUT_OF_SERVICE' ? (
-                                <ActionButton label="Restore" onClick={() => handleSetRoomStatus(room.id, 'CLEAN')} disabled={mutating} accent />
-                              ) : !room.isOccupied ? (
-                                <ActionButton label="Set OOS" onClick={() => handleSetRoomStatus(room.id, 'OUT_OF_SERVICE')} disabled={mutating} danger />
-                              ) : null}
-                            </>
-                          )}
-                        </div>
+                            {sc.label}
+                          </span>
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                            {isEditing ? (
+                              <>
+                                <ActionButton label="Save" onClick={() => handleEditRoom(room.id)} disabled={mutating} accent />
+                                <ActionButton label="Cancel" onClick={() => setEditingRoomId(null)} disabled={mutating} />
+                              </>
+                            ) : (
+                              <>
+                                {!room.isOccupied && room.status !== 'OUT_OF_SERVICE' && (
+                                  <ActionButton
+                                    label="Edit Type"
+                                    onClick={() => { setEditingRoomId(room.id); setEditType(room.type as 'STANDARD' | 'DOUBLE' | 'SPECIAL'); }}
+                                    disabled={mutating}
+                                  />
+                                )}
+                                {room.status === 'OUT_OF_SERVICE' ? (
+                                  <ActionButton label="Restore" onClick={() => handleSetRoomStatus(room.id, 'CLEAN')} disabled={mutating} accent />
+                                ) : !room.isOccupied ? (
+                                  <ActionButton label="Set OOS" onClick={() => handleSetRoomStatus(room.id, 'OUT_OF_SERVICE')} disabled={mutating} danger />
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {rooms.length === 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ ...tdStyle, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                        No rooms configured
                       </td>
                     </tr>
-                  );
-                })}
-                {rooms.length === 0 && (
-                  <tr>
-                    <td colSpan={5} style={{ ...tdStyle, textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                      No rooms configured
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
 
