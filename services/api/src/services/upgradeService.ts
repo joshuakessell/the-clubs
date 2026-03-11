@@ -101,16 +101,16 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
         sql`SELECT id, price_quote_json, order_id FROM lane_sessions WHERE id = ${block.session_id} LIMIT 1`
       );
       const laneSession = laneSessionResult.rows[0];
-      let originalIntent: { amount?: number | string; quote_json?: unknown } | undefined;
+      let originalIntent: { total_cents?: number | string; metadata_json?: unknown } | undefined;
       if (laneSession?.order_id) {
-        const intentResult = await tx.execute<{ id: string; amount: number | string; quote_json: unknown }>(sql`SELECT id, amount, quote_json FROM orders WHERE id = ${laneSession.order_id} LIMIT 1`);
+        const intentResult = await tx.execute<{ id: string; total_cents: number | string; metadata_json: unknown }>(sql`SELECT id, total_cents, metadata_json FROM orders WHERE id = ${laneSession.order_id} LIMIT 1`);
         originalIntent = intentResult.rows[0];
       } else {
-        const intentResult = await tx.execute<{ id: string; amount: number | string; quote_json: unknown }>(sql`SELECT id, amount, quote_json FROM orders WHERE lane_session_id = ${block.session_id} ORDER BY created_at DESC LIMIT 1`);
+        const intentResult = await tx.execute<{ id: string; total_cents: number | string; metadata_json: unknown }>(sql`SELECT id, total_cents, metadata_json FROM orders WHERE lane_session_id = ${block.session_id} ORDER BY created_at DESC LIMIT 1`);
         originalIntent = intentResult.rows[0];
       }
-      originalLineItems = extractPaymentLineItems(laneSession?.price_quote_json) ?? extractPaymentLineItems(originalIntent?.quote_json);
-      originalTotal = toNumber(originalIntent?.amount);
+      originalLineItems = extractPaymentLineItems(laneSession?.price_quote_json) ?? extractPaymentLineItems(originalIntent?.metadata_json);
+      originalTotal = toNumber(originalIntent?.total_cents);
     }
 
     const newRoomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${roomId} FOR UPDATE`);
@@ -126,9 +126,10 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     if (!validTiers.includes(newRoomTier)) throw new HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but waitlist accepts ${validTiers.join(', ')}`);
 
     const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
+    const upgradeFeeCents = Math.round(upgradeFee * 100);
     const quoteJson = JSON.stringify({ type: 'UPGRADE', fromTier: block.rental_type, toTier: newRoomTier, amount: upgradeFee, waitlistId, newRoomId: roomId, newRoomNumber: newRoom.number });
-    const intentResult = await tx.execute<{ id: string; amount: number | string }>(
-      sql`INSERT INTO orders (amount, status, quote_json) VALUES (${upgradeFee}, 'OPEN', ${quoteJson}::jsonb) RETURNING id, amount`
+    const intentResult = await tx.execute<{ id: string; total_cents: number | string }>(
+      sql`INSERT INTO orders (status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency, metadata_json) VALUES ('OPEN', ${upgradeFeeCents}, 0, 0, 0, ${upgradeFeeCents}, 'USD', ${quoteJson}::jsonb) RETURNING id, total_cents`
     );
     const pendingOrder = intentResult.rows[0]!;
 
@@ -142,7 +143,7 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
 
     return {
       waitlistId, orderId: pendingOrder.id,
-      upgradeFee: typeof pendingOrder.amount === 'string' ? Number.parseFloat(pendingOrder.amount) : pendingOrder.amount,
+      upgradeFee: typeof pendingOrder.total_cents === 'string' ? Number.parseFloat(pendingOrder.total_cents) / 100 : pendingOrder.total_cents / 100,
       newRoomId: roomId, newRoomNumber: newRoom.number, newRoomTier, fromTier: block.rental_type,
       originalCharges: originalLineItems || [], originalTotal: originalTotal ?? null,
       visitId: waitlist.visit_id, customerId,
@@ -165,7 +166,7 @@ export async function logUpgradeStarted(result: Awaited<ReturnType<typeof fulfil
 
 export async function completeUpgrade(waitlistId: string, orderId: string, staff: StaffContext) {
   return db.transaction(async (tx) => {
-    const intentResult = await tx.execute<{ id: string; amount: number | string; status: string; quote_json: unknown }>(sql`SELECT id, amount, status, quote_json FROM orders WHERE id = ${orderId}`);
+    const intentResult = await tx.execute<{ id: string; total_cents: number | string; status: string; metadata_json: unknown }>(sql`SELECT id, total_cents, status, metadata_json FROM orders WHERE id = ${orderId}`);
     if (intentResult.rows.length === 0) throw new HttpError(404, 'Payment intent not found');
     const intent = intentResult.rows[0]!;
     if (intent.status !== 'PAID') throw new HttpError(400, `Payment must be PAID (current: ${intent.status})`);
@@ -183,8 +184,8 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
     if (blockResult.rows.length === 0) throw new HttpError(404, 'Check-in block not found');
     const block = blockResult.rows[0]!;
 
-    const upgradeAmount = toNumber(intent.amount);
-    const quote = intent.quote_json as { newRoomId?: string; newRoomNumber?: string; newRoomTier?: string; waitlistId?: string };
+    const upgradeAmount = toNumber(intent.total_cents) !== undefined ? (toNumber(intent.total_cents)! / 100) : undefined;
+    const quote = (typeof intent.metadata_json === 'string' ? JSON.parse(intent.metadata_json) : intent.metadata_json) as { newRoomId?: string; newRoomNumber?: string; newRoomTier?: string; waitlistId?: string };
     if (!quote.newRoomId) throw new HttpError(400, 'Room ID not found in payment intent (upgrade must be fulfilled first)');
 
     const newRoomId = quote.newRoomId;
@@ -212,14 +213,15 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
     if (upgradeAmount !== undefined) {
       const existingCharge = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE order_id = ${orderId} LIMIT 1`);
       if (existingCharge.rows.length === 0) {
-        await tx.execute(sql`INSERT INTO order_line_items (visit_id, checkin_block_id, type, amount, order_id) VALUES (${waitlist.visit_id}, ${block.id}, 'UPGRADE_FEE', ${upgradeAmount}, ${orderId})`);
+        const upgradeAmountCents = Math.round(upgradeAmount * 100);
+        await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price_cents, discount_cents, tax_cents, total_cents) VALUES (${orderId}, 'UPGRADE', 'Upgrade Fee', 1, ${upgradeAmountCents}, 0, 0, ${upgradeAmountCents})`);
       }
     }
 
     await insertAuditLogDrizzle(tx, {
       staffId: staff.staffId, action: 'UPGRADE_COMPLETED', entityType: 'waitlist', entityId: waitlistId,
       oldValue: { oldResourceId, oldRentalType: block.rental_type },
-      newValue: { newRoomId, newRoomNumber: newRoom.number, newRentalType: waitlist.desired_tier, orderId, blockEndsAt: block.ends_at.toISOString() },
+      newValue: { newRoomId, newRoomNumber: newRoom.number, newRentalType: waitlist.desired_tier, orderId, blockEndsAt: new Date(block.ends_at).toISOString() },
     });
 
     const customerIdRow = await tx.execute<{ customer_id: string; name: string }>(sql`SELECT v.customer_id, c.name FROM visits v JOIN customers c ON c.id = v.customer_id WHERE v.id = ${waitlist.visit_id} LIMIT 1`);

@@ -911,11 +911,6 @@ export async function completeStaffCheckout(
     if (feeAmount > 0) {
       await tx.execute(sql`UPDATE customers SET past_due_balance = past_due_balance + ${feeAmount}, updated_at = NOW() WHERE id = ${checkoutRequest.customer_id}`);
 
-      const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE checkin_block_id = ${block.id} AND type = 'LATE_FEE' LIMIT 1`);
-      if (existingLate.rows.length === 0) {
-        await tx.execute(sql`INSERT INTO order_line_items (visit_id, checkin_block_id, type, amount, order_id) VALUES (${block.visit_id}, ${block.id}, 'LATE_FEE', ${feeAmount}, ${null})`);
-      }
-
       await insertCustomerSpendLedgerEntryDrizzle(tx, {
         customerId: checkoutRequest.customer_id,
         visitId: block.visit_id,

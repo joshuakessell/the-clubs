@@ -132,11 +132,12 @@ export async function switchResource(input: SwitchResourceInput) {
       }
 
       const quoteJson = JSON.stringify({ type: 'SWITCH_UPCHARGE', method: input.paymentOutcome, visitId: input.visitId, checkinBlockId: block.id, currentRentalType, targetRentalType, targetResourceType: input.targetResourceType, targetResourceId: input.targetResourceId, targetResourceNumber });
+      const feeCents = Math.round(additionalFee * 100);
       const pr = await tx.execute<{ id: string }>(
-        sql`INSERT INTO orders (amount, status, quote_json, paid_at) VALUES (${additionalFee}, 'PAID', ${quoteJson}::jsonb, NOW()) RETURNING id`
+        sql`INSERT INTO orders (created_by_staff_id, status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency, metadata_json) VALUES (${input.staffId}, 'PAID', ${feeCents}, 0, 0, 0, ${feeCents}, 'USD', ${quoteJson}::jsonb) RETURNING id`
       );
       orderId = pr.rows[0]!.id;
-      await tx.execute(sql`INSERT INTO order_line_items (visit_id, checkin_block_id, type, amount, order_id) VALUES (${input.visitId}, ${block.id}, 'UPGRADE_FEE', ${additionalFee}, ${orderId})`);
+      await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price_cents, discount_cents, tax_cents, total_cents) VALUES (${orderId}, 'UPGRADE', 'Switch Upcharge', 1, ${feeCents}, 0, 0, ${feeCents})`);
     }
 
     // Release current resource
@@ -198,5 +199,6 @@ export async function persistDeclinedSwitchPayment(err: SwitchHttpError) {
     targetResourceType: err.targetResourceType, targetResourceId: err.targetResourceId,
     targetResourceNumber: err.targetResourceNumber, declineReason: err.message,
   });
-  await db.execute(sql`INSERT INTO orders (amount, status, quote_json) VALUES (${err.additionalFee ?? 0}, 'CANCELED', ${quoteJson}::jsonb)`);
+  const feeCents = Math.round((err.additionalFee ?? 0) * 100);
+  await db.execute(sql`INSERT INTO orders (status, subtotal_cents, discount_cents, tax_cents, tip_cents, total_cents, currency, metadata_json) VALUES ('CANCELED', ${feeCents}, 0, 0, 0, ${feeCents}, 'USD', ${quoteJson}::jsonb)`);
 }
