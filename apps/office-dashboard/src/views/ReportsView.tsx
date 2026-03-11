@@ -158,10 +158,10 @@ function ZReportTab({ daily, cash, ops }: Readonly<{
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">
               End-of-Day Z-Report
             </h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm text-(--color-text-muted)">
               {daily?.date ? new Date(daily.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : 'Today'}
             </p>
           </div>
@@ -182,32 +182,32 @@ function ZReportTab({ daily, cash, ops }: Readonly<{
 
       {/* Cash by Payment Method */}
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Revenue by Payment Method</h3>
-        <div className="mt-4 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border-default)' }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">Revenue by Payment Method</h3>
+        <div className="mt-4 overflow-hidden rounded-lg border border-(--color-border-default)">
           <table className="w-full">
             <thead>
-              <tr className="border-b" style={{ borderColor: 'var(--color-border-default)' }}>
+              <tr className="border-b border-(--color-border-default)">
                 {['Method', 'Total'].map((h) => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {Object.entries(cash?.byPaymentMethod ?? {}).map(([method, total]) => (
-                <tr key={method} className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                <tr key={method} className="border-b border-(--color-border-subtle)">
+                  <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">
                     <Badge color={method === 'CASH' ? 'success' : 'primary'} variant="light" size="sm">{method}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                  <td className="px-4 py-3 text-sm font-bold tabular-nums text-(--color-accent-primary)">
                     ${total.toFixed(2)}
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t" style={{ borderColor: 'var(--color-border-default)' }}>
-                <td className="px-4 py-3 text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Total</td>
-                <td className="px-4 py-3 text-base font-extrabold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+              <tr className="border-t border-(--color-border-default)">
+                <td className="px-4 py-3 text-sm font-bold text-(--color-text-primary)">Total</td>
+                <td className="px-4 py-3 text-base font-extrabold tabular-nums text-(--color-accent-primary)">
                   ${(cash?.total ?? 0).toFixed(2)}
                 </td>
               </tr>
@@ -218,12 +218,12 @@ function ZReportTab({ daily, cash, ops }: Readonly<{
 
       {/* Cash by Register */}
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Cash Drawer Reconciliation</h3>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">Cash Drawer Reconciliation</h3>
         <div className="mt-4 grid grid-cols-3 gap-4">
           {Object.entries(cash?.byRegister ?? {}).map(([reg, total]) => (
-            <div key={reg} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border-default)' }}>
-              <p className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>{reg}</p>
-              <p className="mt-1 text-2xl font-extrabold tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-accent-primary)' }}>
+            <div key={reg} className="rounded-lg border p-4 border-(--color-border-default)">
+              <p className="text-xs font-semibold text-(--color-text-muted)">{reg}</p>
+              <p className="mt-1 text-2xl font-extrabold tabular-nums font-(--font-display) text-(--color-accent-primary)">
                 ${total.toFixed(2)}
               </p>
             </div>
@@ -233,7 +233,7 @@ function ZReportTab({ daily, cash, ops }: Readonly<{
 
       {/* Operations summary */}
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Operations Summary</h3>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">Operations Summary</h3>
         <div className="mt-4 grid grid-cols-4 gap-3">
           <ZCard label="Check-ins" value={ops?.activity.checkIns ?? 0} color="var(--color-accent-primary)" small />
           <ZCard label="Check-outs" value={ops?.activity.checkOuts ?? 0} color="var(--color-status-success)" small />
@@ -252,12 +252,12 @@ function ZReportTab({ daily, cash, ops }: Readonly<{
         {(ops?.labor.totalHours ?? 0) > 0 && (cash?.total ?? 0) > 0 && (
           <div className="mt-3 rounded-lg border px-4 py-3" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 4%, transparent)' }}>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Labor % of Revenue</span>
-              <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+              <span className="text-xs font-semibold text-(--color-text-muted)">Labor % of Revenue</span>
+              <span className="text-sm font-bold tabular-nums text-(--color-accent-primary)">
                 {(((ops?.labor.totalHours ?? 0) * 15 / (cash?.total ?? 1)) * 100).toFixed(1)}%
               </span>
             </div>
-            <p className="mt-1 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Based on estimated $15/hr average wage</p>
+            <p className="mt-1 text-[10px] text-(--color-text-muted)">Based on estimated $15/hr average wage</p>
           </div>
         )}
       </div>
@@ -270,7 +270,7 @@ function ZReportTab({ daily, cash, ops }: Readonly<{
         const net = gross - estimatedTax;
         return (
           <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-            <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">
               Tax Summary (Est.)
             </h3>
             <div className="mt-3 grid grid-cols-3 gap-3">
@@ -278,7 +278,7 @@ function ZReportTab({ daily, cash, ops }: Readonly<{
               <ZCard label={`Est. Tax (${(TAX_RATE * 100).toFixed(2)}%)`} value={`$${estimatedTax.toFixed(2)}`} color="var(--color-status-warning)" small />
               <ZCard label="Net Revenue" value={`$${net.toFixed(2)}`} color="var(--color-status-success)" small />
             </div>
-            <p className="mt-2 text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="mt-2 text-[10px] text-(--color-text-muted)">
               Estimated assuming tax-inclusive pricing at {(TAX_RATE * 100).toFixed(2)}% rate. Adjust rate in source for your jurisdiction.
             </p>
           </div>
@@ -299,32 +299,32 @@ function InventoryTab({ kpi }: Readonly<{ kpi: Kpi | null }>) {
   return (
     <div className="flex flex-col gap-6">
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Inventory Summary</h2>
-        <div className="mt-4 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border-default)' }}>
+        <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Inventory Summary</h2>
+        <div className="mt-4 overflow-hidden rounded-lg border border-(--color-border-default)">
           <table className="w-full">
             <thead>
-              <tr className="border-b" style={{ borderColor: 'var(--color-border-default)' }}>
+              <tr className="border-b border-(--color-border-default)">
                 {['Resource', 'Total', 'Occupied', 'Clean', 'Cleaning', 'Dirty'].map((h) => (
-                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              <tr className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>Rooms</td>
-                <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{totalRooms}</td>
-                <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>{kpi.roomsOccupied}</td>
-                <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-status-success)' }}>{kpi.roomsClean}</td>
-                <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-status-warning)' }}>{kpi.roomsCleaning}</td>
-                <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-status-error)' }}>{kpi.roomsDirty}</td>
+              <tr className="border-b border-(--color-border-subtle)">
+                <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">Rooms</td>
+                <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-secondary)">{totalRooms}</td>
+                <td className="px-4 py-3 text-sm font-bold tabular-nums text-(--color-accent-primary)">{kpi.roomsOccupied}</td>
+                <td className="px-4 py-3 text-sm font-bold tabular-nums text-(--color-status-success)">{kpi.roomsClean}</td>
+                <td className="px-4 py-3 text-sm tabular-nums text-(--color-status-warning)">{kpi.roomsCleaning}</td>
+                <td className="px-4 py-3 text-sm tabular-nums text-(--color-status-error)">{kpi.roomsDirty}</td>
               </tr>
-              <tr className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>Lockers</td>
-                <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{totalLockers}</td>
-                <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>{kpi.lockersOccupied}</td>
-                <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-status-success)' }}>{kpi.lockersAvailable}</td>
-                <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>—</td>
-                <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>—</td>
+              <tr className="border-b border-(--color-border-subtle)">
+                <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">Lockers</td>
+                <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-secondary)">{totalLockers}</td>
+                <td className="px-4 py-3 text-sm font-bold tabular-nums text-(--color-accent-primary)">{kpi.lockersOccupied}</td>
+                <td className="px-4 py-3 text-sm font-bold tabular-nums text-(--color-status-success)">{kpi.lockersAvailable}</td>
+                <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">—</td>
+                <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">—</td>
               </tr>
             </tbody>
           </table>
@@ -338,8 +338,8 @@ function InventoryTab({ kpi }: Readonly<{ kpi: Kpi | null }>) {
 
 function ZCard({ label, value, color, small }: Readonly<{ label: string; value: string | number; color: string; small?: boolean }>) {
   return (
-    <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--color-border-default)' }}>
-      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
+    <div className="rounded-lg border px-4 py-3 border-(--color-border-default)">
+      <p className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">{label}</p>
       <p className={`mt-1 font-extrabold tabular-nums ${small ? 'text-xl' : 'text-2xl'}`}
         style={{ fontFamily: 'var(--font-display)', color }}>{value}</p>
     </div>
