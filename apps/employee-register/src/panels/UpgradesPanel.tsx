@@ -716,6 +716,7 @@ export function UpgradesPanel() {
       const res = await fetch(getApiUrl(`/api/v1/waitlist/${entry.id}/revoke`), {
         method: 'POST',
         headers: { ...h, 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
