@@ -52,9 +52,9 @@ export async function retailRoutes(fastify: FastifyInstance): Promise<void> {
               AND ls.status NOT IN ('COMPLETED', 'CANCELLED')
             ORDER BY ls.lane_id, ls.created_at DESC
           )
-          SELECT * FROM resource_guests
+          SELECT customer_id, customer_name, resource_type, number, visit_id, lane_session_id FROM resource_guests
           UNION ALL
-          SELECT * FROM checking_in
+          SELECT customer_id, customer_name, resource_type, number, visit_id, lane_session_id FROM checking_in
           ORDER BY resource_type, number
           `
         );

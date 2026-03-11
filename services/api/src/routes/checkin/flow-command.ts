@@ -497,7 +497,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
 
           const lanMode = await isLanFallbackEnabledForLane({ client: qClient as any, laneId });
           const locked = await tx.execute<Record<string, unknown>>(
-            sql`SELECT *
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)}
              FROM lane_sessions
              WHERE id = ${sessionId} AND lane_id = ${laneId}
              FOR UPDATE`

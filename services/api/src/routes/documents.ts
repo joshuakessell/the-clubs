@@ -171,7 +171,7 @@ export async function documentsRoutes(fastify: FastifyInstance): Promise<void> {
         const { documentId } = request.params;
 
         const docResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT * FROM employee_documents WHERE id = ${documentId}`
+          sql`SELECT id, employee_id, doc_type, filename, mime_type, storage_key, uploaded_by, uploaded_at, notes, sha256_hash FROM employee_documents WHERE id = ${documentId}`
         );
 
         if (docResult.rows.length === 0) {

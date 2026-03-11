@@ -104,7 +104,7 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
 
 export async function cancelWaitlistEntry(waitlistId: string, staffId: string, reason?: string) {
   return db.transaction(async (tx) => {
-    const waitlistResult = await tx.execute<Record<string, unknown>>(sql`SELECT * FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
+    const waitlistResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, resource_id, status, created_at, offered_at, completed_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
     const waitlist = waitlistResult.rows[0] as unknown as WaitlistRow;
     if (waitlist.status === 'COMPLETED' || waitlist.status === 'CANCELLED') throw new HttpError(400, `Cannot cancel waitlist entry with status ${waitlist.status}`);

@@ -41,7 +41,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       const result = await db.transaction(async (tx) => {
         const openBreak = await tx.execute<StaffBreakRow>(
-          sql`SELECT * FROM staff_break_sessions
+          sql`SELECT id, staff_id, timeclock_session_id, started_at, ended_at, break_type, status, notes FROM staff_break_sessions
              WHERE staff_id = ${request.staff!.staffId} AND status = 'OPEN'
              ORDER BY started_at DESC
              LIMIT 1`
@@ -64,7 +64,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
           sql`INSERT INTO staff_break_sessions
              (staff_id, timeclock_session_id, break_type, status, notes)
              VALUES (${request.staff!.staffId}, ${timeclock.rows[0]!.id}, ${body.breakType}, 'OPEN', ${body.notes || null})
-             RETURNING *`
+             RETURNING id, staff_id, timeclock_session_id, started_at, ended_at, break_type, status, notes`
         );
 
         const breakRow = insert.rows[0]!;
@@ -117,7 +117,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
     try {
       const result = await db.transaction(async (tx) => {
         const openBreak = await tx.execute<StaffBreakRow>(
-          sql`SELECT * FROM staff_break_sessions
+          sql`SELECT id, staff_id, timeclock_session_id, started_at, ended_at, break_type, status, notes FROM staff_break_sessions
              WHERE staff_id = ${request.staff!.staffId} AND status = 'OPEN'
              ORDER BY started_at DESC
              LIMIT 1
@@ -134,7 +134,7 @@ export async function breakRoutes(fastify: FastifyInstance): Promise<void> {
                  ended_at = NOW(),
                  notes = COALESCE(${body.notes ?? null}, notes)
              WHERE id = ${current.id}
-             RETURNING *`
+             RETURNING id, staff_id, timeclock_session_id, started_at, ended_at, break_type, status, notes`
         );
 
         const endedBreak = updated.rows[0]!;

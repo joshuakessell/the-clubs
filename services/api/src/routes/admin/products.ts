@@ -124,7 +124,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       try {
         const qClient = toQueryable();
         const result = await qClient.query<ProductRow>(
-          `SELECT * FROM products ${where} ORDER BY sort_order ASC, name ASC`,
+          `SELECT id, sku, name, price, category, is_active, sort_order, created_at, updated_at FROM products ${where} ORDER BY sort_order ASC, name ASC`,
           params
         );
         return reply.send({ products: result.rows.map(formatRow) });
@@ -147,7 +147,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
         const result = await db.execute<Record<string, unknown>>(
           sql`INSERT INTO products (name, price, sku, category, sort_order)
            VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category}, ${body.sortOrder})
-           RETURNING *`
+           RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`
         );
         return reply.status(201).send({ product: formatRow(result.rows[0] as unknown as ProductRow) });
       } catch (error) {
@@ -204,7 +204,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       try {
         const qClient = toQueryable();
         const result = await qClient.query<ProductRow>(
-          `UPDATE products SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+          `UPDATE products SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`,
           params
         );
         if (result.rows.length === 0) {
@@ -226,7 +226,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
 
       try {
         const result = await db.execute<Record<string, unknown>>(
-          sql`UPDATE products SET is_active = FALSE, updated_at = now() WHERE id = ${request.params.id} RETURNING *`
+          sql`UPDATE products SET is_active = FALSE, updated_at = now() WHERE id = ${request.params.id} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`
         );
         if (result.rows.length === 0) {
           return reply.status(404).send({ error: 'Product not found' });

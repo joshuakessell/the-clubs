@@ -270,7 +270,7 @@ export async function ensureOrderWithReceipt(
   input: EnsureOrderInput
 ): Promise<{ order: OrderRow; receipt?: ReceiptRow | null }> {
   const existingOrder = await client.query<OrderRow>(
-    `SELECT * FROM orders WHERE metadata_json->>$1 = $2 LIMIT 1`,
+    `SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json FROM orders WHERE metadata_json->>$1 = $2 LIMIT 1`,
     [input.dedupeKey.field, input.dedupeKey.value]
   );
 
@@ -289,7 +289,7 @@ export async function ensureOrderWithReceipt(
        (customer_id, register_session_id, created_by_staff_id, status,
         subtotal, discount, tax, tip, total, currency, metadata_json)
        VALUES ($1, $2, $3, 'PAID', $4, $5, $6, $7, $8, $9, $10)
-       RETURNING *`,
+       RETURNING id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json`,
       [
         input.customerId ?? null,
         input.registerSessionId ?? null,
@@ -336,7 +336,7 @@ export async function ensureOrderWithReceipt(
   }
 
   const lineItems = await client.query<OrderLineItemRow>(
-    `SELECT * FROM order_line_items WHERE order_id = $1`,
+    `SELECT id, order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json FROM order_line_items WHERE order_id = $1`,
     [order.id]
   );
 
