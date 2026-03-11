@@ -82,8 +82,8 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
   return db.transaction(async (tx) => {
     const waitlistResult = await tx.execute<{
       id: string; visit_id: string; checkin_block_id: string; desired_tier: string; desired_tiers: string[]; backup_tier: string; status: string;
-      locker_or_room_assigned_initially: string | null; created_at: Date; updated_at: Date;
-    }>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status, locker_or_room_assigned_initially, created_at, updated_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
+      created_at: Date; updated_at: Date;
+    }>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status, created_at, updated_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
     const waitlist = waitlistResult.rows[0]!;
     if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Waitlist entry must be OFFERED (current: ${waitlist.status})`);

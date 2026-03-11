@@ -510,8 +510,8 @@ async function maybeCreateWaitlist(
 
   const waitlistResult = await tx.execute<{ id: string }>(
     sql`INSERT INTO waitlist
-     (visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, locker_or_room_assigned_initially, status)
-     VALUES (${visitId}, ${checkinBlockId}, ${session.waitlist_desired_type}, ${desiredTiersSql}::rental_type[], ${session.backup_rental_type}, ${assignedResourceId}, 'ACTIVE')
+     (visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status)
+     VALUES (${visitId}, ${checkinBlockId}, ${session.waitlist_desired_type}, ${desiredTiersSql}::rental_type[], ${session.backup_rental_type}, 'ACTIVE')
      RETURNING id`
   );
   const waitlistId = waitlistResult.rows[0].id;

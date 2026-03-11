@@ -55,7 +55,6 @@ export interface DemoWaitlistEntry {
   desired_tier: RentalType;
   desired_tiers: RentalType[];
   backup_tier: RentalType;
-  locker_or_room_assigned_initially: string | null;
   resource_id: string | null;
   status: 'ACTIVE' | 'OFFERED' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED';
   created_at: Date;
@@ -466,7 +465,6 @@ function createWaitlistEntries(visits: DemoVisit[], now: Date): DemoWaitlistEntr
       desired_tier: scenario.desired,
       desired_tiers: scenario.tiers,
       backup_tier,
-      locker_or_room_assigned_initially: block.resource_id || null,
       resource_id: null,
       status: 'ACTIVE',
       created_at: new Date(now.getTime() - randomInt(1, 24) * 60 * 60 * 1000),
