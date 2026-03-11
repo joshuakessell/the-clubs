@@ -78,7 +78,7 @@ export function PaymentStep() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+      <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
         Collect Payment
       </h3>
 
@@ -86,7 +86,7 @@ export function PaymentStep() {
 
       {sp.paymentTotal === undefined && (
         <div className="rounded-lg border p-4 text-center" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-sm text-(--color-text-muted)">
             Waiting for payment quote from server…
           </p>
         </div>
@@ -95,7 +95,7 @@ export function PaymentStep() {
       {/* Payment failure notice */}
       {sp.paymentFailureReason && !isPaid && (
         <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 30%, transparent)' }}>
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-status-error)' }}>
+          <span className="text-sm font-semibold text-(--color-status-error)">
             ✗ {sp.paymentFailureReason}
           </span>
         </div>
@@ -104,17 +104,17 @@ export function PaymentStep() {
       {/* Payment status / actions */}
       {isPaid ? (
         <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
+          <span className="text-sm font-semibold text-(--color-status-success)">
             ✓ Paid via {sp.paymentMethod ?? 'N/A'}
           </span>
         </div>
       ) : showSplit ? (
         /* ── Split payment UI ── */
         <div className="flex flex-col gap-3 rounded-lg border p-4" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Split Payment</span>
+          <span className="text-xs font-bold uppercase tracking-wider text-(--color-text-muted)">Split Payment</span>
           <div className="flex items-center gap-3">
             <div className="flex-1">
-              <label htmlFor="split-cash" className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-status-success)' }}>Cash ($)</label>
+              <label htmlFor="split-cash" className="text-[10px] font-medium uppercase tracking-wider text-(--color-status-success)">Cash ($)</label>
               <input
                 id="split-cash"
                 type="number"
@@ -128,7 +128,7 @@ export function PaymentStep() {
               />
             </div>
             <div className="flex-1">
-              <label htmlFor="split-credit" className="text-[10px] font-medium uppercase tracking-wider" style={{ color: 'var(--color-accent-primary)' }}>Credit ($)</label>
+              <label htmlFor="split-credit" className="text-[10px] font-medium uppercase tracking-wider text-(--color-accent-primary)">Credit ($)</label>
               <div
                 id="split-credit"
                 className="mt-1 flex h-10 items-center rounded-lg border px-3 text-sm font-semibold"
@@ -139,7 +139,7 @@ export function PaymentStep() {
             </div>
           </div>
           {splitCreditDollars < 0 && (
-            <p className="text-xs font-medium" style={{ color: 'var(--color-status-error)' }}>
+            <p className="text-xs font-medium text-(--color-status-error)">
               Cash amount exceeds total
             </p>
           )}
@@ -154,8 +154,7 @@ export function PaymentStep() {
             </button>
             <button
               onClick={() => setShowSplit(false)}
-              className="rounded-lg border px-4 py-3 text-sm font-medium transition-colors"
-              style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
+              className="rounded-lg border px-4 py-3 text-sm font-medium transition-colors border-(--color-border-default) text-(--color-text-muted)"
             >
               Cancel
             </button>
@@ -204,8 +203,7 @@ export function PaymentStep() {
       {/* Back button */}
       <button
         onClick={() => { sendFlowCommand({ type: 'SET_STEP', payload: { step: 'RENTAL' } }); }}
-        className="self-start text-xs font-semibold"
-        style={{ color: 'var(--color-text-muted)' }}
+        className="self-start text-xs font-semibold text-(--color-text-muted)"
       >
         ← Back to Rental
       </button>

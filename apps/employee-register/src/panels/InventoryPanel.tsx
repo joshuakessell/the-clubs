@@ -137,8 +137,7 @@ export function InventoryPanel() {
 
 {
   error && (
-    <p className="mt-2 text-xs font-medium" style = {{ color: 'var(--color-status-error)' }
-}>
+    <p className="mt-2 text-xs font-medium text-(--color-status-error)">
   { error }
   </p>
       )}
@@ -190,7 +189,7 @@ export function InventoryPanel() {
 <div className="flex-1 min-h-0 overflow-y-auto" >
 {
   items.length === 0 && (
-    <p className="px-3 py-4 text-center text-xs" style = {{ color: 'var(--color-text-muted)' }}>
+    <p className="px-3 py-4 text-center text-xs text-(--color-text-muted)">
       None
       </p>
                 )}

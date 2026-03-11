@@ -74,7 +74,7 @@ export function RentalStep() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+      <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
         Select Rental Type
       </h3>
 
@@ -153,11 +153,7 @@ export function RentalStep() {
         <button
           disabled={loading}
           onClick={() => void handleNext()}
-          className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
-          style={{
-            backgroundColor: 'var(--color-accent-primary)',
-            color: 'var(--color-text-inverse)',
-          }}
+           className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition-colors bg-(--color-accent-primary) text-(--color-text-inverse)"
         >
           {loading ? 'Processing…' : 'Next →'}
         </button>

@@ -407,7 +407,7 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, orderS
 function Field({ label, value, color }: Readonly<{ label: string; value?: string | null; color?: string }>) {
   return (
     <div>
-      <span className="text-[10px] font-bold uppercase tracking-wider leading-tight" style={{ color: 'var(--color-text-muted)' }}>
+      <span className="text-[10px] font-bold uppercase tracking-wider leading-tight text-(--color-text-muted)">
         {label}
       </span>
       <p className="text-xs font-medium leading-tight" style={{ color: color ?? 'var(--color-text-primary)' }}>
