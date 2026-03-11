@@ -467,7 +467,7 @@ export async function confirmRegister(
 export async function heartbeat(deviceId: string) {
   await ensureDeviceEnabled(deviceId);
   const result = await db.execute<Record<string, unknown>>(
-    sql`UPDATE register_sessions SET last_heartbeat = NOW() WHERE device_id = ${deviceId} AND signed_out_at IS NULL RETURNING *`
+    sql`UPDATE register_sessions SET last_heartbeat = NOW() WHERE device_id = ${deviceId} AND signed_out_at IS NULL RETURNING id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at`
   );
   if (result.rows.length === 0) return null;
   const row = result.rows[0] as unknown as RegisterSessionRow;
@@ -477,7 +477,7 @@ export async function heartbeat(deviceId: string) {
 export async function recordActivity(deviceId: string) {
   await ensureDeviceEnabled(deviceId);
   const result = await db.execute<Record<string, unknown>>(
-    sql`UPDATE register_sessions SET last_activity_at = NOW() WHERE device_id = ${deviceId} AND signed_out_at IS NULL RETURNING *`
+    sql`UPDATE register_sessions SET last_activity_at = NOW() WHERE device_id = ${deviceId} AND signed_out_at IS NULL RETURNING id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at`
   );
   if (result.rows.length === 0) return null;
   const row = result.rows[0] as unknown as RegisterSessionRow;
@@ -566,7 +566,7 @@ export async function signoutAll(staff: StaffContext) {
   return db.transaction(async (tx) => {
     const closeoutAt = new Date();
     const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`UPDATE register_sessions SET signed_out_at = ${closeoutAt} WHERE employee_id = ${staff.staffId} AND signed_out_at IS NULL RETURNING *`
+      sql`UPDATE register_sessions SET signed_out_at = ${closeoutAt} WHERE employee_id = ${staff.staffId} AND signed_out_at IS NULL RETURNING id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at`
     );
     const sessions = sessionResult.rows as unknown as RegisterSessionRow[];
 

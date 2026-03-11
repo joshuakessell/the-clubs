@@ -134,7 +134,7 @@ export async function documentsRoutes(fastify: FastifyInstance): Promise<void> {
             sql`INSERT INTO employee_documents 
            (id, employee_id, doc_type, filename, mime_type, storage_key, uploaded_by, notes, sha256_hash)
            VALUES (${documentId}, ${employeeId}, ${docType}, ${filename}, ${mimeType}, ${storageKey}, ${staffId}, ${notes}, ${hash})
-           RETURNING *`
+           RETURNING id, employee_id, doc_type, filename, mime_type, storage_key, uploaded_by, uploaded_at, notes, sha256_hash`
           );
 
           await insertAuditLogDrizzle(tx, {

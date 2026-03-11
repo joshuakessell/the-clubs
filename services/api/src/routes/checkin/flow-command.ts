@@ -394,7 +394,7 @@ async function applyFlowPaymentSideEffects(
       : calculatePriceQuote(pricingInput);
 
     const intentResult = await client.query<OrderRow>(
-      `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, status, quote_json) VALUES ($1, $2, 0, 0, 0, $2, 'OPEN', $3) RETURNING *`,
+      `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, status, quote_json) VALUES ($1, $2, 0, 0, 0, $2, 'OPEN', $3) RETURNING ${ORDER_COLS}`,
       [sessionId, quote.total, JSON.stringify(quote)],
     );
     const intent = intentResult.rows[0]!;
@@ -679,7 +679,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
                  agreement_bypass_pending = CASE WHEN $20 THEN false ELSE agreement_bypass_pending END,
                  updated_at = NOW()
              WHERE id = $21
-             RETURNING *`,
+             RETURNING ${LANE_SESSION_COLS}`,
             updateParams
           );
 

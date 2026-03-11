@@ -12,7 +12,7 @@ import {
   parseMembershipNumber,
 } from '../checkin/identity';
 import { buildFullSessionUpdatedPayload, getAllowedRentals } from '../checkin/payload';
-import type { CustomerRow, LaneSessionRow } from '../checkin/types';
+import { type CustomerRow, type LaneSessionRow, LANE_SESSION_COLS } from '../checkin/types';
 import { toDate } from '../checkin/utils';
 import { insertCustomerActivityEventDrizzle } from '../activity/customerActivityLog';
 import { insertClubEventDrizzle } from '../activity/clubEventLog';
@@ -239,7 +239,7 @@ export async function startLaneSession(
          kiosk_acknowledged_at = NULL, proposed_rental_type = NULL, proposed_by = NULL,
          selection_confirmed = ${selectionConfirmedForSession}, selection_confirmed_by = ${selectionConfirmedByForSession}, selection_locked_at = ${selectionLockedAtForSession},
          flow_step = ${flowStepForSession}, flow_version = 0, updated_at = NOW()
-         WHERE id = ${existingId} RETURNING *`
+         WHERE id = ${existingId} RETURNING ${sql.raw(LANE_SESSION_COLS)}`
       );
       session = updateResult.rows[0] as unknown as LaneSessionRow;
     } else {
@@ -248,7 +248,7 @@ export async function startLaneSession(
          checkin_mode, renewal_hours, desired_rental_type, assigned_resource_id, assigned_resource_type,
          membership_choice, selection_confirmed, selection_confirmed_by, selection_locked_at, flow_step, flow_version)
          VALUES (${laneId}, 'ACTIVE', ${staff.staffId}, ${customerId}, ${customerName}, ${membershipNumber}, ${computedMode}, ${renewalHoursForSession},
-         ${desiredRentalTypeForSession}, NULL, NULL, NULL, ${selectionConfirmedForSession}, ${selectionConfirmedByForSession}, ${selectionLockedAtForSession}, ${flowStepForSession}, 0) RETURNING *`
+         ${desiredRentalTypeForSession}, NULL, NULL, NULL, ${selectionConfirmedForSession}, ${selectionConfirmedByForSession}, ${selectionLockedAtForSession}, ${flowStepForSession}, 0) RETURNING ${sql.raw(LANE_SESSION_COLS)}`
       );
       session = newSessionResult.rows[0] as unknown as LaneSessionRow;
     }

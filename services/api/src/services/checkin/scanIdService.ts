@@ -1,4 +1,4 @@
-import type { PoolClient, CustomerRow, LaneSessionRow } from '../../checkin/types';
+import { type PoolClient, type CustomerRow, type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
 import {
   computeIdScanIdentityHash,
   computeSha256Hex,
@@ -195,7 +195,7 @@ export async function processScanId(
            renewal_hours = NULL,
            updated_at = NOW()
        WHERE id = $5
-       RETURNING *`,
+       RETURNING ${LANE_SESSION_COLS}`,
       [customerId, customerName, staffId, computedMode, existingSession.rows[0]!.id],
     );
     session = updateResult.rows[0]!;
@@ -204,7 +204,7 @@ export async function processScanId(
       `INSERT INTO lane_sessions
        (lane_id, status, staff_id, customer_id, customer_display_name, checkin_mode, renewal_hours)
        VALUES ($1, 'ACTIVE', $2, $3, $4, $5, NULL)
-       RETURNING *`,
+       RETURNING ${LANE_SESSION_COLS}`,
       [laneId, staffId, customerId, customerName, computedMode],
     );
     session = newSessionResult.rows[0]!;
