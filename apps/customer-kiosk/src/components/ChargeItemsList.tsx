@@ -193,7 +193,7 @@ export function ChargeItemsList({
           borderBottom: '1px solid var(--color-border-subtle)',
         }}
       >
-        <p className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+        <p className="text-base font-semibold text-(--color-text-primary)">
           {isMember ? `Welcome back, ${customerName}!` : `Welcome, ${customerName}`}
         </p>
       </div>
@@ -302,8 +302,8 @@ export function ChargeItemsList({
               marginTop: 8,
             }}
           >
-            <span style={{ color: 'var(--color-status-success)' }}>✓</span>
-            <span className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
+            <span className="text-(--color-status-success)">✓</span>
+            <span className="text-sm font-semibold text-(--color-status-success)">
               Payment Received
             </span>
           </div>

@@ -37,7 +37,7 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
-function todayStr(): string { return new Date().toISOString().split('T')[0]!; }
+function todayStr(): string { return new Date().toISOString().split('T')[0]; }
 
 /* ── Component ─────────────────────────────────────────────────── */
 

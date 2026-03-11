@@ -14,13 +14,11 @@ interface ScreenShellProps {
 export function ScreenShell({ children, showWatermark = false, alignTop = false }: ScreenShellProps) {
   return (
     <div
-      className="relative flex min-h-screen min-h-dvh w-full items-center justify-center"
-      style={{ backgroundColor: 'var(--color-surface-base)' }}
+      className="relative flex min-h-screen min-h-dvh w-full items-center justify-center bg-(--color-surface-base)"
     >
       {/* iPad portrait constraint — 768 px max width, full height */}
       <div
-        className={`relative flex min-h-screen min-h-dvh w-full max-w-[768px] flex-col items-center overflow-hidden ${alignTop ? 'justify-start' : 'justify-center'}`}
-        style={{ backgroundColor: 'var(--color-surface-base)' }}
+        className={`relative flex min-h-screen min-h-dvh w-full max-w-[768px] flex-col items-center overflow-hidden bg-(--color-surface-base) ${alignTop ? 'justify-start' : 'justify-center'}`}
       >
         {/* Theme-aware radial gradient */}
         <div

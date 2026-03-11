@@ -103,12 +103,12 @@ export function IdleScreen() {
 
             <div>
               <h1
-                className="text-3xl font-extrabold tracking-tight uppercase"
-                style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
+                style={{ fontFamily: 'var(--font-brand)' }}
+                className="text-3xl font-extrabold tracking-tight uppercase text-(--color-text-primary)"
               >
                 {t('brand.clubName')}
               </h1>
-              <p className="mt-4 text-xl" style={{ color: 'var(--color-text-secondary)' }}>
+              <p className="mt-4 text-xl text-(--color-text-secondary)">
                 Customer Kiosk
               </p>
             </div>

@@ -212,7 +212,7 @@ export function LogsView() {
                   ev.summary,
                   ev.eventDomain,
                   formatEventType(ev.eventType),
-                  ev.amount != null ? `$${Number(ev.amount).toFixed(2)}` : '',
+                  ev.amount == null ? '' : `$${Number(ev.amount).toFixed(2)}`,
                 ]);
               }
               const csv = rows.map((r) => r.map((c) => `"${c.replaceAll('"', '""')}"`).join(',')).join('\n');

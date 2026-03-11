@@ -173,7 +173,7 @@ export function ProductsView() {
                       <input className="w-full rounded border px-2 py-1 text-sm outline-none"
                         style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-accent-primary)', color: 'var(--color-text-primary)' }}
                         value={editName} onChange={(e) => setEditName(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); if (e.key === 'Escape') setEditingId(null); }} />
+                        onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); else if (e.key === 'Escape') setEditingId(null); }} />
                     ) : (
                       <span className="text-sm font-semibold text-(--color-text-primary)">{p.name}</span>
                     )}
@@ -185,7 +185,7 @@ export function ProductsView() {
                       <input className="w-20 rounded border px-2 py-1 text-sm outline-none"
                         style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-accent-primary)', color: 'var(--color-text-primary)' }}
                         type="number" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); if (e.key === 'Escape') setEditingId(null); }} />
+                        onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); else if (e.key === 'Escape') setEditingId(null); }} />
                     ) : (
                       <span className="text-sm font-bold tabular-nums text-(--color-accent-primary)">${p.price.toFixed(2)}</span>
                     )}

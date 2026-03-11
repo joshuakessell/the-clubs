@@ -128,8 +128,7 @@ export function AgreementScreen() {
             Step Required
           </p>
           <h1
-            className="text-2xl font-bold"
-            style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
+            className="text-2xl font-bold font-(--font-brand) text-(--color-text-primary)"
           >
             {t('agreement.facilityAgreement')}
           </h1>
@@ -256,8 +255,7 @@ export function AgreementScreen() {
 
         {submitError && (
           <p
-            className="text-sm text-center"
-            style={{ color: 'var(--color-status-error)' }}
+            className="text-sm text-center text-(--color-status-error)"
           >
             {submitError}
           </p>
@@ -310,7 +308,8 @@ export function AgreementScreen() {
             </div>
 
             {/* Canvas */}
-            <div className="px-6 py-4" style={{ position: 'relative' }}>
+            <div
+              className="px-6 py-4 relative">
               <canvas
                 ref={canvasRef}
                 width={800}
