@@ -130,7 +130,7 @@ export interface CompleteCheckoutResult {
 // ── Manual Checkout ──
 
 /**
- * List checkout candidates (overdue or within 60 minutes of checkout).
+ * List all active checked-in customers for the checkout panel.
  * Sorted by checkout time ascending: most overdue first → soonest upcoming → furthest away.
  */
 export async function listManualCandidates(): Promise<ManualCheckoutCandidate[]> {
@@ -153,7 +153,6 @@ export async function listManualCandidates(): Promise<ManualCheckoutCandidate[]>
       JOIN inventory_resources ir ON cb.resource_id = ir.id
       WHERE cb.resource_id IS NOT NULL
         AND v.ended_at IS NULL
-        AND cb.ends_at <= NOW() + INTERVAL '60 minutes'
       ORDER BY cb.resource_id, cb.ends_at DESC
     ) candidates
     ORDER BY scheduled_checkout_at ASC

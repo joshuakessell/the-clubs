@@ -1463,11 +1463,10 @@ async function seedActiveWaitlist(client: DbClient, p: {
     let scheduledEnd: Date;
 
     if (overdueIdx < OVERDUE_SCHEDULE_MINS.length) {
-      // Force overdue: checked in 4hr ago, 2hr rental → expired ~2hr ago, but we set
-      // scheduledEnd to be exactly OVERDUE_SCHEDULE_MINS[overdueIdx] minutes in the past
+      // Force overdue: 6hr rental whose checkout is OVERDUE_SCHEDULE_MINS in the past
       const overdueBy = OVERDUE_SCHEDULE_MINS[overdueIdx];
       scheduledEnd = new Date(p.now.getTime() - overdueBy * 60 * 1000);
-      start = new Date(scheduledEnd.getTime() - 2 * 60 * 60 * 1000); // 2hr rental
+      start = new Date(scheduledEnd.getTime() - 6 * 60 * 60 * 1000); // 6hr rental
       overdueIdx++;
     } else {
       const minIn = 30 + Math.floor(rng() * 90); // checked in 30–120 min ago
