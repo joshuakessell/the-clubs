@@ -174,7 +174,7 @@ export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
 
         const events = rows.map((r) => ({
           id: r.id,
-          occurredAt: r.occurred_at.toISOString(),
+          occurredAt: new Date(r.occurred_at).toISOString(),
           eventType: r.event_type,
           eventDomain: r.event_domain,
           sourceApp: r.source_app,

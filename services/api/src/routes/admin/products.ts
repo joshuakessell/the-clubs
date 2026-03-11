@@ -62,8 +62,8 @@ function formatRow(r: ProductRow) {
     category: r.category,
     isActive: r.is_active,
     sortOrder: toNumber(r.sort_order),
-    createdAt: r.created_at.toISOString(),
-    updatedAt: r.updated_at.toISOString(),
+    createdAt: new Date(r.created_at).toISOString(),
+    updatedAt: new Date(r.updated_at).toISOString(),
   };
 }
 
