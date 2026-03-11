@@ -25,6 +25,7 @@ import { insertCustomerSpendLedgerEntryDrizzle } from '../ledger/customerSpendLe
 import { computeOrderTotals, ensureOrderWithReceipt } from '../money/orderAudit';
 import { HttpError } from '../errors/HttpError';
 import { type DrizzleTx } from '../db';
+import { calculateRenewalQuote, type RentalType } from '../pricing/engine';
 
 
 
@@ -130,28 +131,32 @@ export interface CompleteCheckoutResult {
 
 /**
  * List checkout candidates (overdue or within 60 minutes of checkout).
+ * Sorted by checkout time ascending: most overdue first → soonest upcoming → furthest away.
  */
 export async function listManualCandidates(): Promise<ManualCheckoutCandidate[]> {
   const result = await db.execute<Record<string, unknown>>(
     sql`
-    SELECT DISTINCT ON (cb.resource_id)
-      cb.id as occupancy_id,
-      cb.visit_id as visit_id,
-      CASE WHEN ir.kind = 'room' THEN 'ROOM' ELSE 'LOCKER' END as resource_type,
-      ir.number as number,
-      c.id as customer_id,
-      c.name as customer_name,
-      cb.starts_at as checkin_at,
-      cb.ends_at as scheduled_checkout_at,
-      (cb.ends_at < NOW()) as is_overdue
-    FROM checkin_blocks cb
-    JOIN visits v ON cb.visit_id = v.id
-    JOIN customers c ON v.customer_id = c.id
-    JOIN inventory_resources ir ON cb.resource_id = ir.id
-    WHERE cb.resource_id IS NOT NULL
-      AND v.ended_at IS NULL
-      AND cb.ends_at <= NOW() + INTERVAL '60 minutes'
-    ORDER BY cb.resource_id, cb.ends_at DESC
+    SELECT * FROM (
+      SELECT DISTINCT ON (cb.resource_id)
+        cb.id as occupancy_id,
+        cb.visit_id as visit_id,
+        CASE WHEN ir.kind = 'room' THEN 'ROOM' ELSE 'LOCKER' END as resource_type,
+        ir.number as number,
+        c.id as customer_id,
+        c.name as customer_name,
+        cb.starts_at as checkin_at,
+        cb.ends_at as scheduled_checkout_at,
+        (cb.ends_at < NOW()) as is_overdue
+      FROM checkin_blocks cb
+      JOIN visits v ON cb.visit_id = v.id
+      JOIN customers c ON v.customer_id = c.id
+      JOIN inventory_resources ir ON cb.resource_id = ir.id
+      WHERE cb.resource_id IS NOT NULL
+        AND v.ended_at IS NULL
+        AND cb.ends_at <= NOW() + INTERVAL '60 minutes'
+      ORDER BY cb.resource_id, cb.ends_at DESC
+    ) candidates
+    ORDER BY scheduled_checkout_at ASC
     `
   );
 
@@ -166,6 +171,134 @@ export async function listManualCandidates(): Promise<ManualCheckoutCandidate[]>
     scheduledCheckoutAt: r.scheduled_checkout_at,
     isOverdue: r.is_overdue,
   }));
+}
+
+export interface RenewalEligibilityResult {
+  eligible: boolean;
+  reason?: string;
+  visitId?: string;
+  canExtend2h: boolean;
+  canExtend6h: boolean;
+  currentTotalHours: number;
+  maxHours: number;
+  extension2hCharges?: Array<{ description: string; amount: number }>;
+  extension2hTotal?: number;
+  extension6hCharges?: Array<{ description: string; amount: number }>;
+  extension6hTotal?: number;
+}
+
+/**
+ * Check if a customer is eligible for stay renewal based on their occupancy.
+ * Eligible: < 45 min before checkout AND < 29 min past checkout, total stay < 14h.
+ */
+export async function checkRenewalEligibility(
+  occupancyId: string,
+): Promise<RenewalEligibilityResult> {
+  const blockResult = await db.execute<Record<string, unknown>>(
+    sql`
+    SELECT cb.id, cb.visit_id, cb.starts_at, cb.ends_at, cb.rental_type,
+           v.customer_id, v.started_at as visit_started_at,
+           c.name as customer_name, c.dob, c.membership_number,
+           c.membership_card_type, c.membership_valid_until
+    FROM checkin_blocks cb
+    JOIN visits v ON cb.visit_id = v.id
+    JOIN customers c ON v.customer_id = c.id
+    WHERE cb.id = ${occupancyId}
+      AND v.ended_at IS NULL
+    LIMIT 1
+    `
+  );
+
+  if (blockResult.rows.length === 0) {
+    return { eligible: false, reason: 'Active occupancy not found', canExtend2h: false, canExtend6h: false, currentTotalHours: 0, maxHours: 14 };
+  }
+
+  const row = blockResult.rows[0] as unknown as {
+    id: string; visit_id: string; starts_at: Date; ends_at: Date; rental_type: string;
+    customer_id: string; visit_started_at: Date;
+    customer_name: string; dob: Date | null; membership_number: string | null;
+    membership_card_type: string | null; membership_valid_until: Date | null;
+  };
+
+  // Get all blocks for this visit to compute total hours
+  const allBlocksResult = await db.execute<{ starts_at: Date; ends_at: Date }>(
+    sql`SELECT starts_at, ends_at FROM checkin_blocks WHERE visit_id = ${row.visit_id} ORDER BY ends_at DESC`
+  );
+
+  let currentTotalHours = 0;
+  for (const block of allBlocksResult.rows) {
+    currentTotalHours += (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
+  }
+
+  // Check eligibility window
+  const checkoutMs = row.ends_at.getTime();
+  const nowMs = Date.now();
+  const minutesUntilCheckout = (checkoutMs - nowMs) / (1000 * 60);
+
+  if (minutesUntilCheckout > 45) {
+    return { eligible: false, reason: 'More than 45 minutes until checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
+  }
+  if (minutesUntilCheckout < -29) {
+    return { eligible: false, reason: 'More than 29 minutes past checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
+  }
+
+  // Check if remaining time to 14h cap allows renewal
+  const canExtend2h = currentTotalHours + 2 <= 14;
+  const canExtend6h = currentTotalHours + 6 <= 14;
+
+  // Also check that after renewal, remaining time is > 45 min (no renewal in last 45 min of 14h max)
+  const maxEndMs = new Date(row.visit_started_at).getTime() + 14 * 60 * 60 * 1000;
+  const afterRenewal2hEndMs = checkoutMs + 2 * 60 * 60 * 1000;
+  const afterRenewal6hEndMs = checkoutMs + 6 * 60 * 60 * 1000;
+  const allow2h = canExtend2h && (afterRenewal2hEndMs <= maxEndMs || (maxEndMs - afterRenewal2hEndMs) > -45 * 60 * 1000);
+  const allow6h = canExtend6h && (afterRenewal6hEndMs <= maxEndMs || (maxEndMs - afterRenewal6hEndMs) > -45 * 60 * 1000);
+
+  if (!allow2h && !allow6h) {
+    return { eligible: false, reason: 'Would exceed maximum stay', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
+  }
+
+  // Compute pricing
+  const customerAge = row.dob
+    ? Math.floor((Date.now() - new Date(row.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+    : undefined;
+
+  const pricingInput = {
+    rentalType: row.rental_type as RentalType,
+    customerAge,
+    checkInTime: new Date(),
+    membershipCardType: (row.membership_card_type as 'NONE' | 'SIX_MONTH' | undefined) || undefined,
+    membershipValidUntil: row.membership_valid_until || undefined,
+  };
+
+  let extension2hCharges: Array<{ description: string; amount: number }> | undefined;
+  let extension2hTotal: number | undefined;
+  let extension6hCharges: Array<{ description: string; amount: number }> | undefined;
+  let extension6hTotal: number | undefined;
+
+  if (allow2h) {
+    const quote2h = calculateRenewalQuote({ ...pricingInput, renewalHours: 2 });
+    extension2hCharges = quote2h.lineItems;
+    extension2hTotal = quote2h.total;
+  }
+
+  if (allow6h) {
+    const quote6h = calculateRenewalQuote({ ...pricingInput, renewalHours: 6 });
+    extension6hCharges = quote6h.lineItems;
+    extension6hTotal = quote6h.total;
+  }
+
+  return {
+    eligible: true,
+    visitId: row.visit_id,
+    canExtend2h: allow2h,
+    canExtend6h: allow6h,
+    currentTotalHours,
+    maxHours: 14,
+    extension2hCharges,
+    extension2hTotal,
+    extension6hCharges,
+    extension6hTotal,
+  };
 }
 
 /**

@@ -310,9 +310,13 @@ async function computeRenewalTimeBlock(
 
   const latestBlock = blocksResult.rows[0];
   const latestBlockEnd = latestBlock.ends_at;
-  const diffMs = Math.abs(latestBlockEnd.getTime() - Date.now());
-  if (diffMs > 60 * 60 * 1000) {
-    throw new HttpError(400, 'Renewal is only available within 1 hour of checkout');
+  const minutesUntilCheckout = (latestBlockEnd.getTime() - Date.now()) / (1000 * 60);
+  // Eligible: < 45 min before checkout AND < 29 min past checkout
+  if (minutesUntilCheckout > 45) {
+    throw new HttpError(400, 'Renewal is only available within 45 minutes of checkout');
+  }
+  if (minutesUntilCheckout < -29) {
+    throw new HttpError(400, 'Renewal window has expired (more than 29 minutes past checkout)');
   }
 
   if (currentTotalHours + renewalHours > 14) {

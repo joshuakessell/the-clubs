@@ -3,6 +3,7 @@ import useSWR from 'swr';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { PanelHeader } from '../views/PanelHeader';
+import { RenewalModal, type RenewalEligibility } from '../components/RenewalModal';
 import { PanelShell } from '../views/PanelShell';
 import { DataTable, type DataTableColumn } from '../components/DataTable';
 import { StatusDot } from '../components/StatusDot';
@@ -122,10 +123,37 @@ function DetailPanel({
 }>) {
   const { resolved, resolving } = useManualResolve(candidate?.occupancyId);
   const [confirming, setConfirming] = useState(false);
+  const [showRenewalModal, setShowRenewalModal] = useState(false);
+  const [renewalEligibility, setRenewalEligibility] = useState<RenewalEligibility | null>(null);
+  const [renewalLoading, setRenewalLoading] = useState(false);
 
-  // Reset confirmation when candidate changes
+  // Reset confirmation and fetch renewal eligibility when candidate changes
   useEffect(() => {
     setConfirming(false);
+    setShowRenewalModal(false);
+    setRenewalEligibility(null);
+
+    if (!candidate?.occupancyId) return;
+
+    let cancelled = false;
+    setRenewalLoading(true);
+    (async () => {
+      try {
+        const token = globalThis.__authToken;
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(
+          getApiUrl(`/api/v1/checkout/renewal-eligibility?occupancyId=${encodeURIComponent(candidate.occupancyId)}`),
+          { headers }
+        );
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          setRenewalEligibility(data);
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) setRenewalLoading(false);
+    })();
+    return () => { cancelled = true; };
   }, [candidate?.occupancyId]);
   if (!candidate) {
     return (
@@ -251,6 +279,38 @@ function DetailPanel({
       >
         {buttonLabel}
       </button>
+
+      {/* Renew Stay button — shown when eligible */}
+      {!renewalLoading && renewalEligibility?.eligible && (
+        <button
+          disabled={isProcessing}
+          onClick={() => setShowRenewalModal(true)}
+          className="w-full rounded-lg py-2 text-sm font-bold flex items-center justify-center gap-2 mt-2"
+          style={{
+            backgroundColor: 'color-mix(in oklch, var(--color-brand-primary) 10%, transparent)',
+            color: 'var(--color-brand-primary)',
+            border: '1px solid color-mix(in oklch, var(--color-brand-primary) 25%, transparent)',
+            cursor: isProcessing ? 'not-allowed' : 'pointer',
+            transition: 'all 0.15s ease',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+          </svg>
+          Renew Stay
+        </button>
+      )}
+
+      {/* Renewal Modal */}
+      {showRenewalModal && renewalEligibility && (
+        <RenewalModal
+          customerLabel={`${candidate.customerName} · ${candidate.resourceType} ${candidate.number}`}
+          customerId={candidate.customerId}
+          eligibility={renewalEligibility}
+          onDismiss={() => setShowRenewalModal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -110,7 +110,7 @@ style = {{
   < input
 type = "text"
 className = "h-8 flex-1 bg-transparent outline-none"
-style = {{ color: 'var(--color-text-primary)', outline: 'none', fontSize: '11px' }}
+style = {{ color: 'var(--color-text-primary)', outline: 'none', fontSize: '14px' }}
 placeholder = "Search customer…"
 aria-label="Search customer"
 autoComplete = "off"
@@ -210,7 +210,7 @@ style = {{
                 backgroundColor: isActive ? 'var(--color-accent-glow)' : 'transparent',
                 color: isActive ? '#1a1a2e' : 'var(--color-text-secondary)',
                 border: isActive ? '1px solid var(--color-border-accent)' : '1px solid transparent',
-                fontSize: 'clamp(12px, 1.5cqw, 14px)',
+                fontSize: 'clamp(14px, 1.5cqw, 16px)',
                 paddingInline: 'clamp(3px, 0.6cqw, 8px)',
                 flex: '1 1 0',
                 justifyContent: 'center',
@@ -218,9 +218,9 @@ style = {{
               }}
               title={`${item.label} (${item.fKey})`}
             >
-              <span className="shrink-0" style={{ width: 'clamp(11px, 1.3cqw, 14px)', height: 'clamp(11px, 1.3cqw, 14px)' }}>{item.icon}</span>
+              <span className="shrink-0" style={{ width: 'clamp(13px, 1.3cqw, 16px)', height: 'clamp(13px, 1.3cqw, 16px)' }}>{item.icon}</span>
               <span>{item.label}</span>
-              <span style={{ fontSize: 'clamp(7px, 0.8cqw, 9px)', opacity: 0.4 }}>{item.fKey}</span>
+              <span style={{ fontSize: 'clamp(8px, 0.8cqw, 10px)', opacity: 0.4 }}>{item.fKey}</span>
             </button>
           );
         })}

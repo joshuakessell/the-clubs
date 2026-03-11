@@ -168,8 +168,12 @@ export async function startLaneSession(
 
       const requestedRenewalHours = renewalHours ?? 6;
       if (!blockEndsAtDate) throw new HttpError(400, 'Cannot determine checkout time for renewal');
-      const diffMs = Math.abs((blockEndsAtDate as Date).getTime() - Date.now());
-      if (diffMs > 60 * 60 * 1000) throw new HttpError(400, 'Renewal is only available within 1 hour of checkout');
+      const checkoutMs = (blockEndsAtDate as Date).getTime();
+      const nowMs = Date.now();
+      const minutesUntilCheckout = (checkoutMs - nowMs) / (1000 * 60);
+      // Eligible: < 45 min before checkout AND < 29 min past checkout
+      if (minutesUntilCheckout > 45) throw new HttpError(400, 'Renewal is only available within 45 minutes of checkout');
+      if (minutesUntilCheckout < -29) throw new HttpError(400, 'Renewal window has expired (more than 29 minutes past checkout)');
       if (currentTotalHours + requestedRenewalHours > 14) throw new HttpError(400, `Renewal would exceed 14-hour maximum. Current total: ${currentTotalHours} hours, renewal would add ${requestedRenewalHours} hours.`);
       renewalHoursForSession = requestedRenewalHours;
     } else if (customerId) {

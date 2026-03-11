@@ -8,6 +8,7 @@ import {
   listManualCandidates,
   resolveManualCheckout,
   completeManualCheckout,
+  checkRenewalEligibility,
 } from '../../services/checkoutService';
 
 export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
@@ -25,6 +26,26 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
         return reply.send({ candidates });
       } catch (error) {
         fastify.log.error(error, 'Failed to list manual checkout candidates');
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
+    }
+  );
+
+  /**
+   * GET /v1/checkout/renewal-eligibility?occupancyId=<uuid>
+   */
+  fastify.get<{ Querystring: { occupancyId: string } }>(
+    '/v1/checkout/renewal-eligibility',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
+      const { occupancyId } = request.query;
+      if (!occupancyId) return reply.status(400).send({ error: 'occupancyId is required' });
+      try {
+        const result = await checkRenewalEligibility(occupancyId);
+        return reply.send(result);
+      } catch (error) {
+        fastify.log.error(error, 'Failed to check renewal eligibility');
         return reply.status(500).send({ error: 'Internal server error' });
       }
     }
