@@ -59,8 +59,7 @@ function LiveClock() {
   }, []);
   return (
     <span
-      className="tabular-nums"
-      style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}
+      className="tabular-nums text-(--color-text-primary) font-(--font-display)"
     >
       {time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
     </span>
@@ -71,7 +70,7 @@ function LiveClock() {
 function DetailRow({ label, children }: Readonly<{ label: string; children: React.ReactNode }>) {
   return (
     <div className="flex items-center justify-between text-sm">
-      <span style={{ color: 'var(--color-text-muted)' }}>{label}</span>
+      <span className="text-(--color-text-muted)">{label}</span>
       {children}
     </div>
   );
@@ -131,8 +130,7 @@ function DetailPanel({
   if (!candidate) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-full text-center px-6"
-        style={{ color: 'var(--color-text-muted)' }}
+        className="flex flex-col items-center justify-center h-full text-center px-6 text-(--color-text-muted)"
       >
         <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"
           strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-3 opacity-30"
@@ -171,23 +169,21 @@ function DetailPanel({
       {/* Customer header */}
       <div>
         <div
-          className="text-xs font-semibold uppercase tracking-wider mb-1"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="text-xs font-semibold uppercase tracking-wider mb-1 text-(--color-text-muted)"
         >
           {candidate.resourceType} {candidate.number}
         </div>
         <div
-          className="text-lg font-bold"
-          style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}
+          className="text-lg font-bold text-(--color-text-primary) font-(--font-display)"
         >
           {candidate.customerName}
         </div>
-        <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="text-xs mt-0.5 text-(--color-text-muted)">
           In {formatDuration(candidate.checkinAt)} · checked in {formatTime(candidate.checkinAt)}
         </div>
       </div>
 
-      <div className="h-px w-full" style={{ background: 'var(--color-border-subtle)' }} />
+      <div className="h-px w-full bg-(--color-border-subtle)" />
 
       {/* Detail rows */}
       <div className="flex flex-col gap-2">
@@ -199,12 +195,12 @@ function DetailPanel({
         </DetailRow>
 
         {resolving && (
-          <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Calculating fees…</div>
+          <div className="text-xs text-(--color-text-muted)">Calculating fees…</div>
         )}
         {!resolving && isOverdue && (
           <>
             <DetailRow label="Late">
-              <span className="font-semibold" style={{ color: 'var(--color-status-error)' }}>
+              <span className="font-semibold text-(--color-status-error)">
                 {lateMinutes} min
               </span>
             </DetailRow>
@@ -228,7 +224,7 @@ function DetailPanel({
           </>
         )}
         {!resolving && !isOverdue && (
-          <div className="text-sm" style={{ color: 'var(--color-status-success)' }}>✓ No late fee</div>
+          <div className="text-sm text-(--color-status-success)">✓ No late fee</div>
         )}
       </div>
 
@@ -339,8 +335,7 @@ export function CheckoutPanelContent() {
       render: (c) => (
         <div className="flex items-center gap-2">
           <span
-            className="font-bold"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+            className="font-bold font-(--font-display) text-(--color-text-primary)"
           >
             {c.number}
           </span>
@@ -369,8 +364,7 @@ export function CheckoutPanelContent() {
               },
             });
           }}
-          className="text-left font-medium hover:underline"
-          style={{ color: 'var(--color-accent-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+          className="text-left font-medium hover:underline text-(--color-accent-primary) bg-transparent border-none p-0 cursor-pointer"
         >
           {c.customerName}
         </button>
@@ -380,7 +374,7 @@ export function CheckoutPanelContent() {
       key: 'type',
       header: 'Type',
       render: (c) => (
-        <span style={{ color: 'var(--color-text-muted)' }}>{c.resourceType}</span>
+        <span className="text-(--color-text-muted)">{c.resourceType}</span>
       ),
     },
     {
@@ -388,7 +382,7 @@ export function CheckoutPanelContent() {
       header: 'Check-In',
       numeric: true,
       render: (c) => (
-        <span style={{ color: 'var(--color-text-muted)' }}>{formatTime(c.checkinAt)}</span>
+        <span className="text-(--color-text-muted)">{formatTime(c.checkinAt)}</span>
       ),
     },
     {
@@ -439,11 +433,10 @@ export function CheckoutPanelContent() {
 
       {/* 70/30 split */}
       <div
-        className="flex gap-0 flex-1 min-h-0 overflow-hidden rounded-xl border"
-        style={{ borderColor: 'var(--color-border-default)' }}
+        className="flex gap-0 flex-1 min-h-0 overflow-hidden rounded-xl border border-(--color-border-default)"
       >
         {/* Left — DataTable (70%) */}
-        <div className="flex flex-col overflow-auto border-r" style={{ width: '70%', borderColor: 'var(--color-border-default)' }}>
+        <div className="flex flex-col overflow-auto border-r w-[70%] border-(--color-border-default)">
           <DataTable
             columns={columns}
             data={candidates}
@@ -458,7 +451,7 @@ export function CheckoutPanelContent() {
         </div>
 
         {/* Right — detail panel (30%) */}
-        <div className="flex flex-col" style={{ width: '30%', backgroundColor: 'var(--color-surface-raised)' }}>
+        <div className="flex flex-col w-[30%] bg-(--color-surface-raised)">
           <DetailPanel
             candidate={selectedCandidate}
             onCheckout={handleCheckoutRequest}
@@ -488,7 +481,7 @@ export function CheckoutPanel() {
     <Suspense fallback={
       <PanelShell align="top" scroll="hidden">
         <div className="flex flex-col items-center justify-center h-full opacity-50">
-          <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>Loading checkout data...</p>
+          <p className="text-sm font-medium text-(--color-text-muted)">Loading checkout data...</p>
         </div>
       </PanelShell>
     }>

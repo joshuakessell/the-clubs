@@ -37,14 +37,12 @@ export function LateFeeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
     >
       <dialog
         open
         aria-labelledby="late-fee-title"
-        className="w-full max-w-md rounded-xl border shadow-2xl relative"
-        style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
+        className="w-full max-w-md rounded-xl border shadow-2xl relative bg-(--color-surface-raised) border-(--color-border-default)"
       >
         <button
           onClick={onDismiss}
@@ -58,11 +56,10 @@ export function LateFeeModal({
         </button>
 
         {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+        <div className="px-6 pt-6 pb-4 border-b border-(--color-border-subtle)">
           <div className="flex items-center gap-3">
             <div
-              className="flex h-10 w-10 items-center justify-center rounded-full"
-              style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 10%, transparent)' }}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[color-mix(in_oklch,var(--color-status-error)_10%,transparent)]"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-error)"
                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
@@ -73,10 +70,10 @@ export function LateFeeModal({
               </svg>
             </div>
             <div>
-              <h3 id="late-fee-title" className="text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+              <h3 id="late-fee-title" className="text-base font-bold text-(--color-text-primary) font-(--font-display)">
                 Late Checkout Fee
               </h3>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              <p className="text-xs text-(--color-text-muted)">
                 {customerLabel}
               </p>
             </div>
@@ -93,16 +90,16 @@ export function LateFeeModal({
             }}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Late by</span>
-              <span className="text-sm font-bold" style={{ color: 'var(--color-status-error)' }}>{resolved.lateMinutes} minutes</span>
+              <span className="text-sm font-medium text-(--color-text-secondary)">Late by</span>
+              <span className="text-sm font-bold text-(--color-status-error)">{resolved.lateMinutes} minutes</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }}>Fee due</span>
-              <span className="text-xl font-bold tabular-nums" style={{ color: 'var(--color-status-error)', fontFamily: 'var(--font-display)' }}>${feeDollars}</span>
+              <span className="text-sm font-medium text-(--color-text-secondary)">Fee due</span>
+              <span className="text-xl font-bold tabular-nums text-(--color-status-error) font-(--font-display)">${feeDollars}</span>
             </div>
           </div>
 
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="text-sm leading-relaxed text-(--color-text-secondary)">
             {resolved.banApplied
               ? `This customer checked out ${resolved.lateMinutes} minutes late. A $${feeDollars} late fee applies and a potential 30-day ban has been flagged for manager review. Collect the fee now or it will be added as a past-due balance, which must be settled before the customer's next check-in.`
               : `This customer checked out ${resolved.lateMinutes} minutes late. A $${feeDollars} late fee applies. Collect the fee now or it will be added as a past-due balance, which must be settled before the customer's next check-in.`}
@@ -142,7 +139,7 @@ export function LateFeeModal({
           </div>
 
           {/* Skip / past due */}
-          <div className="text-center pt-1 border-t" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <div className="text-center pt-1 border-t border-(--color-border-subtle)">
             <button
               disabled={isProcessing}
               onClick={() => onSettle(false)}

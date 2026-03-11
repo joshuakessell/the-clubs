@@ -91,7 +91,7 @@ width = "28"
 height = "28"
   />
   </div>
-  <span className="text-sm font-bold uppercase" style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}>
+  <span className="text-sm font-bold uppercase font-(--font-brand) text-(--color-text-primary)">
     Club Dallas — Register #{laneId.replaceAll(/\D/g, '') || '1'}
 </span>
   </div>
@@ -155,10 +155,10 @@ onClick = {() => {
   setSearchFocused(false);
 }}
                   >
-  <span className="text-sm font-semibold" style = {{ color: 'var(--color-text-primary)' }}>
+  <span className="text-sm font-semibold text-(--color-text-primary)">
     { label }
     </span>
-    < span className = "flex flex-wrap gap-3 text-xs" style = {{ color: 'var(--color-text-muted)' }}>
+     < span className = "flex flex-wrap gap-3 text-xs text-(--color-text-muted)">
       { s.dobMonthDay && <span>DOB: { s.dobMonthDay } </span>}
 { s.membershipNumber && <span>#{ s.membershipNumber } </span> }
 </span>
@@ -171,7 +171,7 @@ onClick = {() => {
 
 {/* Session info + sign out */ }
 <div className="ml-auto flex items-center gap-3 shrink-0" >
-  <span className="text-xs" style = {{ color: 'var(--color-text-secondary)' }}>
+  <span className="text-xs text-(--color-text-secondary)">
     { employeeName }
     </span>
     < button
@@ -243,8 +243,7 @@ function ScanIcon() {
 
 function SearchIcon() {
   return (
-    <svg className= "w-4 h-4 shrink-0" viewBox = "0 0 24 24" fill = "none" stroke = "currentColor" strokeWidth = "2" strokeLinecap = "round" strokeLinejoin = "round" style = {{ color: 'var(--color-text-muted)' }
-} aria-hidden="true" >
+    <svg className= "w-4 h-4 shrink-0 text-(--color-text-muted)" viewBox = "0 0 24 24" fill = "none" stroke = "currentColor" strokeWidth = "2" strokeLinecap = "round" strokeLinejoin = "round" aria-hidden="true" >
   <circle cx="11" cy = "11" r = "8" /> <path d="m21 21-4.35-4.35" />
     </svg>
   );

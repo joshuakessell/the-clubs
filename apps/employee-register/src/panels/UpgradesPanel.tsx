@@ -117,8 +117,7 @@ function timeAgo(iso: string): string {
 function TierAvailBadge({ tier, count }: Readonly<{ tier: string; count: number }>) {
   return (
     <span
-      className="inline-flex items-center gap-1 text-xs font-medium tabular-nums"
-      style={{ color: 'var(--color-text-secondary)' }}
+      className="inline-flex items-center gap-1 text-xs font-medium tabular-nums text-(--color-text-secondary)"
     >
       {TIER_LABELS[tier]}:
       <strong
@@ -282,35 +281,31 @@ function RoomPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60"
       onClick={onClose}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Select a room to offer"
-        className="w-full max-w-md rounded-xl border shadow-2xl"
-        style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
+        className="w-full max-w-md rounded-xl border shadow-2xl bg-(--color-surface-raised) border-(--color-border-default)"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-3">
           <div>
             <h3
-              className="text-base font-bold"
-              style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}
+              className="text-base font-bold text-(--color-text-primary) font-(--font-display)"
             >
               Offer Room to {entry.customerName}
             </h3>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-xs mt-0.5 text-(--color-text-muted)">
               Locker {entry.displayIdentifier} · Select a room to offer
             </p>
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1 transition-colors"
-            style={{ color: 'var(--color-text-muted)' }}
+            className="rounded-md p-1 transition-colors text-(--color-text-muted)"
             aria-label="Close"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -319,13 +314,13 @@ function RoomPickerModal({
           </button>
         </div>
 
-        <div className="h-px w-full" style={{ background: 'var(--color-border-subtle)' }} />
+        <div className="h-px w-full bg-(--color-border-subtle)" />
 
         {/* Room list */}
         <div className="px-5 py-4 max-h-[50vh] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
           {loadingRooms ? (
             <div className="text-center py-8">
-              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading rooms…</span>
+              <span className="text-sm text-(--color-text-muted)">Loading rooms…</span>
             </div>
           ) : (
             <div className="flex flex-col gap-4">
@@ -464,8 +459,7 @@ function WaitlistRow({
             #{String(queuePos).padStart(2, '0')}
           </span>
           <span
-            className="text-sm font-semibold truncate"
-            style={{ color: 'var(--color-text-primary)' }}
+            className="text-sm font-semibold truncate text-(--color-text-primary)"
           >
             {entry.customerName}
           </span>
@@ -793,7 +787,7 @@ export function UpgradesPanel() {
   if (loading) {
     return (
       <PanelShell align="center">
-        <div className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading upgrades…</div>
+        <div className="text-sm text-(--color-text-muted)">Loading upgrades…</div>
       </PanelShell>
     );
   }
@@ -802,11 +796,7 @@ export function UpgradesPanel() {
   return (
     <PanelShell align="top" card={false} scroll="hidden">
       <div
-        className="flex flex-col flex-1 min-h-0 rounded-xl border p-5 w-full"
-        style={{
-          backgroundColor: 'var(--color-surface-raised)',
-          borderColor: 'var(--color-border-default)',
-        }}
+        className="flex flex-col flex-1 min-h-0 rounded-xl border p-5 w-full bg-(--color-surface-raised) border-(--color-border-default)"
       >
         {/* Header with availability */}
         <PanelHeader
@@ -814,7 +804,7 @@ export function UpgradesPanel() {
           subtitle="Waitlist queue — rooms offered first-come-first-served"
           action={
             error ? (
-              <span className="text-xs font-medium" style={{ color: 'var(--color-status-error)' }}>
+              <span className="text-xs font-medium text-(--color-status-error)">
                 {error}
               </span>
             ) : (
@@ -830,7 +820,7 @@ export function UpgradesPanel() {
         {entries.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-2">
             <span className="text-3xl">🎉</span>
-            <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm font-medium text-(--color-text-muted)">
               No active upgrade requests
             </p>
           </div>
@@ -844,7 +834,7 @@ export function UpgradesPanel() {
             </div>
 
             {/* Rows */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+            <div className="flex flex-col gap-0.5">
               {entries.map((entry, idx) => (
                 <WaitlistRow
                   key={entry.id}
