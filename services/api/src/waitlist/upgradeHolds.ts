@@ -233,7 +233,7 @@ export async function processUpgradeHoldsTick(
         desiredTier: candidate.desired_tier,
         resourceId: room.resource_id,
         roomNumber: room.room_number,
-        expiresAt: expiresAt.toISOString(),
+        expiresAt: new Date(expiresAt).toISOString(),
       });
     }
 

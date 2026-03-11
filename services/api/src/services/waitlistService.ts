@@ -118,3 +118,27 @@ export async function cancelWaitlistEntry(waitlistId: string, staffId: string, r
     return { waitlistId, status: 'CANCELLED' as const };
   });
 }
+
+/**
+ * Revoke an active offer — un-reserve the room and revert the waitlist entry
+ * back to ACTIVE. The customer stays on the waitlist but the room is freed.
+ */
+export async function revokeWaitlistOffer(waitlistId: string, staffId: string) {
+  return db.transaction(async (tx) => {
+    const waitlistResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, resource_id, status FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
+    if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
+    const waitlist = waitlistResult.rows[0] as unknown as WaitlistRow;
+    if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Cannot revoke — entry must be OFFERED (current: ${waitlist.status})`);
+
+    // Revert to ACTIVE, clear the offered room
+    await tx.execute(sql`UPDATE waitlist SET status = 'ACTIVE', resource_id = NULL, offer_expires_at = NULL, last_offered_at = NOW(), updated_at = NOW() WHERE id = ${waitlistId}`);
+
+    // Release any inventory reservations for this waitlist hold
+    await tx.execute(sql`UPDATE inventory_reservations SET released_at = NOW(), release_reason = 'REVOKED' WHERE released_at IS NULL AND kind = 'UPGRADE_HOLD' AND waitlist_id = ${waitlistId}`);
+
+    await insertAuditLogDrizzle(tx, { staffId, action: 'WAITLIST_OFFERED', entityType: 'waitlist', entityId: waitlistId, oldValue: { status: 'OFFERED', resourceId: waitlist.resource_id }, newValue: { status: 'ACTIVE', reason: 'Offer revoked by staff' } });
+
+    return { waitlistId, status: 'ACTIVE' as const };
+  });
+}
+

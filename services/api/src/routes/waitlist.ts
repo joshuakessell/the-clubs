@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware';
 import type { Broadcaster } from '../realtime/broadcaster';
-import { listWaitlistEntries, offerUpgrade, cancelWaitlistEntry } from '../services/waitlistService';
+import { listWaitlistEntries, offerUpgrade, cancelWaitlistEntry, revokeWaitlistOffer } from '../services/waitlistService';
 
 declare module 'fastify' { interface FastifyInstance { broadcaster: Broadcaster; } }
 
@@ -42,6 +42,16 @@ export async function waitlistRoutes(fastify: FastifyInstance): Promise<void> {
       const body = request.body as z.infer<typeof CancelWaitlistSchema>;
       const result = await cancelWaitlistEntry(request.params.id, request.staff.staffId, body.reason);
       if (fastify.broadcaster) fastify.broadcaster.broadcast({ type: 'WAITLIST_UPDATED', payload: { waitlistId: result.waitlistId, status: 'CANCELLED' }, timestamp: new Date().toISOString() });
+      return reply.send(result);
+    }
+  );
+
+  fastify.post<{ Params: { id: string } }>(
+    '/v1/waitlist/:id/revoke', { preHandler: [requireAuth] },
+    async (request, reply) => {
+      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
+      const result = await revokeWaitlistOffer(request.params.id, request.staff.staffId);
+      if (fastify.broadcaster) fastify.broadcaster.broadcast({ type: 'WAITLIST_UPDATED', payload: { waitlistId: result.waitlistId, status: 'ACTIVE' }, timestamp: new Date().toISOString() });
       return reply.send(result);
     }
   );

@@ -288,6 +288,7 @@ function WaitlistTableRow({
   confirmingCancelId,
   onOfferClick,
   onUpgrade,
+  onRevoke,
   onCancelTap,
   onCancelConfirm,
 }: Readonly<{
@@ -299,6 +300,7 @@ function WaitlistTableRow({
   confirmingCancelId: string | null;
   onOfferClick: (e: WaitlistEntry) => void;
   onUpgrade: (e: WaitlistEntry) => void;
+  onRevoke: (e: WaitlistEntry) => void;
   onCancelTap: (id: string) => void;
   onCancelConfirm: (e: WaitlistEntry) => void;
 }>) {
@@ -400,10 +402,10 @@ function WaitlistTableRow({
               Upgrade
             </button>
             <button
-              onClick={() => onCancelConfirm(entry)}
+              onClick={() => onRevoke(entry)}
               disabled={submitting}
               className={actionBtnBase}
-              aria-label={`Cancel offer for ${entry.customerName}`}
+              aria-label={`Revoke offer for ${entry.customerName}`}
               style={{
                 backgroundColor: 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
                 color: 'var(--color-status-error)',
@@ -413,7 +415,7 @@ function WaitlistTableRow({
                 transition: 'opacity 0.15s ease',
               }}
             >
-              Cancel Offer
+              Revoke
             </button>
           </>
         ) : (
@@ -706,6 +708,27 @@ export function UpgradesPanel() {
     }
   }, [headers, fetchData]);
 
+  /* ── Revoke offer (un-reserve room, keep on waitlist) ── */
+  const handleRevoke = useCallback(async (entry: WaitlistEntry) => {
+    setSubmitting(true);
+    try {
+      const h = headers();
+      const res = await fetch(getApiUrl(`/api/v1/waitlist/${entry.id}/revoke`), {
+        method: 'POST',
+        headers: { ...h, 'Content-Type': 'application/json' },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || err.message || 'Revoke failed');
+      }
+      await fetchData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Revoke failed');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [headers, fetchData]);
+
   /* ── Derived state (memoized) ── */
   const canOffer = useCallback((entry: WaitlistEntry): boolean => {
     if (entry.status !== 'ACTIVE') return false;
@@ -791,6 +814,7 @@ export function UpgradesPanel() {
                   confirmingCancelId={confirmingCancelId}
                   onOfferClick={(e) => void handleOpenRoomPicker(e)}
                   onUpgrade={(e) => void handleStartUpgrade(e)}
+                  onRevoke={(e) => void handleRevoke(e)}
                   onCancelTap={handleCancelTap}
                   onCancelConfirm={(e) => void handleCancelConfirm(e)}
                 />
