@@ -13,22 +13,17 @@ function renderRoomContent(
   setShowRoomOverride: (v: boolean) => void,
 ) {
   if (loadingRooms) {
-    return <p className="mt-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>Loading available rooms…</p>;
+    return <p className="mt-2 text-xs text-(--color-text-muted)">Loading available rooms…</p>;
   }
   if (availableRooms.length === 0) {
-    return <p className="mt-2 text-xs" style={{ color: 'var(--color-status-error)' }}>No available rooms in this tier</p>;
+    return <p className="mt-2 text-xs text-(--color-status-error)">No available rooms in this tier</p>;
   }
   return (
     <div className="mt-2 flex flex-col gap-2">
       <select
         value={selectedRoom}
         onChange={(e) => setSelectedRoom(e.target.value)}
-        className="rounded-lg border px-3 py-2 text-sm"
-        style={{
-          backgroundColor: 'var(--color-surface-input)',
-          borderColor: 'var(--color-border-default)',
-          color: 'var(--color-text-primary)',
-        }}
+        className="rounded-lg border px-3 py-2 text-sm bg-(--color-surface-input) border-(--color-border-default) text-(--color-text-primary)"
       >
         <option value="">Choose a room…</option>
         {availableRooms.map((r) => (
@@ -53,8 +48,7 @@ function renderRoomContent(
         </button>
         <button
           onClick={() => { setShowRoomOverride(false); setSelectedRoom(''); }}
-          className="rounded-lg border px-4 py-2 text-sm font-medium"
-          style={{ borderColor: 'var(--color-border-default)', color: 'var(--color-text-muted)' }}
+          className="rounded-lg border px-4 py-2 text-sm font-medium border-(--color-border-default) text-(--color-text-muted)"
         >
           Cancel
         </button>
@@ -181,19 +175,19 @@ export function CompleteStep() {
   return (
     <div className="flex flex-col items-center gap-4 py-4">
       <span className="text-4xl">🎉</span>
-      <h3 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+      <h3 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">
         Check-In Complete
       </h3>
 
-      <div className="rounded-xl border p-5 text-center" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-        <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+      <div className="rounded-xl border p-5 text-center bg-(--color-surface-overlay) border-(--color-border-subtle)">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-(--color-text-muted)">
           Assigned
         </span>
-        <p className="mt-1 text-2xl font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-accent-primary)' }}>
+        <p className="mt-1 text-2xl font-bold font-(--font-display) text-(--color-accent-primary)">
           {sp.assignedResourceType === 'locker' ? 'Locker' : 'Room'} {sp.assignedResourceNumber ?? '—'}
         </p>
         {sp.checkoutAt && (
-          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="mt-1 text-xs text-(--color-text-muted)">
             Checkout at {new Date(sp.checkoutAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
           </p>
         )}
@@ -203,23 +197,22 @@ export function CompleteStep() {
       {isRoomType && !showRoomOverride && (
         <button
           onClick={() => { setShowRoomOverride(true); void loadAvailableRooms(); }}
-          className="text-xs font-semibold"
-          style={{ color: 'var(--color-accent-primary)' }}
+          className="text-xs font-semibold text-(--color-accent-primary)"
         >
           Override Room Assignment
         </button>
       )}
 
       {showRoomOverride && (
-        <div className="w-full rounded-xl border p-4" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-          <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+        <div className="w-full rounded-xl border p-4 bg-(--color-surface-overlay) border-(--color-border-subtle)">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-(--color-text-muted)">
             Select Room ({currentTier.replaceAll('_', ' ')})
           </span>
 
           {renderRoomContent(loadingRooms, availableRooms, selectedRoom, setSelectedRoom, overrideLoading, handleRoomOverride, setShowRoomOverride)}
 
           {overrideError && (
-            <p className="mt-2 text-xs font-semibold" style={{ color: 'var(--color-status-error)' }}>
+            <p className="mt-2 text-xs font-semibold text-(--color-status-error)">
               {overrideError}
             </p>
           )}
@@ -235,7 +228,7 @@ export function CompleteStep() {
           <label htmlFor="membership-card-input" className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-accent-secondary, #a78bfa)' }}>
             Enter Membership Card Number
           </label>
-          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="mt-1 text-xs text-(--color-text-muted)">
             Scan or type the physical membership card number to complete the 6-month membership.
           </p>
           <div className="mt-3 flex gap-2">
@@ -287,7 +280,7 @@ export function CompleteStep() {
       {/* Membership saved confirmation */}
       {membershipSaved && (
         <div className="w-full rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
-          <span className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
+          <span className="text-sm font-semibold text-(--color-status-success)">
             ✓ 6-Month Membership activated — Card #{membershipCardNumber}
           </span>
         </div>

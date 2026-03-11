@@ -126,8 +126,7 @@ export function ChargesTab() {
     return (
       <div className="flex flex-col gap-2">
         <h3
-          className="text-sm font-bold"
-          style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+          className="text-sm font-bold font-(--font-display) text-(--color-text-primary)"
         >
           Check-In Ledger
         </h3>
@@ -139,12 +138,11 @@ export function ChargesTab() {
             style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)' }}
           >
             <span
-              className="text-xs font-bold uppercase tracking-wider"
-              style={{ color: 'var(--color-status-error)' }}
+              className="text-xs font-bold uppercase tracking-wider text-(--color-status-error)"
             >
               Past Due Balance
             </span>
-            <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-status-error)' }}>
+            <span className="text-sm font-bold tabular-nums text-(--color-status-error)">
               ${((sp.pastDueBalance ?? 0)).toFixed(2)}
             </span>
           </div>
@@ -153,15 +151,10 @@ export function ChargesTab() {
         {/* Line items */}
         {lineItems.length > 0 ? (
           <div
-            className="rounded-lg border"
-            style={{
-              backgroundColor: 'var(--color-surface-overlay)',
-              borderColor: 'var(--color-border-subtle)',
-            }}
+            className="rounded-lg border bg-(--color-surface-overlay) border-(--color-border-subtle)"
           >
             <div
-              className="divide-y"
-              style={{ borderColor: 'var(--color-border-subtle)' } as React.CSSProperties}
+              className="divide-y divide-(--color-border-subtle)"
             >
               {lineItems.map((item, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-2">
@@ -170,8 +163,7 @@ export function ChargesTab() {
                   </span>
                   <div className="flex items-center gap-2">
                     <span
-                      className="text-sm font-semibold tabular-nums"
-                      style={{ color: 'var(--color-text-primary)' }}
+                      className="text-sm font-semibold tabular-nums text-(--color-text-primary)"
                     >
                       ${item.amount.toFixed(2)}
                     </span>
@@ -197,15 +189,13 @@ export function ChargesTab() {
 
             {/* Total */}
             <div
-              className="flex items-center justify-between border-t px-4 py-2"
-              style={{ borderColor: 'var(--color-border-default)' }}
+              className="flex items-center justify-between border-t px-4 py-2 border-(--color-border-default)"
             >
-              <span className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>
+              <span className="text-sm font-bold text-(--color-text-primary)">
                 Total
               </span>
               <span
-                className="text-base font-bold tabular-nums"
-                style={{ color: 'var(--color-accent-primary)' }}
+                className="text-base font-bold tabular-nums text-(--color-accent-primary)"
               >
                 ${total.toFixed(2)}
               </span>
@@ -213,12 +203,10 @@ export function ChargesTab() {
 
             {/* Payment status */}
             <div
-              className="flex items-center justify-between border-t px-4 py-2"
-              style={{ borderColor: 'var(--color-border-default)' }}
+              className="flex items-center justify-between border-t px-4 py-2 border-(--color-border-default)"
             >
               <span
-                className="text-xs font-bold uppercase tracking-wider"
-                style={{ color: 'var(--color-text-muted)' }}
+                className="text-xs font-bold uppercase tracking-wider text-(--color-text-muted)"
               >
                 Status
               </span>
@@ -243,13 +231,9 @@ export function ChargesTab() {
           </div>
         ) : (
           <div
-            className="rounded-lg border p-3 text-center"
-            style={{
-              backgroundColor: 'var(--color-surface-overlay)',
-              borderColor: 'var(--color-border-subtle)',
-            }}
+            className="rounded-lg border p-3 text-center bg-(--color-surface-overlay) border-(--color-border-subtle)"
           >
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm text-(--color-text-muted)">
               No charges yet. Charges will appear once a rental type is selected.
             </p>
           </div>
@@ -282,10 +266,9 @@ export function ChargesTab() {
       return (
         <div className="flex flex-col items-center justify-center gap-3 py-12">
           <div
-            className="h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent"
-            style={{ color: 'var(--color-accent-primary)' }}
+            className="h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent text-(--color-accent-primary)"
           />
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-sm text-(--color-text-muted)">
             Loading visit charges…
           </p>
         </div>
@@ -295,27 +278,21 @@ export function ChargesTab() {
     return (
       <div className="flex flex-col gap-4">
         <h3
-          className="text-sm font-bold"
-          style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+          className="text-sm font-bold font-(--font-display) text-(--color-text-primary)"
         >
           Visit Charges
         </h3>
 
         {visitEntries.length > 0 ? (
           <div
-            className="rounded-lg border"
-            style={{
-              backgroundColor: 'var(--color-surface-overlay)',
-              borderColor: 'var(--color-border-subtle)',
-            }}
+            className="rounded-lg border bg-(--color-surface-overlay) border-(--color-border-subtle)"
           >
             <div
-              className="divide-y"
-              style={{ borderColor: 'var(--color-border-subtle)' } as React.CSSProperties}
+              className="divide-y divide-(--color-border-subtle)"
             >
               {visitEntries.map((item, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-2">
-                  <span className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                  <span className="text-sm text-(--color-text-secondary)">
                     {item.description}
                   </span>
                   <span
@@ -330,15 +307,13 @@ export function ChargesTab() {
 
             {/* Total */}
             <div
-              className="flex items-center justify-between border-t px-4 py-2"
-              style={{ borderColor: 'var(--color-border-default)' }}
+              className="flex items-center justify-between border-t px-4 py-2 border-(--color-border-default)"
             >
-              <span className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>
+              <span className="text-sm font-bold text-(--color-text-primary)">
                 Total
               </span>
               <span
-                className="text-base font-bold tabular-nums"
-                style={{ color: 'var(--color-accent-primary)' }}
+                className="text-base font-bold tabular-nums text-(--color-accent-primary)"
               >
                 ${visitTotal.toFixed(2)}
               </span>
@@ -346,13 +321,9 @@ export function ChargesTab() {
           </div>
         ) : (
           <div
-            className="rounded-lg border p-3 text-center"
-            style={{
-              backgroundColor: 'var(--color-surface-overlay)',
-              borderColor: 'var(--color-border-subtle)',
-            }}
+            className="rounded-lg border p-3 text-center bg-(--color-surface-overlay) border-(--color-border-subtle)"
           >
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm text-(--color-text-muted)">
               No charges recorded for this visit yet.
             </p>
           </div>
@@ -364,8 +335,8 @@ export function ChargesTab() {
   // Fallback — shouldn't be reached if AccountPanel hides this column correctly
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-12">
-      <span className="text-sm font-bold" style={{ color: 'var(--color-text-muted)' }}>No charges</span>
-      <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+      <span className="text-sm font-bold text-(--color-text-muted)">No charges</span>
+      <p className="text-sm text-(--color-text-muted)">
         No active session. Start a check-in to see charges.
       </p>
     </div>
