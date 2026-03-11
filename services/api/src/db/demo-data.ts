@@ -290,6 +290,7 @@ function planVisitsForCustomer(
   activeSlots: number,
   weekCounts: Map<string, number>,
   overdueMinutes = 0,
+  hoursCheckedIn = 0,
 ): DemoVisit[] {
   const visits: DemoVisit[] = [];
   const visitCount = randomInt(2, 6);
@@ -379,11 +380,17 @@ function planVisitsForCustomer(
 
   // Inject an active visit if slots remain
   if (activeSlots > 0) {
-    const activeStart = addHours(now, -randomInt(2, 5));
+    // Use deterministic hoursCheckedIn for staggered checkout times
+    const checkedInHours = overdueMinutes ? 6 + overdueMinutes / 60 : (hoursCheckedIn || randomInt(2, 5));
+    const activeStart = addHours(now, -checkedInHours);
     // If overdueMinutes is set, shift ends_at into the past so the customer appears overdue
     const blockDurationMs = overdueMinutes
       ? (now.getTime() - activeStart.getTime()) - overdueMinutes * 60_000
       : 6 * 60 * 60_000;
+    // Diversify rental types: alternate between rooms and lockers based on stagger position
+    const rentalChoices = [RentalType.STANDARD, RentalType.LOCKER, RentalType.DOUBLE, RentalType.STANDARD, RentalType.LOCKER, RentalType.SPECIAL];
+    const rentalIdx = Math.floor(checkedInHours * 2) % rentalChoices.length;
+    const rental = rentalChoices[rentalIdx] ?? RentalType.STANDARD;
     const activeBlocks = [
       {
         id: randomUUID(),
@@ -391,7 +398,7 @@ function planVisitsForCustomer(
         block_type: BlockType.INITIAL,
         starts_at: activeStart,
         ends_at: new Date(activeStart.getTime() + blockDurationMs),
-        rental_type: Math.random() < 0.5 ? RentalType.STANDARD : RentalType.LOCKER,
+        rental_type: rental,
         resource_id: null,
         has_tv_remote: false,
         agreement_signed: true,
@@ -490,9 +497,17 @@ export function generateDemoData(options: GenerateOptions): DemoData {
   const overdueSchedule = [30, 60];
   let overdueIdx = 0;
 
+  // Stagger schedule: hours already checked in → determines time remaining until checkout.
+  // With a 6-hour block, hoursCheckedIn=5.5 means 30min left, hoursCheckedIn=0.5 means 5.5h left.
+  const staggerSchedule = [5.5, 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.75, 0.5];
+  let staggerIdx = 0;
+
   for (const customer of customers) {
     const isOverdueSlot = activeRemaining > 0 && overdueIdx < overdueSchedule.length;
     const overdueMinutes = isOverdueSlot ? (overdueSchedule[overdueIdx] ?? 0) : 0;
+    const hoursCheckedIn = (!isOverdueSlot && activeRemaining > 0)
+      ? (staggerSchedule[staggerIdx % staggerSchedule.length] ?? 3)
+      : 0;
     const customerVisits = planVisitsForCustomer(
       customer.id,
       now,
@@ -501,12 +516,14 @@ export function generateDemoData(options: GenerateOptions): DemoData {
       activeRemaining > 0 ? 1 : 0,
       weekCounts,
       overdueMinutes,
+      hoursCheckedIn,
     );
     if (activeRemaining > 0) {
       const hasActive = customerVisits.some((v) => v.ended_at === null);
       if (hasActive) {
         activeRemaining--;
         if (isOverdueSlot) overdueIdx++;
+        else staggerIdx++;
       }
     }
     visits.push(...customerVisits);
