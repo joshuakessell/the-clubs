@@ -101,7 +101,7 @@ export function StaffView() {
             boxShadow: '0 0 60px rgba(0,0,0,0.3)',
           }}
         >
-          <div className="mb-2 text-base font-bold" style={{ color: 'var(--color-accent-primary)' }}>
+          <div className="mb-2 text-base font-bold text-(--color-accent-primary)">
             PIN Reset
           </div>
           {toast}
@@ -113,8 +113,8 @@ export function StaffView() {
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Staff Management</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{staff.length} staff members</p>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Staff Management</h2>
+            <p className="text-sm text-(--color-text-muted)">{staff.length} staff members</p>
           </div>
           <Button size="sm" onClick={() => setShowCreate(!showCreate)}>+ Add Staff</Button>
         </div>
@@ -150,7 +150,7 @@ export function StaffView() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                 {['Name', 'Role', 'Status', 'Last Login', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -166,7 +166,7 @@ export function StaffView() {
                         value={editName} onChange={(e) => setEditName(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); if (e.key === 'Escape') setEditingId(null); }} />
                     ) : (
-                      <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.name}</span>
+                      <span className="text-sm font-semibold text-(--color-text-primary)">{s.name}</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -187,7 +187,7 @@ export function StaffView() {
                       {s.forcePinChange && <Badge color="warning" variant="light" size="sm">PIN Change Required</Badge>}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">
                     {s.lastLogin ? new Date(s.lastLogin).toLocaleString() : '—'}
                   </td>
                   <td className="px-4 py-3">
@@ -214,7 +214,7 @@ export function StaffView() {
               ))}
               {staff.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
                     No staff members
                   </td>
                 </tr>
@@ -227,16 +227,16 @@ export function StaffView() {
       {/* RBAC Audit — Role Permissions Reference */}
       <div className="rounded-xl border p-6"
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">
           🔑 Role Permissions
         </h3>
         <div className="mt-3 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border-default)' }}>
           <table className="w-full">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-overlay)' }}>
-                <th className="px-4 py-2 text-left text-xs font-semibold uppercase" style={{ color: 'var(--color-text-muted)' }}>Permission</th>
-                <th className="px-4 py-2 text-center text-xs font-semibold uppercase" style={{ color: 'var(--color-text-muted)' }}>Admin</th>
-                <th className="px-4 py-2 text-center text-xs font-semibold uppercase" style={{ color: 'var(--color-text-muted)' }}>Staff</th>
+                <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-(--color-text-muted)">Permission</th>
+                <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-(--color-text-muted)">Admin</th>
+                <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-(--color-text-muted)">Staff</th>
               </tr>
             </thead>
             <tbody>
@@ -257,7 +257,7 @@ export function StaffView() {
                 ['Timeclock (Clock In/Out)', true, true],
               ].map(([perm, admin, staff]) => (
                 <tr key={String(perm)} className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                  <td className="px-4 py-2 text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>{String(perm)}</td>
+                  <td className="px-4 py-2 text-xs font-medium text-(--color-text-primary)">{String(perm)}</td>
                   <td className="px-4 py-2 text-center text-xs">{admin ? '✅' : '—'}</td>
                   <td className="px-4 py-2 text-center text-xs">{staff ? '✅' : '—'}</td>
                 </tr>

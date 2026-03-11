@@ -109,10 +109,10 @@ function OverdueTab() {
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">
               Overdue Guests
             </h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm text-(--color-text-muted)">
               {alerts.length} guest{alerts.length === 1 ? '' : 's'} past checkout time
             </p>
           </div>
@@ -147,8 +147,8 @@ function OverdueTab() {
                     </svg>
                   </div>
                   <div>
-                    <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{a.customerName}</p>
-                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    <p className="text-sm font-semibold text-(--color-text-primary)">{a.customerName}</p>
+                    <p className="text-xs text-(--color-text-muted)">
                       {a.resourceType === 'ROOM' ? '🛏️' : '🔒'}{' '}
                       {a.resourceType} {a.resourceNumber} · Checked in {formatTime(a.checkinAt)} · Due {formatTime(a.scheduledCheckoutAt)}
                     </p>
@@ -174,8 +174,8 @@ function OverdueTab() {
             </div>
           ))}
           {alerts.length === 0 && (
-            <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--color-border-default)' }}>
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <div className="rounded-xl border p-8 text-center border-(--color-border-default)">
+              <p className="text-sm text-(--color-text-muted)">
                 ✅ No overdue guests — all sessions are within their scheduled time
               </p>
             </div>
@@ -227,8 +227,8 @@ function BanTab() {
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Banned Customers</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{alerts.length} active ban{alerts.length === 1 ? '' : 's'}</p>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Banned Customers</h2>
+            <p className="text-sm text-(--color-text-muted)">{alerts.length} active ban{alerts.length === 1 ? '' : 's'}</p>
           </div>
           <Button size="sm" variant="outline" onClick={() => refetch()}>Refresh</Button>
         </div>
@@ -264,11 +264,11 @@ function BanTab() {
                       </svg>
                     </div>
                     <div>
-                      <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{a.customerName}</p>
-                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      <p className="text-sm font-semibold text-(--color-text-primary)">{a.customerName}</p>
+                      <p className="text-xs text-(--color-text-muted)">
                         {a.membershipNumber ? `#${a.membershipNumber} · ` : ''}
                         Banned until {formatBanDate(a.bannedUntil)}
-                        <span className="font-semibold" style={{ color: 'var(--color-status-error)' }}>{' '}({days} day{days === 1 ? '' : 's'} remaining)</span>
+                        <span className="font-semibold text-(--color-status-error)">{' '}({days} day{days === 1 ? '' : 's'} remaining)</span>
                       </p>
                     </div>
                   </div>
@@ -287,7 +287,7 @@ function BanTab() {
 
                 {isExtending && (
                   <div className="mt-3 flex items-center gap-2 border-t pt-3" style={{ borderColor: 'color-mix(in oklch, var(--color-status-error) 10%, transparent)' }}>
-                    <label htmlFor={`extend-${a.id}`} className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                    <label htmlFor={`extend-${a.id}`} className="text-xs font-semibold text-(--color-text-muted)">
                       New ban end date:
                     </label>
                     <input
@@ -309,8 +309,8 @@ function BanTab() {
             );
           })}
           {alerts.length === 0 && (
-            <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--color-border-default)' }}>
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No banned customers</p>
+            <div className="rounded-xl border p-8 text-center border-(--color-border-default)">
+              <p className="text-sm text-(--color-text-muted)">No banned customers</p>
             </div>
           )}
         </div>

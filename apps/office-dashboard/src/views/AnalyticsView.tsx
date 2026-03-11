@@ -69,7 +69,7 @@ export function AnalyticsView() {
           <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="From date"
             className="rounded-lg border px-3 py-1.5 text-xs"
             style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }} />
-          <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>to</span>
+          <span className="text-xs text-(--color-text-muted)">to</span>
           <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="To date"
             className="rounded-lg border px-3 py-1.5 text-xs"
             style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }} />
@@ -127,9 +127,9 @@ function OverviewTab({ trend, breakdown, ops }: Readonly<{
 
       {/* Revenue trend chart */}
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Revenue Trend (30 Days)</h3>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">Revenue Trend (30 Days)</h3>
         {recentTrend.length === 0 ? (
-          <p className="mt-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No revenue data</p>
+          <p className="mt-4 text-center text-sm text-(--color-text-muted)">No revenue data</p>
         ) : (
           <div className="mt-4 flex items-end gap-[2px]" style={{ height: 160 }}>
             {recentTrend.map((d) => {
@@ -154,14 +154,14 @@ function OverviewTab({ trend, breakdown, ops }: Readonly<{
       <div className="grid grid-cols-2 gap-4">
         {/* By Payment Method */}
         <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-          <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>By Payment Method</h3>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">By Payment Method</h3>
           <div className="mt-3 flex flex-col gap-2">
             {(breakdown?.byPaymentMethod ?? []).map((m) => (
               <div key={m.method} className="flex items-center justify-between">
-                <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{m.method}</span>
+                <span className="text-sm font-semibold text-(--color-text-primary)">{m.method}</span>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{m.count} tx</span>
-                  <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>${m.total.toFixed(2)}</span>
+                  <span className="text-xs tabular-nums text-(--color-text-muted)">{m.count} tx</span>
+                  <span className="text-sm font-bold tabular-nums text-(--color-accent-primary)">${m.total.toFixed(2)}</span>
                 </div>
               </div>
             ))}
@@ -170,14 +170,14 @@ function OverviewTab({ trend, breakdown, ops }: Readonly<{
 
         {/* By Rental Type */}
         <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-          <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>By Rental Type</h3>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">By Rental Type</h3>
           <div className="mt-3 flex flex-col gap-2">
             {(breakdown?.byRentalType ?? []).map((r) => (
               <div key={r.rentalType} className="flex items-center justify-between">
-                <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{r.rentalType}</span>
+                <span className="text-sm font-semibold text-(--color-text-primary)">{r.rentalType}</span>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{r.count} tx</span>
-                  <span className="text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>${r.total.toFixed(2)}</span>
+                  <span className="text-xs tabular-nums text-(--color-text-muted)">{r.count} tx</span>
+                  <span className="text-sm font-bold tabular-nums text-(--color-accent-primary)">${r.total.toFixed(2)}</span>
                 </div>
               </div>
             ))}
@@ -201,7 +201,7 @@ function HeatmapTab({ grid }: Readonly<{ grid: HeatmapCell[] }>) {
 
   return (
     <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-      <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+      <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">
         Check-in Activity Heatmap (Last 4 Weeks)
       </h3>
       <div className="mt-4 overflow-x-auto">
@@ -210,7 +210,7 @@ function HeatmapTab({ grid }: Readonly<{ grid: HeatmapCell[] }>) {
             <tr>
               <th className="w-12" />
               {Array.from({ length: 24 }, (_, h) => (
-                <th key={h} className="text-center text-[9px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                <th key={h} className="text-center text-[9px] tabular-nums text-(--color-text-muted)">
                   {h.toString().padStart(2, '0')}
                 </th>
               ))}
@@ -219,7 +219,7 @@ function HeatmapTab({ grid }: Readonly<{ grid: HeatmapCell[] }>) {
           <tbody>
             {rows.map((row) => (
               <tr key={row.day}>
-                <td className="text-right text-[10px] font-semibold pr-1" style={{ color: 'var(--color-text-muted)' }}>
+                <td className="text-right text-[10px] font-semibold pr-1 text-(--color-text-muted)">
                   {row.day}
                 </td>
                 {row.cells.map((cell) => {
@@ -241,7 +241,7 @@ function HeatmapTab({ grid }: Readonly<{ grid: HeatmapCell[] }>) {
         </table>
       </div>
       <div className="mt-3 flex items-center justify-end gap-2">
-        <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>Less</span>
+        <span className="text-[10px] text-(--color-text-muted)">Less</span>
         {[0, 0.25, 0.5, 0.75, 1].map((i) => (
           <div key={i} className="rounded-sm" style={{
             width: 12, height: 12,
@@ -250,7 +250,7 @@ function HeatmapTab({ grid }: Readonly<{ grid: HeatmapCell[] }>) {
               : 'var(--color-surface-input)',
           }} />
         ))}
-        <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>More</span>
+        <span className="text-[10px] text-(--color-text-muted)">More</span>
       </div>
     </div>
   );
@@ -261,7 +261,7 @@ function HeatmapTab({ grid }: Readonly<{ grid: HeatmapCell[] }>) {
 function KpiCard({ label, value, color, small }: Readonly<{ label: string; value: string | number; color: string; small?: boolean }>) {
   return (
     <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-      <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--color-text-muted)' }}>{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">{label}</p>
       <p className={`mt-1 font-extrabold tabular-nums ${small ? 'text-lg' : 'text-2xl'}`} style={{ fontFamily: 'var(--font-display)', color }}>{value}</p>
     </div>
   );

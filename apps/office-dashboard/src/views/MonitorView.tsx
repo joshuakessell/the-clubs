@@ -122,14 +122,14 @@ export function MonitorView() {
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">
               Live Monitor
             </h2>
             <p className="text-sm text-(--color-text-muted)">
               {rooms.length} active session{rooms.length === 1 ? '' : 's'} ·{' '}
               {activeLanes.length}/3 registers active
-              {expiredCount > 0 && <span style={{ color: 'var(--color-status-error)' }}> · {expiredCount} overdue</span>}
-              {soonCount > 0 && <span style={{ color: 'var(--color-status-warning)' }}> · {soonCount} expiring soon</span>}
+              {expiredCount > 0 && <span className="text-(--color-status-error)"> · {expiredCount} overdue</span>}
+              {soonCount > 0 && <span className="text-(--color-status-warning)"> · {soonCount} expiring soon</span>}
             </p>
           </div>
           <Button size="sm" variant="outline" onClick={handleRefresh}>Refresh</Button>
@@ -168,7 +168,7 @@ export function MonitorView() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="text-base font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+                          <span className="text-base font-bold tabular-nums font-(--font-display) text-(--color-text-primary)">
                             #{room.roomNumber}
                           </span>
                           <span className="rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase"
@@ -179,7 +179,7 @@ export function MonitorView() {
                         <Badge color={badge.color} variant="light" size="sm">{badge.label}</Badge>
                       </div>
                       <div className="mt-2 flex flex-col gap-1">
-                        <p className="text-xs font-semibold truncate" style={{ color: 'var(--color-text-secondary)' }}>
+                        <p className="text-xs font-semibold truncate text-(--color-text-secondary)">
                           {room.customerName}
                         </p>
                         <p className="text-[10px] tabular-nums text-(--color-text-muted)">
@@ -191,7 +191,7 @@ export function MonitorView() {
                 })}
               </div>
             ) : (
-              <div className="rounded-xl border p-6 text-center" style={{ borderColor: 'var(--color-border-default)' }}>
+              <div className="rounded-xl border p-6 text-center border-(--color-border-default)">
                 <p className="text-sm text-(--color-text-muted)">No active room sessions</p>
               </div>
             )}
@@ -228,7 +228,7 @@ export function MonitorView() {
                   return (
                     <div key={ks.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold" style={{ color: 'var(--color-text-primary)' }}>
+                        <span className="text-xs font-bold text-(--color-text-primary)">
                           {ks.customerName ?? 'Guest'}
                         </span>
                         <Badge color={statusColor} variant="light" size="sm">{ks.status.replace(/_/g, ' ')}</Badge>
@@ -255,7 +255,7 @@ export function MonitorView() {
                 <div key={lane.registerNumber} className="rounded-xl border p-5"
                   style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: lane.active ? 'var(--color-accent-primary)' : 'var(--color-border-default)' }}>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+                    <span className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
                       Register {lane.registerNumber}
                     </span>
                     <Badge color={lane.active ? 'success' : 'gray'} variant="light" size="sm">{lane.active ? 'Active' : 'Idle'}</Badge>
@@ -264,12 +264,12 @@ export function MonitorView() {
                     <div className="mt-3 flex flex-col gap-1.5">
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-(--color-text-muted)">Employee</span>
-                        <span className="font-semibold" style={{ color: 'var(--color-text-secondary)' }}>{lane.employee.displayName}</span>
+                        <span className="font-semibold text-(--color-text-secondary)">{lane.employee.displayName}</span>
                       </div>
                       {lane.deviceId && (
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-(--color-text-muted)">Device</span>
-                          <span className="font-mono text-[10px]" style={{ color: 'var(--color-text-secondary)' }}>{lane.deviceId}</span>
+                          <span className="font-mono text-[10px] text-(--color-text-secondary)">{lane.deviceId}</span>
                         </div>
                       )}
                       {lane.secondsSinceHeartbeat !== null && (
@@ -298,7 +298,7 @@ export function MonitorView() {
 
 function StatCard({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
-    <div className="rounded-lg border px-4 py-3" style={{ borderColor: 'var(--color-border-default)' }}>
+    <div className="rounded-lg border px-4 py-3 border-(--color-border-default)">
       <p className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">{label}</p>
       <p className="mt-1 text-2xl font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)', color }}>{value}</p>
     </div>

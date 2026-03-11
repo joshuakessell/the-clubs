@@ -130,31 +130,31 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
       >
         <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Name
             </span>
-            <p className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>{customer.name}</p>
+            <p className="font-semibold text-(--color-text-primary)">{customer.name}</p>
           </div>
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Date of Birth
             </span>
-            <p style={{ color: 'var(--color-text-secondary)' }}>{customer.dob ?? '—'}</p>
+            <p className="text-(--color-text-secondary)">{customer.dob ?? '—'}</p>
           </div>
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Membership #
             </span>
-            <p className="font-mono" style={{ color: 'var(--color-text-secondary)' }}>{customer.membershipNumber ?? '—'}</p>
+            <p className="font-mono text-(--color-text-secondary)">{customer.membershipNumber ?? '—'}</p>
           </div>
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Membership Status
             </span>
             <p><Badge color={membership.color} variant="light" size="sm">{membership.label}</Badge></p>
           </div>
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Balance Due
             </span>
             <p className="font-bold tabular-nums" style={{ color: customer.pastDueBalance > 0 ? 'var(--color-status-error)' : 'var(--color-text-secondary)' }}>
@@ -162,22 +162,22 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
             </p>
           </div>
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Last Visit
             </span>
-            <p style={{ color: 'var(--color-text-secondary)' }}>{customer.lastVisit ? formatDate(customer.lastVisit) : '—'}</p>
+            <p className="text-(--color-text-secondary)">{customer.lastVisit ? formatDate(customer.lastVisit) : '—'}</p>
           </div>
           <div>
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+            <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
               Lifetime Spend
             </span>
-            <p className="font-bold tabular-nums" style={{ color: 'var(--color-status-success)' }}>
+            <p className="font-bold tabular-nums text-(--color-status-success)">
               ${lifetimeSpend.toFixed(2)}
             </p>
           </div>
           {customer.membershipCardType && customer.membershipCardType !== 'NONE' && (
             <div>
-              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+              <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                 Card Type
               </span>
               <p><Badge color="primary" variant="light" size="sm">{customer.membershipCardType.replace(/_/g, ' ')}</Badge></p>
@@ -219,9 +219,9 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
         </div>
 
         {notesLoading ? (
-          <div className="py-2 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading notes…</div>
+          <div className="py-2 text-center text-sm text-(--color-text-muted)">Loading notes…</div>
         ) : notes.length === 0 ? (
-          <div className="py-2 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No notes yet</div>
+          <div className="py-2 text-center text-sm text-(--color-text-muted)">No notes yet</div>
         ) : (
           <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
             {notes.map((n) => (
@@ -231,12 +231,12 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
                   backgroundColor: n.isImportant ? 'color-mix(in oklch, var(--color-status-warning) 4%, transparent)' : 'transparent',
                 }}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>
+                  <span className="text-xs font-semibold text-(--color-text-muted)">
                     {n.createdByStaffName} · {formatDate(n.createdAt)}
                   </span>
                   {n.isImportant && <Badge color="warning" variant="light" size="sm">Important</Badge>}
                 </div>
-                <p className="mt-0.5 text-sm" style={{ color: 'var(--color-text-primary)' }}>{n.note}</p>
+                <p className="mt-0.5 text-sm text-(--color-text-primary)">{n.note}</p>
               </div>
             ))}
           </div>
@@ -245,25 +245,25 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
 
       {/* Visit History */}
       <div>
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-(--color-text-muted)">
           Visit History ({visits.length})
         </h4>
 
         {loading ? (
-          <div className="py-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading visits…</div>
+          <div className="py-4 text-center text-sm text-(--color-text-muted)">Loading visits…</div>
         ) : error ? (
           <div className="rounded-lg border px-3 py-2 text-sm" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
             {error}
           </div>
         ) : visits.length === 0 ? (
-          <div className="py-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No visit history</div>
+          <div className="py-4 text-center text-sm text-(--color-text-muted)">No visit history</div>
         ) : (
           <div className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border-subtle)' }}>
             <table className="w-full">
               <thead>
                 <tr className="border-b" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-overlay)' }}>
                   {['Date', 'Check-in', 'Check-out', 'Type', 'Room/Locker', 'Total', 'Agreement'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                    <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -280,22 +280,22 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
                       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                     >
-                      <td className="px-3 py-2 text-sm tabular-nums" style={{ color: 'var(--color-text-primary)' }}>
+                      <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-primary)">
                         {formatDate(visit.visitStartedAt)}
                       </td>
-                      <td className="px-3 py-2 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+                      <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-secondary)">
                         {formatTime(block.startsAt)}
                       </td>
-                      <td className="px-3 py-2 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+                      <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-secondary)">
                         {visit.visitEndedAt ? formatTime(visit.visitEndedAt) : '—'}
                       </td>
-                      <td className="px-3 py-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                      <td className="px-3 py-2 text-sm text-(--color-text-secondary)">
                         {block.rentalType}
                       </td>
-                      <td className="px-3 py-2 text-sm font-mono" style={{ color: 'var(--color-text-secondary)' }}>
+                      <td className="px-3 py-2 text-sm font-mono text-(--color-text-secondary)">
                         {block.resourceNumber ?? '—'}
                       </td>
-                      <td className="px-3 py-2 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                      <td className="px-3 py-2 text-sm font-bold tabular-nums text-(--color-accent-primary)">
                         {total > 0 ? `$${total.toFixed(2)}` : '—'}
                       </td>
                       <td className="px-3 py-2">
@@ -318,7 +318,7 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
                             PDF
                           </button>
                         ) : (
-                          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>—</span>
+                          <span className="text-[10px] text-(--color-text-muted)">—</span>
                         )}
                       </td>
                     </tr>
@@ -360,7 +360,7 @@ export function CustomersView() {
   return (
     <div className="flex flex-col gap-6">
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Customer Lookup</h2>
+        <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Customer Lookup</h2>
         <div className="mt-3 flex gap-2">
           <input
             className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
@@ -382,7 +382,7 @@ export function CustomersView() {
 
       {!query ? (
         <div className="rounded-xl border p-12 text-center" style={{ borderColor: 'var(--color-border-default)' }}>
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Enter a name or membership number to search</p>
+          <p className="text-sm text-(--color-text-muted)">Enter a name or membership number to search</p>
         </div>
       ) : loading ? (
         <ViewSpinner />
@@ -392,7 +392,7 @@ export function CustomersView() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                 {['Name', 'DOB', 'Membership #', 'Status', 'Last Visit', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -411,11 +411,11 @@ export function CustomersView() {
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                       >
-                        <div className="flex-1 px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-accent-primary)' }}>{c.name}</div>
-                        <div className="w-[100px] px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>{c.dob ?? '—'}</div>
-                        <div className="w-[120px] px-4 py-3 text-sm font-mono" style={{ color: 'var(--color-text-secondary)' }}>{c.membershipNumber ?? '—'}</div>
+                        <div className="flex-1 px-4 py-3 text-sm font-semibold text-(--color-accent-primary)">{c.name}</div>
+                        <div className="w-[100px] px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">{c.dob ?? '—'}</div>
+                        <div className="w-[120px] px-4 py-3 text-sm font-mono text-(--color-text-secondary)">{c.membershipNumber ?? '—'}</div>
                         <div className="w-[120px] px-4 py-3"><Badge color={membership.color} variant="light" size="sm">{membership.label}</Badge></div>
-                        <div className="w-[110px] px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                        <div className="w-[110px] px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">
                           {c.lastVisit ? formatDate(c.lastVisit) : '—'}
                         </div>
                         <div className="w-[110px] px-4 py-3">
@@ -446,7 +446,7 @@ export function CustomersView() {
               })}
               {customers.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
                     No customers found
                   </td>
                 </tr>

@@ -108,8 +108,8 @@ export function WaitlistView() {
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Waitlist Management</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Waitlist Management</h2>
+            <p className="text-sm text-(--color-text-muted)">
               {pendingCount} pending · {allEntries.length} total
             </p>
           </div>
@@ -149,7 +149,7 @@ export function WaitlistView() {
         <ViewSpinner />
       ) : entries.length === 0 ? (
         <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-sm text-(--color-text-muted)">
             {filter === 'pending' ? 'No one is currently on the waitlist' : 'No waitlist entries found'}
           </p>
         </div>
@@ -159,7 +159,7 @@ export function WaitlistView() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                 {['Customer', 'Current', 'Desired Upgrade', 'Wait Time', 'Status', 'Hold Timer', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -170,23 +170,23 @@ export function WaitlistView() {
                   onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
                   <td className="px-4 py-3">
-                    <div className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{e.customerName}</div>
-                    <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{e.displayIdentifier}</div>
+                    <div className="text-sm font-semibold text-(--color-text-primary)">{e.customerName}</div>
+                    <div className="text-xs text-(--color-text-muted)">{e.displayIdentifier}</div>
                   </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-4 py-3 text-sm text-(--color-text-secondary)">
                     {e.currentRentalType === 'LOCKER' ? '🔐 Locker' : '🚪 Room'}
                   </td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-4 py-3 text-sm text-(--color-text-secondary)">
                     {Array.isArray(e.desiredTiers) && e.desiredTiers.length > 0
                       ? e.desiredTiers.join(', ')
                       : e.desiredTier ?? '—'}
                     {e.offeredRoomNumber && (
-                      <span className="ml-2 text-xs font-semibold" style={{ color: 'var(--color-accent-primary)' }}>
+                      <span className="ml-2 text-xs font-semibold text-(--color-accent-primary)">
                         → Room {e.offeredRoomNumber}
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">
                     {formatWaitTime(e.createdAt)}
                   </td>
                   <td className="px-4 py-3"><Badge color={STATUS_COLOR[e.status] ?? 'gray'} variant="light" size="sm">{e.status}</Badge></td>
@@ -197,7 +197,7 @@ export function WaitlistView() {
                         ⏱ {formatCountdown(e.offerExpiresAt)}
                       </span>
                     ) : (
-                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>—</span>
+                      <span className="text-xs text-(--color-text-muted)">—</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -264,10 +264,10 @@ function OfferRoomPanel({ entry, onClose, onComplete }: Readonly<{
     <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-accent-primary)' }}>
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+          <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
             Offer Room to {entry.customerName}
           </h3>
-          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-xs text-(--color-text-muted)">
             Desired: {tier} · Currently: {entry.displayIdentifier}
           </p>
         </div>
@@ -275,7 +275,7 @@ function OfferRoomPanel({ entry, onClose, onComplete }: Readonly<{
       </div>
       <div className="mt-4">
         {loading ? (
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading available rooms…</p>
+          <p className="text-sm text-(--color-text-muted)">Loading available rooms…</p>
         ) : rooms.length === 0 ? (
           <div className="rounded-lg border px-4 py-3 text-sm"
             style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-warning) 20%, transparent)', color: 'var(--color-status-warning)' }}>
@@ -291,10 +291,10 @@ function OfferRoomPanel({ entry, onClose, onComplete }: Readonly<{
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-border-default)'; (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-input)'; }}
                 disabled={submitting}
                 onClick={() => handleOffer(room.id)}>
-                <span className="text-base font-bold tabular-nums" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+                <span className="text-base font-bold tabular-nums font-(--font-display) text-(--color-text-primary)">
                   #{room.number}
                 </span>
-                <span className="block text-[10px] uppercase" style={{ color: 'var(--color-text-muted)' }}>{room.tier}</span>
+                <span className="block text-[10px] uppercase text-(--color-text-muted)">{room.tier}</span>
               </button>
             ))}
           </div>
