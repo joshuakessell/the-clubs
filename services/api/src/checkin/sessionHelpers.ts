@@ -1,4 +1,4 @@
-import type { PoolClient, LaneSessionRow } from './types';
+import { type PoolClient, type LaneSessionRow, LANE_SESSION_COLS } from './types';
 import { HttpError } from '../errors/HttpError';
 
 /**
@@ -32,7 +32,7 @@ export async function resolveActiveSession(
   // If sessionId is given, try explicit lookup first.
   if (opts?.sessionId) {
     const byId = await client.query<LaneSessionRow>(
-      `SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2${lock} LIMIT 1`,
+      `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 AND lane_id = $2${lock} LIMIT 1`,
       [opts.sessionId, laneId],
     );
     if (byId.rows.length > 0) return byId.rows[0]!;
@@ -40,7 +40,7 @@ export async function resolveActiveSession(
 
   // Fallback: most recent active session on the lane.
   const result = await client.query<LaneSessionRow>(
-    `SELECT * FROM lane_sessions
+    `SELECT ${LANE_SESSION_COLS} FROM lane_sessions
      WHERE lane_id = $1 AND status IN (${statuses})
      ORDER BY created_at DESC
      LIMIT 1${lock}`,

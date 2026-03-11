@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import type { LaneSessionRow, OrderRow } from '../../checkin/types';
+import { type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../../checkin/types';
 import { getHttpError, parsePriceQuote, roundToWhole, toNumber } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -69,7 +69,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
           let sessionResult: { rows: Record<string, unknown>[] };
           if (sessionId) {
             sessionResult = await tx.execute<Record<string, unknown>>(
-              sql`SELECT * FROM lane_sessions
+              sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
            WHERE id = ${sessionId}
              AND lane_id = ${laneId}
              AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
@@ -77,7 +77,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
             );
           } else {
             sessionResult = await tx.execute<Record<string, unknown>>(
-              sql`SELECT * FROM lane_sessions
+              sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
            WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
            ORDER BY created_at DESC
            LIMIT 1`
@@ -99,7 +99,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
           }
 
           const intentResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT * FROM orders WHERE id = ${session.order_id}`
+            sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${session.order_id}`
           );
 
           if (intentResult.rows.length === 0) {

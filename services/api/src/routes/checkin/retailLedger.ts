@@ -4,7 +4,7 @@ import { requireAuth } from '../../auth/middleware';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import type { LaneSessionRow } from '../../checkin/types';
+import { type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
 import { createOrder, addLineItems, type LineItemInput } from '../../services/orderService';
 
 const AddRetailItemsSchema = z.object({
@@ -39,7 +39,7 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
       try {
         // Find the active lane session
         const sessionResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT * FROM lane_sessions
+          sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
            WHERE lane_id = ${laneId} AND status NOT IN ('COMPLETED', 'CANCELLED')
            ORDER BY created_at DESC
            LIMIT 1`

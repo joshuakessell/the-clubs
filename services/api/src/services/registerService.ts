@@ -33,6 +33,7 @@ interface EmployeeRow {
 }
 
 interface RegisterSessionRow {
+  [key: string]: unknown;
   id: string;
   employee_id: string;
   device_id: string;
@@ -211,11 +212,11 @@ export async function getRegisterAvailability(): Promise<RegisterAvailability[]>
 
 export async function startCloseout(registerSessionId: string, staffId: string) {
   return db.transaction(async (tx) => {
-    const registerResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM register_sessions WHERE id = ${registerSessionId} AND signed_out_at IS NULL`
+    const registerResult = await tx.execute<RegisterSessionRow>(
+      sql`SELECT id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at FROM register_sessions WHERE id = ${registerSessionId} AND signed_out_at IS NULL`
     );
     if (registerResult.rows.length === 0) throw new HttpError(404, 'Active register session not found');
-    const registerSession = registerResult.rows[0] as unknown as RegisterSessionRow;
+    const registerSession = registerResult.rows[0]!;
     if (registerSession.employee_id !== staffId) throw new HttpError(403, 'Not authorized to close out this register');
 
     const drawerResult = await tx.execute<Record<string, unknown>>(
@@ -237,11 +238,11 @@ export async function finalizeCloseout(
   staffId: string
 ) {
   return db.transaction(async (tx) => {
-    const registerResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM register_sessions WHERE id = ${registerSessionId} AND signed_out_at IS NULL`
+    const registerResult = await tx.execute<RegisterSessionRow>(
+      sql`SELECT id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at FROM register_sessions WHERE id = ${registerSessionId} AND signed_out_at IS NULL`
     );
     if (registerResult.rows.length === 0) throw new HttpError(404, 'Active register session not found');
-    const registerSession = registerResult.rows[0] as unknown as RegisterSessionRow;
+    const registerSession = registerResult.rows[0]!;
     if (registerSession.employee_id !== staffId) throw new HttpError(403, 'Not authorized to close out this register');
 
     const drawerResult = await tx.execute<Record<string, unknown>>(
@@ -299,11 +300,11 @@ export async function assignRegister(employeeId: string, deviceId: string, reque
   await ensureDeviceEnabled(deviceId);
 
   return db.transaction(async (tx) => {
-    const existingDevice = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM register_sessions WHERE device_id = ${deviceId} AND signed_out_at IS NULL`
+    const existingDevice = await tx.execute<RegisterSessionRow>(
+      sql`SELECT id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at FROM register_sessions WHERE device_id = ${deviceId} AND signed_out_at IS NULL`
     );
     if (existingDevice.rows.length > 0) {
-      const session = existingDevice.rows[0] as unknown as RegisterSessionRow;
+      const session = existingDevice.rows[0]!;
       const ageMinutes = session.last_activity_at
         ? (Date.now() - session.last_activity_at.getTime()) / 60000 : 0;
       if (ageMinutes >= 2) {
@@ -320,10 +321,10 @@ export async function assignRegister(employeeId: string, deviceId: string, reque
 
     if (requestedRegisterNumber) {
       if (occupiedNumbers.has(requestedRegisterNumber)) {
-        const existing = await tx.execute<Record<string, unknown>>(
-          sql`SELECT * FROM register_sessions WHERE register_number = ${requestedRegisterNumber} AND signed_out_at IS NULL`
+        const existing = await tx.execute<RegisterSessionRow>(
+          sql`SELECT id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at FROM register_sessions WHERE register_number = ${requestedRegisterNumber} AND signed_out_at IS NULL`
         );
-        if ((existing.rows[0] as unknown as RegisterSessionRow)?.employee_id === employeeId) {
+        if (existing.rows[0]?.employee_id === employeeId) {
           return { registerNumber: requestedRegisterNumber, requiresConfirmation: true };
         }
         throw new Error(`Register ${requestedRegisterNumber} is already occupied`);
@@ -363,11 +364,11 @@ export async function confirmRegister(
 
   return db.transaction(async (tx) => {
     // Release abandoned device sessions
-    const existingDevice = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM register_sessions WHERE device_id = ${deviceId} AND signed_out_at IS NULL`
+    const existingDevice = await tx.execute<RegisterSessionRow>(
+      sql`SELECT id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at FROM register_sessions WHERE device_id = ${deviceId} AND signed_out_at IS NULL`
     );
     if (existingDevice.rows.length > 0) {
-      const session = existingDevice.rows[0] as unknown as RegisterSessionRow;
+      const session = existingDevice.rows[0]!;
       const ageMinutes = session.last_activity_at
         ? (Date.now() - session.last_activity_at.getTime()) / 60000 : 0;
       if (ageMinutes >= 2) {
@@ -377,26 +378,26 @@ export async function confirmRegister(
       }
     }
 
-    const existingRegister = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM register_sessions WHERE register_number = ${registerNumber} AND signed_out_at IS NULL`
+    const existingRegister = await tx.execute<RegisterSessionRow>(
+      sql`SELECT id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at FROM register_sessions WHERE register_number = ${registerNumber} AND signed_out_at IS NULL`
     );
 
     let session: RegisterSessionRow;
     if (existingRegister.rows.length > 0) {
-      const existing = existingRegister.rows[0] as unknown as RegisterSessionRow;
+      const existing = existingRegister.rows[0]!;
       if (existing.employee_id === employeeId) {
-        const sessionResult = await tx.execute<Record<string, unknown>>(
-          sql`UPDATE register_sessions SET device_id = ${deviceId}, last_heartbeat = NOW(), last_activity_at = NOW() WHERE id = ${existing.id} RETURNING *`
+        const sessionResult = await tx.execute<RegisterSessionRow>(
+          sql`UPDATE register_sessions SET device_id = ${deviceId}, last_heartbeat = NOW(), last_activity_at = NOW() WHERE id = ${existing.id} RETURNING id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at`
         );
-        session = sessionResult.rows[0] as unknown as RegisterSessionRow;
+        session = sessionResult.rows[0]!;
       } else {
         throw new Error(`Register ${registerNumber} is already occupied`);
       }
     } else {
-      const sessionResult = await tx.execute<Record<string, unknown>>(
-        sql`INSERT INTO register_sessions (employee_id, device_id, register_number, last_heartbeat, last_activity_at) VALUES (${employeeId}, ${deviceId}, ${registerNumber}, NOW(), NOW()) RETURNING *`
+      const sessionResult = await tx.execute<RegisterSessionRow>(
+        sql`INSERT INTO register_sessions (employee_id, device_id, register_number, last_heartbeat, last_activity_at) VALUES (${employeeId}, ${deviceId}, ${registerNumber}, NOW(), NOW()) RETURNING id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at`
       );
-      session = sessionResult.rows[0] as unknown as RegisterSessionRow;
+      session = sessionResult.rows[0]!;
     }
 
     // Timeclock
@@ -508,11 +509,11 @@ export interface SignoutResult {
 export async function signout(deviceId: string, staff: StaffContext): Promise<SignoutResult> {
   return db.transaction(async (tx) => {
     const closeoutAt = new Date();
-    const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM register_sessions WHERE device_id = ${deviceId} AND signed_out_at IS NULL`
+    const sessionResult = await tx.execute<RegisterSessionRow>(
+      sql`SELECT id, employee_id, device_id, register_number, last_heartbeat, last_activity_at, created_at, signed_out_at FROM register_sessions WHERE device_id = ${deviceId} AND signed_out_at IS NULL`
     );
     if (sessionResult.rows.length === 0) throw new Error('No active register session found');
-    const session = sessionResult.rows[0] as unknown as RegisterSessionRow;
+    const session = sessionResult.rows[0]!;
     if (session.employee_id !== staff.staffId) throw new Error('Register session does not belong to authenticated employee');
 
     const closeoutSummary = await buildRegisterCloseoutSummary(tx, session, closeoutAt);

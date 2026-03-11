@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { AddOnsSchema } from '../../checkin/schemas';
-import type { LaneSessionRow, OrderRow } from '../../checkin/types';
+import { type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../../checkin/types';
 import { getHttpError, parsePriceQuote, roundToWhole } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -36,11 +36,11 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
         let sessionResult: { rows: Record<string, unknown>[] };
         if (sessionId) {
           sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
           );
         } else {
           sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
                  WHERE lane_id = ${laneId}
                    AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
                  ORDER BY created_at DESC
@@ -60,7 +60,7 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
         }
 
         const intentResult = await tx.execute<Record<string, unknown>>(
-          sql`SELECT * FROM orders WHERE id = ${session.order_id} LIMIT 1`
+          sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${session.order_id} LIMIT 1`
         );
         const pendingOrder = intentResult.rows[0] as unknown as OrderRow | undefined;
         if (!pendingOrder) {

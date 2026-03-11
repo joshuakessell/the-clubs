@@ -10,7 +10,7 @@
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
-import type { LaneSessionRow } from '../checkin/types';
+import { type LaneSessionRow, LANE_SESSION_COLS } from '../checkin/types';
 import { HttpError } from '../errors/HttpError';
 
 // ── Shared helpers ──
@@ -55,7 +55,7 @@ export interface SelectRentalInput {
 export async function selectRental(input: SelectRentalInput) {
   return db.transaction(async (tx) => {
     const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions WHERE lane_id = ${input.laneId} AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${input.laneId} AND status = 'ACTIVE' ORDER BY created_at DESC LIMIT 1`
     );
     if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
     const session = sessionResult.rows[0] as unknown as LaneSessionRow;
@@ -120,7 +120,7 @@ export interface ProposeSelectionInput {
 export async function proposeSelection(input: ProposeSelectionInput) {
   return db.transaction(async (tx) => {
     const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions WHERE lane_id = ${input.laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${input.laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
     );
     if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
     const session = sessionResult.rows[0] as unknown as LaneSessionRow;
@@ -161,11 +161,11 @@ export async function setWaitlistDesired(input: WaitlistDesiredInput) {
     let sessionResult;
     if (input.sessionId) {
       sessionResult = await tx.execute<Record<string, unknown>>(
-        sql`SELECT * FROM lane_sessions WHERE id = ${input.sessionId} AND lane_id = ${input.laneId} LIMIT 1`
+        sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${input.sessionId} AND lane_id = ${input.laneId} LIMIT 1`
       );
     } else {
       sessionResult = await tx.execute<Record<string, unknown>>(
-        sql`SELECT * FROM lane_sessions WHERE lane_id = ${input.laneId}
+        sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${input.laneId}
          AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
          ORDER BY created_at DESC LIMIT 1`
       );
@@ -199,7 +199,7 @@ export async function setWaitlistDesired(input: WaitlistDesiredInput) {
 export async function confirmSelection(laneId: string, confirmedBy: 'CUSTOMER' | 'EMPLOYEE') {
   return db.transaction(async (tx) => {
     const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
     );
     if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
     const session = sessionResult.rows[0] as unknown as LaneSessionRow;
@@ -220,7 +220,7 @@ export async function confirmSelection(laneId: string, confirmedBy: 'CUSTOMER' |
     const updateResult = await tx.execute<Record<string, unknown>>(
       sql`UPDATE lane_sessions SET selection_confirmed = true, selection_confirmed_by = ${confirmedBy},
        selection_locked_at = NOW(), desired_rental_type = proposed_rental_type, updated_at = NOW()
-       WHERE id = ${session.id} RETURNING *`
+       WHERE id = ${session.id} RETURNING ${sql.raw(LANE_SESSION_COLS)}`
     );
     const updated = updateResult.rows[0] as unknown as LaneSessionRow;
 
@@ -244,7 +244,7 @@ export async function confirmSelection(laneId: string, confirmedBy: 'CUSTOMER' |
 export async function acknowledgeSelection(laneId: string, acknowledgedBy: 'CUSTOMER' | 'EMPLOYEE') {
   return db.transaction(async (tx) => {
     const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
     );
     if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
     const session = sessionResult.rows[0] as unknown as LaneSessionRow;

@@ -4,7 +4,7 @@ import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import { getHttpError } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
-import type { LaneSessionRow } from '../../checkin/types';
+import { type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
 import type {
   SelectionAcknowledgedPayload,
   SelectionLockedPayload,
@@ -69,7 +69,7 @@ export function registerCheckinSelectionRoutes(fastify: FastifyInstance): void {
     if (isFlowCommandsEnabled()) {
       try {
         const sessionResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT * FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
+          sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
         );
         if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
         const session = sessionResult.rows[0] as unknown as LaneSessionRow;
@@ -125,11 +125,11 @@ export function registerCheckinSelectionRoutes(fastify: FastifyInstance): void {
         let sessionResult: { rows: Record<string, unknown>[] };
         if (request.body.sessionId) {
           sessionResult = await db.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions WHERE id = ${request.body.sessionId} AND lane_id = ${laneId} LIMIT 1`
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${request.body.sessionId} AND lane_id = ${laneId} LIMIT 1`
           );
         } else {
           sessionResult = await db.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE') ORDER BY created_at DESC LIMIT 1`
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE') ORDER BY created_at DESC LIMIT 1`
           );
         }
         if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
@@ -181,7 +181,7 @@ export function registerCheckinSelectionRoutes(fastify: FastifyInstance): void {
       if (isFlowCommandsEnabled()) {
         try {
           const sessionResult = await db.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
           );
           if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
           const session = sessionResult.rows[0] as unknown as LaneSessionRow;

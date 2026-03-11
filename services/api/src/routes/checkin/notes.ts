@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import type { CustomerRow, LaneSessionRow } from '../../checkin/types';
+import { type CustomerRow, type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
 import { insertCustomerActivityEventDrizzle } from '../../activity/customerActivityLog';
@@ -37,7 +37,7 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
       try {
         const result = await db.transaction(async (tx) => {
           const sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
            WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
            ORDER BY created_at DESC
            LIMIT 1`

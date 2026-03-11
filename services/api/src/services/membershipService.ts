@@ -10,7 +10,7 @@ import {
   calculateRenewalQuote,
   type PricingInput,
 } from '../pricing/engine';
-import type { CustomerRow, LaneSessionRow, OrderRow } from '../checkin/types';
+import { type CustomerRow, type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { calculateAge } from '../checkin/identity';
 import { toDate } from '../checkin/utils';
@@ -34,11 +34,11 @@ async function findSession(tx: DrizzleTx, laneId: string, sessionId?: string) {
   let sessionResult;
   if (sessionId) {
     sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
     );
   } else {
     sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions WHERE lane_id = ${laneId}
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId}
        AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
        ORDER BY created_at DESC LIMIT 1`
     );
@@ -57,7 +57,7 @@ async function recomputeQuoteIfNeeded(
   if (!session.order_id || !session.selection_confirmed) return;
 
   const intentResult = await tx.execute<Record<string, unknown>>(
-    sql`SELECT * FROM orders WHERE id = ${session.order_id} LIMIT 1`
+    sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${session.order_id} LIMIT 1`
   );
   const pi = intentResult.rows[0] as unknown as OrderRow | undefined;
   if (pi?.status !== 'OPEN') return;
@@ -105,7 +105,7 @@ export async function setMembershipPurchaseIntent(
     const requestedAt = intent === 'NONE' ? null : new Date();
 
     const updatedResult = await tx.execute<Record<string, unknown>>(
-      sql`UPDATE lane_sessions SET membership_purchase_intent = ${intentValue}, membership_purchase_requested_at = ${requestedAt}, updated_at = NOW() WHERE id = ${session.id} RETURNING *`
+      sql`UPDATE lane_sessions SET membership_purchase_intent = ${intentValue}, membership_purchase_requested_at = ${requestedAt}, updated_at = NOW() WHERE id = ${session.id} RETURNING ${sql.raw(LANE_SESSION_COLS)}`
     );
     const updatedSession = updatedResult.rows[0] as unknown as LaneSessionRow;
 
@@ -143,7 +143,7 @@ export async function completeMembershipPurchase(
 
     if (session.order_id) {
       const intentResult = await tx.execute<Record<string, unknown>>(
-        sql`SELECT * FROM orders WHERE id = ${session.order_id} LIMIT 1`
+        sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${session.order_id} LIMIT 1`
       );
       const pi = intentResult.rows[0] as unknown as OrderRow | undefined;
       if (pi && pi.status !== 'PAID') {

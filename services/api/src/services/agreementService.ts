@@ -10,11 +10,12 @@
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { type DrizzleTx } from '../db';
-import type {
-  LaneSessionRow,
-  ResourceRow,
-  OrderRow,
-  RoomRentalType,
+import {
+  type LaneSessionRow,
+  type ResourceRow,
+  type OrderRow,
+  type RoomRentalType,
+  LANE_SESSION_COLS,
 } from '../checkin/types';
 import {
   assertAssignedResourcePersistedAndUnavailable,
@@ -192,13 +193,13 @@ async function findActiveSession(
   let sessionResult;
   if (sessionId) {
     sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
        WHERE id = ${sessionId} AND lane_id = ${laneId} AND status IN ${sql.raw(statusFilter)}
        LIMIT 1`
     );
   } else {
     sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
        WHERE lane_id = ${laneId} AND status IN ${sql.raw(statusFilter)}
        ORDER BY created_at DESC
        LIMIT 1`
@@ -902,7 +903,7 @@ export async function processCustomerConfirm(
 ): Promise<CustomerConfirmResult> {
   return db.transaction(async (tx) => {
     const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions WHERE id = ${input.sessionId} AND lane_id = ${input.laneId}`
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${input.sessionId} AND lane_id = ${input.laneId}`
     );
 
     if (sessionResult.rows.length === 0) {

@@ -14,7 +14,7 @@ import {
   calculateRenewalQuote,
   type PricingInput,
 } from '../pricing/engine';
-import type { CustomerRow, LaneSessionRow, OrderRow } from '../checkin/types';
+import { type CustomerRow, type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { toDate, toNumber } from '../checkin/utils';
 import { calculateAge } from '../checkin/identity';
@@ -86,7 +86,7 @@ function toQueryable(tx: DrizzleTx) {
 export async function createCheckoutOrder(laneId: string) {
   return db.transaction(async (tx) => {
     const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`
     );
     if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
     const session = sessionResult.rows[0] as unknown as LaneSessionRow;
@@ -127,7 +127,7 @@ export async function createCheckoutOrder(laneId: string) {
 
     // Ensure at most one active OPEN order for this session
     const openOrders = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM orders WHERE lane_session_id = ${session.id} AND status = 'OPEN' ORDER BY created_at DESC`
+      sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE lane_session_id = ${session.id} AND status = 'OPEN' ORDER BY created_at DESC`
     );
     const openRows = openOrders.rows as unknown as OrderRow[];
 
@@ -143,7 +143,7 @@ export async function createCheckoutOrder(laneId: string) {
       const orderResult = await tx.execute<Record<string, unknown>>(
         sql`INSERT INTO orders (lane_session_id, customer_id, status, subtotal, discount, tax, total, quote_json)
             VALUES (${session.id}, ${session.customer_id}, 'OPEN', ${totalStr}, '0', '0', ${totalStr}, ${quoteJson}::jsonb)
-            RETURNING *`
+            RETURNING ${sql.raw(ORDER_COLS)}`
       );
       order = orderResult.rows[0] as unknown as OrderRow;
     }
@@ -202,7 +202,7 @@ export async function markOrderPaid(input: MarkPaidInput) {
 
   return db.transaction(async (tx) => {
     const orderResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT * FROM orders WHERE id = ${orderId}`
+      sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${orderId}`
     );
     if (orderResult.rows.length === 0) throw new HttpError(404, 'Order not found');
     const order = orderResult.rows[0] as unknown as OrderRow & {
@@ -268,7 +268,7 @@ export async function markOrderPaid(input: MarkPaidInput) {
        register_number = COALESCE(${resolvedRegisterNumber ?? null}, register_number),
        tip = COALESCE(${resolvedTip?.toString() ?? null}, tip),
        paid_by_staff_id = COALESCE(${input.staffId}, paid_by_staff_id),
-       updated_at = NOW() WHERE id = ${orderId} RETURNING *`
+       updated_at = NOW() WHERE id = ${orderId} RETURNING ${sql.raw(ORDER_COLS)}`
     );
     const paidOrder = updatedOrder.rows[0] as unknown as typeof order;
 
@@ -287,7 +287,7 @@ export async function markOrderPaid(input: MarkPaidInput) {
       await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'FINAL_EXTENSION_COMPLETED', entityType: 'visit', entityId: quote.visitId, oldValue: { orderId, status: 'OPEN' }, newValue: { orderId, status: 'PAID', blockId: quote.blockId } });
     } else {
       const sessionResult = await tx.execute<Record<string, unknown>>(
-        sql`SELECT * FROM lane_sessions WHERE order_id = ${paidOrder.id}`
+        sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE order_id = ${paidOrder.id}`
       );
       if (sessionResult.rows.length > 0) {
         const session = sessionResult.rows[0] as unknown as LaneSessionRow;

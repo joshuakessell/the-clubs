@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { CheckinOptionHighlightedPayload } from '@the-clubs/shared';
 import { requireAuth } from '../../auth/middleware';
 import { HighlightOptionSchema } from '../../checkin/schemas';
-import type { LaneSessionRow } from '../../checkin/types';
+import { type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -42,7 +42,7 @@ export function registerCheckinHighlightRoutes(fastify: FastifyInstance): void {
 
         if (sessionId) {
           const sessionResult = await db.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
           );
           if (sessionResult.rows.length === 0) {
             throw new HttpError(404, 'No active session found');
@@ -51,7 +51,7 @@ export function registerCheckinHighlightRoutes(fastify: FastifyInstance): void {
           resolved = { laneId: session.lane_id || laneId, sessionId: session.id };
         } else {
           const sessionResult = await db.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
                WHERE lane_id = ${laneId}
                  AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
                ORDER BY created_at DESC

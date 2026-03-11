@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { verifyPin } from '../../auth/utils';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import type { LaneSessionRow } from '../../checkin/types';
+import { type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -29,7 +29,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
       try {
         const result = await db.transaction(async (tx) => {
           const sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
            WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT')
            ORDER BY created_at DESC
            LIMIT 1`
@@ -126,7 +126,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
           }
 
           const sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT * FROM lane_sessions
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
            WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT')
            ORDER BY created_at DESC
            LIMIT 1`

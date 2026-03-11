@@ -1,6 +1,6 @@
 import type { CustomerIdType, SessionUpdatedPayload } from '@the-clubs/shared';
 import { getIdScanIssue } from './identity';
-import type { CustomerRow, LaneSessionRow, OrderRow } from './types';
+import { type CustomerRow, type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from './types';
 import { toDate, toNumber } from './utils';
 import { calculatePriceQuote, type RentalType } from '../pricing/engine';
 import { db } from '../db';
@@ -125,7 +125,7 @@ export async function buildFullSessionUpdatedPayload(
   sessionId: string
 ): Promise<{ laneId: string; payload: SessionUpdatedPayload }> {
   const sessionResult = await db.execute<Record<string, unknown>>(
-    sql`SELECT * FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
+    sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
   );
 
   if (sessionResult.rows.length === 0) {
@@ -228,12 +228,12 @@ export async function buildFullSessionUpdatedPayload(
   let paymentIntent: OrderRow | undefined;
   if (session.order_id) {
     const intentResult = await db.execute<Record<string, unknown>>(
-      sql`SELECT * FROM orders WHERE id = ${session.order_id} LIMIT 1`
+      sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${session.order_id} LIMIT 1`
     );
     paymentIntent = intentResult.rows[0] as unknown as OrderRow | undefined;
   } else {
     const intentResult = await db.execute<Record<string, unknown>>(
-      sql`SELECT * FROM orders
+      sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders
        WHERE lane_session_id = ${session.id}
        ORDER BY created_at DESC
        LIMIT 1`

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
-import type { CustomerRow, LaneSessionRow, OrderRow } from '../../checkin/types';
+import { type CustomerRow, type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { db, type DrizzleTx } from '../../db';
 import { sql } from 'drizzle-orm';
