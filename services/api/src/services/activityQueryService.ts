@@ -26,7 +26,7 @@ function parseCursor(raw: string | undefined): { occurredAt: Date; id: string } 
 }
 
 function buildCursor(value: { occurredAt: Date; id: string }): string {
-  return Buffer.from(JSON.stringify({ occurredAt: value.occurredAt.toISOString(), id: value.id }), 'utf8').toString('base64');
+  return Buffer.from(JSON.stringify({ occurredAt: new Date(value.occurredAt).toISOString(), id: value.id }), 'utf8').toString('base64');
 }
 
 function parseCsv(raw: string | undefined): string[] {
@@ -72,16 +72,16 @@ export async function listActivityEvents(input: ListActivityInput) {
   }>(sql`SELECT e.id, e.occurred_at, e.customer_id, c.name as customer_name, e.action_type, e.action_category, e.source_app, e.actor_type, e.actor_staff_id, e.actor_staff_name, e.summary, e.metadata FROM customer_activity_events e JOIN customers c ON c.id = e.customer_id WHERE (${from}::timestamptz IS NULL OR e.occurred_at >= ${from}) AND (${to}::timestamptz IS NULL OR e.occurred_at <= ${to}) AND (${input.customerId ?? null}::uuid IS NULL OR e.customer_id = ${input.customerId ?? null}) AND (${input.actorStaffId ?? null}::uuid IS NULL OR e.actor_staff_id = ${input.actorStaffId ?? null}) AND (${actionCategories.length > 0 ? actionCategories : null}::text[] IS NULL OR e.action_category = ANY(${actionCategories.length > 0 ? actionCategories : null})) AND (${actionTypes.length > 0 ? actionTypes : null}::text[] IS NULL OR e.action_type = ANY(${actionTypes.length > 0 ? actionTypes : null})) AND (${q}::text IS NULL OR e.search_blob ILIKE '%' || ${q} || '%') AND (${cursor?.occurredAt ?? null}::timestamptz IS NULL OR (e.occurred_at < ${cursor?.occurredAt ?? null} OR (e.occurred_at = ${cursor?.occurredAt ?? null} AND e.id < ${cursor?.id ?? '00000000-0000-0000-0000-000000000000'}::uuid))) ORDER BY e.occurred_at DESC, e.id DESC LIMIT ${input.limit}`);
 
   const events = rows.rows.map((r) => ({
-    id: r.id, occurredAt: r.occurred_at.toISOString(), customerId: r.customer_id, customerName: r.customer_name,
+    id: r.id, occurredAt: new Date(r.occurred_at).toISOString(), customerId: r.customer_id, customerName: r.customer_name,
     actionType: r.action_type, actionCategory: r.action_category, sourceApp: r.source_app, actorType: r.actor_type,
     actorStaffId: r.actor_staff_id, actorStaffName: r.actor_staff_name, summary: r.summary, metadata: r.metadata,
-    cursor: buildCursor({ occurredAt: r.occurred_at, id: r.id }),
+    cursor: buildCursor({ occurredAt: new Date(r.occurred_at), id: r.id }),
   }));
   return { events, nextCursor: events.length === input.limit ? events[events.length - 1]!.cursor : null };
 }
 
 export async function getCustomerActivityLog(input: CustomerActivityInput) {
-  const serialize = (r: any) => ({ id: r.id, occurredAt: r.occurred_at.toISOString(), actionType: r.action_type, actionCategory: r.action_category, sourceApp: r.source_app, actorType: r.actor_type, actorStaffId: r.actor_staff_id, actorStaffName: r.actor_staff_name, summary: r.summary, metadata: r.metadata });
+  const serialize = (r: any) => ({ id: r.id, occurredAt: new Date(r.occurred_at).toISOString(), actionType: r.action_type, actionCategory: r.action_category, sourceApp: r.source_app, actorType: r.actor_type, actorStaffId: r.actor_staff_id, actorStaffName: r.actor_staff_name, summary: r.summary, metadata: r.metadata });
 
   if (!input.centerEventId) {
     const rows = await db.execute<any>(sql`SELECT id, occurred_at, action_type, action_category, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata FROM customer_activity_events WHERE customer_id = ${input.customerId} ORDER BY occurred_at DESC, id DESC LIMIT ${input.limit}`);
@@ -115,10 +115,10 @@ export async function listAuditLog(input: AuditLogInput) {
   }>(sql`SELECT al.id, al.created_at, al.action::text, al.entity_type, al.entity_id, al.user_id, al.user_role, al.staff_id, s.name AS staff_name, al.old_value, al.new_value, al.override_reason, al.metadata FROM audit_log al LEFT JOIN staff s ON s.id = al.staff_id WHERE (${from}::timestamptz IS NULL OR al.created_at >= ${from}) AND (${to}::timestamptz IS NULL OR al.created_at <= ${to}) AND (${actions.length > 0 ? actions : null}::text[] IS NULL OR al.action::text = ANY(${actions.length > 0 ? actions : null})) AND (${entityType}::text IS NULL OR al.entity_type = ${entityType}) AND (${staffId}::uuid IS NULL OR al.staff_id = ${staffId}) AND (${cursor?.occurredAt ?? null}::timestamptz IS NULL OR (al.created_at < ${cursor?.occurredAt ?? null} OR (al.created_at = ${cursor?.occurredAt ?? null} AND al.id < ${cursor?.id ?? '00000000-0000-0000-0000-000000000000'}::uuid))) ORDER BY al.created_at DESC, al.id DESC LIMIT ${input.limit}`);
 
   const events = rows.rows.map((r) => ({
-    id: r.id, createdAt: r.created_at.toISOString(), action: r.action, entityType: r.entity_type,
+    id: r.id, createdAt: new Date(r.created_at).toISOString(), action: r.action, entityType: r.entity_type,
     entityId: r.entity_id, userId: r.user_id, userRole: r.user_role, staffId: r.staff_id,
     staffName: r.staff_name, oldValue: r.old_value, newValue: r.new_value, overrideReason: r.override_reason,
-    metadata: r.metadata, cursor: buildCursor({ occurredAt: r.created_at, id: r.id }),
+    metadata: r.metadata, cursor: buildCursor({ occurredAt: new Date(r.created_at), id: r.id }),
   }));
   return { events, nextCursor: events.length === input.limit ? events[events.length - 1]!.cursor : null };
 }

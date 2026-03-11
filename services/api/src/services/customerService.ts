@@ -146,8 +146,9 @@ function parseNotesCursor(raw: string | undefined): { createdAt: Date; id: strin
   } catch { return null; }
 }
 
-function buildNotesCursor(value: { createdAt: Date; id: string }): string {
-  return Buffer.from(JSON.stringify({ createdAt: value.createdAt.toISOString(), id: value.id }), 'utf8').toString('base64');
+function buildNotesCursor(value: { createdAt: Date | string; id: string }): string {
+  const iso = value.createdAt instanceof Date ? value.createdAt.toISOString() : String(value.createdAt);
+  return Buffer.from(JSON.stringify({ createdAt: iso, id: value.id }), 'utf8').toString('base64');
 }
 
 const IdTypeValues = ['STATE_ID', 'DRIVERS_LICENSE', 'PASSPORT', 'OTHER'] as const;
@@ -194,7 +195,8 @@ export async function listCustomerNotes(
   );
 
   const notes = rows.rows.map((r) => ({
-    id: r.id, customerId: r.customer_id, createdAt: r.created_at.toISOString(),
+    id: r.id, customerId: r.customer_id,
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
     createdByStaffId: r.created_by_staff_id, createdByStaffName: r.created_by_staff_name,
     sourceApp: r.source_app, note: r.note, isImportant: r.is_important,
     cursor: buildNotesCursor({ createdAt: r.created_at, id: r.id }),
@@ -237,7 +239,7 @@ export async function createCustomerNote(
       dedupeKey: null,
     });
 
-    return { id: row.id, createdAt: row.createdAt.toISOString() };
+    return { id: row.id, createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt) };
   });
 }
 
@@ -414,7 +416,7 @@ export async function matchIdentity(input: { firstName: string; lastName: string
     })
     .filter(Boolean) as Array<{ id: string; name: string; dob: string | null; membershipNumber: string | null; score: number; createdAt: Date }>;
 
-  matches.sort((a, b) => b.score - a.score || a.createdAt.getTime() - b.createdAt.getTime());
+  matches.sort((a, b) => b.score - a.score || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   const best = matches[0] ?? null;
   return {
     matchCount: matches.length,

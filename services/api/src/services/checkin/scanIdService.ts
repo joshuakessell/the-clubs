@@ -349,9 +349,9 @@ async function assertNoActiveVisit(client: PoolClient, customerId: string): Prom
       rentalType: block?.rental_type ?? null,
       assignedResourceType,
       assignedResourceNumber,
-      checkinAt: block?.starts_at ? block.starts_at.toISOString() : null,
-      checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
-      overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
+      checkinAt: block?.starts_at ? new Date(block.starts_at).toISOString() : null,
+      checkoutAt: block?.ends_at ? new Date(block.ends_at).toISOString() : null,
+      overdue: block?.ends_at ? new Date(block.ends_at).getTime() < Date.now() : null,
       waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
   };
   throw err;
@@ -390,7 +390,8 @@ async function fetchCustomerInfoForResponse(
 
   let customerDobMonthDay: string | undefined;
   if (customer.dob) {
-    customerDobMonthDay = `${String(customer.dob.getMonth() + 1).padStart(2, '0')}/${String(customer.dob.getDate()).padStart(2, '0')}`;
+    const dobDate = new Date(customer.dob as unknown as string);
+    customerDobMonthDay = `${String(dobDate.getMonth() + 1).padStart(2, '0')}/${String(dobDate.getDate()).padStart(2, '0')}`;
   }
 
   const membershipCardType = customer.membership_card_type as string | undefined;

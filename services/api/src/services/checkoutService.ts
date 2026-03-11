@@ -226,11 +226,11 @@ export async function checkRenewalEligibility(
 
   let currentTotalHours = 0;
   for (const block of allBlocksResult.rows) {
-    currentTotalHours += (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
+    currentTotalHours += (new Date(block.ends_at).getTime() - new Date(block.starts_at).getTime()) / (1000 * 60 * 60);
   }
 
   // Check eligibility window
-  const checkoutMs = row.ends_at.getTime();
+  const checkoutMs = new Date(row.ends_at).getTime();
   const nowMs = Date.now();
   const minutesUntilCheckout = (checkoutMs - nowMs) / (1000 * 60);
 
@@ -246,7 +246,7 @@ export async function checkRenewalEligibility(
   const canExtend6h = currentTotalHours + 6 <= 14;
 
   // Also check that after renewal, remaining time is > 45 min (no renewal in last 45 min of 14h max)
-  const maxEndMs = new Date(row.visit_started_at).getTime() + 14 * 60 * 60 * 1000;
+  const maxEndMs = new Date(row.visit_started_at as unknown as string).getTime() + 14 * 60 * 60 * 1000;
   const afterRenewal2hEndMs = checkoutMs + 2 * 60 * 60 * 1000;
   const afterRenewal6hEndMs = checkoutMs + 6 * 60 * 60 * 1000;
   const allow2h = canExtend2h && (afterRenewal2hEndMs <= maxEndMs || (maxEndMs - afterRenewal2hEndMs) > -45 * 60 * 1000);
@@ -258,7 +258,7 @@ export async function checkRenewalEligibility(
 
   // Compute pricing
   const customerAge = row.dob
-    ? Math.floor((Date.now() - new Date(row.dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+    ? Math.floor((Date.now() - new Date(row.dob as unknown as string).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
     : undefined;
 
   const pricingInput = {
@@ -266,7 +266,7 @@ export async function checkRenewalEligibility(
     customerAge,
     checkInTime: new Date(),
     membershipCardType: (row.membership_card_type as 'NONE' | 'SIX_MONTH' | undefined) || undefined,
-    membershipValidUntil: row.membership_valid_until || undefined,
+    membershipValidUntil: row.membership_valid_until ? new Date(row.membership_valid_until as unknown as string) : undefined,
   };
 
   let extension2hCharges: Array<{ description: string; amount: number }> | undefined;

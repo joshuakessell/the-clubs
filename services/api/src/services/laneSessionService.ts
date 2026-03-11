@@ -127,9 +127,13 @@ export async function startLaneSession(
         sql`SELECT starts_at, ends_at FROM checkin_blocks WHERE visit_id = ${activeVisitId} ORDER BY ends_at DESC`
       );
       if (blocksResult.rows.length > 0) {
-        blockEndsAtDate = blocksResult.rows[0]!.ends_at;
+        blockEndsAtDate = toDate(blocksResult.rows[0]!.ends_at) ?? null;
         for (const block of blocksResult.rows) {
-          currentTotalHours += (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
+          const endsAt = toDate(block.ends_at);
+          const startsAt = toDate(block.starts_at);
+          if (endsAt && startsAt) {
+            currentTotalHours += (endsAt.getTime() - startsAt.getTime()) / (1000 * 60 * 60);
+          }
         }
       }
     };
@@ -206,9 +210,9 @@ export async function startLaneSession(
             visitId: activeVisitId,
             rentalType: block?.rental_type ?? null,
             assignedResourceType, assignedResourceNumber,
-            checkinAt: block?.starts_at ? block.starts_at.toISOString() : null,
-            checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
-            overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
+            checkinAt: block?.starts_at ? (toDate(block.starts_at)?.toISOString() ?? String(block.starts_at)) : null,
+            checkoutAt: block?.ends_at ? (toDate(block.ends_at)?.toISOString() ?? String(block.ends_at)) : null,
+            overdue: block?.ends_at ? (toDate(block.ends_at)?.getTime() ?? 0) < Date.now() : null,
             currentTotalHours,
             waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
         };

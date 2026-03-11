@@ -90,12 +90,37 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
             });
           }
 
-          return { success: true, sessionId: session.id };
+          return { success: true, sessionId: session.id, newStatus };
         });
 
-        // buildFullSessionUpdatedPayload is already Drizzle-native
-        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
-        fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
+        // For cancelled sessions, construct a minimal payload directly.
+        // buildFullSessionUpdatedPayload may fail on a session that has all
+        // fields nulled out, which would prevent the SSE broadcast from
+        // reaching the kiosk, leaving it stuck on a stale check-in screen.
+        if (result.newStatus === 'CANCELLED') {
+          const cancelPayload = {
+            sessionId: result.sessionId,
+            status: 'CANCELLED' as const,
+            customerName: '',
+            allowedRentals: [],
+            mode: 'CHECKIN' as const,
+          };
+          fastify.broadcaster.broadcastSessionUpdated(cancelPayload, laneId);
+        } else {
+          try {
+            const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
+            fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
+          } catch (broadcastErr) {
+            request.log.error(broadcastErr, 'Failed to broadcast after reset — broadcasting minimal payload');
+            fastify.broadcaster.broadcastSessionUpdated({
+              sessionId: result.sessionId,
+              status: 'COMPLETED' as const,
+              customerName: '',
+              allowedRentals: [],
+              mode: 'CHECKIN' as const,
+            }, laneId);
+          }
+        }
 
         return reply.send({ success: true });
       } catch (error: unknown) {

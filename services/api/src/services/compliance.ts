@@ -69,7 +69,7 @@ export async function computeCompliance(
     .orderBy(asc(timeclockSessions.clockInAt));
 
   const scheduledMinutes = Math.floor(
-    (shift.ends_at.getTime() - shift.starts_at.getTime()) / (1000 * 60)
+    (new Date(shift.ends_at).getTime() - new Date(shift.starts_at).getTime()) / (1000 * 60)
   );
 
   // If no sessions found, it's a no-show
@@ -146,13 +146,13 @@ export async function computeCompliance(
   // Determine flags
   const clockInTime = clockInDate.getTime();
   const clockOutTime = clockOutDate ? clockOutDate.getTime() : null;
-  const shiftStartTime = shift.starts_at.getTime();
-  const shiftEndTime = shift.ends_at.getTime();
+  const shiftStartTime = new Date(shift.starts_at).getTime();
+  const shiftEndTime = new Date(shift.ends_at).getTime();
   const graceMs = GRACE_MINUTES * 60 * 1000;
 
   const lateClockIn = clockInTime > shiftStartTime + graceMs;
   const earlyClockOut = clockOutTime !== null && clockOutTime < shiftEndTime - graceMs;
-  const missingClockOut = clockOutTime === null && shift.ends_at < new Date();
+  const missingClockOut = clockOutTime === null && new Date(shift.ends_at) < new Date();
 
   return {
     workedMinutesInWindow,

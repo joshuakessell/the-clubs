@@ -165,7 +165,7 @@ function formatCustomer(row: CustomerIdentityRow) {
   return {
     id: row.id,
     name: row.name,
-    dob: row.dob ? row.dob.toISOString().slice(0, 10) : null,
+    dob: row.dob ? new Date(row.dob).toISOString().slice(0, 10) : null,
     membershipNumber: row.membership_number,
   };
 }
@@ -446,7 +446,7 @@ async function resolveSelectedCustomer(
   }
 
   // DOB must match
-  const chosenDob = chosen.dob ? chosen.dob.toISOString().slice(0, 10) : null;
+  const chosenDob = chosen.dob ? new Date(chosen.dob).toISOString().slice(0, 10) : null;
   if (chosenDob !== extracted.dob) {
     return {
       result: 'ERROR',
@@ -605,7 +605,7 @@ async function fuzzyMatchByDob(
     .sort(
       (a, b) =>
         b.matchScore - a.matchScore ||
-        a.row.created_at.getTime() - b.row.created_at.getTime()
+        new Date(a.row.created_at).getTime() - new Date(b.row.created_at).getTime()
     );
 
   if (scored.length === 1) {
@@ -636,7 +636,7 @@ async function fuzzyMatchByDob(
       candidates: scored.slice(0, 10).map((s) => ({
         id: s.row.id,
         name: s.row.name,
-        dob: s.row.dob ? s.row.dob.toISOString().slice(0, 10) : null,
+        dob: s.row.dob ? new Date(s.row.dob).toISOString().slice(0, 10) : null,
         membershipNumber: s.row.membership_number,
         matchScore: s.matchScore,
       })),

@@ -173,7 +173,7 @@ export async function buildFullSessionUpdatedPayload(
        LIMIT 1`
     );
     if (lastVisitResult.rows.length > 0) {
-      customerLastVisitAt = lastVisitResult.rows[0].starts_at.toISOString();
+      customerLastVisitAt = toDate(lastVisitResult.rows[0].starts_at)?.toISOString();
     }
   }
 
@@ -185,7 +185,7 @@ export async function buildFullSessionUpdatedPayload(
       })
     : undefined;
   const customerIdExpirationDate = customer?.id_expiration_date
-    ? customer.id_expiration_date.toISOString().slice(0, 10)
+    ? (toDate(customer.id_expiration_date)?.toISOString().slice(0, 10) ?? String(customer.id_expiration_date).slice(0, 10))
     : undefined;
   const customerIdType = normalizeCustomerIdType(customer?.id_type);
   const customerIdTypeOther = customer?.id_type_other ?? undefined;
@@ -218,7 +218,7 @@ export async function buildFullSessionUpdatedPayload(
     );
     if (activeVisitResult.rows.length > 0) {
       activeVisitId = activeVisitResult.rows[0].visit_id;
-      activeBlockEndsAt = activeVisitResult.rows[0].ends_at.toISOString();
+      activeBlockEndsAt = toDate(activeVisitResult.rows[0].ends_at)?.toISOString() ?? String(activeVisitResult.rows[0].ends_at);
     }
   }
 
@@ -278,7 +278,7 @@ export async function buildFullSessionUpdatedPayload(
     membershipPurchaseIntent:
       (session.membership_purchase_intent as 'PURCHASE' | 'RENEW' | null) || undefined,
     kioskAcknowledgedAt: session.kiosk_acknowledged_at
-      ? session.kiosk_acknowledged_at.toISOString()
+      ? (toDate(session.kiosk_acknowledged_at)?.toISOString() ?? String(session.kiosk_acknowledged_at))
       : undefined,
     allowedRentals,
     mode: session.checkin_mode === 'RENEWAL' ? 'RENEWAL' : 'CHECKIN',
@@ -289,7 +289,7 @@ export async function buildFullSessionUpdatedPayload(
     selectionConfirmedBy:
       (session.selection_confirmed_by as 'CUSTOMER' | 'EMPLOYEE' | null) || undefined,
     customerPrimaryLanguage: (customer?.primary_language as 'EN' | 'ES' | undefined) || undefined,
-    customerDob: customer?.dob ? customer.dob.toISOString().slice(0, 10) : undefined,
+    customerDob: customer?.dob ? (toDate(customer.dob)?.toISOString().slice(0, 10) ?? String(customer.dob).slice(0, 10)) : undefined,
     customerDobMonthDay,
     customerIdNumber: customer?.id_number ?? undefined,
     customerLastVisitAt,
@@ -324,9 +324,9 @@ export async function buildFullSessionUpdatedPayload(
     waitlistPosition,
     waitlistEstimatedReadyAt,
     blockEndsAt: blockForSession?.ends_at
-      ? blockForSession.ends_at.toISOString()
+      ? (toDate(blockForSession.ends_at)?.toISOString() ?? String(blockForSession.ends_at))
       : activeBlockEndsAt,
-    checkoutAt: blockForSession?.ends_at ? blockForSession.ends_at.toISOString() : undefined,
+    checkoutAt: blockForSession?.ends_at ? (toDate(blockForSession.ends_at)?.toISOString() ?? String(blockForSession.ends_at)) : undefined,
     renewalHours:
       session.renewal_hours === 2 || session.renewal_hours === 6
         ? session.renewal_hours

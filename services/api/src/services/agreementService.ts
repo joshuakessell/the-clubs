@@ -304,12 +304,12 @@ async function computeRenewalTimeBlock(
 
   let currentTotalHours = 0;
   for (const block of blocksResult.rows) {
-    const hours = (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
+    const hours = (new Date(block.ends_at).getTime() - new Date(block.starts_at).getTime()) / (1000 * 60 * 60);
     currentTotalHours += hours;
   }
 
   const latestBlock = blocksResult.rows[0];
-  const latestBlockEnd = latestBlock.ends_at;
+  const latestBlockEnd = new Date(latestBlock.ends_at);
   const minutesUntilCheckout = (latestBlockEnd.getTime() - Date.now()) / (1000 * 60);
   // Eligible: < 45 min before checkout AND < 29 min past checkout
   if (minutesUntilCheckout > 45) {
@@ -494,10 +494,24 @@ async function maybeCreateWaitlist(
 ): Promise<CheckinCompletedResult['waitlist'] | undefined> {
   if (!session.waitlist_desired_type || !session.backup_rental_type) return undefined;
 
+  // Parse desired_tiers from session's waitlist_desired_types_json
+  let desiredTiersArray: string[] = [session.waitlist_desired_type];
+  if (session.waitlist_desired_types_json) {
+    try {
+      const parsed = typeof session.waitlist_desired_types_json === 'string'
+        ? JSON.parse(session.waitlist_desired_types_json)
+        : session.waitlist_desired_types_json;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        desiredTiersArray = parsed.map(String);
+      }
+    } catch { /* use default single tier */ }
+  }
+  const desiredTiersSql = `{${desiredTiersArray.join(',')}}`;
+
   const waitlistResult = await tx.execute<{ id: string }>(
     sql`INSERT INTO waitlist
-     (visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially, status)
-     VALUES (${visitId}, ${checkinBlockId}, ${session.waitlist_desired_type}, ${session.backup_rental_type}, ${assignedResourceId}, 'ACTIVE')
+     (visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, locker_or_room_assigned_initially, status)
+     VALUES (${visitId}, ${checkinBlockId}, ${session.waitlist_desired_type}, ${desiredTiersSql}::rental_type[], ${session.backup_rental_type}, ${assignedResourceId}, 'ACTIVE')
      RETURNING id`
   );
   const waitlistId = waitlistResult.rows[0].id;

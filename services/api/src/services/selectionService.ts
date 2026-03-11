@@ -233,7 +233,7 @@ export async function confirmSelection(laneId: string, confirmedBy: 'CUSTOMER' |
         sessionId: updated.id,
         rentalType: updated.proposed_rental_type!,
         confirmedBy: confirmedBy as 'CUSTOMER' | 'EMPLOYEE',
-        lockedAt: updated.selection_locked_at!.toISOString(),
+        lockedAt: new Date(updated.selection_locked_at!).toISOString(),
       },
       isEmployeeForced: confirmedBy === 'EMPLOYEE',
     };

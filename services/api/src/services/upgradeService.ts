@@ -81,9 +81,9 @@ export interface StaffContext { staffId: string; name: string; }
 export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: StaffContext) {
   return db.transaction(async (tx) => {
     const waitlistResult = await tx.execute<{
-      id: string; visit_id: string; checkin_block_id: string; desired_tier: string; backup_tier: string; status: string;
+      id: string; visit_id: string; checkin_block_id: string; desired_tier: string; desired_tiers: string[]; backup_tier: string; status: string;
       locker_or_room_assigned_initially: string | null; created_at: Date; updated_at: Date;
-    }>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, backup_tier, status, locker_or_room_assigned_initially, created_at, updated_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
+    }>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status, locker_or_room_assigned_initially, created_at, updated_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
     const waitlist = waitlistResult.rows[0]!;
     if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Waitlist entry must be OFFERED (current: ${waitlist.status})`);
@@ -120,7 +120,10 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     if (newRoom.assigned_to_customer_id) throw new HttpError(409, `Resource ${newRoom.number} is already assigned`);
 
     const newRoomTier = getRoomTier(newRoom.number);
-    if (newRoomTier !== waitlist.desired_tier) throw new HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but desired tier is ${waitlist.desired_tier}`);
+    const validTiers = Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0
+      ? waitlist.desired_tiers.map(String)
+      : [String(waitlist.desired_tier)];
+    if (!validTiers.includes(newRoomTier)) throw new HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but waitlist accepts ${validTiers.join(', ')}`);
 
     const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
     const quoteJson = JSON.stringify({ type: 'UPGRADE', fromTier: block.rental_type, toTier: newRoomTier, amount: upgradeFee, waitlistId, newRoomId: roomId, newRoomNumber: newRoom.number });
@@ -202,7 +205,8 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
     }
 
     await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = (SELECT customer_id FROM visits WHERE id = ${waitlist.visit_id}), status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = ${newRoomId}`);
-    await tx.execute(sql`UPDATE checkin_blocks SET resource_id = ${newRoomId}, rental_type = ${waitlist.desired_tier}, updated_at = NOW() WHERE id = ${block.id}`);
+    const actualNewTier = getRoomTier(newRoom.number);
+    await tx.execute(sql`UPDATE checkin_blocks SET resource_id = ${newRoomId}, rental_type = ${actualNewTier}, updated_at = NOW() WHERE id = ${block.id}`);
     await tx.execute(sql`UPDATE waitlist SET status = 'COMPLETED', completed_at = NOW(), updated_at = NOW() WHERE id = ${waitlistId}`);
 
     if (upgradeAmount !== undefined) {

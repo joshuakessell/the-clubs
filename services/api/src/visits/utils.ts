@@ -4,7 +4,7 @@ type BlockTimeRange = Pick<CheckinBlockRow, 'starts_at' | 'ends_at'>;
 
 export function calculateTotalHours(blocks: BlockTimeRange[]): number {
   return blocks.reduce((sum, block) => {
-    const hours = (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
+    const hours = (new Date(block.ends_at).getTime() - new Date(block.starts_at).getTime()) / (1000 * 60 * 60);
     return sum + hours;
   }, 0);
 }

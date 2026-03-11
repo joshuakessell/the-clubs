@@ -81,7 +81,10 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
     const reservationConflict = await tx.execute<{ id: string }>(sql`SELECT id FROM inventory_reservations WHERE resource_type = 'room' AND resource_id = ${roomId} AND released_at IS NULL AND (waitlist_id IS NULL OR waitlist_id <> ${waitlistId}) LIMIT 1`);
     if (reservationConflict.rows.length > 0) throw new HttpError(409, `Room ${room.number} is reserved`);
 
-    if (String(room.tier) !== String(waitlist.desired_tier)) throw new HttpError(409, `Resource ${room.number} is ${room.tier}, but waitlist is for ${waitlist.desired_tier}`);
+    const validTiers = Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0
+      ? waitlist.desired_tiers.map(String)
+      : [String(waitlist.desired_tier)];
+    if (!validTiers.includes(String(room.tier))) throw new HttpError(409, `Resource ${room.number} is ${room.tier}, but waitlist accepts ${validTiers.join(', ')}`);
 
     const reserved = await tx.execute<{ id: string }>(sql`SELECT w.id FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.status = 'OFFERED' AND w.resource_id = ${roomId} AND w.id <> ${waitlistId} AND v.ended_at IS NULL AND cb.ends_at > NOW() LIMIT 1`);
     if (reserved.rows.length > 0) throw new HttpError(409, `Resource ${room.number} is reserved for another offer`);
@@ -89,7 +92,7 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
     const desiredExpiryRes = await tx.execute<{ offer_expires_at: Date | null }>(sql`SELECT offer_expires_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     const existingExpiresAt = desiredExpiryRes.rows[0]?.offer_expires_at ?? null;
     const tenFromNow = new Date(Date.now() + 10 * 60 * 1000);
-    const nextExpiresAt = existingExpiresAt && existingExpiresAt.getTime() > tenFromNow.getTime() ? existingExpiresAt : tenFromNow;
+    const nextExpiresAt = existingExpiresAt && new Date(existingExpiresAt).getTime() > tenFromNow.getTime() ? existingExpiresAt : tenFromNow;
 
     await tx.execute(sql`INSERT INTO inventory_reservations (resource_type, resource_id, kind, waitlist_id, expires_at) VALUES ('room', ${roomId}, 'UPGRADE_HOLD', ${waitlistId}, ${nextExpiresAt}) ON CONFLICT DO NOTHING`);
     await tx.execute(sql`UPDATE inventory_reservations SET expires_at = ${nextExpiresAt} WHERE released_at IS NULL AND kind = 'UPGRADE_HOLD' AND waitlist_id = ${waitlistId}`);

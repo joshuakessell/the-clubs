@@ -29,12 +29,12 @@ export async function getEmployeeSummary(range: AnalyticsRange) {
   const shiftHoursMap = new Map<string, { staffName: string; totalMs: number }>();
   const openClockIns = new Map<string, Date>();
   for (const row of clockEvents.rows) {
-    if (row.event_type === 'EMPLOYEE_CLOCK_IN') { openClockIns.set(row.staff_id, row.occurred_at); }
+    if (row.event_type === 'EMPLOYEE_CLOCK_IN') { openClockIns.set(row.staff_id, new Date(row.occurred_at)); }
     else if (row.event_type === 'EMPLOYEE_CLOCK_OUT') {
       const clockIn = openClockIns.get(row.staff_id);
       if (clockIn) {
         const existing = shiftHoursMap.get(row.staff_id) ?? { staffName: row.staff_name ?? '', totalMs: 0 };
-        existing.totalMs += row.occurred_at.getTime() - clockIn.getTime();
+        existing.totalMs += new Date(row.occurred_at).getTime() - clockIn.getTime();
         if (!existing.staffName && row.staff_name) existing.staffName = row.staff_name;
         shiftHoursMap.set(row.staff_id, existing); openClockIns.delete(row.staff_id);
       }
