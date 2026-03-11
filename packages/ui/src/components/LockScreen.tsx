@@ -21,6 +21,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
   const [pinDigits, setPinDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   // Staff picker state (select-only, no search)
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -177,9 +178,11 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       return;
     }
 
-    // Module-level guard: React StrictMode double-mounts in dev, causing two
-    // concurrent login calls before isLoading state can update synchronously.
+    // Ref-based guard: React state isLoading can't update synchronously between
+    // two submitRef calls in the same tick (e.g. StrictMode double-mount).
+    if (submittingRef.current) return;
     if (isLoading) return;
+    submittingRef.current = true;
     setIsLoading(true);
     setError(null);
 
@@ -212,6 +215,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       setError(err instanceof Error ? err.message : 'Invalid credentials');
       clearPin();
     } finally {
+      submittingRef.current = false;
       setIsLoading(false);
     }
   };

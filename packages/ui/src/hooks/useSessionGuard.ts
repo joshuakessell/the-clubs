@@ -52,11 +52,15 @@ export function useSessionGuard() {
 
     // Heartbeat: ping /auth/me every 90 seconds so a server restart is detected
     // quickly and the user is sent back to the lock screen automatically.
-    // Also fires immediately on mount to catch stale tokens right away.
     useEffect(() => {
         if (!session) return;
         const HEARTBEAT_MS = 90 * 1_000; // 90 seconds
-        void validateSession({ silent: true }); // fire immediately (silent to avoid UI flash)
+        // Skip the immediate fire when the token just changed (fresh login).
+        // The first effect already handles deferred validation for new tokens.
+        // Only fire immediately for re-mounts with an unchanged stored token.
+        if (prevTokenRef.current === session.sessionToken) {
+            void validateSession({ silent: true });
+        }
         const id = setInterval(() => void validateSession({ silent: true }), HEARTBEAT_MS);
         return () => clearInterval(id);
     }, [session?.sessionToken]); // eslint-disable-line react-hooks/exhaustive-deps
