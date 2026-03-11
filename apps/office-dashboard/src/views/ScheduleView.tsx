@@ -470,10 +470,10 @@ export function ScheduleView() {
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">
               {isAdmin ? 'Schedule Management' : 'My Schedule'}
             </h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm text-(--color-text-muted)">
               Week of {new Date(weekStartStr + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
@@ -505,7 +505,7 @@ export function ScheduleView() {
             ))}
           </div>
         ) : (
-          <p className="mt-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="mt-3 text-xs text-(--color-text-muted)">
             Click your name on a scheduled day to request time off.
           </p>
         )}
@@ -537,10 +537,10 @@ export function ScheduleView() {
                   </div>
                   {getSavedTemplates().length > 0 && (
                     <div className="mt-3 flex flex-col gap-1">
-                      <span className="text-xs font-semibold uppercase" style={{ color: 'var(--color-text-muted)' }}>Saved Templates</span>
+                      <span className="text-xs font-semibold uppercase text-(--color-text-muted)">Saved Templates</span>
                       {getSavedTemplates().map((tpl, idx) => (
                         <div key={tpl.name} className="flex items-center justify-between rounded-md border px-3 py-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
-                          <span className="text-sm font-medium" style={{ color: 'var(--color-text-primary)' }}>{tpl.name} ({tpl.shifts.length} shifts)</span>
+                          <span className="text-sm font-medium text-(--color-text-primary)">{tpl.name} ({tpl.shifts.length} shifts)</span>
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline" onClick={() => void handleLoadTemplate(idx)}>Load</Button>
                             <Button size="sm" variant="ghost" onClick={() => handleDeleteTemplate(idx)} style={{ color: 'var(--color-status-error)' }}>✕</Button>
@@ -557,11 +557,11 @@ export function ScheduleView() {
           {shiftsLoading && shifts.length === 0 ? (
             <ViewSpinner />
           ) : (
-            <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+            <div className="overflow-x-auto rounded-xl border border-(--color-border-default)">
               <table className="w-full" style={{ minWidth: '800px' }}>
                 <thead>
                   <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
-                    <th className="w-28 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                    <th className="w-28 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                       Shift
                     </th>
                     {weekDays.map((day, idx) => {
@@ -662,7 +662,7 @@ export function ScheduleView() {
                                         {s.employeeName.split(' ')[0]}
                                       </span>
                                       {s.status === 'UPDATED' && (
-                                        <span className="text-[9px]" style={{ color: 'var(--color-status-warning)' }}>✎</span>
+                                        <span className="text-[9px] text-(--color-status-warning)">✎</span>
                                       )}
                                     </div>
                                     {/* Show time-off request badge below name */}
@@ -689,10 +689,10 @@ export function ScheduleView() {
                                 );
                               })}
                               {dayShifts.length === 0 && isAdmin && (
-                                <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>+ Assign</span>
+                                <span className="text-[10px] text-(--color-text-muted)">+ Assign</span>
                               )}
                               {dayShifts.length === 0 && !isAdmin && (
-                                <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>—</span>
+                                <span className="text-[10px] text-(--color-text-muted)">—</span>
                               )}
                             </div>
                           </td>
@@ -709,10 +709,10 @@ export function ScheduleView() {
           {isAdmin && selectedDay && (
             <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+                <h3 className="text-base font-bold text-(--color-text-primary) font-(--font-display)">
                   {DAYS_FULL[new Date(selectedDay + 'T00:00:00').getDay()]}, {formatShortDate(selectedDay)}
                 </h3>
-                <button type="button" className="text-sm" style={{ color: 'var(--color-text-muted)' }} onClick={() => setSelectedDay(null)}>✕ Close</button>
+                <button type="button" className="text-sm text-(--color-text-muted)" onClick={() => setSelectedDay(null)}>✕ Close</button>
               </div>
 
               <div className="flex flex-col gap-3">
@@ -722,29 +722,27 @@ export function ScheduleView() {
                     <div key={code} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: SHIFT_COLORS[code] }}>
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-xs font-bold" style={{ color: SHIFT_ACCENTS[code] }}>{SHIFT_LABELS[code]}</span>
-                        <button type="button" className="text-[10px] font-semibold" style={{ color: 'var(--color-accent-primary)' }}
+                        <button type="button" className="text-[10px] font-semibold text-(--color-accent-primary)"
                           onClick={() => setAssignModal({ day: selectedDay, code })}>
                           + Add Employee
                         </button>
                       </div>
                       {dayShifts.length === 0 ? (
-                        <p className="text-xs italic" style={{ color: 'var(--color-text-muted)' }}>No one assigned</p>
+                        <p className="text-xs italic text-(--color-text-muted)">No one assigned</p>
                       ) : (
                         dayShifts.map((s) => (
                           <div key={s.id} className="mb-1 flex items-center justify-between rounded-md px-3 py-2" style={{ backgroundColor: 'var(--color-surface-base)' }}>
                             <div>
-                              <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.employeeName}</span>
-                              {s.notes && <span className="ml-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>— {s.notes}</span>}
+                              <span className="text-sm font-semibold text-(--color-text-primary)">{s.employeeName}</span>
+                              {s.notes && <span className="ml-2 text-xs text-(--color-text-muted)">— {s.notes}</span>}
                             </div>
                             <div className="flex items-center gap-2">
                               <Badge color={shiftStatusColor(s.status)} variant="light" size="sm">
                                 {s.status}
                               </Badge>
-                              <button type="button" className="text-xs font-semibold"
-                                style={{ color: 'var(--color-accent-primary)' }}
+                              <button type="button" className="text-xs font-semibold text-(--color-accent-primary)"
                                 onClick={() => setEditingShift(s)}>Edit</button>
-                              <button type="button" className="text-xs font-semibold"
-                                style={{ color: 'var(--color-status-error)' }}
+                              <button type="button" className="text-xs font-semibold text-(--color-status-error)"
                                 onClick={() => handleCancelShift(s.id)}>Remove</button>
                             </div>
                           </div>
@@ -763,8 +761,8 @@ export function ScheduleView() {
       {!isAdmin && activeTab === 'grid' && (
         <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>My Hours This Week</span>
-            <span className="text-lg font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+            <span className="text-sm font-semibold text-(--color-text-primary)">My Hours This Week</span>
+            <span className="text-lg font-bold tabular-nums text-(--color-accent-primary)">
               {myShifts.reduce((sum, s) => {
                 const start = new Date(s.scheduledStart).getTime();
                 const end = new Date(s.scheduledEnd).getTime();
@@ -772,7 +770,7 @@ export function ScheduleView() {
               }, 0).toFixed(1)}h
             </span>
           </div>
-          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="mt-1 text-xs text-(--color-text-muted)">
             {myShifts.length} shift{myShifts.length === 1 ? '' : 's'} scheduled
           </p>
         </div>
@@ -780,7 +778,7 @@ export function ScheduleView() {
 
       {/* ── Summary Tab (Admin only) ── */}
       {isAdmin && activeTab === 'summary' && (
-        <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+        <div className="overflow-hidden rounded-xl border border-(--color-border-default)">
           <table className="w-full">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
@@ -794,10 +792,10 @@ export function ScheduleView() {
                 <tr key={s.employeeId} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.employeeName}</td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{s.shiftCount}</td>
-                  <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>{s.totalHours.toFixed(1)}h</td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{s.netHours.toFixed(1)}h</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">{s.employeeName}</td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-secondary)">{s.shiftCount}</td>
+                  <td className="px-4 py-3 text-sm font-bold tabular-nums text-(--color-accent-primary)">{s.totalHours.toFixed(1)}h</td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-secondary)">{s.netHours.toFixed(1)}h</td>
                   <td className="px-4 py-3">
                     <Badge color={s.overtimeFlag ? 'warning' : 'success'} variant="light" size="sm">
                       {s.overtimeFlag ? 'Overtime' : 'Normal'}
@@ -834,9 +832,9 @@ export function ScheduleView() {
                 <tr key={r.id} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{r.employeeName}</td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{formatShortDate(r.day)}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>{r.reason || '—'}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">{r.employeeName}</td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-secondary)">{formatShortDate(r.day)}</td>
+                  <td className="px-4 py-3 text-sm text-(--color-text-muted)">{r.reason || '—'}</td>
                   <td className="px-4 py-3">
                     <Badge
                       color={statusBadgeColor(r.status)}
@@ -864,7 +862,7 @@ export function ScheduleView() {
         </div>
 
         {/* ── Shift Trades section within Time Off tab ── */}
-        <h3 className="mt-6 mb-3 text-sm font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+        <h3 className="mt-6 mb-3 text-sm font-bold text-(--color-text-primary) font-(--font-display)">
           🔄 Shift Trade Requests
         </h3>
         <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
@@ -881,8 +879,8 @@ export function ScheduleView() {
                 <tr key={t.id} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t.requesterName}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t.targetName}'s shift</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">{t.requesterName}</td>
+                  <td className="px-4 py-3 text-sm text-(--color-text-secondary)">{t.targetName}'s shift</td>
                   <td className="px-4 py-3">
                     <Badge
                       color={statusBadgeColor(t.status)}
@@ -900,7 +898,7 @@ export function ScheduleView() {
               ))}
               {tradeRequests.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
                     No shift trade requests
                   </td>
                 </tr>
@@ -921,7 +919,7 @@ export function ScheduleView() {
             <h3 className="mb-1 text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
               Assign Employee
             </h3>
-            <p className="mb-4 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="mb-4 text-xs text-(--color-text-muted)">
               {SHIFT_LABELS[assignModal.code]} — {formatShortDate(assignModal.day)}
             </p>
             <div className="flex flex-col gap-2">
@@ -935,13 +933,13 @@ export function ScheduleView() {
                   }}
                   onClick={() => handleAssignShift(s.id, assignModal.day, assignModal.code)}>
                   <span>{s.name}</span>
-                  <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>
+                  <span className="text-xs font-normal text-(--color-text-muted)">
                     {summaryByEmployeeId.get(s.id)?.netHours.toFixed(0) ?? '0'}h this week
                   </span>
                 </button>
               ))}
               {staffList.length === 0 && (
-                <p className="py-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No active staff</p>
+                <p className="py-4 text-center text-sm text-(--color-text-muted)">No active staff</p>
               )}
             </div>
             <button type="button" className="mt-4 w-full rounded-lg border px-4 py-2 text-sm font-semibold transition"
@@ -968,7 +966,7 @@ export function ScheduleView() {
               {DAYS_FULL[new Date(dayOffModal.day + 'T00:00:00').getDay()]}, {formatShortDate(dayOffModal.day)}
             </p>
             <div className="mb-4">
-              <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Reason (optional)</label>
+              <label className="mb-1 block text-xs font-semibold text-(--color-text-muted)">Reason (optional)</label>
               <textarea
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
@@ -1007,7 +1005,7 @@ export function ScheduleView() {
               Trade with {tradeModal.targetShift.employeeName}
             </p>
             <div className="mb-4 rounded-lg p-4" style={{ backgroundColor: 'var(--color-surface-base)' }}>
-              <label className="mb-2 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Select your shift to trade:</label>
+              <label className="mb-2 block text-xs font-semibold text-(--color-text-muted)">Select your shift to trade:</label>
               <select
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
@@ -1026,7 +1024,7 @@ export function ScheduleView() {
                 })}
               </select>
               {tradeSelectedShiftId && (
-                <p className="mt-3 text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                <p className="mt-3 text-sm text-(--color-text-primary)">
                   <strong>For:</strong> {tradeModal.targetShift.employeeName}'s {SHIFT_LABELS[tradeModal.targetShift.shiftCode]} on {DAYS_FULL[new Date(tradeModal.day + 'T00:00:00').getDay()]}
                 </p>
               )}
@@ -1080,14 +1078,14 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
       <div className="w-full max-w-md rounded-xl border p-6"
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
         onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+        <h3 className="mb-4 text-base font-bold text-(--color-text-primary) font-(--font-display)">
           Edit Shift
         </h3>
 
         <div className="flex flex-col gap-4">
           {/* Employee */}
           <div>
-            <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Employee</label>
+            <label className="mb-1 block text-xs font-semibold text-(--color-text-muted)">Employee</label>
             <select className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
@@ -1097,7 +1095,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
 
           {/* Shift code */}
           <div>
-            <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Shift</label>
+            <label className="mb-1 block text-xs font-semibold text-(--color-text-muted)">Shift</label>
             <select className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={shiftCode} onChange={(e) => setShiftCode(e.target.value as 'A' | 'B' | 'C')}>
@@ -1109,7 +1107,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
 
           {/* Notes */}
           <div>
-            <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Notes</label>
+            <label className="mb-1 block text-xs font-semibold text-(--color-text-muted)">Notes</label>
             <input className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes..." />
@@ -1117,7 +1115,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
 
           {/* Info */}
           <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--color-surface-base)' }}>
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-xs text-(--color-text-muted)">
               <span className="font-semibold">Status:</span> {shift.status} &nbsp;|&nbsp;
               <span className="font-semibold">Date:</span> {new Date(shift.scheduledStart).toLocaleDateString()}
             </p>
@@ -1125,7 +1123,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
         </div>
 
         <div className="mt-5 flex items-center justify-between">
-          <button type="button" className="text-xs font-semibold" style={{ color: 'var(--color-status-error)' }}
+          <button type="button" className="text-xs font-semibold text-(--color-status-error)"
             onClick={() => onDelete(shift.id)}>Delete Shift</button>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
