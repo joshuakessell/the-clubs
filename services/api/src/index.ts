@@ -224,8 +224,8 @@ function setupPeriodicJobs(fastify: FastifyInstance) {
     const i4 = setInterval(() => {
       void (async () => {
         try {
-          const { expired, held } = await processUpgradeHoldsTick(fastify);
-          if (expired > 0 || held > 0) fastify.log.info({ expired, held }, 'Processed upgrade holds');
+          const { expired } = await processUpgradeHoldsTick(fastify);
+          if (expired > 0) fastify.log.info({ expired }, 'Processed upgrade hold expirations');
         } catch (error) {
           fastify.log.error(error, 'Error during upgrade hold processing');
         }

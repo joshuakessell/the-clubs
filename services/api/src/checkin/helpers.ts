@@ -40,21 +40,53 @@ export async function selectRoomForNewCheckin(
   client: PoolClient,
   rentalType: RoomRentalType
 ): Promise<{ id: string; number: string } | null> {
-  // 1) ACTIVE waitlist demand count for this tier (still within scheduled stay)
+  // 1) ACTIVE + OFFERED waitlist demand count for this tier (still within scheduled stay)
   const demandRes = await client.query<{ count: string }>(
     `SELECT COUNT(*) as count
      FROM waitlist w
      JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
      JOIN visits v ON v.id = w.visit_id
-     WHERE w.status = 'ACTIVE'
+     WHERE w.status IN ('ACTIVE', 'OFFERED')
        AND w.desired_tier::text = $1
        AND v.ended_at IS NULL
        AND cb.ends_at > NOW()`,
     [rentalType]
   );
-  const activeDemandCount = parseInt(demandRes.rows[0]?.count ?? '0', 10) || 0;
+  const waitlistDemandCount = parseInt(demandRes.rows[0]?.count ?? '0', 10) || 0;
 
-  // 2) OFFERED waitlist resources are explicitly reserved (do not assign them)
+  // 2) Count available rooms of this tier (CLEAN, unassigned, not reserved by lane session)
+  const availableRes = await client.query<{ count: string }>(
+    `SELECT COUNT(*) as count
+     FROM inventory_resources
+     WHERE status = 'CLEAN'
+       AND assigned_to_customer_id IS NULL
+       AND kind = 'room'
+       AND tier = $1
+       AND NOT EXISTS (
+         SELECT 1
+         FROM lane_sessions ls
+         WHERE ls.assigned_resource_type = 'room'
+           AND ls.assigned_resource_id = inventory_resources.id
+           AND ls.status = ANY (
+             ARRAY[
+               'ACTIVE'::public.lane_session_status,
+               'AWAITING_CUSTOMER'::public.lane_session_status,
+               'AWAITING_ASSIGNMENT'::public.lane_session_status,
+               'AWAITING_PAYMENT'::public.lane_session_status,
+               'AWAITING_SIGNATURE'::public.lane_session_status
+             ]
+           )
+       )`,
+    [rentalType]
+  );
+  const availableCount = parseInt(availableRes.rows[0]?.count ?? '0', 10) || 0;
+
+  // 3) Block check-in if waitlist demand >= available rooms
+  if (waitlistDemandCount >= availableCount) {
+    return null;
+  }
+
+  // 4) OFFERED waitlist resources are explicitly reserved (do not assign them)
   const offeredRes = await client.query<{ resource_id: string }>(
     `SELECT w.resource_id
      FROM waitlist w
@@ -69,8 +101,7 @@ export async function selectRoomForNewCheckin(
   );
   const offeredResourceIds = offeredRes.rows.map((r) => r.resource_id).filter(Boolean);
 
-  // 3) Select the (activeDemandCount+1)th clean, unassigned resource by number, excluding offered.
-  // Concurrency-safe: FOR UPDATE SKIP LOCKED
+  // 5) Select the first clean, unassigned resource, excluding offered ones.
   const room = (
     await client.query<{ id: string; number: string }>(
       `SELECT id, number
@@ -80,7 +111,6 @@ export async function selectRoomForNewCheckin(
          AND kind = 'room'
          AND tier = $1
          AND id <> ALL($2::uuid[])
-         -- Exclude resources "selected" by an active lane session (reservation semantics).
          AND NOT EXISTS (
            SELECT 1
            FROM lane_sessions ls
@@ -97,10 +127,9 @@ export async function selectRoomForNewCheckin(
              )
          )
        ORDER BY number ASC
-       OFFSET $3
        LIMIT 1
        FOR UPDATE SKIP LOCKED`,
-      [rentalType, offeredResourceIds, activeDemandCount]
+      [rentalType, offeredResourceIds]
     )
   ).rows[0];
 
