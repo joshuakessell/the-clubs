@@ -171,14 +171,33 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
       if (result.rows.length === 0) {
         return reply.status(404).send({ error: 'Document not found' });
       }
-      const pdf = (result.rows[0] as unknown as { agreement_pdf: Buffer | null }).agreement_pdf;
-      if (!pdf) {
+      const raw = (result.rows[0] as Record<string, unknown>).agreement_pdf;
+      if (!raw) {
         return reply.status(404).send({ error: 'Agreement PDF not stored for this document' });
       }
 
-      reply.type('application/pdf');
-      reply.header('Content-Disposition', `attachment; filename="agreement-${documentId}.pdf"`);
-      return reply.send(pdf);
+      // Drizzle may return bytea as: real Buffer, JSON-like {type,data} object, or hex string
+      let pdfBuf: Buffer;
+      if (Buffer.isBuffer(raw)) {
+        pdfBuf = raw;
+      } else if (typeof raw === 'object' && raw !== null && 'type' in raw && 'data' in raw) {
+        // JSON-serialized Buffer: { type: 'Buffer', data: number[] }
+        pdfBuf = Buffer.from((raw as { data: number[] }).data);
+      } else if (typeof raw === 'string') {
+        // Hex-encoded bytea: \x2550444...
+        pdfBuf = Buffer.from(raw.replace(/^\\x/, ''), 'hex');
+      } else {
+        return reply.status(500).send({ error: 'Unexpected PDF data format' });
+      }
+
+      // Send raw binary directly — bypass Fastify's JSON serializer
+      reply.raw.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="agreement-${documentId.slice(0, 8)}.pdf"`,
+        'Content-Length': pdfBuf.length,
+      });
+      reply.raw.end(pdfBuf);
+      return reply;
     }
   );
 }
