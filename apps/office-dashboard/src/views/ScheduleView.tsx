@@ -141,6 +141,11 @@ export function ScheduleView() {
   const [dragShiftId, setDragShiftId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ day: string; code: string } | null>(null);
 
+  // Employee bank state (admin only)
+  const [selectedBankEmployee, setSelectedBankEmployee] = useState<string>('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [trashHover, setTrashHover] = useState(false);
+
   // ─── Computed dates ───
   const weekStart = useMemo(() => {
     const base = getMonday(new Date());
@@ -235,13 +240,19 @@ export function ScheduleView() {
   }, [weekStart]);
 
   // ─── Admin Handlers ───
-  const refetchAll = useCallback(() => {
-    refetchShifts();
-    if (isAdmin) {
-      refetchSummary();
+  const refetchAll = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchShifts(),
+        isAdmin ? refetchSummary() : Promise.resolve(),
+        refetchTimeoff(),
+        refetchTrades(),
+      ]);
+    } finally {
+      // Brief visual feedback so the user sees it did something
+      setTimeout(() => setRefreshing(false), 400);
     }
-    refetchTimeoff();
-    refetchTrades();
   }, [refetchShifts, refetchSummary, refetchTimeoff, refetchTrades, isAdmin]);
 
   const handleCancelShift = useCallback(async (shiftId: string) => {
@@ -521,7 +532,81 @@ export function ScheduleView() {
                 <Button size="sm" variant="outline" onClick={handleCopyWeek}>Copy to Next Week</Button>
                 <Button size="sm" variant="outline" onClick={() => globalThis.print()}>🖨️ Print Schedule</Button>
                 <Button size="sm" variant="outline" onClick={() => setShowTemplateMenu(!showTemplateMenu)}>📋 Templates</Button>
-                <Button size="sm" variant="outline" onClick={refetchAll}>↻ Refresh</Button>
+                <Button size="sm" variant="outline" onClick={() => void refetchAll()} disabled={refreshing}>
+                  {refreshing ? '↻ Refreshing…' : '↻ Refresh'}
+                </Button>
+              </div>
+
+              {/* ── Employee Bank ── */}
+              <div className="flex items-center gap-3 rounded-lg border p-3" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
+                <label className="text-xs font-semibold text-(--color-text-muted) whitespace-nowrap">Employee Bank:</label>
+                <select
+                  className="rounded-lg border px-3 py-1.5 text-sm outline-none"
+                  style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)', minWidth: '180px' }}
+                  value={selectedBankEmployee}
+                  onChange={(e) => setSelectedBankEmployee(e.target.value)}
+                  aria-label="Select employee to schedule"
+                >
+                  <option value="">— Select employee —</option>
+                  {staffList.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+
+                {/* Draggable employee chip */}
+                {selectedBankEmployee && (() => {
+                  const emp = staffList.find(s => s.id === selectedBankEmployee);
+                  const empSummary = summaryByEmployeeId.get(selectedBankEmployee);
+                  if (!emp) return null;
+                  return (
+                    <div
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', `new:${emp.id}`);
+                        e.dataTransfer.effectAllowed = 'copy';
+                      }}
+                      className="flex items-center gap-2 rounded-lg border px-3 py-2 cursor-grab active:cursor-grabbing select-none transition hover:shadow-md"
+                      style={{
+                        backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 12%, transparent)',
+                        borderColor: 'var(--color-accent-primary)',
+                        color: 'var(--color-text-primary)',
+                      }}
+                    >
+                      <span className="text-sm font-bold">👤 {emp.name}</span>
+                      <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                        {empSummary ? `${empSummary.netHours.toFixed(1)}h / ${empSummary.shiftCount} shifts` : '0h / 0 shifts'}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Trash can drop zone */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setTrashHover(true);
+                  }}
+                  onDragLeave={() => setTrashHover(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setTrashHover(false);
+                    const payload = e.dataTransfer.getData('text/plain');
+                    // Only delete existing shifts (not bank drags)
+                    if (payload && !payload.startsWith('new:')) {
+                      void handleCancelShift(payload);
+                    }
+                  }}
+                  className="ml-auto flex items-center justify-center rounded-lg border-2 border-dashed p-2 transition"
+                  style={{
+                    borderColor: trashHover ? 'var(--color-status-error)' : 'var(--color-border-subtle)',
+                    backgroundColor: trashHover ? 'color-mix(in oklch, var(--color-status-error) 12%, transparent)' : 'transparent',
+                    minWidth: '44px',
+                    minHeight: '44px',
+                  }}
+                  title="Drop here to remove from schedule"
+                >
+                  <span style={{ fontSize: '20px', opacity: trashHover ? 1 : 0.5 }}>🗑️</span>
+                </div>
               </div>
               {showTemplateMenu && (
                 <div className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
@@ -607,8 +692,15 @@ export function ScheduleView() {
                               onDrop={isAdmin ? (e) => {
                                 e.preventDefault();
                                 setDropTarget(null);
-                                const shiftId = e.dataTransfer.getData('text/plain');
-                                if (shiftId) void handleDragDrop(shiftId, day, code);
+                                const payload = e.dataTransfer.getData('text/plain');
+                                if (payload?.startsWith('new:')) {
+                                  // Dragged from employee bank — create new shift
+                                  const employeeId = payload.slice(4);
+                                  if (employeeId) void handleAssignShift(employeeId, day, code);
+                                } else if (payload) {
+                                  // Dragged existing shift — move it
+                                  void handleDragDrop(payload, day, code);
+                                }
                               } : undefined}
                               onClick={() => {
                                 if (isAdmin) {
