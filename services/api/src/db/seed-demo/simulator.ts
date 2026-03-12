@@ -1649,8 +1649,8 @@ async function generateFakeDemoPdf(): Promise<Buffer> {
   const infoValues = ['John Smith', 'CD-100042', dateStr, timeStr];
   let infoY = 666;
   for (let i = 0; i < infoLabels.length; i++) {
-    page.drawText(infoLabels[i]!, { x: LM, y: infoY, size: 9, font: helvBold, color: darkGray });
-    page.drawText(infoValues[i]!, { x: LM + 90, y: infoY, size: 9, font: helv, color: black });
+    page.drawText(infoLabels[i], { x: LM, y: infoY, size: 9, font: helvBold, color: darkGray });
+    page.drawText(infoValues[i], { x: LM + 90, y: infoY, size: 9, font: helv, color: black });
     infoY -= 14;
   }
 
@@ -1743,15 +1743,15 @@ async function generateFakeDemoPdf(): Promise<Buffer> {
   page.drawLine({ start: { x: sigX, y: sigY + 18 }, end: { x: sigX + 8, y: sigY + 22 }, thickness: 1.2, color: sigColor });
   page.drawLine({ start: { x: sigX + 8, y: sigY + 22 }, end: { x: sigX + 12, y: sigY + 10 }, thickness: 1.2, color: sigColor });
   page.drawLine({ start: { x: sigX + 12, y: sigY + 10 }, end: { x: sigX + 6, y: sigY - 2 }, thickness: 1.2, color: sigColor });
-  page.drawLine({ start: { x: sigX + 6, y: sigY - 2 }, end: { x: sigX - 2, y: sigY + 2 }, thickness: 1.0, color: sigColor });
+  page.drawLine({ start: { x: sigX + 6, y: sigY - 2 }, end: { x: sigX - 2, y: sigY + 2 }, thickness: 1, color: sigColor });
 
   // "ohn" cursive strokes
-  page.drawLine({ start: { x: sigX + 14, y: sigY + 4 }, end: { x: sigX + 22, y: sigY + 14 }, thickness: 1.0, color: sigColor });
-  page.drawLine({ start: { x: sigX + 22, y: sigY + 14 }, end: { x: sigX + 28, y: sigY + 4 }, thickness: 1.0, color: sigColor });
-  page.drawLine({ start: { x: sigX + 28, y: sigY + 4 }, end: { x: sigX + 36, y: sigY + 14 }, thickness: 1.0, color: sigColor });
-  page.drawLine({ start: { x: sigX + 36, y: sigY + 14 }, end: { x: sigX + 42, y: sigY + 4 }, thickness: 1.0, color: sigColor });
-  page.drawLine({ start: { x: sigX + 42, y: sigY + 4 }, end: { x: sigX + 52, y: sigY + 14 }, thickness: 1.0, color: sigColor });
-  page.drawLine({ start: { x: sigX + 52, y: sigY + 14 }, end: { x: sigX + 58, y: sigY + 6 }, thickness: 1.0, color: sigColor });
+  page.drawLine({ start: { x: sigX + 14, y: sigY + 4 }, end: { x: sigX + 22, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 22, y: sigY + 14 }, end: { x: sigX + 28, y: sigY + 4 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 28, y: sigY + 4 }, end: { x: sigX + 36, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 36, y: sigY + 14 }, end: { x: sigX + 42, y: sigY + 4 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 42, y: sigY + 4 }, end: { x: sigX + 52, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 52, y: sigY + 14 }, end: { x: sigX + 58, y: sigY + 6 }, thickness: 1, color: sigColor });
 
   // Space then "S" 
   const sx = sigX + 70;
@@ -1761,10 +1761,10 @@ async function generateFakeDemoPdf(): Promise<Buffer> {
   page.drawLine({ start: { x: sx + 14, y: sigY + 8 }, end: { x: sx + 8, y: sigY }, thickness: 1.1, color: sigColor });
 
   // "mith" cursive
-  page.drawLine({ start: { x: sx + 16, y: sigY + 4 }, end: { x: sx + 24, y: sigY + 14 }, thickness: 1.0, color: sigColor });
-  page.drawLine({ start: { x: sx + 24, y: sigY + 14 }, end: { x: sx + 30, y: sigY + 4 }, thickness: 1.0, color: sigColor });
-  page.drawLine({ start: { x: sx + 30, y: sigY + 4 }, end: { x: sx + 36, y: sigY + 14 }, thickness: 1.0, color: sigColor });
-  page.drawLine({ start: { x: sx + 36, y: sigY + 14 }, end: { x: sx + 42, y: sigY + 4 }, thickness: 1.0, color: sigColor });
+  page.drawLine({ start: { x: sx + 16, y: sigY + 4 }, end: { x: sx + 24, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sx + 24, y: sigY + 14 }, end: { x: sx + 30, y: sigY + 4 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sx + 30, y: sigY + 4 }, end: { x: sx + 36, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sx + 36, y: sigY + 14 }, end: { x: sx + 42, y: sigY + 4 }, thickness: 1, color: sigColor });
   page.drawLine({ start: { x: sx + 42, y: sigY + 4 }, end: { x: sx + 50, y: sigY + 18 }, thickness: 0.9, color: sigColor });
   page.drawLine({ start: { x: sx + 50, y: sigY + 18 }, end: { x: sx + 52, y: sigY + 4 }, thickness: 0.9, color: sigColor });
   page.drawLine({ start: { x: sx + 52, y: sigY + 4 }, end: { x: sx + 60, y: sigY + 12 }, thickness: 0.8, color: sigColor });

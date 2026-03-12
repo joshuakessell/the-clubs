@@ -182,7 +182,8 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
     if (blockResult.rows.length === 0) throw new HttpError(404, 'Check-in block not found');
     const block = blockResult.rows[0]!;
 
-    const upgradeAmount = toNumber(intent.total) !== undefined ? (toNumber(intent.total)! / 100) : undefined;
+    const rawTotal = toNumber(intent.total);
+    const upgradeAmount = rawTotal !== undefined ? (rawTotal / 100) : undefined;
     const quote = (typeof intent.metadata_json === 'string' ? JSON.parse(intent.metadata_json) : intent.metadata_json) as { newRoomId?: string; newRoomNumber?: string; newRoomTier?: string; waitlistId?: string };
     if (!quote.newRoomId) throw new HttpError(400, 'Room ID not found in payment intent (upgrade must be fulfilled first)');
 

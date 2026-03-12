@@ -52,7 +52,7 @@ export async function selectRoomForNewCheckin(
        AND cb.ends_at > NOW()`,
     [rentalType]
   );
-  const waitlistDemandCount = parseInt(demandRes.rows[0]?.count ?? '0', 10) || 0;
+  const waitlistDemandCount = Number.parseInt(demandRes.rows[0]?.count ?? '0', 10) || 0;
 
   // 2) Count available rooms of this tier (CLEAN, unassigned, not reserved by lane session)
   const availableRes = await client.query<{ count: string }>(
@@ -79,7 +79,7 @@ export async function selectRoomForNewCheckin(
        )`,
     [rentalType]
   );
-  const availableCount = parseInt(availableRes.rows[0]?.count ?? '0', 10) || 0;
+  const availableCount = Number.parseInt(availableRes.rows[0]?.count ?? '0', 10) || 0;
 
   // 3) Block check-in if waitlist demand >= available rooms
   if (waitlistDemandCount >= availableCount) {

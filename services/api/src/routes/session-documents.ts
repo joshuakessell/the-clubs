@@ -177,7 +177,7 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
         return reply.status(404).send({ error: 'Document not found' });
       }
 
-      const row = result.rows[0]!;
+      const row = result.rows[0];
       const customerName = String(row.customer_name ?? 'Guest');
       const membershipNum = String(row.membership_number ?? '—');
 
@@ -240,8 +240,8 @@ async function generateAgreementPdf(customerName: string, membershipNum: string)
   ];
   let infoY = 666;
   for (const [label, value] of info) {
-    page.drawText(label!, { x: LM, y: infoY, size: 9, font: helvBold, color: darkGray });
-    page.drawText(value!, { x: LM + 90, y: infoY, size: 9, font: helv, color: black });
+    page.drawText(label, { x: LM, y: infoY, size: 9, font: helvBold, color: darkGray });
+    page.drawText(value, { x: LM + 90, y: infoY, size: 9, font: helv, color: black });
     infoY -= 14;
   }
 
@@ -299,24 +299,24 @@ async function generateAgreementPdf(customerName: string, membershipNum: string)
     [sx, sy + 18, sx + 8, sy + 22, 1.2],
     [sx + 8, sy + 22, sx + 12, sy + 10, 1.2],
     [sx + 12, sy + 10, sx + 6, sy - 2, 1.2],
-    [sx + 6, sy - 2, sx - 2, sy + 2, 1.0],
+    [sx + 6, sy - 2, sx - 2, sy + 2, 1],
     // "ohn"
-    [sx + 14, sy + 4, sx + 22, sy + 14, 1.0],
-    [sx + 22, sy + 14, sx + 28, sy + 4, 1.0],
-    [sx + 28, sy + 4, sx + 36, sy + 14, 1.0],
-    [sx + 36, sy + 14, sx + 42, sy + 4, 1.0],
-    [sx + 42, sy + 4, sx + 52, sy + 14, 1.0],
-    [sx + 52, sy + 14, sx + 58, sy + 6, 1.0],
+    [sx + 14, sy + 4, sx + 22, sy + 14, 1],
+    [sx + 22, sy + 14, sx + 28, sy + 4, 1],
+    [sx + 28, sy + 4, sx + 36, sy + 14, 1],
+    [sx + 36, sy + 14, sx + 42, sy + 4, 1],
+    [sx + 42, sy + 4, sx + 52, sy + 14, 1],
+    [sx + 52, sy + 14, sx + 58, sy + 6, 1],
     // "S"
     [sx + 70, sy + 20, sx + 80, sy + 24, 1.3],
     [sx + 80, sy + 24, sx + 74, sy + 14, 1.2],
     [sx + 74, sy + 14, sx + 84, sy + 8, 1.2],
     [sx + 84, sy + 8, sx + 78, sy, 1.1],
     // "mith"
-    [sx + 86, sy + 4, sx + 94, sy + 14, 1.0],
-    [sx + 94, sy + 14, sx + 100, sy + 4, 1.0],
-    [sx + 100, sy + 4, sx + 106, sy + 14, 1.0],
-    [sx + 106, sy + 14, sx + 112, sy + 4, 1.0],
+    [sx + 86, sy + 4, sx + 94, sy + 14, 1],
+    [sx + 94, sy + 14, sx + 100, sy + 4, 1],
+    [sx + 100, sy + 4, sx + 106, sy + 14, 1],
+    [sx + 106, sy + 14, sx + 112, sy + 4, 1],
     [sx + 112, sy + 4, sx + 120, sy + 18, 0.9],
     [sx + 120, sy + 18, sx + 122, sy + 4, 0.9],
     [sx + 122, sy + 4, sx + 130, sy + 12, 0.8],

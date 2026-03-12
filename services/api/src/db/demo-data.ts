@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { RoomStatus, RoomType, RentalType, BlockType } from '@the-clubs/shared';
 
 type Lang = 'EN' | 'ES';
@@ -294,7 +294,7 @@ function planVisitsForCustomer(
 ): DemoVisit[] {
   const visits: DemoVisit[] = [];
   const visitCount = randomInt(2, 6);
-  let cursor = new Date(now.getTime());
+  let cursor = new Date(now);
   cursor.setDate(cursor.getDate() - randomInt(40, 110)); // start roughly 40-110 days back
 
   for (let i = 0; i < visitCount; i++) {
@@ -361,7 +361,7 @@ function planVisitsForCustomer(
     const visitId = randomUUID();
     blocks.forEach((b) => (b.visit_id = visitId));
 
-    const visitEndedAt = blocks[blocks.length - 1]!.ends_at;
+    const visitEndedAt = blocks.at(-1)!.ends_at;
     visits.push({
       id: visitId,
       customer_id: customerId,
