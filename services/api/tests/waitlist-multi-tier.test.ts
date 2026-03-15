@@ -198,8 +198,8 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/v1/waitlist/offer',
-        payload: { waitlistId, resourceId: standardRoomId },
+        url: `/v1/waitlist/${waitlistId}/offer`,
+        payload: { resourceId: standardRoomId },
       });
 
       expect(res.statusCode).toBe(200);
@@ -212,7 +212,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
       if (!dbAvailable) return;
 
       // DOUBLE room (300-399 range) offered to waitlist accepting STANDARD or DOUBLE
-      const doubleRoomId = await createRoom('350', 'DOUBLE');
+      const doubleRoomId = await createRoom('216', 'DOUBLE');
       const { waitlistId } = await seedWaitlistEntry({
         desiredTier: 'STANDARD',
         desiredTiers: ['STANDARD', 'DOUBLE'],
@@ -229,14 +229,14 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body.status).toBe('OFFERED');
-      expect(body.roomNumber).toBe('350');
+      expect(body.roomNumber).toBe('216');
     });
 
     it('rejects a room whose tier is not in desired_tiers', async () => {
       if (!dbAvailable) return;
 
       // SPECIAL room (400-499 range) offered to waitlist accepting STANDARD or DOUBLE only
-      const specialRoomId = await createRoom('450', 'SPECIAL');
+      const specialRoomId = await createRoom('201', 'SPECIAL');
       const { waitlistId } = await seedWaitlistEntry({
         desiredTier: 'STANDARD',
         desiredTiers: ['STANDARD', 'DOUBLE'],
@@ -285,7 +285,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
     it('accepts room matching desired_tiers in upgrade fulfillment', async () => {
       if (!dbAvailable) return;
 
-      const doubleRoomId = await createRoom('360', 'DOUBLE');
+      const doubleRoomId = await createRoom('218', 'DOUBLE');
       const { waitlistId } = await seedWaitlistEntry({
         desiredTier: 'STANDARD',
         desiredTiers: ['STANDARD', 'DOUBLE'],
@@ -307,7 +307,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
 
       expect(res.statusCode).toBe(200);
       const body = res.json();
-      expect(body.newRoomNumber).toBe('360');
+      expect(body.newRoomNumber).toBe('218');
       expect(body.newRoomTier).toBe('DOUBLE');
       expect(body.upgradeFee).toBeGreaterThan(0);
     });
@@ -315,7 +315,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
     it('rejects room not in desired_tiers during upgrade fulfillment', async () => {
       if (!dbAvailable) return;
 
-      const specialRoomId = await createRoom('460', 'SPECIAL');
+      const specialRoomId = await createRoom('232', 'SPECIAL');
       // Waitlist only accepts STANDARD/DOUBLE, not SPECIAL
       const { waitlistId } = await seedWaitlistEntry({
         desiredTier: 'STANDARD',
@@ -349,7 +349,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
       if (!dbAvailable) return;
 
       // Seed: LOCKER → DOUBLE upgrade (desired_tiers=['STANDARD','DOUBLE'])
-      const doubleRoomId = await createRoom('370', 'DOUBLE');
+      const doubleRoomId = await createRoom('225', 'DOUBLE');
       const { waitlistId, blockId } = await seedWaitlistEntry({
         desiredTier: 'STANDARD',
         desiredTiers: ['STANDARD', 'DOUBLE'],
@@ -409,12 +409,12 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
       expect(roomCheck.rows[0].assigned_to_customer_id).not.toBeNull();
 
       // Verify: upgrade fee is recorded as order line item
-      const chargeCheck = await pool.query<{ type: string; amount: string }>(
-        `SELECT type, amount FROM order_line_items WHERE order_id = $1`,
+      const chargeCheck = await pool.query<{ kind: string; total: string }>(
+        `SELECT kind, total FROM order_line_items WHERE order_id = $1`,
         [orderId]
       );
       expect(chargeCheck.rows.length).toBe(1);
-      expect(chargeCheck.rows[0].type).toBe('UPGRADE_FEE');
+      expect(chargeCheck.rows[0].kind).toBe('UPGRADE');
     });
   });
 });

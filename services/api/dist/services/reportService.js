@@ -22,9 +22,9 @@ const db_1 = require("../db");
 const drizzle_orm_1 = require("drizzle-orm");
 // ── Cash Totals ──
 async function getCashTotals() {
-    const totals = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(amount), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day'`);
-    const byMethod = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT payment_method, COALESCE(SUM(amount), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day' GROUP BY payment_method`);
-    const byRegister = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT register_number, COALESCE(SUM(amount), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day' GROUP BY register_number ORDER BY register_number NULLS LAST`);
+    const totals = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(total), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day'`);
+    const byMethod = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT payment_method, COALESCE(SUM(total), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day' GROUP BY payment_method`);
+    const byRegister = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT register_number, COALESCE(SUM(total), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day' GROUP BY register_number ORDER BY register_number NULLS LAST`);
     const byPaymentMethod = {};
     for (const row of byMethod.rows)
         byPaymentMethod[row.payment_method || 'UNKNOWN'] = Number.parseFloat(String(row.total || 0));
@@ -41,8 +41,8 @@ async function getCashTotals() {
 }
 // ── Daily Summary ──
 async function getDailySummary(targetDate) {
-    const revenue = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day'`);
-    const revenueByMethod = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT payment_method, COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day' GROUP BY payment_method`);
+    const revenue = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day'`);
+    const revenueByMethod = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT payment_method, COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day' GROUP BY payment_method`);
     const checkIns = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_type = 'CHECK_IN' AND created_at >= ${targetDate}::date AND created_at < ${targetDate}::date + INTERVAL '1 day'`);
     const uniqueCustomers = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(DISTINCT customer_id)::int AS count FROM customer_activity_events WHERE created_at >= ${targetDate}::date AND created_at < ${targetDate}::date + INTERVAL '1 day'`);
     const tips = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(tip), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day' AND tip > 0`);
@@ -54,7 +54,7 @@ async function getDailySummary(targetDate) {
 // ── Revenue Trend ──
 async function getRevenueTrend(days) {
     const clampedDays = Math.min(Math.max(days, 1), 365);
-    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT TO_CHAR(paid_at::date, 'YYYY-MM-DD') AS day, COALESCE(SUM(amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS transaction_count FROM orders WHERE status = 'PAID' AND paid_at >= NOW() - ${clampedDays}::int * INTERVAL '1 day' GROUP BY paid_at::date ORDER BY day`);
+    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT TO_CHAR(paid_at::date, 'YYYY-MM-DD') AS day, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS transaction_count FROM orders WHERE status = 'PAID' AND paid_at >= NOW() - ${clampedDays}::int * INTERVAL '1 day' GROUP BY paid_at::date ORDER BY day`);
     return { days: clampedDays, trend: result.rows.map((r) => ({ date: r.day, revenue: Number.parseFloat(r.total), transactions: r.transaction_count })) };
 }
 // ── Staff Productivity ──
@@ -62,21 +62,21 @@ async function getStaffProductivity(from, to, staffId) {
     // Dynamic staff filter — safe string interpolation since it's a fixed SQL fragment
     const staffFilterClause = staffId ? (0, drizzle_orm_1.sql) ` AND s.id = ${staffId}` : (0, drizzle_orm_1.sql) ``;
     const checkIns = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT s.id AS staff_id, s.name AS staff_name, COUNT(cae.id)::int AS count FROM staff s LEFT JOIN customer_activity_events cae ON cae.actor_staff_id = s.id AND cae.action_type = 'CHECK_IN' AND cae.created_at >= ${from}::date AND cae.created_at < ${to}::date + INTERVAL '1 day' WHERE s.active = true ${staffFilterClause} GROUP BY s.id, s.name ORDER BY s.name`);
-    const revenueResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT s.id AS staff_id, COALESCE(SUM(pi.amount), 0)::numeric(10,2) AS total, COUNT(pi.id)::int AS tx_count FROM staff s LEFT JOIN orders pi ON pi.paid_by_staff_id = s.id AND pi.status = 'PAID' AND pi.paid_at >= ${from}::date AND pi.paid_at < ${to}::date + INTERVAL '1 day' WHERE s.active = true ${staffFilterClause} GROUP BY s.id`);
+    const revenueResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT s.id AS staff_id, COALESCE(SUM(pi.total), 0)::numeric(10,2) AS total, COUNT(pi.id)::int AS tx_count FROM staff s LEFT JOIN orders pi ON pi.paid_by_staff_id = s.id AND pi.status = 'PAID' AND pi.paid_at >= ${from}::date AND pi.paid_at < ${to}::date + INTERVAL '1 day' WHERE s.active = true ${staffFilterClause} GROUP BY s.id`);
     const revenueMap = new Map(revenueResult.rows.map((r) => [r.staff_id, { total: Number.parseFloat(r.total), txCount: r.tx_count }]));
     return { from, to, staff: checkIns.rows.map((r) => ({ staffId: r.staff_id, staffName: r.staff_name, checkIns: r.count, paymentsProcessed: revenueMap.get(r.staff_id)?.txCount ?? 0, revenueAttributed: revenueMap.get(r.staff_id)?.total ?? 0 })) };
 }
 // ── Staff Productivity Hourly ──
 async function getStaffProductivityHourly(targetDate, staffId) {
     const hourlyCheckIns = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(HOUR FROM created_at)::int AS hour, COUNT(*)::int AS count FROM customer_activity_events WHERE actor_staff_id = ${staffId} AND action_type = 'CHECK_IN' AND created_at >= ${targetDate}::date AND created_at < ${targetDate}::date + INTERVAL '1 day' GROUP BY hour ORDER BY hour`);
-    const hourlyRevenue = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(HOUR FROM paid_at)::int AS hour, COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM orders WHERE paid_by_staff_id = ${staffId} AND status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day' GROUP BY hour ORDER BY hour`);
+    const hourlyRevenue = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(HOUR FROM paid_at)::int AS hour, COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE paid_by_staff_id = ${staffId} AND status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day' GROUP BY hour ORDER BY hour`);
     const checkInMap = new Map(hourlyCheckIns.rows.map((r) => [r.hour, r.count]));
     const revenueMap = new Map(hourlyRevenue.rows.map((r) => [r.hour, Number.parseFloat(r.total)]));
     return { date: targetDate, staffId, hours: Array.from({ length: 24 }, (_, h) => ({ hour: h, label: `${h.toString().padStart(2, '0')}:00`, checkIns: checkInMap.get(h) ?? 0, revenue: revenueMap.get(h) ?? 0 })) };
 }
 // ── Operations Summary ──
 async function getOperationsSummary(from, to) {
-    const revenue = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS count, COALESCE(AVG(amount), 0)::numeric(10,2) AS avg_tx FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day'`);
+    const revenue = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count, COALESCE(AVG(total), 0)::numeric(10,2) AS avg_tx FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day'`);
     const tips = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(tip), 0) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' AND tip > 0`);
     const checkIns = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_category = 'CHECKIN' AND occurred_at >= ${from}::date AND occurred_at < ${to}::date + INTERVAL '1 day'`);
     const checkOuts = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_category = 'CHECKOUT' AND occurred_at >= ${from}::date AND occurred_at < ${to}::date + INTERVAL '1 day'`);
@@ -101,7 +101,7 @@ async function getOperationsSummary(from, to) {
 async function getHourlyHeatmap(weeks) {
     const clampedWeeks = Math.min(Math.max(weeks, 1), 52);
     const activity = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(DOW FROM occurred_at)::int AS dow, EXTRACT(HOUR FROM occurred_at)::int AS hour, COUNT(*)::int AS count FROM customer_activity_events WHERE occurred_at >= NOW() - ${clampedWeeks}::int * INTERVAL '1 week' GROUP BY dow, hour ORDER BY dow, hour`);
-    const revenue = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(DOW FROM paid_at)::int AS dow, EXTRACT(HOUR FROM paid_at)::int AS hour, COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= NOW() - ${clampedWeeks}::int * INTERVAL '1 week' GROUP BY dow, hour ORDER BY dow, hour`);
+    const revenue = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(DOW FROM paid_at)::int AS dow, EXTRACT(HOUR FROM paid_at)::int AS hour, COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= NOW() - ${clampedWeeks}::int * INTERVAL '1 week' GROUP BY dow, hour ORDER BY dow, hour`);
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const activityMap = new Map(activity.rows.map((r) => [`${r.dow}-${r.hour}`, r.count]));
     const revenueMap = new Map(revenue.rows.map((r) => [`${r.dow}-${r.hour}`, Number.parseFloat(r.total)]));
@@ -117,10 +117,10 @@ async function getHourlyHeatmap(weeks) {
 }
 // ── Revenue Breakdown ──
 async function getRevenueBreakdown(from, to) {
-    const byMethod = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(payment_method, 'UNKNOWN') AS payment_method, COALESCE(SUM(amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY payment_method`);
-    const byDow = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(DOW FROM paid_at)::int AS dow, TO_CHAR(paid_at, 'Dy') AS day_name, COALESCE(SUM(amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY dow, day_name ORDER BY dow`);
-    const byRentalType = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT cb.rental_type::text AS rental_type, COALESCE(SUM(pi.amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders pi JOIN lane_sessions ls ON ls.order_id = pi.id JOIN checkin_blocks cb ON cb.session_id = ls.id WHERE pi.status = 'PAID' AND pi.paid_at >= ${from}::date AND pi.paid_at < ${to}::date + INTERVAL '1 day' GROUP BY cb.rental_type`);
-    const tipStats = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(tip), 0) AS total, COALESCE(AVG(tip) FILTER (WHERE tip > 0), 0)::numeric(10,0) AS avg_tip, COUNT(*) FILTER (WHERE tip > 0)::int AS tip_count, COALESCE(SUM(amount), 0)::numeric(10,2) AS total_revenue FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day'`);
+    const byMethod = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(payment_method, 'UNKNOWN') AS payment_method, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY payment_method`);
+    const byDow = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(DOW FROM paid_at)::int AS dow, TO_CHAR(paid_at, 'Dy') AS day_name, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY dow, day_name ORDER BY dow`);
+    const byRentalType = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT cb.rental_type::text AS rental_type, COALESCE(SUM(pi.total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders pi JOIN lane_sessions ls ON ls.order_id = pi.id JOIN checkin_blocks cb ON cb.session_id = ls.id WHERE pi.status = 'PAID' AND pi.paid_at >= ${from}::date AND pi.paid_at < ${to}::date + INTERVAL '1 day' GROUP BY cb.rental_type`);
+    const tipStats = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COALESCE(SUM(tip), 0) AS total, COALESCE(AVG(tip) FILTER (WHERE tip > 0), 0)::numeric(10,0) AS avg_tip, COUNT(*) FILTER (WHERE tip > 0)::int AS tip_count, COALESCE(SUM(total), 0)::numeric(10,2) AS total_revenue FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day'`);
     const totalTips = Number.parseInt(tipStats.rows[0]?.total ?? '0', 10);
     const totalRevenueDollars = Number.parseFloat(tipStats.rows[0]?.total_revenue ?? '0');
     return {
@@ -135,7 +135,7 @@ async function getRevenueBreakdown(from, to) {
 async function getLaborCost(from, to, hourlyRate) {
     const scheduled = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT s.id AS employee_id, s.name AS employee_name, COALESCE(SUM(EXTRACT(EPOCH FROM (es.ends_at - es.starts_at)) / 3600), 0)::numeric(10,1) AS scheduled_hours, COUNT(es.id)::int AS shift_count FROM staff s LEFT JOIN employee_shifts es ON es.employee_id = s.id AND es.status != 'CANCELED' AND es.starts_at >= ${from}::date AND es.starts_at < ${to}::date + INTERVAL '1 day' WHERE s.active = true GROUP BY s.id, s.name ORDER BY s.name`);
     const actual = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT employee_id, COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(clock_out_at, NOW()) - clock_in_at)) / 3600), 0)::numeric(10,1) AS actual_hours, COUNT(*)::int AS session_count FROM timeclock_sessions WHERE clock_in_at >= ${from}::date AND clock_in_at < ${to}::date + INTERVAL '1 day' GROUP BY employee_id`);
-    const revenueByStaff = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT paid_by_staff_id AS staff_id, COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' AND paid_by_staff_id IS NOT NULL GROUP BY paid_by_staff_id`);
+    const revenueByStaff = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT paid_by_staff_id AS staff_id, COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' AND paid_by_staff_id IS NOT NULL GROUP BY paid_by_staff_id`);
     const actualMap = new Map(actual.rows.map((r) => [r.employee_id, { hours: Number.parseFloat(r.actual_hours), sessions: r.session_count }]));
     const revenueMap = new Map(revenueByStaff.rows.map((r) => [r.staff_id, Number.parseFloat(r.total)]));
     let totalScheduled = 0, totalActual = 0, totalLaborCost = 0, totalRevenue = 0;

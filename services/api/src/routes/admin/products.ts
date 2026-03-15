@@ -150,7 +150,7 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       try {
         const result = await db.execute<Record<string, unknown>>(
           sql`INSERT INTO products (name, price, sku, category, sort_order)
-           VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category}, ${body.sortOrder})
+           VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category ?? 'RETAIL'}, ${body.sortOrder ?? 0})
            RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`
         );
         return reply.status(201).send({ product: formatRow(result.rows[0] as unknown as ProductRow) });

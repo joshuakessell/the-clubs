@@ -115,7 +115,7 @@ function registerAdminProductRoutes(fastify) {
         const body = request.body;
         try {
             const result = await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO products (name, price, sku, category, sort_order)
-           VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category}, ${body.sortOrder})
+           VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category ?? 'RETAIL'}, ${body.sortOrder ?? 0})
            RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`);
             return reply.status(201).send({ product: formatRow(result.rows[0]) });
         }

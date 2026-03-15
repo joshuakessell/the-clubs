@@ -139,9 +139,19 @@ async function fulfillUpgrade(waitlistId, roomId, staff) {
         if (newRoom.assigned_to_customer_id)
             throw new HttpError_1.HttpError(409, `Resource ${newRoom.number} is already assigned`);
         const newRoomTier = getRoomTier(newRoom.number);
-        const validTiers = Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0
-            ? waitlist.desired_tiers.map(String)
-            : [String(waitlist.desired_tier)];
+        let validTiers;
+        if (Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0) {
+            validTiers = waitlist.desired_tiers.map(String);
+        }
+        else if (typeof waitlist.desired_tiers === 'string' && waitlist.desired_tiers.startsWith('{')) {
+            validTiers = waitlist.desired_tiers.slice(1, -1).split(',').filter(Boolean);
+        }
+        else {
+            validTiers = [];
+        }
+        if (validTiers.length === 0) {
+            validTiers = [String(waitlist.desired_tier)];
+        }
         if (!validTiers.includes(newRoomTier))
             throw new HttpError_1.HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but waitlist accepts ${validTiers.join(', ')}`);
         const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
@@ -195,7 +205,7 @@ async function completeUpgrade(waitlistId, orderId, staff) {
             throw new HttpError_1.HttpError(404, 'Check-in block not found');
         const block = blockResult.rows[0];
         const rawTotal = toNumber(intent.total);
-        const upgradeAmount = rawTotal !== undefined ? (rawTotal / 100) : undefined;
+        const upgradeAmount = rawTotal === undefined ? undefined : (rawTotal / 100);
         const quote = (typeof intent.metadata_json === 'string' ? JSON.parse(intent.metadata_json) : intent.metadata_json);
         if (!quote.newRoomId)
             throw new HttpError_1.HttpError(400, 'Room ID not found in payment intent (upgrade must be fulfilled first)');
@@ -223,8 +233,7 @@ async function completeUpgrade(waitlistId, orderId, staff) {
         if (upgradeAmount !== undefined) {
             const existingCharge = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM order_line_items WHERE order_id = ${orderId} LIMIT 1`);
             if (existingCharge.rows.length === 0) {
-                const upgradeAmountCents = Math.round(upgradeAmount * 100);
-                await tx.execute((0, drizzle_orm_1.sql) `INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, discount, tax, total) VALUES (${orderId}, 'UPGRADE', 'Upgrade Fee', 1, ${upgradeAmountCents}, 0, 0, ${upgradeAmountCents})`);
+                await tx.execute((0, drizzle_orm_1.sql) `INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, discount, tax, total) VALUES (${orderId}, 'UPGRADE', 'Upgrade Fee', 1, ${upgradeAmount}, 0, 0, ${upgradeAmount})`);
             }
         }
         await (0, auditLog_1.insertAuditLogDrizzle)(tx, {

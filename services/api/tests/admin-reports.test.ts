@@ -15,6 +15,7 @@ import { adminRoutes } from '../src/routes/admin.js';
 import { createBroadcaster, type Broadcaster } from '../src/realtime/broadcaster.js';
 import { initializeDatabase, closeDatabase } from '../src/db/index.js';
 import { truncateAllTables } from './testDb.js';
+import { randomUUID } from 'node:crypto';
 
 vi.mock('../src/auth/middleware.js', async () => {
   const { query } = await import('../src/db/index.js');
@@ -99,8 +100,9 @@ describe('Admin endpoints smoke tests', () => {
     it('GET /v1/admin/reports/staff-productivity-hourly returns 200 with params', async () => {
       if (skip()) return;
       const staffRes = await pool.query<{ id: string }>(`SELECT id FROM staff LIMIT 1`);
-      const staffId = staffRes.rows[0]?.id || 'fake-id';
+      const staffId = staffRes.rows[0]?.id || randomUUID();
       const res = await app.inject({ method: 'GET', url: `/v1/admin/reports/staff-productivity-hourly?date=${new Date().toISOString().slice(0, 10)}&staffId=${staffId}` });
+      console.log('DEBUG 103:', res.json());
       expect([200, 400]).toContain(res.statusCode);
     });
     it('GET /v1/admin/reports/operations-summary returns 200', async () => {
@@ -213,6 +215,7 @@ describe('Admin endpoints smoke tests', () => {
     it('POST /v1/admin/products creates a product', async () => {
       if (skip()) return;
       const res = await app.inject({ method: 'POST', url: '/v1/admin/products', payload: { name: 'Test Product', price: 10, category: 'RETAIL' } });
+      console.log('DEBUG 215:', res.json());
       expect([200, 201, 400]).toContain(res.statusCode);
     });
   });
@@ -287,7 +290,10 @@ describe('Admin endpoints smoke tests', () => {
     });
     it('GET /v1/admin/metrics/by-staff returns 200', async () => {
       if (skip()) return;
-      const res = await app.inject({ method: 'GET', url: '/v1/admin/metrics/by-staff' });
+      const staffRes = await pool.query<{ id: string }>(`SELECT id FROM staff LIMIT 1`);
+      const staffId = staffRes.rows[0]?.id || randomUUID();
+      const res = await app.inject({ method: 'GET', url: `/v1/admin/metrics/by-staff?staffId=${staffId}` });
+      console.log('DEBUG 290:', res.json());
       expect(res.statusCode).toBe(200);
     });
   });

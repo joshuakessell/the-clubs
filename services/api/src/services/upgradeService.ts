@@ -81,7 +81,7 @@ export interface StaffContext { staffId: string; name: string; }
 export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: StaffContext) {
   return db.transaction(async (tx) => {
     const waitlistResult = await tx.execute<{
-      id: string; visit_id: string; checkin_block_id: string; desired_tier: string; desired_tiers: string[]; backup_tier: string; status: string;
+      id: string; visit_id: string; checkin_block_id: string; desired_tier: string; desired_tiers: string[] | string | null; backup_tier: string; status: string;
       created_at: Date; updated_at: Date;
     }>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status, created_at, updated_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
@@ -120,9 +120,17 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     if (newRoom.assigned_to_customer_id) throw new HttpError(409, `Resource ${newRoom.number} is already assigned`);
 
     const newRoomTier = getRoomTier(newRoom.number);
-    const validTiers = Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0
-      ? waitlist.desired_tiers.map(String)
-      : [String(waitlist.desired_tier)];
+    let validTiers: string[];
+    if (Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0) {
+      validTiers = waitlist.desired_tiers.map(String);
+    } else if (typeof waitlist.desired_tiers === 'string' && waitlist.desired_tiers.startsWith('{')) {
+      validTiers = waitlist.desired_tiers.slice(1, -1).split(',').filter(Boolean);
+    } else {
+      validTiers = [];
+    }
+    if (validTiers.length === 0) {
+      validTiers = [String(waitlist.desired_tier)];
+    }
     if (!validTiers.includes(newRoomTier)) throw new HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but waitlist accepts ${validTiers.join(', ')}`);
 
     const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
