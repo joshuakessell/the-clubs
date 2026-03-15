@@ -199,7 +199,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/v1/waitlist/offer',
-        payload: { waitlistId, roomId: standardRoomId },
+        payload: { waitlistId, resourceId: standardRoomId },
       });
 
       expect(res.statusCode).toBe(200);
@@ -223,7 +223,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/v1/waitlist/offer',
-        payload: { waitlistId, roomId: doubleRoomId },
+        payload: { waitlistId, resourceId: doubleRoomId },
       });
 
       expect(res.statusCode).toBe(200);
@@ -247,7 +247,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/v1/waitlist/offer',
-        payload: { waitlistId, roomId: specialRoomId },
+        payload: { waitlistId, resourceId: specialRoomId },
       });
 
       expect(res.statusCode).toBe(409);
@@ -270,7 +270,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/v1/waitlist/offer',
-        payload: { waitlistId, roomId: standardRoomId },
+        payload: { waitlistId, resourceId: standardRoomId },
       });
 
       expect(res.statusCode).toBe(200);
@@ -300,7 +300,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
         url: '/v1/upgrades/fulfill',
         payload: {
           waitlistId,
-          roomId: doubleRoomId,
+          resourceId: doubleRoomId,
           acknowledgedDisclaimer: true,
         },
       });
@@ -331,7 +331,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
         url: '/v1/upgrades/fulfill',
         payload: {
           waitlistId,
-          roomId: specialRoomId,
+          resourceId: specialRoomId,
           acknowledgedDisclaimer: true,
         },
       });
@@ -365,7 +365,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
         url: '/v1/upgrades/fulfill',
         payload: {
           waitlistId,
-          roomId: doubleRoomId,
+          resourceId: doubleRoomId,
           acknowledgedDisclaimer: true,
         },
       });

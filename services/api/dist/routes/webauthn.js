@@ -14,14 +14,18 @@ const webauthn_1 = require("../auth/webauthn");
  * Converts positional-param SQL ($1, $2, …) into Drizzle sql`` tagged template.
  */
 async function drizzleQueryFn(queryText, params) {
-    const parts = queryText.split(/\$\d+/);
     const values = params ?? [];
     let built = drizzle_orm_1.sql.empty();
-    for (let i = 0; i < parts.length; i++) {
-        built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
-        if (i < values.length) {
-            built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
-        }
+    const regex = /\$(\d+)/g;
+    let lastIndex = 0;
+    for (const match of queryText.matchAll(regex)) {
+        built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1], 10) - 1;
+        built = (0, drizzle_orm_1.sql) `${built}${values[paramIndex]}`;
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < queryText.length) {
+        built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(queryText.slice(lastIndex))}`;
     }
     return db_1.db.execute(built);
 }

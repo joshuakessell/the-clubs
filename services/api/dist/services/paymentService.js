@@ -49,14 +49,18 @@ function toQueryable(tx) {
     return {
         async query(queryText, params) {
             // Build parameterized sql using Drizzle's sql.raw + parameters
-            const parts = queryText.split(/\$\d+/);
             const values = params ?? [];
             let built = drizzle_orm_1.sql.empty();
-            for (let i = 0; i < parts.length; i++) {
-                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
-                if (i < values.length) {
-                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
-                }
+            const regex = /\$(\d+)/g;
+            let lastIndex = 0;
+            for (const match of queryText.matchAll(regex)) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(queryText.slice(lastIndex, match.index))}`;
+                const paramIndex = Number.parseInt(match[1], 10) - 1;
+                built = (0, drizzle_orm_1.sql) `${built}${values[paramIndex]}`;
+                lastIndex = match.index + match[0].length;
+            }
+            if (lastIndex < queryText.length) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(queryText.slice(lastIndex))}`;
             }
             const result = await tx.execute(built);
             return { rows: result.rows };
@@ -112,7 +116,7 @@ async function createCheckoutOrder(laneId) {
             order = openRows[0];
             if (openRows.length > 1) {
                 const extraIds = openRows.slice(1).map((r) => r.id);
-                await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id = ANY(${extraIds}::uuid[])`);
+                await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id IN (${drizzle_orm_1.sql.join(extraIds.map(id => (0, drizzle_orm_1.sql) `${id}::uuid`), (0, drizzle_orm_1.sql) `, `)})`);
             }
             await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders SET total = ${totalStr}, subtotal = ${totalStr}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${order.id}`);
         }

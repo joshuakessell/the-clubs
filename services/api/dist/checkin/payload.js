@@ -198,7 +198,7 @@ async function buildFullSessionUpdatedPayload(sessionId) {
        LIMIT 1`);
         paymentIntent = intentResult.rows[0];
     }
-    const paymentTotalRaw = (0, utils_1.toNumber)(paymentIntent?.amount);
+    const paymentTotalRaw = (0, utils_1.toNumber)(paymentIntent?.total);
     const paymentTotal = paymentTotalRaw ?? undefined;
     const paymentLineItems = extractPaymentLineItems(session.price_quote_json) ??
         extractPaymentLineItems(paymentIntent?.quote_json);
@@ -452,7 +452,7 @@ async function fetchWaitlistEstimates(desiredType, desiredTypesJson) {
     SELECT COUNT(*) as count 
      FROM waitlist
      WHERE status IN ('ACTIVE', 'OFFERED')
-     AND desired_tier = ANY(${allDesiredTypes}::rental_type[])
+     AND desired_tier IN (${drizzle_orm_1.sql.join(allDesiredTypes.map(t => (0, drizzle_orm_1.sql) `${t}::rental_type`), (0, drizzle_orm_1.sql) `, `)})
   `);
     const baseQueueLength = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10);
     const waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries

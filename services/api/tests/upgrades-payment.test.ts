@@ -180,7 +180,7 @@ describe('Upgrade payment flow attaches charges', () => {
       url: '/v1/upgrades/fulfill',
       payload: {
         waitlistId: waitlist.rows[0]!.id,
-        roomId: room.rows[0]!.id,
+        resourceId: room.rows[0]!.id,
         acknowledgedDisclaimer: true,
       },
     });

@@ -201,7 +201,7 @@ describe('Offer Upgrade API flow', () => {
     const offer1 = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${w1.rows[0]!.id}/offer`,
-      payload: { roomId: r218.rows[0]!.id },
+      payload: { resourceId: r218.rows[0]!.id },
     });
     expect(offer1.statusCode).toBe(200);
     const offerBody = JSON.parse(offer1.body);
@@ -217,7 +217,7 @@ describe('Offer Upgrade API flow', () => {
     const offer2 = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${w2.rows[0]!.id}/offer`,
-      payload: { roomId: r218.rows[0]!.id },
+      payload: { resourceId: r218.rows[0]!.id },
     });
     expect(offer2.statusCode).toBe(409);
 
@@ -225,7 +225,7 @@ describe('Offer Upgrade API flow', () => {
     const offer3 = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${w2.rows[0]!.id}/offer`,
-      payload: { roomId: r216.rows[0]!.id },
+      payload: { resourceId: r216.rows[0]!.id },
     });
     expect(offer3.statusCode).toBe(200);
     const offer3Body = JSON.parse(offer3.body);

@@ -130,7 +130,7 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
     const first = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${waitlist.rows[0]!.id}/offer`,
-      payload: { roomId: room.rows[0]!.id },
+      payload: { resourceId: room.rows[0]!.id },
     });
     expect(first.statusCode).toBe(200);
 
@@ -159,7 +159,7 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
     const second = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${waitlist.rows[0]!.id}/offer`,
-      payload: { roomId: room.rows[0]!.id },
+      payload: { resourceId: room.rows[0]!.id },
     });
     expect(second.statusCode).toBe(200);
 

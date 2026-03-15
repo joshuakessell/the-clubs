@@ -391,7 +391,7 @@ describe('Checkout Flow', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -668,12 +668,12 @@ describe('Checkout Flow', () => {
       expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
 
       const chargesRes = await pool.query<{
-        type: string;
-        amount: string;
+        kind: string;
+        total: string;
         checkin_block_id: string;
-      }>(`SELECT type, amount, checkin_block_id FROM order_line_items WHERE visit_id = $1`, [testVisitId]);
+      }>(`SELECT oli.kind, oli.total, oli.checkin_block_id FROM order_line_items oli JOIN orders o ON o.id = oli.order_id WHERE o.visit_id = $1`, [testVisitId]);
       expect(
-        chargesRes.rows.some((r) => r.type === 'LATE_FEE' && r.checkin_block_id === testBlockId)
+        chargesRes.rows.some((r) => r.kind === 'LATE_FEE' && r.checkin_block_id === testBlockId)
       ).toBe(true);
 
       // Clean up

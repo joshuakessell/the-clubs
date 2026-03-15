@@ -142,7 +142,7 @@ describe('Visit and Renewal Flows', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -174,7 +174,7 @@ describe('Visit and Renewal Flows', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -197,7 +197,7 @@ describe('Visit and Renewal Flows', () => {
         url: `/v1/visits/${visitId}/renew`,
         payload: {
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -232,7 +232,7 @@ describe('Visit and Renewal Flows', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -247,7 +247,7 @@ describe('Visit and Renewal Flows', () => {
         url: `/v1/visits/${visitId}/renew`,
         payload: {
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
           renewalHours: 6,
         },
       });
@@ -262,7 +262,7 @@ describe('Visit and Renewal Flows', () => {
         url: `/v1/visits/${visitId}/renew`,
         payload: {
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
           renewalHours: 2,
         },
       });
@@ -282,7 +282,7 @@ describe('Visit and Renewal Flows', () => {
         url: `/v1/visits/${visitId}/renew`,
         payload: {
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
           renewalHours: 2,
         },
       });
@@ -303,7 +303,7 @@ describe('Visit and Renewal Flows', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 

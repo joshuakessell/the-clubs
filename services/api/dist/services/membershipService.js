@@ -66,7 +66,7 @@ async function recomputeQuoteIfNeeded(tx, session, intent) {
     };
     const quote = isRenewal ? (0, engine_1.calculateRenewalQuote)({ ...pricingInput, renewalHours }) : (0, engine_1.calculatePriceQuote)(pricingInput);
     const quoteJson = JSON.stringify(quote);
-    await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders SET amount = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${pi.id}`);
+    await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders SET subtotal = ${quote.total}, total = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${pi.id}`);
     await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET price_quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${session.id}`);
 }
 // ── Service Methods ──

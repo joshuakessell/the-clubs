@@ -21,14 +21,22 @@ const offlineOutbox_1 = require("../../checkin/offlineOutbox");
 function toQueryable(tx) {
     return {
         async query(queryText, params) {
-            const parts = queryText.split(/\$\d+/);
             const values = params ?? [];
             let built = drizzle_orm_1.sql.empty();
-            for (let i = 0; i < parts.length; i++) {
-                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
-                if (i < values.length) {
-                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
-                }
+            // Use matchAll to find $N placeholders and their positions
+            const regex = /\$(\d+)/g;
+            let lastIndex = 0;
+            for (const match of queryText.matchAll(regex)) {
+                // Append the literal text before this placeholder
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(queryText.slice(lastIndex, match.index))}`;
+                // Parse the placeholder number and map to the correct param
+                const paramIndex = Number.parseInt(match[1], 10) - 1;
+                built = (0, drizzle_orm_1.sql) `${built}${values[paramIndex]}`;
+                lastIndex = match.index + match[0].length;
+            }
+            // Append any trailing literal text
+            if (lastIndex < queryText.length) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(queryText.slice(lastIndex))}`;
             }
             const result = await tx.execute(built);
             return { rows: result.rows };

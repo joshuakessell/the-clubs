@@ -241,7 +241,7 @@ export async function buildFullSessionUpdatedPayload(
     paymentIntent = intentResult.rows[0] as unknown as OrderRow | undefined;
   }
 
-  const paymentTotalRaw = toNumber(paymentIntent?.amount);
+  const paymentTotalRaw = toNumber(paymentIntent?.total);
   const paymentTotal = paymentTotalRaw ?? undefined;
   const paymentLineItems =
     extractPaymentLineItems(session.price_quote_json) ??
@@ -541,7 +541,7 @@ async function fetchWaitlistEstimates(
     SELECT COUNT(*) as count 
      FROM waitlist
      WHERE status IN ('ACTIVE', 'OFFERED')
-     AND desired_tier = ANY(${allDesiredTypes}::rental_type[])
+     AND desired_tier IN (${sql.join(allDesiredTypes.map(t => sql`${t}::rental_type`), sql`, `)})
   `);
 
   const baseQueueLength = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10);

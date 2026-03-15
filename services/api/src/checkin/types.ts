@@ -89,8 +89,11 @@ export interface OrderRow {
   id: string;
   lane_session_id: string | null;
   visit_id: string | null;
-  amount: number | string;
+  subtotal: number | string;
+  discount: number | string;
+  tax: number | string;
   tip?: number | null;
+  total: number | string;
   status: string;
   quote_json: unknown;
   payment_method?: string;
