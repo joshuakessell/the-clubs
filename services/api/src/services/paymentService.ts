@@ -180,7 +180,7 @@ export async function createCheckoutOrder(laneId: string) {
       await tx.execute(sql`UPDATE lane_sessions SET flow_step = 'PAYMENT', flow_version = COALESCE(flow_version, 0) + 1, flow_last_command_id = ${commandId}, flow_last_actor = 'EMPLOYEE', updated_at = NOW() WHERE id = ${session.id}`);
     }
 
-    return { sessionId: session.id, orderId: order.id, amount: toNumber(order.amount), quote };
+    return { sessionId: session.id, orderId: order.id, amount: toNumber(order.total), quote };
   });
 }
 
@@ -237,7 +237,7 @@ export async function markOrderPaid(input: MarkPaidInput) {
     };
 
     const ensureAuditTrail = async (orderRow: typeof order, quote: { type?: string; waitlistId?: string; visitId?: string; blockId?: string }) => {
-      const amount = toDollars(orderRow.amount);
+      const amount = toDollars(orderRow.total);
       const lineItems = buildLineItemsFromQuote(orderRow.quote_json, amount);
       const totals = computeOrderTotals(lineItems.items, amount, orderRow.tip ?? 0);
       const { customerId, registerSessionId } = await resolveOrderContext(orderRow, quote);
@@ -303,7 +303,7 @@ export async function markOrderPaid(input: MarkPaidInput) {
             sql`SELECT visit_id FROM checkin_blocks WHERE session_id = ${session.id} ORDER BY created_at DESC LIMIT 1`
           );
           const visitId = visitRow.rows[0]?.visit_id ?? null;
-          const amount = toDollars(paidOrder.amount) ?? 0;
+          const amount = toDollars(paidOrder.total) ?? 0;
           const parsedQuote = parseOrderQuote(paidOrder.quote_json);
           const quoteObj = typeof paidOrder.quote_json === 'string'
             ? JSON.parse(paidOrder.quote_json)

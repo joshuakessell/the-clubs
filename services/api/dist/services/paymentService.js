@@ -153,7 +153,7 @@ async function createCheckoutOrder(laneId) {
       `);
             await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET flow_step = 'PAYMENT', flow_version = COALESCE(flow_version, 0) + 1, flow_last_command_id = ${commandId}, flow_last_actor = 'EMPLOYEE', updated_at = NOW() WHERE id = ${session.id}`);
         }
-        return { sessionId: session.id, orderId: order.id, amount: (0, utils_1.toNumber)(order.amount), quote };
+        return { sessionId: session.id, orderId: order.id, amount: (0, utils_1.toNumber)(order.total), quote };
     });
 }
 async function markOrderPaid(input) {
@@ -191,7 +191,7 @@ async function markOrderPaid(input) {
             return { customerId, registerSessionId };
         };
         const ensureAuditTrail = async (orderRow, quote) => {
-            const amount = (0, orderAudit_1.toDollars)(orderRow.amount);
+            const amount = (0, orderAudit_1.toDollars)(orderRow.total);
             const lineItems = (0, orderAudit_1.buildLineItemsFromQuote)(orderRow.quote_json, amount);
             const totals = (0, orderAudit_1.computeOrderTotals)(lineItems.items, amount, orderRow.tip ?? 0);
             const { customerId, registerSessionId } = await resolveOrderContext(orderRow, quote);
@@ -247,7 +247,7 @@ async function markOrderPaid(input) {
                 if (session.customer_id) {
                     const visitRow = await tx.execute((0, drizzle_orm_1.sql) `SELECT visit_id FROM checkin_blocks WHERE session_id = ${session.id} ORDER BY created_at DESC LIMIT 1`);
                     const visitId = visitRow.rows[0]?.visit_id ?? null;
-                    const amount = (0, orderAudit_1.toDollars)(paidOrder.amount) ?? 0;
+                    const amount = (0, orderAudit_1.toDollars)(paidOrder.total) ?? 0;
                     const parsedQuote = parseOrderQuote(paidOrder.quote_json);
                     const quoteObj = typeof paidOrder.quote_json === 'string'
                         ? JSON.parse(paidOrder.quote_json)

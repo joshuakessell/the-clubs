@@ -81,7 +81,7 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                     const { nextQuote, remainingTotal } = recalculateSplitQuote(baseQuote, normalizedSplitAmount);
                     const nextQuoteJson = JSON.stringify(nextQuote);
                     await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders
-             SET amount = ${remainingTotal}, quote_json = ${nextQuoteJson}, failure_reason = NULL, failure_at = NULL, updated_at = NOW()
+             SET total = ${remainingTotal}, quote_json = ${nextQuoteJson}, failure_reason = NULL, failure_at = NULL, updated_at = NOW()
              WHERE id = ${intent.id}`);
                     await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET price_quote_json = ${nextQuoteJson}, updated_at = NOW() WHERE id = ${session.id}`);
                     return {
@@ -94,7 +94,7 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                 }
                 const paymentMethod = outcome === 'CASH_SUCCESS' ? 'CASH' : 'CREDIT';
                 const isSuccess = outcome === 'CASH_SUCCESS' || outcome === 'CREDIT_SUCCESS';
-                const amount = typeof intent.amount === 'number' ? intent.amount : Number(intent.amount);
+                const amount = typeof intent.total === 'number' ? intent.total : Number(intent.total);
                 if (isSuccess) {
                     await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders
              SET status = 'PAID',
@@ -191,7 +191,7 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                 request.log.info({
                     outcome,
                     paymentMethod,
-                    amount: intent.amount,
+                    amount: intent.total,
                     sessionId: session.id,
                     orderId: intent.id,
                     customerId: session.customer_id,

@@ -127,7 +127,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
 
             await tx.execute(
               sql`UPDATE orders
-             SET amount = ${remainingTotal}, quote_json = ${nextQuoteJson}, failure_reason = NULL, failure_at = NULL, updated_at = NOW()
+             SET total = ${remainingTotal}, quote_json = ${nextQuoteJson}, failure_reason = NULL, failure_at = NULL, updated_at = NOW()
              WHERE id = ${intent.id}`
             );
 
@@ -146,7 +146,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
 
           const paymentMethod = outcome === 'CASH_SUCCESS' ? 'CASH' : 'CREDIT';
           const isSuccess = outcome === 'CASH_SUCCESS' || outcome === 'CREDIT_SUCCESS';
-          const amount = typeof intent.amount === 'number' ? intent.amount : Number(intent.amount);
+          const amount = typeof intent.total === 'number' ? intent.total : Number(intent.total);
 
           if (isSuccess) {
             await tx.execute(
@@ -261,7 +261,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
             {
               outcome,
               paymentMethod,
-              amount: intent.amount,
+              amount: intent.total,
               sessionId: session.id,
               orderId: intent.id,
               customerId: session.customer_id,
