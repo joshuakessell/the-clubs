@@ -38,7 +38,7 @@ vi.mock('../src/auth/middleware.js', async () => {
   return {
     requireAuth: async (request: any, reply: any) => {
       const authHeader = request.headers.authorization || request.headers.Authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader?.startsWith('Bearer ')) {
         // For tests without auth header, use a real staff row (uuid) to satisfy FK constraints.
         const staff = await ensureDefaultStaff();
         request.staff = { staffId: staff.staffId, name: staff.name, role: staff.role };
@@ -67,7 +67,7 @@ vi.mock('../src/auth/middleware.js', async () => {
           };
           return;
         }
-      } catch (error) {
+      } catch {
         // Fall through to default
       }
 
@@ -122,7 +122,7 @@ describe('Checkout Flow', () => {
     } else {
       config = {
         host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
+        port: Number.parseInt(process.env.DB_PORT || '5432', 10),
         database: process.env.DB_NAME || 'club_operations',
         user: process.env.DB_USER || 'clubops',
         password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -295,7 +295,7 @@ describe('Checkout Flow', () => {
 
     it('should calculate $15 fee for 30-59 minutes late', async () => {
       if (!dbAvailable) return;
-      const blockResult = await pool.query(
+      await pool.query(
         `UPDATE checkin_blocks SET ends_at = NOW() - INTERVAL '45 minutes' WHERE id = $1 RETURNING id`,
         [testBlockId]
       );
@@ -438,7 +438,7 @@ describe('Checkout Flow', () => {
       expect(requestResult.rows.length).toBe(1);
       expect(requestResult.rows[0]!.late_minutes).toBeGreaterThanOrEqual(30);
       // late_fee_amount is DECIMAL in DB, returned as string, so parse it
-      expect(parseFloat(requestResult.rows[0]!.late_fee_amount as string)).toBe(15);
+      expect(Number.parseFloat(requestResult.rows[0]!.late_fee_amount as string)).toBe(15);
 
       // Clean up
       await pool.query('DELETE FROM checkout_requests WHERE id = $1', [data.requestId]);
@@ -665,7 +665,7 @@ describe('Checkout Flow', () => {
         `SELECT past_due_balance FROM customers WHERE id = $1`,
         [testCustomerId]
       );
-      expect(parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
+      expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
 
       const chargesRes = await pool.query<{
         type: string;

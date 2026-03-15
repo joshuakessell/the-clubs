@@ -36,12 +36,13 @@ describe('Check-in Flow', () => {
     try {
       await initializeDatabase();
       dbAvailable = true;
-    } catch (error) {
+    } catch (dbError: unknown) {
       console.warn('\n⚠️  Database not available. Integration tests will be skipped.');
       console.warn('   To run integration tests:');
       console.warn('   1. Start Docker Desktop');
       console.warn('   2. cd services/api && docker compose up -d');
       console.warn('   3. pnpm db:migrate\n');
+      console.warn('   Cause:', dbError instanceof Error ? dbError.message : dbError);
       // initializeDatabase() creates the pool before attempting to connect; ensure we don't leak it.
       try {
         await closeDatabase();
@@ -416,7 +417,7 @@ describe('Check-in Flow', () => {
 
         // Should broadcast CUSTOMER_CONFIRMED with tier+number (not UUID).
         expect(customerConfirmedEvents.length).toBeGreaterThanOrEqual(1);
-        const last = customerConfirmedEvents[customerConfirmedEvents.length - 1]!;
+        const last = customerConfirmedEvents.at(-1)!;
         expect(last.lane).toBe(laneId);
         expect(last.payload.sessionId).toBe(startJson.sessionId);
         expect(last.payload.confirmedType).toBe('SPECIAL');
@@ -441,7 +442,7 @@ describe('Check-in Flow', () => {
             membershipScanValue: '12345',
           },
         });
-        const startData = JSON.parse(startResponse.body);
+        JSON.parse(startResponse.body);
 
         // Select rental
         const response = await app.inject({
@@ -683,7 +684,7 @@ describe('Check-in Flow', () => {
            WHERE visit_id = $1 AND checkin_block_id = $2 AND type = 'UPGRADE_FEE'`,
           [visitId, blockId]
         );
-        expect(parseInt(chargeCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(chargeCheck.rows[0]!.count, 10)).toBe(1);
 
         const paidIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
@@ -693,7 +694,7 @@ describe('Check-in Flow', () => {
              AND quote_json->>'checkinBlockId' = $1`,
           [blockId]
         );
-        expect(parseInt(paidIntentCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(paidIntentCheck.rows[0]!.count, 10)).toBe(1);
       })
     );
 
@@ -777,7 +778,7 @@ describe('Check-in Flow', () => {
            WHERE visit_id = $1 AND checkin_block_id = $2 AND type = 'UPGRADE_FEE'`,
           [visitId, blockId]
         );
-        expect(parseInt(chargeCheck.rows[0]!.count, 10)).toBe(0);
+        expect(Number.parseInt(chargeCheck.rows[0]!.count, 10)).toBe(0);
 
         const cancelledIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
@@ -787,7 +788,7 @@ describe('Check-in Flow', () => {
              AND quote_json->>'checkinBlockId' = $1`,
           [blockId]
         );
-        expect(parseInt(cancelledIntentCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(cancelledIntentCheck.rows[0]!.count, 10)).toBe(1);
       })
     );
   });
@@ -835,7 +836,7 @@ describe('Check-in Flow', () => {
         const data1 = JSON.parse(response1.body);
         expect(data1.orderId).toBeDefined();
         // Amount might be returned as string from database, convert to number
-        const amount = typeof data1.amount === 'string' ? parseFloat(data1.amount) : data1.amount;
+        const amount = typeof data1.amount === 'string' ? Number.parseFloat(data1.amount) : data1.amount;
         expect(amount).toBeGreaterThan(0);
         expect(data1.quote).toBeDefined();
         expect(data1.quote.total).toBe(amount);
@@ -856,7 +857,7 @@ describe('Check-in Flow', () => {
           `SELECT COUNT(*)::text as count FROM orders WHERE lane_session_id = $1 AND status = 'OPEN'`,
           [laneSession.rows[0]!.id]
         );
-        expect(parseInt(dueCount.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(dueCount.rows[0]!.count, 10)).toBe(1);
       })
     );
 
@@ -909,7 +910,7 @@ describe('Check-in Flow', () => {
           expect(last!.customerPrimaryLanguage).toBe('ES');
           expect(last!.customerDobMonthDay).toBe('01/15');
           expect(last!.orderId).toBeTruthy();
-          expect(last!.paymentStatus).toBe('OPEN');
+          expect(last!.orderStatus).toBe('OPEN');
           expect(typeof last!.paymentTotal).toBe('number');
 
           expect(typeof last!.flowVersion).toBe('number');

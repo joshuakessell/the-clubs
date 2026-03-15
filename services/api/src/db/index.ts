@@ -59,7 +59,7 @@ function parseDatabaseUrl(urlString: string): {
     const host = url.hostname || undefined;
     const port = url.port ? Number.parseInt(url.port, 10) : undefined;
     const databaseFromPath = url.pathname.replaceAll(/^\/+/, '');
-    const database = databaseFromPath ? databaseFromPath : undefined;
+    const database = databaseFromPath || undefined;
     const user = url.username || undefined;
     const password = url.password || undefined;
 
@@ -188,13 +188,26 @@ export async function closeDatabase(): Promise<void> {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Raw PG helpers (query, transaction, serializableTransaction) have been
-// removed. All application and seed code now uses Drizzle ORM exclusively:
+// Application and seed code should prefer Drizzle ORM:
 //   import { db } from '../db';
 //   import { sql } from 'drizzle-orm';
 //   await db.execute(sql`...`);
 //   await db.transaction(async (tx) => { ... });
+//
+// The `query` helper below is retained for integration tests and ad-hoc
+// scripts that need raw parameterised SQL without Drizzle ceremony.
 // ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Convenience wrapper around `pool.query` for raw parameterised SQL.
+ * Prefer Drizzle ORM (`db`) for application code.
+ */
+export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
+  text: string,
+  params?: unknown[],
+): Promise<pg.QueryResult<T>> {
+  return getPool().query<T>(text, params);
+}
 
 export { pg };
 
@@ -222,18 +235,16 @@ export type DrizzleTx = Parameters<Parameters<ReturnType<typeof drizzle<typeof s
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 export function getDb() {
-  if (!_db) {
-    _db = drizzle(getPool(), { 
-      schema, 
-      logger: {
-        logQuery(query: string, params: unknown[]) {
-          if (process.env.DB_LOG_QUERIES === 'true') {
-             console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
-          }
+  _db ??= drizzle(getPool(), { 
+    schema, 
+    logger: {
+      logQuery(query: string, params: unknown[]) {
+        if (process.env.DB_LOG_QUERIES === 'true') {
+          console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
         }
       }
-    });
-  }
+    }
+  });
   return _db;
 }
 

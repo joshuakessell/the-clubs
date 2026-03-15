@@ -34,7 +34,7 @@ vi.mock('../src/auth/middleware.js', async () => {
   return {
     requireAuth: async (request: any, _reply: any) => {
       const authHeader = request.headers.authorization || request.headers.Authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader?.startsWith('Bearer ')) {
         const staff = await ensureDefaultStaff();
         request.staff = { staffId: staff.staffId, name: staff.name, role: staff.role };
         return;
@@ -107,7 +107,7 @@ describe('Manual Checkout APIs', () => {
     } else {
       config = {
         host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
+        port: Number.parseInt(process.env.DB_PORT || '5432', 10),
         database: process.env.DB_NAME || 'club_operations',
         user: process.env.DB_USER || 'clubops',
         password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -289,7 +289,7 @@ describe('Manual Checkout APIs', () => {
       past_due_balance: string;
       banned_until: Date | null;
     }>(`SELECT past_due_balance, banned_until FROM customers WHERE id = $1`, [testCustomerId]);
-    expect(parseFloat(String(customer.rows[0]!.past_due_balance))).toBe(30);
+    expect(Number.parseFloat(String(customer.rows[0]!.past_due_balance))).toBe(30);
     // Ban is applied immediately for 90+ minutes late; manager may later lift/adjust it.
     expect(customer.rows[0]!.banned_until).not.toBeNull();
 
@@ -305,7 +305,7 @@ describe('Manual Checkout APIs', () => {
     );
     expect(lateEvents.rows.length).toBe(1);
     expect(lateEvents.rows[0]!.checkout_request_id).toBeNull();
-    expect(parseFloat(String(lateEvents.rows[0]!.fee_amount))).toBe(30);
+    expect(Number.parseFloat(String(lateEvents.rows[0]!.fee_amount))).toBe(30);
 
     const second = await fastify.inject({
       method: 'POST',
@@ -321,7 +321,7 @@ describe('Manual Checkout APIs', () => {
       `SELECT past_due_balance FROM customers WHERE id = $1`,
       [testCustomerId]
     );
-    expect(parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
+    expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
 
     const lateEventsAfter = await pool.query<{ id: string }>(
       `SELECT id FROM late_checkout_events WHERE occupancy_id = $1`,

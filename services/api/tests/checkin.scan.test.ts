@@ -9,7 +9,7 @@ import { customerRoutes } from '../src/routes/customers.js';
 import { inventoryRoutes } from '../src/routes/inventory.js';
 import { sessionDocumentsRoutes } from '../src/routes/session-documents.js';
 import { hashPin, generateSessionToken, hashSessionToken } from '../src/auth/utils.js';
-import type { SessionUpdatedPayload, CustomerConfirmedPayload } from '@the-clubs/shared';
+import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { truncateAllTables } from './testDb.js';
 
 // Augment FastifyInstance with broadcaster
@@ -28,7 +28,6 @@ describe('Check-in Flow', () => {
   let customerId: string;
   let dbAvailable = false;
   let sessionUpdatedEvents: Array<{ lane: string; payload: SessionUpdatedPayload }> = [];
-  let customerConfirmedEvents: Array<{ lane: string; payload: CustomerConfirmedPayload }> = [];
 
   beforeAll(async () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
@@ -36,12 +35,13 @@ describe('Check-in Flow', () => {
     try {
       await initializeDatabase();
       dbAvailable = true;
-    } catch (error) {
+    } catch (dbError: unknown) {
       console.warn('\n⚠️  Database not available. Integration tests will be skipped.');
       console.warn('   To run integration tests:');
       console.warn('   1. Start Docker Desktop');
       console.warn('   2. cd services/api && docker compose up -d');
       console.warn('   3. pnpm db:migrate\n');
+      console.warn('   Cause:', dbError instanceof Error ? dbError.message : dbError);
       // initializeDatabase() creates the pool before attempting to connect; ensure we don't leak it.
       try {
         await closeDatabase();
@@ -66,13 +66,7 @@ describe('Check-in Flow', () => {
       sessionUpdatedEvents.push({ lane, payload });
       return originalBroadcastSessionUpdated(payload, lane);
     };
-    // Capture CUSTOMER_CONFIRMED payloads for assertions.
-    const originalBroadcastCustomerConfirmed =
-      broadcaster.broadcastCustomerConfirmed.bind(broadcaster);
-    broadcaster.broadcastCustomerConfirmed = (payload, lane) => {
-      customerConfirmedEvents.push({ lane, payload });
-      return originalBroadcastCustomerConfirmed(payload, lane);
-    };
+
     app.decorate('broadcaster', broadcaster);
 
     // Register check-in routes
@@ -88,7 +82,6 @@ describe('Check-in Flow', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     sessionUpdatedEvents = [];
-    customerConfirmedEvents = [];
 
     // Ensure each test starts from a clean DB state (integration tests share one DB).
     await truncateAllTables((text, params) => query(text, params));
@@ -407,10 +400,10 @@ describe('Check-in Flow', () => {
 
         // Seed a customer with id_scan_value only (no hash), so scan matches by value and backfills hash.
         const normalized = raw
-          .replace(/\r\n/g, '\n')
-          .replace(/\r/g, '\n')
+          .replaceAll(/\r\n/g, '\n')
+          .replaceAll(/\r/g, '\n')
           .split('\n')
-          .map((l) => l.replace(/[ \t]+/g, ' ').trimEnd())
+          .map((l) => l.replaceAll(/[ \t]+/g, ' ').trimEnd())
           .join('\n')
           .trim();
         const customerResult = await query<{ id: string }>(
@@ -688,10 +681,10 @@ describe('Check-in Flow', () => {
       runIfDbAvailable(async () => {
         const raw = '@\nDCSDOE\nDACBANNED\nDBD19800115\nDAQBAN123\nDCITX\n';
         const normalized = raw
-          .replace(/\r\n/g, '\n')
-          .replace(/\r/g, '\n')
+          .replaceAll(/\r\n/g, '\n')
+          .replaceAll(/\r/g, '\n')
           .split('\n')
-          .map((l) => l.replace(/[ \t]+/g, ' ').trimEnd())
+          .map((l) => l.replaceAll(/[ \t]+/g, ' ').trimEnd())
           .join('\n')
           .trim();
         const customerResult = await query<{ id: string }>(
