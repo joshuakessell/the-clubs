@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Badge, Button } from '@the-clubs/ui';
+import { useNow } from '../hooks/useNow';
 import { useDashboardFetch } from '../hooks/useDashboardFetch';
 import { ViewSpinner } from '../components/ViewSpinner';
 
@@ -87,6 +88,8 @@ export function MonitorView() {
   const { data: kioskData, refetch: refetchKiosks } = useDashboardFetch<{ sessions: KioskSession[] }>(
     '/api/v1/checkin/lane-sessions',
   );
+
+  const now = useNow(60000);
 
   const rooms = roomData?.expirations ?? [];
   const lockerList = mgmtData?.lockers ?? [];
@@ -220,7 +223,7 @@ export function MonitorView() {
               </h3>
               <div className="grid grid-cols-3 gap-3">
                 {kioskSessions.map((ks) => {
-                  const elapsed = Math.round((Date.now() - new Date(ks.createdAt).getTime()) / 60_000);
+                  const elapsed = Math.round((now - new Date(ks.createdAt).getTime()) / 60_000);
                   const statusColor = ks.status === 'AWAITING_ROOM' ? 'warning'
                     : ks.status === 'PAYMENT' ? 'primary'
                     : ks.status === 'AGREEMENT' ? 'primary'

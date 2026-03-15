@@ -59,7 +59,7 @@ describe('Staff scheduling smoke tests', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
-    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
+    app = Fastify({ logger: { level: 'error' }, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     app.decorate('broadcaster', createBroadcaster());
     await app.register(shiftsRoutes);
     await app.register(shiftTradeRoutes);
@@ -88,7 +88,7 @@ describe('Staff scheduling smoke tests', () => {
       );
       const res = await app.inject({
         method: 'POST', url: '/v1/admin/shifts',
-        payload: { employeeId: staff.rows[0]!.id, date: '2026-03-15', startTime: '09:00', endTime: '17:00' },
+        payload: { employee_id: staff.rows[0]!.id, starts_at: '2026-03-15T09:00:00.000Z', ends_at: '2026-03-15T17:00:00.000Z' },
       });
       expect([200, 201, 400]).toContain(res.statusCode);
     });

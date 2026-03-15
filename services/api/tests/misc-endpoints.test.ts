@@ -60,7 +60,7 @@ describe('Misc endpoint smoke tests', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
-    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
+    app = Fastify({ logger: { level: 'error' }, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     app.decorate('broadcaster', createBroadcaster());
     await app.register(customerSpendLedgerRoutes);
     await app.register(metricsRoutes);
@@ -113,6 +113,11 @@ describe('Misc endpoint smoke tests', () => {
   // ── agreements (1 endpoint) ──
 
   describe('agreements', () => {
+    beforeEach(async () => {
+      if (!dbAvailable) return;
+      await pool.query(`INSERT INTO agreements (version, title, body_text, active) VALUES ('1.0', 'Test', 'Body', true)`);
+    });
+
     it('GET /v1/agreements/active returns 200', async () => {
       if (skip()) return;
       const res = await app.inject({ method: 'GET', url: '/v1/agreements/active' });

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinPastDueRoutes = registerCheckinPastDueRoutes;
+const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const utils_1 = require("../../auth/utils");
 const payload_1 = require("../../checkin/payload");
@@ -69,9 +70,12 @@ function registerCheckinPastDueRoutes(fastify) {
         if (!request.staff) {
             return reply.status(401).send({ error: 'Unauthorized' });
         }
+        const parsed = zod_1.z.object({ managerId: zod_1.z.string(), managerPin: zod_1.z.string() }).safeParse(request.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
+        }
         const { laneId } = request.params;
-        const body = request.body;
-        const { managerId, managerPin } = body;
+        const { managerId, managerPin } = parsed.data;
         try {
             const result = await db_1.db.transaction(async (tx) => {
                 const managerResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, role, pin_hash FROM staff WHERE id = ${managerId} AND active = true`);

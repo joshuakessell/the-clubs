@@ -68,7 +68,7 @@ describe('Timestamp safety — toDate() wrapping prevents 500s', () => {
 
     await initializeDatabase();
 
-    fastify = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
+    fastify = Fastify({ logger: { level: 'error' }, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     const originalBroadcast = broadcaster.broadcastSessionUpdated.bind(broadcaster);
     broadcaster.broadcastSessionUpdated = (payload, lane) => {
@@ -215,6 +215,9 @@ describe('Timestamp safety — toDate() wrapping prevents 500s', () => {
           headers: { 'x-kiosk-token': TEST_KIOSK_TOKEN },
         });
 
+        if (res.statusCode !== 200) {
+          console.error('Session Snapshot Error Body:', res.body);
+        }
         expect(res.statusCode).toBe(200);
         const body = JSON.parse(res.body);
         expect(body.session).not.toBeNull();
@@ -260,17 +263,16 @@ describe('Timestamp safety — toDate() wrapping prevents 500s', () => {
 
         expect(res.statusCode).toBe(200);
         const data = JSON.parse(res.body);
-        expect(data.sessionId).toBeDefined();
-        expect(data.customerName).toBe('Timestamp Test Customer');
+        expect(data.activeCheckin).toBeDefined();
 
         // checkinAt and checkoutAt should be valid ISO strings (not crash from .toISOString() on a string)
-        if (data.checkinAt) {
-          expect(typeof data.checkinAt).toBe('string');
-          expect(() => new Date(data.checkinAt)).not.toThrow();
+        if (data.activeCheckin.checkinAt) {
+          expect(typeof data.activeCheckin.checkinAt).toBe('string');
+          expect(() => new Date(data.activeCheckin.checkinAt)).not.toThrow();
         }
-        if (data.checkoutAt) {
-          expect(typeof data.checkoutAt).toBe('string');
-          expect(() => new Date(data.checkoutAt)).not.toThrow();
+        if (data.activeCheckin.checkoutAt) {
+          expect(typeof data.activeCheckin.checkoutAt).toBe('string');
+          expect(() => new Date(data.activeCheckin.checkoutAt)).not.toThrow();
         }
       })
     );

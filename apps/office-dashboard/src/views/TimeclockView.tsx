@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Badge, Button } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
+import { useNow } from '../hooks/useNow';
 import { ViewSpinner } from '../components/ViewSpinner';
 
 /* ── Types ─────────────────────────────────────────────────────── */
@@ -45,6 +46,7 @@ export function TimeclockView() {
   const [dateFilter, setDateFilter] = useState(todayStr());
   const from = `${dateFilter}T00:00:00`;
   const to = `${dateFilter}T23:59:59`;
+  const now = useNow(60000);
 
   const { data, loading, error, refetch } = useDashboardFetch<{ entries: ClockEntry[] }>(
     `/api/v1/admin/timeclock?from=${from}&to=${to}`,
@@ -56,7 +58,7 @@ export function TimeclockView() {
 
   // Missed punch detection: active entries older than 12 hours
   const MISSED_PUNCH_THRESHOLD_MS = 12 * 60 * 60 * 1000;
-  const missedPunches = entries.filter((e) => e.status === 'active' && !e.clockOut && (Date.now() - new Date(e.clockIn).getTime()) > MISSED_PUNCH_THRESHOLD_MS);
+  const missedPunches = entries.filter((e) => e.status === 'active' && !e.clockOut && (now - new Date(e.clockIn).getTime()) > MISSED_PUNCH_THRESHOLD_MS);
 
   /* ── Edit state ── */
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -89,7 +91,7 @@ export function TimeclockView() {
       setEditingId(null);
       refetch();
     } catch { /* ignore */ }
-  }, [editingId, editClockIn, editClockOut, editNotes, dateFilter, refetch]);
+  }, [editingId, editClockIn, editClockOut, editNotes, dateFilter, refetch, setEditingId]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -179,7 +181,7 @@ export function TimeclockView() {
                       <Badge color={e.status === 'active' ? 'success' : 'gray'} variant="light" size="sm">
                         {e.status === 'active' ? 'Clocked In' : 'Closed'}
                       </Badge>
-                      {e.status === 'active' && !e.clockOut && (Date.now() - new Date(e.clockIn).getTime()) > MISSED_PUNCH_THRESHOLD_MS && (
+                      {e.status === 'active' && !e.clockOut && (now - new Date(e.clockIn).getTime()) > MISSED_PUNCH_THRESHOLD_MS && (
                         <Badge color="error" variant="light" size="sm">Missed Punch</Badge>
                       )}
                     </div>

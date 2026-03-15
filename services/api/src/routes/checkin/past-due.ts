@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
 import { verifyPin } from '../../auth/utils';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
@@ -100,9 +101,13 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
         return reply.status(401).send({ error: 'Unauthorized' });
       }
 
+      const parsed = z.object({ managerId: z.string(), managerPin: z.string() }).safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
+      }
+
       const { laneId } = request.params;
-      const body = request.body as { managerId: string; managerPin: string };
-      const { managerId, managerPin } = body;
+      const { managerId, managerPin } = parsed.data;
 
       try {
         const result = await db.transaction(async (tx) => {

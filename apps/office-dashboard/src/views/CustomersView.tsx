@@ -100,7 +100,7 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
       refetchNotes();
     } catch { /* ignore */ }
     setAddingNote(false);
-  }, [customer.id, newNote, isImportant, refetchNotes]);
+  }, [customer.id, newNote, isImportant, refetchNotes, setNewNote, setIsImportant]);
 
   const handleDownloadPdf = useCallback(async (blockId: string) => {
     const token = useAuthStore.getState().session?.sessionToken;

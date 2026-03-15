@@ -102,6 +102,7 @@ export async function selectRoomForNewCheckin(
   const offeredResourceIds = offeredRes.rows.map((r) => r.resource_id).filter(Boolean);
 
   // 5) Select the first clean, unassigned resource, excluding offered ones.
+  const offeredResourceIdsSql = `{${offeredResourceIds.join(',')}}`;
   const room = (
     await client.query<{ id: string; number: string }>(
       `SELECT id, number
@@ -129,7 +130,7 @@ export async function selectRoomForNewCheckin(
        ORDER BY number ASC
        LIMIT 1
        FOR UPDATE SKIP LOCKED`,
-      [rentalType, offeredResourceIds]
+      [rentalType, offeredResourceIdsSql]
     )
   ).rows[0];
 

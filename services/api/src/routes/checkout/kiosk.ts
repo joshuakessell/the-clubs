@@ -201,7 +201,7 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
 
           // 3. Calculate lateness
           const now = new Date();
-          const scheduledCheckoutAt = block.ends_at;
+          const scheduledCheckoutAt = block.ends_at instanceof Date ? block.ends_at : new Date(block.ends_at);
           const lateMinutes = Math.max(
             0,
             Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60))

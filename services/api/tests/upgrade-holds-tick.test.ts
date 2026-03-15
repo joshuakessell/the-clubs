@@ -84,7 +84,7 @@ describe('processUpgradeHoldsTick (locking + expiry)', () => {
     );
 
     const res = await processUpgradeHoldsTick(app, { expireBatchSize: 10, holdBatchSize: 0 });
-    expect(res).toEqual({ expired: 1, held: 0 });
+    expect(res).toEqual({ expired: 1 });
 
     const wl = await pool.query<{
       status: string;

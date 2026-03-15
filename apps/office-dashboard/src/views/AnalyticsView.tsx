@@ -24,10 +24,8 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export function AnalyticsView() {
   const [tab, setTab] = useState<Tab>('overview');
-  const today = new Date().toISOString().split('T')[0]!;
-  const thirtyAgo = new Date(Date.now() - 30 * 86_400_000).toISOString().split('T')[0]!;
-  const [dateFrom, setDateFrom] = useState(thirtyAgo);
-  const [dateTo, setDateTo] = useState(today);
+  const [dateFrom, setDateFrom] = useState(() => new Date(Date.now() - 30 * 86_400_000).toISOString().split('T')[0]);
+  const [dateTo, setDateTo] = useState(() => new Date().toISOString().split('T')[0]);
   const daysDiff = Math.max(1, Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86_400_000));
 
   const { data: trend, loading: trendL } = useDashboardFetch<{ days: number; trend: TrendDay[] }>(

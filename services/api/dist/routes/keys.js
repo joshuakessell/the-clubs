@@ -12,7 +12,13 @@ async function keysRoutes(fastify) {
     fastify.post('/v1/keys/resolve', {
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
-        const body = request.body;
+        let body;
+        try {
+            body = ResolveKeySchema.parse(request.body);
+        }
+        catch (err) {
+            return reply.status(400).send({ error: 'Invalid request body' });
+        }
         try {
             const tagResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, resource_id, tag_code, tag_type, is_active
          FROM key_tags

@@ -296,7 +296,7 @@ async function createFromScan(input) {
     const row = inserted.rows[0];
     return {
         created: true,
-        customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
+        customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
     };
 }
 async function matchIdentity(input) {
@@ -364,7 +364,7 @@ async function createManual(input) {
             const row = byIdNumber.rows[0];
             return {
                 created: false, existing: true, matchReason: 'ID_NUMBER',
-                customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
+                customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
             };
         }
     }
@@ -374,7 +374,7 @@ async function createManual(input) {
         const row = byNameDob.rows[0];
         return {
             created: false, existing: true, matchReason: 'NAME_DOB',
-            customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
+            customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
         };
     }
     const inserted = await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO customers (name, dob, id_expiration_date, id_type, id_type_other, id_scan_value, id_number, created_at, updated_at)
@@ -382,6 +382,6 @@ async function createManual(input) {
     const row = inserted.rows[0];
     return {
         created: true,
-        customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
+        customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
     };
 }

@@ -52,7 +52,7 @@ describe('Check-in Flow', () => {
     }
 
     app = Fastify({
-      logger: false,
+      logger: { level: 'error' },
       ajv: { customOptions: { strict: false, allowUnionTypes: true } },
     });
 

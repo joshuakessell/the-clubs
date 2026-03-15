@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinAgreementRoutes = registerCheckinAgreementRoutes;
+const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const kioskToken_1 = require("../../auth/kioskToken");
 const payload_1 = require("../../checkin/payload");
@@ -115,11 +116,15 @@ function registerCheckinAgreementRoutes(fastify) {
         }
     });
     fastify.post('/v1/checkin/lane/:laneId/customer-confirm', { preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff] }, async (request, reply) => {
+        const parsed = zod_1.z.object({ sessionId: zod_1.z.string(), confirmed: zod_1.z.boolean() }).safeParse(request.body);
+        if (!parsed.success) {
+            return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
+        }
         try {
             const result = await (0, agreementService_1.processCustomerConfirm)({
                 laneId: request.params.laneId,
-                sessionId: request.body.sessionId,
-                confirmed: request.body.confirmed,
+                sessionId: parsed.data.sessionId,
+                confirmed: parsed.data.confirmed,
             });
             if (result.confirmedPayload) {
                 fastify.broadcaster.broadcastCustomerConfirmed(result.confirmedPayload, request.params.laneId);

@@ -36,7 +36,12 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       preHandler: [requireAuth],
     },
     async (request, reply) => {
-      const body = request.body as ResolveKeyInput;
+      let body: ResolveKeyInput;
+      try {
+        body = ResolveKeySchema.parse(request.body);
+      } catch (err) {
+        return reply.status(400).send({ error: 'Invalid request body' });
+      }
 
       try {
         const tagResult = await db.execute<Record<string, unknown>>(

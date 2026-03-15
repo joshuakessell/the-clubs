@@ -365,14 +365,14 @@ export async function createFromScan(input: CreateFromScanInput) {
     };
   }
 
-  const inserted = await db.execute<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
+  const inserted = await db.execute<{ id: string; name: string; dob: Date | string | null; membership_number: string | null }>(
     sql`INSERT INTO customers (name, dob, id_expiration_date, id_number, id_state, id_type, id_type_other, id_scan_hash, id_scan_value, created_at, updated_at)
      VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${input.idNumber || null}, ${input.state || null}, ${idType}, ${idTypeOther}, ${idScanHash}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`
   );
-  const row = inserted.rows[0];
+  const row = inserted.rows[0]!;
   return {
     created: true,
-    customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
+    customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
   };
 }
 
@@ -444,37 +444,37 @@ export async function createManual(input: {
 
   // Dedup: check ID number
   if (idScanValue) {
-    const byIdNumber = await db.execute<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
+    const byIdNumber = await db.execute<{ id: string; name: string; dob: Date | string | null; membership_number: string | null }>(
       sql`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER(${idScanValue}) LIMIT 1`
     );
     if (byIdNumber.rows.length > 0) {
       const row = byIdNumber.rows[0];
       return {
         created: false, existing: true, matchReason: 'ID_NUMBER' as const,
-        customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
+        customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
       };
     }
   }
 
   // Dedup: check name + DOB
-  const byNameDob = await db.execute<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
+  const byNameDob = await db.execute<{ id: string; name: string; dob: Date | string | null; membership_number: string | null }>(
     sql`SELECT id, name, dob, membership_number FROM customers WHERE dob = ${dob}::date AND LOWER(name) = LOWER(${name}) LIMIT 1`
   );
   if (byNameDob.rows.length > 0) {
     const row = byNameDob.rows[0];
     return {
       created: false, existing: true, matchReason: 'NAME_DOB' as const,
-      customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
+      customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
     };
   }
 
-  const inserted = await db.execute<{ id: string; name: string; dob: Date | null; membership_number: string | null }>(
+  const inserted = await db.execute<{ id: string; name: string; dob: Date | string | null; membership_number: string | null }>(
     sql`INSERT INTO customers (name, dob, id_expiration_date, id_type, id_type_other, id_scan_value, id_number, created_at, updated_at)
      VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${idType}, ${idTypeOther}, ${idScanValue}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`
   );
-  const row = inserted.rows[0];
+  const row = inserted.rows[0]!;
   return {
     created: true,
-    customer: { id: row.id, name: row.name, dob: row.dob ? row.dob.toISOString().slice(0, 10) : null, membershipNumber: row.membership_number },
+    customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
   };
 }

@@ -61,7 +61,7 @@ describe('Checkin sub-flow smoke tests', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
-    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
+    app = Fastify({ logger: { level: 'error' }, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     app.decorate('broadcaster', createBroadcaster());
     await app.register(checkinRoutes);
     await app.ready();

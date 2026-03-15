@@ -48,13 +48,13 @@ async function resolveActiveSession(client, laneId, opts) {
  */
 async function validateAndLockResource(client, params) {
     const { resourceType, resourceId, sessionId } = params;
-    const table = resourceType === 'room' ? 'rooms' : 'lockers';
+    const table = 'inventory_resources';
     const label = resourceType === 'room' ? 'Room' : 'Locker';
     const selectCols = resourceType === 'room'
-        ? 'id, number, type, status, assigned_to_customer_id'
+        ? 'id, number, tier as type, status, assigned_to_customer_id'
         : 'id, number, status, assigned_to_customer_id';
     // 1. Lock the resource row.
-    const result = await client.query(`SELECT ${selectCols} FROM ${table} WHERE id = $1 FOR UPDATE`, [resourceId]);
+    const result = await client.query(`SELECT ${selectCols} FROM ${table} WHERE id = $1 AND kind = $2 FOR UPDATE`, [resourceId, resourceType]);
     if (result.rows.length === 0) {
         throw new HttpError_1.HttpError(404, `${label} not found`);
     }

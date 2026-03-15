@@ -104,10 +104,10 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
           reason: r.reason,
           status: r.status,
           decidedBy: r.decided_by,
-          decidedAt: r.decided_at ? r.decided_at.toISOString() : null,
+          decidedAt: r.decided_at ? (typeof r.decided_at === 'string' ? r.decided_at : r.decided_at.toISOString()) : null,
           decisionNotes: r.decision_notes,
-          createdAt: r.created_at.toISOString(),
-          updatedAt: r.updated_at.toISOString(),
+          createdAt: typeof r.created_at === 'string' ? r.created_at : (r.created_at?.toISOString() ?? new Date().toISOString()),
+          updatedAt: typeof r.updated_at === 'string' ? r.updated_at : (r.updated_at?.toISOString() ?? new Date().toISOString()),
         })),
       });
     }
@@ -206,10 +206,10 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
           reason: r.reason,
           status: r.status,
           decidedBy: r.decided_by,
-          decidedAt: r.decided_at ? r.decided_at.toISOString() : null,
+          decidedAt: r.decided_at ? (typeof r.decided_at === 'string' ? r.decided_at : r.decided_at.toISOString()) : null,
           decisionNotes: r.decision_notes,
-          createdAt: r.created_at.toISOString(),
-          updatedAt: r.updated_at.toISOString(),
+          createdAt: typeof r.created_at === 'string' ? r.created_at : (r.created_at?.toISOString() ?? new Date().toISOString()),
+          updatedAt: typeof r.updated_at === 'string' ? r.updated_at : (r.updated_at?.toISOString() ?? new Date().toISOString()),
         })),
       });
     }

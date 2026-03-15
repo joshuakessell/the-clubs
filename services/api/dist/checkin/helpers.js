@@ -69,6 +69,7 @@ async function selectRoomForNewCheckin(client, rentalType) {
        AND cb.ends_at > NOW()`, [rentalType]);
     const offeredResourceIds = offeredRes.rows.map((r) => r.resource_id).filter(Boolean);
     // 5) Select the first clean, unassigned resource, excluding offered ones.
+    const offeredResourceIdsSql = `{${offeredResourceIds.join(',')}}`;
     const room = (await client.query(`SELECT id, number
        FROM inventory_resources
        WHERE status = 'CLEAN'
@@ -93,7 +94,7 @@ async function selectRoomForNewCheckin(client, rentalType) {
          )
        ORDER BY number ASC
        LIMIT 1
-       FOR UPDATE SKIP LOCKED`, [rentalType, offeredResourceIds])).rows[0];
+       FOR UPDATE SKIP LOCKED`, [rentalType, offeredResourceIdsSql])).rows[0];
     return room ?? null;
 }
 async function maybeAttachScanIdentifiers(params) {

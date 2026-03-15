@@ -138,7 +138,7 @@ function registerCheckoutKioskRoutes(fastify) {
                 }
                 // 3. Calculate lateness
                 const now = new Date();
-                const scheduledCheckoutAt = block.ends_at;
+                const scheduledCheckoutAt = block.ends_at instanceof Date ? block.ends_at : new Date(block.ends_at);
                 const lateMinutes = Math.max(0, Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
                 const { feeAmount, banApplied } = (0, utils_1.calculateLateFee)(lateMinutes);
                 // 4. Get key tag ID if available

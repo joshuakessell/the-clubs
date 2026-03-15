@@ -53,7 +53,7 @@ describe('Check-in Flow', () => {
     }
 
     app = Fastify({
-      logger: false,
+      logger: { level: 'error' },
       ajv: { customOptions: { strict: false, allowUnionTypes: true } },
     });
 
@@ -671,11 +671,9 @@ describe('Check-in Flow', () => {
 
         const blockCheck = await query<{
           resource_id: string | null;
-          resource_id: string | null;
           rental_type: string;
         }>(`SELECT resource_id, rental_type::text FROM checkin_blocks WHERE id = $1`, [blockId]);
         expect(blockCheck.rows[0]!.resource_id).toBe(targetRoomId);
-        expect(blockCheck.rows[0]!.resource_id).toBeNull();
         expect(blockCheck.rows[0]!.rental_type).toBe('SPECIAL');
 
         const chargeCheck = await query<{ count: string }>(
@@ -785,7 +783,7 @@ describe('Check-in Flow', () => {
         const cancelledIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
            FROM orders
-           WHERE status = 'CANCELLED'
+           WHERE status = 'CANCELED'
              AND quote_json->>'type' = 'SWITCH_UPCHARGE'
              AND quote_json->>'checkinBlockId' = $1`,
           [blockId]

@@ -157,8 +157,8 @@ export async function buildFullSessionUpdatedPayload(
   let customerDobMonthDay: string | undefined;
   const customerDob = toDate(customer?.dob);
   if (customerDob) {
-    customerDobMonthDay = `${String(customerDob.getMonth() + 1).padStart(2, '0')}/${String(
-      customerDob.getDate()
+    customerDobMonthDay = `${String(customerDob.getUTCMonth() + 1).padStart(2, '0')}/${String(
+      customerDob.getUTCDate()
     ).padStart(2, '0')}`;
   }
 
@@ -398,10 +398,12 @@ async function buildLedgerLineItems(
       }
 
       const charges = await db.execute<{ type: string; amount: number | string }>(sql`
-        SELECT kind as type, total as amount
+        SELECT oli.kind as type, oli.total as amount
          FROM order_line_items oli
          JOIN orders o ON o.id = oli.order_id
-         WHERE o.visit_id = ${checkinVisitId}
+         JOIN lane_sessions ls ON ls.id = o.lane_session_id
+         JOIN checkin_blocks cb ON cb.session_id = ls.id
+         WHERE cb.visit_id = ${checkinVisitId}
            AND oli.kind IN ('CHECKIN_FEE', 'RENEWAL_FEE', 'FINAL_EXTENSION', 'UPGRADE', 'LATE_FEE')
            AND o.created_at >= date_trunc('day', NOW())
       `);
@@ -482,10 +484,12 @@ async function buildLedgerLineItems(
 
     if (checkinVisitId) {
       const charges = await db.execute<{ type: string; amount: number | string }>(sql`
-        SELECT kind as type, total as amount
+        SELECT oli.kind as type, oli.total as amount
          FROM order_line_items oli
          JOIN orders o ON o.id = oli.order_id
-         WHERE o.visit_id = ${checkinVisitId}
+         JOIN lane_sessions ls ON ls.id = o.lane_session_id
+         JOIN checkin_blocks cb ON cb.session_id = ls.id
+         WHERE cb.visit_id = ${checkinVisitId}
            AND oli.kind IN ('CHECKIN_FEE', 'RENEWAL_FEE', 'FINAL_EXTENSION', 'UPGRADE', 'LATE_FEE')
            AND o.created_at >= date_trunc('day', NOW())
       `);

@@ -29,12 +29,12 @@ async function shiftsRoutes(fastify) {
         }
     });
     fastify.patch('/v1/admin/shifts/:shiftId', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        const body = request.body;
+        const body = UpdateShiftSchema.parse(request.body);
         const result = await (0, shiftService_1.updateShift)(request.params.shiftId, body, request.staff.staffId);
         return reply.send({ id: result.id, employeeId: result.employee_id, employeeName: result.employee_name, shiftCode: result.shift_code, scheduledStart: result.starts_at.toISOString(), scheduledEnd: result.ends_at.toISOString(), status: result.status, notes: result.notes });
     });
     fastify.post('/v1/admin/shifts', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        const body = request.body;
+        const body = CreateShiftSchema.parse(request.body);
         if (new Date(body.starts_at) >= new Date(body.ends_at))
             return reply.status(400).send({ error: 'Shift start must be before end' });
         const result = await (0, shiftService_1.createShift)(body, request.staff.staffId);
@@ -56,7 +56,7 @@ async function shiftsRoutes(fastify) {
         }
     });
     fastify.post('/v1/admin/shifts/bulk', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
-        const body = request.body;
+        const body = BulkCreateSchema.parse(request.body);
         const result = await (0, shiftService_1.bulkCreateShifts)(body.shifts, request.staff.staffId);
         return reply.status(201).send(result);
     });

@@ -141,7 +141,7 @@ async function sessionDocumentsRoutes(fastify) {
                 id: r.id,
                 doc_type: 'AGREEMENT_PDF',
                 mime_type: 'application/pdf',
-                created_at: r.created_at.toISOString(),
+                created_at: r.created_at instanceof Date ? r.created_at.toISOString() : (typeof r.created_at === 'string' ? r.created_at : String(r.created_at)),
                 has_signature: hasSignature,
                 signature_hash_prefix: signatureHashPrefix,
                 has_pdf: Boolean(r.agreement_pdf),

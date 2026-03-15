@@ -1,4 +1,6 @@
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { db } from '../../db';
 import { requireAuth, optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
@@ -161,11 +163,16 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
     '/v1/checkin/lane/:laneId/customer-confirm',
     { preHandler: [optionalAuth, requireKioskTokenOrStaff] },
     async (request, reply) => {
+      const parsed = z.object({ sessionId: z.string(), confirmed: z.boolean() }).safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
+      }
+
       try {
         const result = await processCustomerConfirm({
           laneId: request.params.laneId,
-          sessionId: request.body.sessionId,
-          confirmed: request.body.confirmed,
+          sessionId: parsed.data.sessionId,
+          confirmed: parsed.data.confirmed,
         });
 
         if (result.confirmedPayload) {

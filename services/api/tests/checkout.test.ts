@@ -240,7 +240,7 @@ describe('Checkout Flow', () => {
     // Ensure visit is active for each test
     await pool.query('UPDATE visits SET ended_at = NULL WHERE id = $1', [testVisitId]);
 
-    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
+    fastify = Fastify({ logger: { level: 'error' }, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     broadcastEvents = [];
     const originalBroadcast = broadcaster.broadcast.bind(broadcaster);
@@ -668,18 +668,17 @@ describe('Checkout Flow', () => {
       expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
 
       const chargesRes = await pool.query<{
-        kind: string;
-        total: string;
-        checkin_block_id: string;
+        entry_type: string;
+        amount: string;
+        checkout_request_id: string;
       }>(
-        `SELECT oli.kind, oli.total, o.metadata_json->>'occupancyId' as checkin_block_id 
-         FROM order_line_items oli 
-         JOIN orders o ON o.id = oli.order_id 
-         WHERE o.customer_id = (SELECT customer_id FROM visits WHERE id = $1)`,
+        `SELECT entry_type, amount, metadata->>'checkoutRequestId' as checkout_request_id 
+         FROM customer_spend_ledger_entries 
+         WHERE visit_id = $1`,
         [testVisitId]
       );
       expect(
-        chargesRes.rows.some((r) => r.kind === 'LATE_FEE' && r.checkin_block_id === testBlockId)
+        chargesRes.rows.some((r) => r.entry_type === 'LATE_FEE' && r.checkout_request_id === requestId)
       ).toBe(true);
 
       // Clean up

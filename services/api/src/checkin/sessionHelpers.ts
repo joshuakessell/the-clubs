@@ -72,16 +72,16 @@ export async function validateAndLockResource(
   resourceRow: { id: string; number: string; status: string; assigned_to_customer_id: string | null; type?: string };
 }> {
   const { resourceType, resourceId, sessionId } = params;
-  const table = resourceType === 'room' ? 'rooms' : 'lockers';
+  const table = 'inventory_resources';
   const label = resourceType === 'room' ? 'Room' : 'Locker';
   const selectCols = resourceType === 'room'
-    ? 'id, number, type, status, assigned_to_customer_id'
+    ? 'id, number, tier as type, status, assigned_to_customer_id'
     : 'id, number, status, assigned_to_customer_id';
 
   // 1. Lock the resource row.
   const result = await client.query<{ id: string; number: string; type?: string; status: string; assigned_to_customer_id: string | null }>(
-    `SELECT ${selectCols} FROM ${table} WHERE id = $1 FOR UPDATE`,
-    [resourceId],
+    `SELECT ${selectCols} FROM ${table} WHERE id = $1 AND kind = $2 FOR UPDATE`,
+    [resourceId, resourceType],
   );
 
   if (result.rows.length === 0) {

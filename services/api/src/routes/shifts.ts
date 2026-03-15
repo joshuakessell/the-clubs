@@ -33,7 +33,7 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.patch<{ Params: { shiftId: string }; Body: z.infer<typeof UpdateShiftSchema> }>(
     '/v1/admin/shifts/:shiftId', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      const body = request.body as z.infer<typeof UpdateShiftSchema>;
+      const body = UpdateShiftSchema.parse(request.body);
       const result = await updateShift(request.params.shiftId, body as UpdateShiftInput, request.staff!.staffId);
       return reply.send({ id: result.id, employeeId: result.employee_id, employeeName: result.employee_name, shiftCode: result.shift_code, scheduledStart: result.starts_at.toISOString(), scheduledEnd: result.ends_at.toISOString(), status: result.status, notes: result.notes });
     }
@@ -42,7 +42,7 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: z.infer<typeof CreateShiftSchema> }>(
     '/v1/admin/shifts', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      const body = request.body as z.infer<typeof CreateShiftSchema>;
+      const body = CreateShiftSchema.parse(request.body);
       if (new Date(body.starts_at) >= new Date(body.ends_at)) return reply.status(400).send({ error: 'Shift start must be before end' });
       const result = await createShift(body as CreateShiftInput, request.staff!.staffId);
       if (result.conflict) return reply.status(409).send({ error: 'Shift overlaps with existing shift', conflictingShiftIds: result.conflictingShiftIds });
@@ -65,7 +65,7 @@ export async function shiftsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.post<{ Body: z.infer<typeof BulkCreateSchema> }>(
     '/v1/admin/shifts/bulk', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
-      const body = request.body as z.infer<typeof BulkCreateSchema>;
+      const body = BulkCreateSchema.parse(request.body);
       const result = await bulkCreateShifts(body.shifts as CreateShiftInput[], request.staff!.staffId);
       return reply.status(201).send(result);
     }

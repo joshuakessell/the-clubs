@@ -163,7 +163,7 @@ export function LogsView() {
       setHistory((prev) => [...prev, cursor]);
       setCursor(data.nextCursor);
     }
-  }, [data?.nextCursor, cursor]);
+  }, [data, cursor]);
 
   const handlePrevPage = useCallback(() => {
     if (history.length > 0) {
