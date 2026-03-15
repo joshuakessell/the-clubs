@@ -2,21 +2,34 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerAdminRegisterSessionRoutes = registerAdminRegisterSessionRoutes;
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const middleware_1 = require("../../auth/middleware");
 const auditLog_1 = require("../../audit/auditLog");
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertAuditLog.
+ */
+function toQueryable(tx) {
+    return {
+        async query(queryText, params) {
+            const parts = queryText.split(/\$\d+/);
+            const values = params ?? [];
+            let built = drizzle_orm_1.sql.empty();
+            for (let i = 0; i < parts.length; i++) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+                if (i < values.length) {
+                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+                }
+            }
+            const result = await tx.execute(built);
+            return { rows: result.rows };
+        },
+    };
+}
 function registerAdminRegisterSessionRoutes(fastify) {
-    /**
-     * GET /v1/admin/register-sessions
-     *
-     * Returns array with exactly three entries (Register 1-3).
-     * Shows current status, employee info, device, and heartbeat data.
-     */
-    fastify.get('/v1/admin/register-sessions', {
-        preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin],
-    }, async (request, reply) => {
+    fastify.get('/v1/admin/register-sessions', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         try {
-            // Get active sessions for all registers
-            const activeSessions = await (0, db_1.query)(`SELECT 
+            const activeSessions = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT 
           rs.id,
           rs.employee_id,
           rs.device_id,
@@ -29,7 +42,6 @@ function registerAdminRegisterSessionRoutes(fastify) {
         JOIN staff s ON s.id = rs.employee_id
         WHERE rs.signed_out_at IS NULL
         ORDER BY rs.register_number`);
-            // Build result array with exactly 3 entries
             const result = [];
             for (let regNum = 1; regNum <= 3; regNum++) {
                 const session = activeSessions.rows.find((s) => s.register_number === regNum);
@@ -72,15 +84,7 @@ function registerAdminRegisterSessionRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * POST /v1/admin/register-sessions/:registerNumber/force-signout
-     *
-     * Forces sign-out of active session for specified register.
-     * Broadcasts REGISTER_SESSION_UPDATED event.
-     */
-    fastify.post('/v1/admin/register-sessions/:registerNumber/force-signout', {
-        preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin],
-    }, async (request, reply) => {
+    fastify.post('/v1/admin/register-sessions/:registerNumber/force-signout', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         const registerNumber = Number.parseInt(request.params.registerNumber, 10);
         if (registerNumber !== 1 && registerNumber !== 2 && registerNumber !== 3) {
             return reply.status(400).send({
@@ -89,9 +93,8 @@ function registerAdminRegisterSessionRoutes(fastify) {
             });
         }
         try {
-            const result = await (0, db_1.transaction)(async (client) => {
-                // Find active session for this register
-                const sessionResult = await client.query(`SELECT 
+            const result = await db_1.db.transaction(async (tx) => {
+                const sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT 
             rs.id,
             rs.employee_id,
             rs.device_id,
@@ -101,8 +104,8 @@ function registerAdminRegisterSessionRoutes(fastify) {
             s.role as employee_role
           FROM register_sessions rs
           JOIN staff s ON s.id = rs.employee_id
-          WHERE rs.register_number = $1
-          AND rs.signed_out_at IS NULL`, [registerNumber]);
+          WHERE rs.register_number = ${registerNumber}
+          AND rs.signed_out_at IS NULL`);
                 if (sessionResult.rows.length === 0) {
                     return {
                         ok: true,
@@ -119,18 +122,15 @@ function registerAdminRegisterSessionRoutes(fastify) {
                     };
                 }
                 const session = sessionResult.rows[0];
-                // Sign out
-                await client.query(`UPDATE register_sessions
+                await tx.execute((0, drizzle_orm_1.sql) `UPDATE register_sessions
            SET signed_out_at = NOW()
-           WHERE id = $1`, [session.id]);
-                // Log audit action
-                await (0, auditLog_1.insertAuditLog)(client, {
+           WHERE id = ${session.id}`);
+                await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
                     staffId: request.staff.staffId,
                     action: 'REGISTER_FORCE_SIGN_OUT',
                     entityType: 'register_session',
                     entityId: session.id,
                 });
-                // Broadcast REGISTER_SESSION_UPDATED event
                 const payload = {
                     registerNumber: registerNumber,
                     active: false,

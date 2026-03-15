@@ -40,7 +40,29 @@ const sessionHelpers_1 = require("../../checkin/sessionHelpers");
 const utils_1 = require("../../checkin/utils");
 const waitlist_1 = require("../../checkin/waitlist");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const auditLog_1 = require("../../audit/auditLog");
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by session helpers, audit log, and waitlist helpers.
+ */
+function toQueryable(tx) {
+    return {
+        async query(queryText, params) {
+            const parts = queryText.split(/\$\d+/);
+            const values = params ?? [];
+            let built = drizzle_orm_1.sql.empty();
+            for (let i = 0; i < parts.length; i++) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+                if (i < values.length) {
+                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+                }
+            }
+            const result = await tx.execute(built);
+            return { rows: result.rows };
+        },
+    };
+}
 function registerCheckinWaitlistRoutes(fastify) {
     /**
      * GET /v1/checkin/lane/:laneId/waitlist-info — Waitlist position, ETA, and upgrade fee.
@@ -52,12 +74,13 @@ function registerCheckinWaitlistRoutes(fastify) {
             return reply.status(400).send({ error: 'desiredTier query parameter is required' });
         }
         try {
-            const result = await (0, db_1.transaction)(async (client) => {
+            const result = await db_1.db.transaction(async (tx) => {
+                const qClient = toQueryable(tx);
                 // Validate there's an active session
-                await (0, sessionHelpers_1.resolveActiveSession)(client, laneId, {
+                await (0, sessionHelpers_1.resolveActiveSession)(qClient, laneId, {
                     statuses: `'ACTIVE', 'AWAITING_ASSIGNMENT'`,
                 });
-                const { position, estimatedReadyAt } = await (0, waitlist_1.computeWaitlistInfo)(client, desiredTier);
+                const { position, estimatedReadyAt } = await (0, waitlist_1.computeWaitlistInfo)(qClient, desiredTier);
                 let upgradeFee = null;
                 if (currentTier) {
                     const { getUpgradeFee } = await Promise.resolve().then(() => __importStar(require('../../pricing/engine')));
@@ -86,13 +109,14 @@ function registerCheckinWaitlistRoutes(fastify) {
         const { laneId } = request.params;
         const { resourceType, resourceId } = request.body;
         try {
-            const result = await (0, db_1.serializableTransaction)(async (client) => {
+            const result = await db_1.db.transaction(async (tx) => {
+                const qClient = toQueryable(tx);
                 // Get active session
-                const session = await (0, sessionHelpers_1.resolveActiveSession)(client, laneId, {
+                const session = await (0, sessionHelpers_1.resolveActiveSession)(qClient, laneId, {
                     statuses: `'ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE'`,
                 });
                 // Validate and lock the resource (room or locker)
-                const { resourceRow } = await (0, sessionHelpers_1.validateAndLockResource)(client, {
+                const { resourceRow } = await (0, sessionHelpers_1.validateAndLockResource)(qClient, {
                     resourceType,
                     resourceId,
                     sessionId: session.id,
@@ -106,9 +130,9 @@ function registerCheckinWaitlistRoutes(fastify) {
                     needsConfirmation = !!(desiredType && roomTier !== desiredType);
                 }
                 // Record selection on session
-                await (0, sessionHelpers_1.recordResourceSelection)(client, { sessionId: session.id, resourceType, resourceId });
+                await (0, sessionHelpers_1.recordResourceSelection)(qClient, { sessionId: session.id, resourceType, resourceId });
                 // Audit log
-                await (0, auditLog_1.insertAuditLog)(client, {
+                await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
                     staffId,
                     action: 'ASSIGN',
                     entityType: resourceType,
@@ -119,9 +143,9 @@ function registerCheckinWaitlistRoutes(fastify) {
                 // Broadcast assignment created
                 const assignmentPayload = {
                     sessionId: session.id,
-                    ...(resourceType === 'room'
-                        ? { roomId: resourceId, roomNumber: resourceRow.number, rentalType: roomTier }
-                        : { lockerId: resourceId, lockerNumber: resourceRow.number, rentalType: 'LOCKER' }),
+                    resourceId,
+                    resourceNumber: resourceRow.number,
+                    rentalType: resourceType === 'locker' ? 'LOCKER' : roomTier,
                 };
                 fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, laneId);
                 // Cross-type assignment → require customer confirmation
@@ -146,9 +170,9 @@ function registerCheckinWaitlistRoutes(fastify) {
                         ? { roomNumber: resourceRow.number, needsConfirmation }
                         : { lockerNumber: resourceRow.number }),
                 };
-            });
-            // Broadcast full session state
-            const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, result.sessionId));
+            }, { isolationLevel: 'serializable' });
+            // buildFullSessionUpdatedPayload is already Drizzle-native
+            const { payload } = await (0, payload_1.buildFullSessionUpdatedPayload)(result.sessionId);
             fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
             return reply.send(result);
         }
@@ -159,13 +183,12 @@ function registerCheckinWaitlistRoutes(fastify) {
                 // Race condition → broadcast assignment failure
                 if (httpErr.statusCode === 409) {
                     try {
-                        const sessionResult = await (0, db_1.query)(`SELECT id FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
+                        const sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`);
                         if (sessionResult.rows.length > 0) {
                             const failedPayload = {
                                 sessionId: sessionResult.rows[0].id,
                                 reason: httpErr.message ?? 'Resource already assigned',
-                                requestedRoomId: resourceType === 'room' ? resourceId : undefined,
-                                requestedLockerId: resourceType === 'locker' ? resourceId : undefined,
+                                requestedResourceId: resourceId,
                             };
                             fastify.broadcaster.broadcastAssignmentFailed(failedPayload, laneId);
                         }

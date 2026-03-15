@@ -23,6 +23,24 @@ function registerCheckoutManualRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
+    /**
+     * GET /v1/checkout/renewal-eligibility?occupancyId=<uuid>
+     */
+    fastify.get('/v1/checkout/renewal-eligibility', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+        if (!request.staff)
+            return reply.status(401).send({ error: 'Unauthorized' });
+        const { occupancyId } = request.query;
+        if (!occupancyId)
+            return reply.status(400).send({ error: 'occupancyId is required' });
+        try {
+            const result = await (0, checkoutService_1.checkRenewalEligibility)(occupancyId);
+            return reply.send(result);
+        }
+        catch (error) {
+            fastify.log.error(error, 'Failed to check renewal eligibility');
+            return reply.status(500).send({ error: 'Internal server error' });
+        }
+    });
     const ManualResolveSchema = zod_1.z
         .object({
         number: zod_1.z.string().min(1).optional(),
@@ -34,7 +52,7 @@ function registerCheckoutManualRoutes(fastify) {
     /**
      * POST /v1/checkout/manual-resolve
      */
-    fastify.post('/v1/checkout/manual-resolve', { schema: { body: ManualResolveSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/checkout/manual-resolve', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -57,7 +75,7 @@ function registerCheckoutManualRoutes(fastify) {
     /**
      * POST /v1/checkout/manual-complete
      */
-    fastify.post('/v1/checkout/manual-complete', { schema: { body: ManualCompleteSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/checkout/manual-complete', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const staffId = request.staff.staffId;
@@ -67,9 +85,9 @@ function registerCheckoutManualRoutes(fastify) {
             // Broadcast inventory updates
             if (fastify.broadcaster && !result.alreadyCheckedOut) {
                 await (0, broadcast_1.broadcastInventoryUpdate)(fastify.broadcaster);
-                if (result.roomId) {
+                if (result.resourceId) {
                     fastify.broadcaster.broadcastRoomStatusChanged({
-                        roomId: result.roomId,
+                        roomId: result.resourceId,
                         previousStatus: shared_1.RoomStatus.CLEAN,
                         newStatus: shared_1.RoomStatus.DIRTY,
                         changedBy: staffId,

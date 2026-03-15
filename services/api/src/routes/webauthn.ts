@@ -29,15 +29,19 @@ import {
  * Converts positional-param SQL ($1, $2, …) into Drizzle sql`` tagged template.
  */
 async function drizzleQueryFn(queryText: string, params?: unknown[]): Promise<unknown> {
-  const parts = queryText.split(/\$\d+/);
   const values = params ?? [];
-  let built = sql.empty();
-  for (let i = 0; i < parts.length; i++) {
-    built = sql`${built}${sql.raw(parts[i]!)}`;
-    if (i < values.length) {
-      built = sql`${built}${values[i]}`;
-    }
-  }
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
   return db.execute(built);
 }
 

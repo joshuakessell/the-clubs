@@ -5,6 +5,7 @@ const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const idempotency_1 = require("../../middleware/idempotency");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
@@ -43,17 +44,32 @@ function formatRow(r) {
         category: r.category,
         isActive: r.is_active,
         sortOrder: toNumber(r.sort_order),
-        createdAt: r.created_at.toISOString(),
-        updatedAt: r.updated_at.toISOString(),
+        createdAt: new Date(r.created_at).toISOString(),
+        updatedAt: new Date(r.updated_at).toISOString(),
+    };
+}
+// Adapter for dynamic SQL
+function toQueryable() {
+    return {
+        async query(queryText, params) {
+            const parts = queryText.split(/\$\d+/);
+            const values = params ?? [];
+            let built = drizzle_orm_1.sql.empty();
+            for (let i = 0; i < parts.length; i++) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+                if (i < values.length) {
+                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+                }
+            }
+            const result = await db_1.db.execute(built);
+            return { rows: result.rows, rowCount: result.rowCount ?? 0 };
+        },
     };
 }
 // ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
 function registerAdminProductRoutes(fastify) {
-    /**
-     * GET /v1/admin/products
-     */
     fastify.get('/v1/admin/products', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
@@ -80,7 +96,8 @@ function registerAdminProductRoutes(fastify) {
         }
         const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         try {
-            const result = await (0, db_1.query)(`SELECT * FROM products ${where} ORDER BY sort_order ASC, name ASC`, params);
+            const qClient = toQueryable();
+            const result = await qClient.query(`SELECT id, sku, name, price, category, is_active, sort_order, created_at, updated_at FROM products ${where} ORDER BY sort_order ASC, name ASC`, params);
             return reply.send({ products: result.rows.map(formatRow) });
         }
         catch (error) {
@@ -88,17 +105,14 @@ function registerAdminProductRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * POST /v1/admin/products
-     */
-    fastify.post('/v1/admin/products', { schema: { body: CreateProductSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/admin/products', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
         try {
-            const result = await (0, db_1.query)(`INSERT INTO products (name, price, sku, category, sort_order)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING *`, [body.name, body.price, body.sku ?? null, body.category, body.sortOrder]);
+            const result = await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO products (name, price, sku, category, sort_order)
+           VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category}, ${body.sortOrder})
+           RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`);
             return reply.status(201).send({ product: formatRow(result.rows[0]) });
         }
         catch (error) {
@@ -106,10 +120,7 @@ function registerAdminProductRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * PATCH /v1/admin/products/:id
-     */
-    fastify.patch('/v1/admin/products/:id', { schema: { body: UpdateProductSchema }, preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.patch('/v1/admin/products/:id', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -146,7 +157,8 @@ function registerAdminProductRoutes(fastify) {
         sets.push(`updated_at = now()`);
         params.push(request.params.id);
         try {
-            const result = await (0, db_1.query)(`UPDATE products SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`, params);
+            const qClient = toQueryable();
+            const result = await qClient.query(`UPDATE products SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`, params);
             if (result.rows.length === 0) {
                 return reply.status(404).send({ error: 'Product not found' });
             }
@@ -157,14 +169,11 @@ function registerAdminProductRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    /**
-     * DELETE /v1/admin/products/:id — soft delete
-     */
     fastify.delete('/v1/admin/products/:id', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
-            const result = await (0, db_1.query)(`UPDATE products SET is_active = FALSE, updated_at = now() WHERE id = $1 RETURNING *`, [request.params.id]);
+            const result = await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE products SET is_active = FALSE, updated_at = now() WHERE id = ${request.params.id} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`);
             if (result.rows.length === 0) {
                 return reply.status(404).send({ error: 'Product not found' });
             }

@@ -51,7 +51,7 @@ async function cleaningRoutes(fastify) {
                     fastify.broadcaster.broadcast({
                         type: 'ROOM_STATUS_CHANGED',
                         payload: {
-                            roomId: transition.roomId,
+                            resourceId: transition.roomId,
                             previousStatus: transition.previousStatus,
                             newStatus: transition.newStatus,
                             changedBy: staffId,

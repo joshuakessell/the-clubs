@@ -42,8 +42,6 @@ exports.getPool = getPool;
 exports.initializeDatabase = initializeDatabase;
 exports.closeDatabase = closeDatabase;
 exports.query = query;
-exports.transaction = transaction;
-exports.serializableTransaction = serializableTransaction;
 exports.getDb = getDb;
 const node_fs_1 = __importDefault(require("node:fs"));
 const pg_1 = __importDefault(require("pg"));
@@ -83,7 +81,7 @@ function parseDatabaseUrl(urlString) {
         const host = url.hostname || undefined;
         const port = url.port ? Number.parseInt(url.port, 10) : undefined;
         const databaseFromPath = url.pathname.replaceAll(/^\/+/, '');
-        const database = databaseFromPath ? databaseFromPath : undefined;
+        const database = databaseFromPath || undefined;
         const user = url.username || undefined;
         const password = url.password || undefined;
         return {
@@ -195,65 +193,22 @@ async function closeDatabase() {
         console.log('Database connection pool closed');
     }
 }
+// ──────────────────────────────────────────────────────────────────────────────
+// Application and seed code should prefer Drizzle ORM:
+//   import { db } from '../db';
+//   import { sql } from 'drizzle-orm';
+//   await db.execute(sql`...`);
+//   await db.transaction(async (tx) => { ... });
+//
+// The `query` helper below is retained for integration tests and ad-hoc
+// scripts that need raw parameterised SQL without Drizzle ceremony.
+// ──────────────────────────────────────────────────────────────────────────────
 /**
- * Execute a query with automatic client acquisition and release.
+ * Convenience wrapper around `pool.query` for raw parameterised SQL.
+ * Prefer Drizzle ORM (`db`) for application code.
  */
 async function query(text, params) {
-    const dbPool = getPool();
-    const start = Date.now();
-    const result = await dbPool.query(text, params);
-    const duration = Date.now() - start;
-    if (process.env.DB_LOG_QUERIES === 'true') {
-        if (process.env.NODE_ENV === 'production') {
-            // In production, only log duration and row count to avoid leaking schema details
-            console.log('Executed query', { duration, rows: result.rowCount });
-        }
-        else {
-            console.log('Executed query', { text, duration, rows: result.rowCount });
-        }
-    }
-    return result;
-}
-/**
- * Execute a transaction with automatic commit/rollback.
- */
-async function transaction(callback) {
-    const dbPool = getPool();
-    const client = await dbPool.connect();
-    try {
-        await client.query('BEGIN');
-        const result = await callback(client);
-        await client.query('COMMIT');
-        return result;
-    }
-    catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    }
-    finally {
-        client.release();
-    }
-}
-/**
- * Execute a serializable transaction for critical operations like bookings.
- * This provides the highest isolation level to prevent race conditions.
- */
-async function serializableTransaction(callback) {
-    const dbPool = getPool();
-    const client = await dbPool.connect();
-    try {
-        await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
-        const result = await callback(client);
-        await client.query('COMMIT');
-        return result;
-    }
-    catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-    }
-    finally {
-        client.release();
-    }
+    return getPool().query(text, params);
 }
 /**
  * Drizzle ORM client wrapping the shared pg.Pool.
@@ -268,18 +223,16 @@ async function serializableTransaction(callback) {
  */
 let _db = null;
 function getDb() {
-    if (!_db) {
-        _db = (0, node_postgres_1.drizzle)(getPool(), {
-            schema,
-            logger: {
-                logQuery(query, params) {
-                    if (process.env.DB_LOG_QUERIES !== 'false') {
-                        console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
-                    }
+    _db ??= (0, node_postgres_1.drizzle)(getPool(), {
+        schema,
+        logger: {
+            logQuery(query, params) {
+                if (process.env.DB_LOG_QUERIES === 'true') {
+                    console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
                 }
             }
-        });
-    }
+        }
+    });
     return _db;
 }
 /** Convenience alias — prefer `getDb()` if you need to ensure the pool is initialized. */

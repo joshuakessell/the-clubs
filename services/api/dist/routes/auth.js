@@ -46,12 +46,15 @@ async function authRoutes(fastify) {
      * Creates a session and returns session token.
      */
     fastify.post('/v1/auth/login-pin', {
-        schema: { body: LoginPinSchema },
         config: {
             rateLimit: { max: 10, timeWindow: '1 minute' },
         },
     }, async (request, reply) => {
-        const body = request.body;
+        const parseResult = LoginPinSchema.safeParse(request.body);
+        if (!parseResult.success) {
+            return reply.status(400).send({ error: 'Validation failed', details: parseResult.error.errors });
+        }
+        const body = parseResult.data;
         try {
             const isDemoMode = process.env.DEMO_MODE === 'true';
             const deviceType = body.deviceType || 'tablet';
@@ -103,7 +106,6 @@ async function authRoutes(fastify) {
         confirmPin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
     });
     fastify.post('/v1/auth/change-pin', {
-        schema: { body: ChangePinSchema },
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
         if (!request.staff) {
@@ -186,7 +188,6 @@ async function authRoutes(fastify) {
         pin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'),
     });
     fastify.post('/v1/auth/reauth-pin', {
-        schema: { body: ReauthPinSchema },
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
         if (!request.staff) {

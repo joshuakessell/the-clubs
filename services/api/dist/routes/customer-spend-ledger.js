@@ -3,7 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.customerSpendLedgerRoutes = customerSpendLedgerRoutes;
 const zod_1 = require("zod");
 const middleware_1 = require("../auth/middleware");
-const db_1 = require("../db");
 const customerSpendLedger_1 = require("../ledger/customerSpendLedger");
 const ListSchema = zod_1.z.object({
     from: zod_1.z.string().datetime().optional(),
@@ -31,13 +30,13 @@ async function customerSpendLedgerRoutes(fastify) {
         const from = parsed.from ? new Date(parsed.from) : null;
         const to = parsed.to ? new Date(parsed.to) : null;
         try {
-            const result = await (0, db_1.transaction)((client) => (0, customerSpendLedger_1.listCustomerSpendLedgerByVisit)(client, {
+            const result = await (0, customerSpendLedger_1.listCustomerSpendLedgerByVisit)({
                 customerId: request.params.customerId,
                 from,
                 to,
                 limit: parsed.limit,
                 cursor: parsed.cursor ?? null,
-            }));
+            });
             return reply.send(result);
         }
         catch (error) {
@@ -53,11 +52,11 @@ async function customerSpendLedgerRoutes(fastify) {
             return reply.status(401).send({ error: 'Unauthorized' });
         const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '200', 10) || 200, 1), 500);
         try {
-            const result = await (0, db_1.transaction)((client) => (0, customerSpendLedger_1.listVisitSpendLedgerEntries)(client, {
+            const result = await (0, customerSpendLedger_1.listVisitSpendLedgerEntries)({
                 customerId: request.params.customerId,
                 visitId: request.params.visitId === 'unassigned' ? null : request.params.visitId,
                 limit,
-            }));
+            });
             return reply.send(result);
         }
         catch (error) {

@@ -5,6 +5,7 @@ const kioskToken_1 = require("../auth/kioskToken");
 const middleware_1 = require("../auth/middleware");
 const payload_1 = require("../checkin/payload");
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 /**
  * SSE endpoint for lane-scoped realtime events.
  *
@@ -60,31 +61,26 @@ async function realtimeSSERoutes(fastify) {
             timestamp: new Date().toISOString(),
         })}\n\n`);
         // Snapshot-first: send current session state immediately after connect.
-        // This ensures clients receive the latest state without waiting for the
-        // next mutation to trigger a broadcast.
         try {
-            const snapshot = await (0, db_1.transaction)(async (client) => {
-                const row = (await client.query(`SELECT id
-               FROM lane_sessions
-               WHERE lane_id = $1
-                 AND status IN (
-                   'ACTIVE',
-                   'AWAITING_CUSTOMER',
-                   'AWAITING_ASSIGNMENT',
-                   'AWAITING_PAYMENT',
-                   'AWAITING_SIGNATURE'
-                 )
-               ORDER BY created_at DESC
-               LIMIT 1`, [laneId])).rows[0];
-                if (!row)
-                    return null;
-                const { payload } = await (0, payload_1.buildFullSessionUpdatedPayload)(client, row.id);
-                return payload;
-            });
-            if (snapshot) {
+            const row = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id
+           FROM lane_sessions
+           WHERE lane_id = ${laneId}
+             AND status IN (
+               'ACTIVE',
+               'AWAITING_CUSTOMER',
+               'AWAITING_ASSIGNMENT',
+               'AWAITING_PAYMENT',
+               'AWAITING_SIGNATURE'
+             )
+           ORDER BY created_at DESC
+           LIMIT 1`);
+            const session = row.rows[0];
+            if (session) {
+                // buildFullSessionUpdatedPayload is already Drizzle-native
+                const { payload } = await (0, payload_1.buildFullSessionUpdatedPayload)(session.id);
                 raw.write(`data: ${JSON.stringify({
                     type: 'SESSION_UPDATED',
-                    payload: snapshot,
+                    payload,
                     timestamp: new Date().toISOString(),
                 })}\n\n`);
             }

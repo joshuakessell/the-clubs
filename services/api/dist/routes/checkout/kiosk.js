@@ -2,94 +2,82 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckoutKioskRoutes = registerCheckoutKioskRoutes;
 const db_1 = require("../../db");
-const schemas_1 = require("../../checkout/schemas");
+const drizzle_orm_1 = require("drizzle-orm");
 const clubEventLog_1 = require("../../activity/clubEventLog");
 const utils_1 = require("../../checkout/utils");
 const HttpError_1 = require("../../errors/HttpError");
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertClubEvent.
+ */
+function toQueryable(tx) {
+    return {
+        async query(queryText, params) {
+            const parts = queryText.split(/\$\d+/);
+            const values = params ?? [];
+            let built = drizzle_orm_1.sql.empty();
+            for (let i = 0; i < parts.length; i++) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+                if (i < values.length) {
+                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+                }
+            }
+            const result = await tx.execute(built);
+            return { rows: result.rows };
+        },
+    };
+}
 function registerCheckoutKioskRoutes(fastify) {
     /**
      * POST /v1/checkout/resolve-key - Resolve a key tag to checkout information
-     *
-     * Public endpoint for checkout kiosk to resolve a scanned key QR code.
-     * Returns customer info, scheduled checkout time, and computed late fees.
      */
-    fastify.post('/v1/checkout/resolve-key', { schema: { body: schemas_1.ResolveKeySchema } }, async (request, reply) => {
+    fastify.post('/v1/checkout/resolve-key', {}, async (request, reply) => {
         const body = request.body;
         try {
             // 1. Find the key tag
-            const tagResult = await (0, db_1.query)(`SELECT id, room_id, locker_id, tag_code, is_active
+            const tagResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, resource_id, tag_code, is_active
          FROM key_tags
-         WHERE tag_code = $1 AND is_active = true`, [body.token]);
+         WHERE tag_code = ${body.token} AND is_active = true`);
             if (tagResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'Key tag not found or inactive',
-                });
+                return reply.status(404).send({ error: 'Key tag not found or inactive' });
             }
             const tag = tagResult.rows[0];
-            // 2. Find the active checkin block for this key
-            let blockResult;
-            if (tag.room_id) {
-                blockResult = await (0, db_1.query)(`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote
-           FROM checkin_blocks cb
-           JOIN visits v ON cb.visit_id = v.id
-           WHERE cb.room_id = $1 AND v.ended_at IS NULL
-           ORDER BY cb.ends_at DESC
-           LIMIT 1`, [tag.room_id]);
+            if (!tag.resource_id) {
+                return reply.status(404).send({ error: 'Key tag is not associated with a resource' });
             }
-            else if (tag.locker_id) {
-                blockResult = await (0, db_1.query)(`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote
-           FROM checkin_blocks cb
-           JOIN visits v ON cb.visit_id = v.id
-           WHERE cb.locker_id = $1 AND v.ended_at IS NULL
-           ORDER BY cb.ends_at DESC
-           LIMIT 1`, [tag.locker_id]);
-            }
-            else {
-                return reply.status(404).send({
-                    error: 'Key tag is not associated with a room or locker',
-                });
-            }
+            // 2. Find the active checkin block for this resource
+            const blockResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
+                cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote
+         FROM checkin_blocks cb
+         JOIN visits v ON cb.visit_id = v.id
+         WHERE cb.resource_id = ${tag.resource_id} AND v.ended_at IS NULL
+         ORDER BY cb.ends_at DESC
+         LIMIT 1`);
             if (blockResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'No active occupancy found for this key',
-                });
+                return reply.status(404).send({ error: 'No active occupancy found for this key' });
             }
             const block = blockResult.rows[0];
             // 3. Get customer information
-            const visitResult = await (0, db_1.query)('SELECT customer_id FROM visits WHERE id = $1', [block.visit_id]);
+            const visitResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT customer_id FROM visits WHERE id = ${block.visit_id}`);
             if (visitResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'Visit not found',
-                });
+                return reply.status(404).send({ error: 'Visit not found' });
             }
             const customerId = visitResult.rows[0].customer_id;
-            const customerResult = await (0, db_1.query)('SELECT id, name, membership_number, banned_until FROM customers WHERE id = $1', [customerId]);
+            const customerResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, name, membership_number, banned_until FROM customers WHERE id = ${customerId}`);
             if (customerResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'Customer not found',
-                });
+                return reply.status(404).send({ error: 'Customer not found' });
             }
             const customer = customerResult.rows[0];
-            // 4. Get room/locker details
-            let roomNumber;
-            let lockerNumber;
-            if (block.room_id) {
-                const roomResult = await (0, db_1.query)('SELECT id, number, type FROM rooms WHERE id = $1', [block.room_id]);
-                if (roomResult.rows.length > 0) {
-                    roomNumber = roomResult.rows[0].number;
-                }
-            }
-            if (block.locker_id) {
-                const lockerResult = await (0, db_1.query)('SELECT id, number FROM lockers WHERE id = $1', [block.locker_id]);
-                if (lockerResult.rows.length > 0) {
-                    lockerNumber = lockerResult.rows[0].number;
+            // 4. Get resource details
+            let resourceNumber;
+            if (block.resource_id) {
+                const resourceResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, number, kind, tier FROM inventory_resources WHERE id = ${block.resource_id}`);
+                if (resourceResult.rows.length > 0) {
+                    resourceNumber = resourceResult.rows[0].number;
                 }
             }
             // 5. Calculate lateness
             const now = new Date();
-            // Ensure ends_at is a Date object (PostgreSQL returns it as a Date, but be safe)
             const scheduledCheckoutAt = block.ends_at instanceof Date ? block.ends_at : new Date(block.ends_at);
             const lateMinutes = Math.max(0, Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
             const { feeAmount, banApplied } = (0, utils_1.calculateLateFee)(lateMinutes);
@@ -100,10 +88,8 @@ function registerCheckoutKioskRoutes(fastify) {
                 customerName: customer.name,
                 membershipNumber: customer.membership_number || undefined,
                 rentalType: block.rental_type,
-                roomId: block.room_id || undefined,
-                roomNumber,
-                lockerId: block.locker_id || undefined,
-                lockerNumber,
+                resourceId: block.resource_id || undefined,
+                resourceNumber,
                 scheduledCheckoutAt,
                 hasTvRemote: block.has_tv_remote,
                 lateMinutes,
@@ -124,98 +110,69 @@ function registerCheckoutKioskRoutes(fastify) {
     });
     /**
      * POST /v1/checkout/request - Create a checkout request
-     *
-     * Public endpoint for checkout kiosk to submit a checkout request.
-     * Triggers CHECKOUT_REQUESTED realtime event.
      */
-    fastify.post('/v1/checkout/request', { schema: { body: schemas_1.CreateCheckoutRequestSchema } }, async (request, reply) => {
+    fastify.post('/v1/checkout/request', {}, async (request, reply) => {
         const body = request.body;
         try {
-            const result = await (0, db_1.serializableTransaction)(async (client) => {
+            const result = await db_1.db.transaction(async (tx) => {
                 // 1. Verify the block exists and is active
-                const blockResult = await client.query(`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote,
+                const blockResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
+                  cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote,
                   v.customer_id
            FROM checkin_blocks cb
            JOIN visits v ON cb.visit_id = v.id
-           WHERE cb.id = $1 AND v.ended_at IS NULL`, [body.occupancyId]);
+           WHERE cb.id = ${body.occupancyId} AND v.ended_at IS NULL`);
                 if (blockResult.rows.length === 0) {
                     throw new HttpError_1.HttpError(404, 'Active occupancy not found');
                 }
                 const block = blockResult.rows[0];
                 // 2. Check for existing active request
-                const existingRequest = await client.query(`SELECT id FROM checkout_requests
-           WHERE occupancy_id = $1 AND status IN ('SUBMITTED', 'CLAIMED')`, [body.occupancyId]);
+                const existingRequest = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM checkout_requests
+           WHERE occupancy_id = ${body.occupancyId} AND status IN ('SUBMITTED', 'CLAIMED')`);
                 if (existingRequest.rows.length > 0) {
                     throw new HttpError_1.HttpError(409, 'Checkout request already exists for this occupancy');
                 }
-                // 3. Calculate lateness (same as resolve-key)
+                // 3. Calculate lateness
                 const now = new Date();
                 const scheduledCheckoutAt = block.ends_at;
                 const lateMinutes = Math.max(0, Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
                 const { feeAmount, banApplied } = (0, utils_1.calculateLateFee)(lateMinutes);
                 // 4. Get key tag ID if available
                 let keyTagId = null;
-                if (block.room_id) {
-                    const keyResult = await client.query(`SELECT id FROM key_tags WHERE room_id = $1 AND is_active = true LIMIT 1`, [block.room_id]);
-                    if (keyResult.rows.length > 0) {
-                        keyTagId = keyResult.rows[0].id;
-                    }
-                }
-                else if (block.locker_id) {
-                    const keyResult = await client.query(`SELECT id FROM key_tags WHERE locker_id = $1 AND is_active = true LIMIT 1`, [block.locker_id]);
+                if (block.resource_id) {
+                    const keyResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM key_tags WHERE resource_id = ${block.resource_id} AND is_active = true LIMIT 1`);
                     if (keyResult.rows.length > 0) {
                         keyTagId = keyResult.rows[0].id;
                     }
                 }
                 // 5. Create the checkout request
-                const requestResult = await client.query(`INSERT INTO checkout_requests (
+                const requestResult = await tx.execute((0, drizzle_orm_1.sql) `INSERT INTO checkout_requests (
             occupancy_id, customer_id, key_tag_id, kiosk_device_id,
             customer_checklist_json, late_minutes, late_fee_amount, ban_applied
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES (${body.occupancyId}, ${block.customer_id}, ${keyTagId}, ${body.kioskDeviceId},
+                  ${JSON.stringify(body.checklist)}, ${lateMinutes}, ${feeAmount}, ${banApplied})
           RETURNING id, occupancy_id, customer_id, key_tag_id, kiosk_device_id,
                     created_at, claimed_by_staff_id, claimed_at, claim_expires_at,
                     customer_checklist_json, status, late_minutes, late_fee_amount,
-                    ban_applied, items_confirmed, fee_paid, completed_at`, [
-                    body.occupancyId,
-                    block.customer_id,
-                    keyTagId,
-                    body.kioskDeviceId,
-                    JSON.stringify(body.checklist),
-                    lateMinutes,
-                    feeAmount,
-                    // "banApplied" here means "ban recommended" (manager approval required).
-                    banApplied,
-                ]);
+                    ban_applied, items_confirmed, fee_paid, completed_at`);
                 return requestResult.rows[0];
-            });
-            // 6. Get customer and room/locker info for realtime event
-            const blockResult = await (0, db_1.query)(`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote,
+            }, { isolationLevel: 'serializable' });
+            // 6. Get customer and resource info for realtime event
+            const blockResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
+                cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote,
                 v.customer_id
          FROM checkin_blocks cb
          JOIN visits v ON cb.visit_id = v.id
-         WHERE cb.id = $1`, [body.occupancyId]);
+         WHERE cb.id = ${body.occupancyId}`);
             const block = blockResult.rows[0];
-            const customerResult = await (0, db_1.query)('SELECT id, name, membership_number FROM customers WHERE id = $1', [block.customer_id]);
+            const customerResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, name, membership_number FROM customers WHERE id = ${block.customer_id}`);
             const customer = customerResult.rows[0];
-            let roomNumber;
-            let lockerNumber;
-            if (block.room_id) {
-                const roomResult = await (0, db_1.query)('SELECT number FROM rooms WHERE id = $1', [
-                    block.room_id,
-                ]);
-                if (roomResult.rows.length > 0) {
-                    roomNumber = roomResult.rows[0].number;
-                }
-            }
-            if (block.locker_id) {
-                const lockerResult = await (0, db_1.query)('SELECT number FROM lockers WHERE id = $1', [
-                    block.locker_id,
-                ]);
-                if (lockerResult.rows.length > 0) {
-                    lockerNumber = lockerResult.rows[0].number;
+            let resourceNumber;
+            if (block.resource_id) {
+                const resourceResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT number, kind FROM inventory_resources WHERE id = ${block.resource_id}`);
+                if (resourceResult.rows.length > 0) {
+                    resourceNumber = resourceResult.rows[0].number;
                 }
             }
             // 7. Broadcast CHECKOUT_REQUESTED event
@@ -226,8 +183,8 @@ function registerCheckoutKioskRoutes(fastify) {
                     customerName: customer.name,
                     membershipNumber: customer.membership_number || undefined,
                     rentalType: block.rental_type,
-                    roomNumber,
-                    lockerNumber,
+                    roomNumber: resourceNumber,
+                    lockerNumber: undefined,
                     scheduledCheckoutAt: block.ends_at,
                     currentTime: new Date(),
                     lateMinutes: result.late_minutes,
@@ -244,21 +201,20 @@ function registerCheckoutKioskRoutes(fastify) {
                 });
             }
             // Log club event for checkout requested
-            await (0, db_1.transaction)(async (client) => {
-                const resourceLabel = roomNumber ? ` (Room ${roomNumber})` : lockerNumber ? ` (Locker ${lockerNumber})` : '';
-                await (0, clubEventLog_1.insertClubEvent)(client, {
+            await db_1.db.transaction(async (tx) => {
+                const resourceLabel = resourceNumber ? ` (${block.rental_type === 'LOCKER' ? 'Locker' : 'Room'} ${resourceNumber})` : '';
+                await (0, clubEventLog_1.insertClubEventDrizzle)(tx, {
                     eventType: 'CHECKOUT_REQUESTED',
                     eventDomain: 'CHECKOUT',
                     sourceApp: 'CUSTOMER_KIOSK',
                     customerId: customer.id,
                     customerName: customer.name,
                     visitId: block.visit_id,
-                    summary: `Checkout requested \u2014 ${customer.name}${resourceLabel}`,
+                    summary: `Checkout requested — ${customer.name}${resourceLabel}`,
                     metadata: {
                         checkoutRequestId: result.id,
                         occupancyId: body.occupancyId,
-                        roomNumber: roomNumber ?? null,
-                        lockerNumber: lockerNumber ?? null,
+                        resourceNumber: resourceNumber ?? null,
                         lateMinutes: result.late_minutes,
                         lateFeeAmount: result.late_fee_amount,
                         banApplied: result.ban_applied,

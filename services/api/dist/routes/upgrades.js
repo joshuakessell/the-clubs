@@ -14,7 +14,7 @@ async function upgradeRoutes(fastify) {
         if (!request.body.acknowledgedDisclaimer)
             return reply.status(400).send({ error: 'Upgrade disclaimer must be acknowledged' });
         try {
-            const result = await (0, upgradeService_1.fulfillUpgrade)(request.body.waitlistId, request.body.roomId, { staffId: request.staff.staffId, name: request.staff.name });
+            const result = await (0, upgradeService_1.fulfillUpgrade)(request.body.waitlistId, request.body.resourceId, { staffId: request.staff.staffId, name: request.staff.name });
             await (0, upgradeService_1.logUpgradeStarted)(result, { staffId: request.staff.staffId, name: request.staff.name }).catch((e) => request.log.warn(e, 'Failed to log upgrade started activity'));
             return reply.send(result);
         }
@@ -31,7 +31,7 @@ async function upgradeRoutes(fastify) {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
-            const result = await (0, upgradeService_1.completeUpgrade)(request.body.waitlistId, request.body.paymentIntentId, { staffId: request.staff.staffId, name: request.staff.name });
+            const result = await (0, upgradeService_1.completeUpgrade)(request.body.waitlistId, request.body.orderId, { staffId: request.staff.staffId, name: request.staff.name });
             if (fastify.broadcaster) {
                 await (0, broadcast_1.broadcastInventoryUpdate)(fastify.broadcaster);
                 fastify.broadcaster.broadcast({ type: 'WAITLIST_UPDATED', payload: { waitlistId: result.waitlistId, status: 'COMPLETED' }, timestamp: new Date().toISOString() });

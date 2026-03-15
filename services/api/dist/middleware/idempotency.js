@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.idempotencyKey = idempotencyKey;
 const crypto_1 = __importDefault(require("crypto"));
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 /**
  * Idempotency-Key middleware for POST endpoints.
  *
@@ -29,12 +30,12 @@ async function idempotencyKey(request, reply) {
     const requestHash = crypto_1.default.createHash('sha256').update(bodyStr).digest('hex');
     try {
         // Check for existing entry
-        const existing = await (0, db_1.query)(`SELECT request_hash, response_status, response_body
+        const existing = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT request_hash, response_status, response_body
        FROM idempotency_keys
-       WHERE principal_id = $1
-         AND route_path = $2
-         AND idempotency_key = $3
-         AND expires_at > NOW()`, [principalId, routePath, key]);
+       WHERE principal_id = ${principalId}
+         AND route_path = ${routePath}
+         AND idempotency_key = ${key}
+         AND expires_at > NOW()`);
         if (existing.rows.length > 0) {
             const row = existing.rows[0];
             if (row.request_hash !== requestHash) {
@@ -61,11 +62,12 @@ async function idempotencyKey(request, reply) {
                 // Only store successful responses (2xx)
                 if (statusCode >= 200 && statusCode < 300) {
                     const parsedPayload = typeof payload === 'string' ? JSON.parse(payload) : payload;
-                    await (0, db_1.query)(`INSERT INTO idempotency_keys
+                    const responseBody = JSON.stringify(parsedPayload);
+                    await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO idempotency_keys
                (principal_id, route_path, idempotency_key, request_hash, response_status, response_body)
-             VALUES ($1, $2, $3, $4, $5, $6)
+             VALUES (${principalId}, ${routePath}, ${key}, ${requestHash}, ${statusCode}, ${responseBody})
              ON CONFLICT (principal_id, route_path, idempotency_key)
-             DO NOTHING`, [principalId, routePath, key, requestHash, statusCode, JSON.stringify(parsedPayload)]);
+             DO NOTHING`);
                 }
             }
             catch {

@@ -4,86 +4,77 @@ exports.webauthnRoutes = webauthnRoutes;
 const zod_1 = require("zod");
 const server_1 = require("@simplewebauthn/server");
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const middleware_1 = require("../auth/middleware");
 const utils_1 = require("../auth/utils");
 const auditLog_1 = require("../audit/auditLog");
 const webauthn_1 = require("../auth/webauthn");
 /**
- * Schema for registration options request.
+ * Drizzle-backed query function that satisfies AuditLogQueryFn.
+ * Converts positional-param SQL ($1, $2, …) into Drizzle sql`` tagged template.
  */
+async function drizzleQueryFn(queryText, params) {
+    const parts = queryText.split(/\$\d+/);
+    const values = params ?? [];
+    let built = drizzle_orm_1.sql.empty();
+    for (let i = 0; i < parts.length; i++) {
+        built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+        if (i < values.length) {
+            built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+        }
+    }
+    return db_1.db.execute(built);
+}
 const RegistrationOptionsSchema = zod_1.z.object({
     staffId: zod_1.z.string().uuid(),
     deviceId: zod_1.z.string().min(1),
 });
-/**
- * Schema for registration verification request.
- */
 const RegistrationVerifySchema = zod_1.z.object({
     staffId: zod_1.z.string().uuid(),
     deviceId: zod_1.z.string().min(1),
-    credentialResponse: zod_1.z.any(), // RegistrationResponseJSON from client
+    credentialResponse: zod_1.z.any(),
 });
-/**
- * Schema for authentication options request.
- */
 const AuthenticationOptionsSchema = zod_1.z.object({
-    staffLookup: zod_1.z.string().min(1), // staff ID or name
+    staffLookup: zod_1.z.string().min(1),
     deviceId: zod_1.z.string().min(1),
 });
-/**
- * Schema for authentication verification request.
- */
 const AuthenticationVerifySchema = zod_1.z.object({
     deviceId: zod_1.z.string().min(1),
-    credentialResponse: zod_1.z.any(), // AuthenticationResponseJSON from client
+    credentialResponse: zod_1.z.any(),
 });
-/**
- * WebAuthn routes for passkey registration and authentication.
- */
 async function webauthnRoutes(fastify) {
     const rpId = (0, webauthn_1.getRpId)();
     const rpName = process.env.WEBAUTHN_RP_NAME || 'Club Operations';
-    /**
-     * POST /v1/auth/webauthn/registration/options
-     *
-     * Generate registration options for enrolling a new passkey.
-     */
-    fastify.post('/v1/auth/webauthn/registration/options', { schema: { body: RegistrationOptionsSchema } }, async (request, reply) => {
+    // POST /v1/auth/webauthn/registration/options
+    fastify.post('/v1/auth/webauthn/registration/options', {}, async (request, reply) => {
         const body = request.body;
         try {
-            // Verify staff exists and is active
-            const staffResult = await (0, db_1.query)(`SELECT id, name FROM staff WHERE id = $1 AND active = true`, [body.staffId]);
+            const staffResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, name FROM staff WHERE id = ${body.staffId} AND active = true`);
             if (staffResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'Staff not found or inactive',
-                });
+                return reply.status(404).send({ error: 'Staff not found or inactive' });
             }
             const staff = staffResult.rows[0];
-            // Get existing credentials for this staff member
             const existingCredentials = await (0, webauthn_1.getStaffCredentials)(body.staffId);
-            // Generate challenge
             const challenge = (0, webauthn_1.generateChallenge)();
-            // Store challenge
             await (0, webauthn_1.storeChallenge)(challenge, body.staffId, body.deviceId, 'registration');
-            // Generate registration options
             const options = await (0, server_1.generateRegistrationOptions)({
                 rpName,
                 rpID: rpId,
                 userID: body.staffId,
                 userName: staff.name,
                 userDisplayName: staff.name,
-                timeout: 120000, // 2 minutes
-                attestationType: 'none', // We don't need attestation
+                timeout: 120000,
+                attestationType: 'none',
                 excludeCredentials: existingCredentials.map((cred) => ({
                     id: cred.credentialID,
                     type: 'public-key',
                     transports: cred.transports,
                 })),
                 authenticatorSelection: {
-                    userVerification: 'required', // Require fingerprint/PIN
-                    authenticatorAttachment: 'platform', // Prefer platform authenticators (fingerprint)
+                    userVerification: 'required',
+                    authenticatorAttachment: 'platform',
                 },
-                supportedAlgorithmIDs: [-7, -257], // ES256 and RS256
+                supportedAlgorithmIDs: [-7, -257],
             });
             return reply.send(options);
         }
@@ -95,33 +86,21 @@ async function webauthnRoutes(fastify) {
             });
         }
     });
-    /**
-     * POST /v1/auth/webauthn/registration/verify
-     *
-     * Verify and store a new passkey credential.
-     */
-    fastify.post('/v1/auth/webauthn/registration/verify', { schema: { body: RegistrationVerifySchema } }, async (request, reply) => {
+    // POST /v1/auth/webauthn/registration/verify
+    fastify.post('/v1/auth/webauthn/registration/verify', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
         const body = request.body;
         try {
             const origin = (0, webauthn_1.getRpOrigin)(request.headers.origin);
-            // Extract challenge from clientDataJSON
             const clientData = JSON.parse(Buffer.from(body.credentialResponse.response.clientDataJSON, 'base64url').toString());
             const expectedChallenge = clientData.challenge;
-            // Consume challenge
             const challengeData = await (0, webauthn_1.consumeChallenge)(expectedChallenge);
             if (!challengeData || challengeData.staffId !== body.staffId) {
-                return reply.status(400).send({
-                    error: 'Invalid or expired challenge',
-                });
+                return reply.status(400).send({ error: 'Invalid or expired challenge' });
             }
-            // Verify staff exists
-            const staffResult = await (0, db_1.query)(`SELECT id, name FROM staff WHERE id = $1 AND active = true`, [body.staffId]);
+            const staffResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, name FROM staff WHERE id = ${body.staffId} AND active = true`);
             if (staffResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'Staff not found or inactive',
-                });
+                return reply.status(404).send({ error: 'Staff not found or inactive' });
             }
-            // Verify registration response
             const verification = await (0, server_1.verifyRegistrationResponse)({
                 response: body.credentialResponse,
                 expectedChallenge,
@@ -130,25 +109,18 @@ async function webauthnRoutes(fastify) {
                 requireUserVerification: true,
             });
             if (!verification.verified) {
-                return reply.status(400).send({
-                    error: 'Registration verification failed',
-                });
+                return reply.status(400).send({ error: 'Registration verification failed' });
             }
-            // Store credential
             const credentialId = Buffer.from(verification.registrationInfo.credentialID).toString('base64url');
-            await (0, webauthn_1.storeCredential)(body.staffId, body.deviceId, credentialId, Buffer.from(verification.registrationInfo.credentialPublicKey), verification.registrationInfo.counter, 
-            // Transports are optional and may not be present depending on client/browser.
-            body.credentialResponse?.response?.transports);
-            // audit_log.entity_id is UUID; use the staff_webauthn_credentials row id (not the credential_id text).
-            const credRow = await (0, db_1.query)(`SELECT id FROM staff_webauthn_credentials WHERE staff_id = $1 AND credential_id = $2 LIMIT 1`, [body.staffId, credentialId]);
+            await (0, webauthn_1.storeCredential)(body.staffId, body.deviceId, credentialId, Buffer.from(verification.registrationInfo.credentialPublicKey), verification.registrationInfo.counter, body.credentialResponse?.response?.transports);
+            const credRow = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id FROM staff_webauthn_credentials WHERE staff_id = ${body.staffId} AND credential_id = ${credentialId} LIMIT 1`);
             const credentialRowId = credRow.rows[0]?.id;
             if (!credentialRowId) {
                 return reply
                     .status(500)
                     .send({ error: 'Failed to load created credential for audit logging' });
             }
-            // Log audit action
-            await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {
+            await (0, auditLog_1.insertAuditLogQuery)(drizzleQueryFn, {
                 staffId: body.staffId,
                 action: 'STAFF_WEBAUTHN_ENROLLED',
                 entityType: 'staff_webauthn_credential',
@@ -158,10 +130,7 @@ async function webauthnRoutes(fastify) {
                     transports: body.credentialResponse?.response?.transports,
                 },
             });
-            return reply.send({
-                verified: true,
-                credentialId,
-            });
+            return reply.send({ verified: true, credentialId });
         }
         catch (error) {
             request.log.error(error, 'Failed to verify registration');
@@ -171,46 +140,30 @@ async function webauthnRoutes(fastify) {
             });
         }
     });
-    /**
-     * POST /v1/auth/webauthn/authentication/options
-     *
-     * Generate authentication options for signing in with a passkey.
-     */
-    fastify.post('/v1/auth/webauthn/authentication/options', { schema: { body: AuthenticationOptionsSchema } }, async (request, reply) => {
+    // POST /v1/auth/webauthn/authentication/options
+    fastify.post('/v1/auth/webauthn/authentication/options', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
         const body = request.body;
         try {
-            // Find staff by ID or name (must be active)
-            const staffResult = await (0, db_1.query)(`SELECT id, name, active FROM staff 
-         WHERE (id::text = $1 OR name ILIKE $1)
+            const staffResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, name, active FROM staff 
+         WHERE (id::text = ${body.staffLookup} OR name ILIKE ${body.staffLookup})
          AND active = true
-         LIMIT 1`, [body.staffLookup]);
+         LIMIT 1`);
             if (staffResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'Staff not found or inactive',
-                });
-            }
-            // Enforce active status
-            if (!staffResult.rows[0].active) {
-                return reply.status(403).send({
-                    error: 'Staff account is inactive',
-                });
+                return reply.status(404).send({ error: 'Staff not found or inactive' });
             }
             const staff = staffResult.rows[0];
-            // Get credentials for this staff member
+            if (!staff.active) {
+                return reply.status(403).send({ error: 'Staff account is inactive' });
+            }
             const credentials = await (0, webauthn_1.getStaffCredentials)(staff.id);
             if (credentials.length === 0) {
-                return reply.status(400).send({
-                    error: 'No passkeys registered for this staff member',
-                });
+                return reply.status(400).send({ error: 'No passkeys registered for this staff member' });
             }
-            // Generate challenge
             const challenge = (0, webauthn_1.generateChallenge)();
-            // Store challenge
             await (0, webauthn_1.storeChallenge)(challenge, staff.id, body.deviceId, 'authentication');
-            // Generate authentication options
             const options = await (0, server_1.generateAuthenticationOptions)({
                 rpID: rpId,
-                timeout: 120000, // 2 minutes
+                timeout: 120000,
                 allowCredentials: credentials.map((cred) => ({
                     id: cred.credentialID,
                     type: 'public-key',
@@ -228,36 +181,23 @@ async function webauthnRoutes(fastify) {
             });
         }
     });
-    /**
-     * POST /v1/auth/webauthn/authentication/verify
-     *
-     * Verify authentication response and issue session token.
-     */
-    fastify.post('/v1/auth/webauthn/authentication/verify', { schema: { body: AuthenticationVerifySchema } }, async (request, reply) => {
+    // POST /v1/auth/webauthn/authentication/verify
+    fastify.post('/v1/auth/webauthn/authentication/verify', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
         const body = request.body;
         try {
             const origin = (0, webauthn_1.getRpOrigin)(request.headers.origin);
-            // Extract credential ID from response
             const credentialIdBase64 = body.credentialResponse.id;
             const credentialId = Buffer.from(credentialIdBase64, 'base64url').toString('base64url');
-            // Get credential and staff
             const credentialData = await (0, webauthn_1.getCredentialByCredentialId)(credentialId);
             if (!credentialData) {
-                return reply.status(400).send({
-                    error: 'Credential not found',
-                });
+                return reply.status(400).send({ error: 'Credential not found' });
             }
-            // Extract challenge from clientDataJSON
             const clientData = JSON.parse(Buffer.from(body.credentialResponse.response.clientDataJSON, 'base64url').toString());
             const expectedChallenge = clientData.challenge;
-            // Consume challenge
             const challengeData = await (0, webauthn_1.consumeChallenge)(expectedChallenge);
             if (!challengeData || challengeData.staffId !== credentialData.staffId) {
-                return reply.status(400).send({
-                    error: 'Invalid or expired challenge',
-                });
+                return reply.status(400).send({ error: 'Invalid or expired challenge' });
             }
-            // Verify authentication response
             const verification = await (0, server_1.verifyAuthenticationResponse)({
                 response: body.credentialResponse,
                 expectedChallenge,
@@ -267,75 +207,59 @@ async function webauthnRoutes(fastify) {
                 requireUserVerification: true,
             });
             if (!verification.verified) {
-                return reply.status(400).send({
-                    error: 'Authentication verification failed',
-                });
+                return reply.status(400).send({ error: 'Authentication verification failed' });
             }
-            // Update sign count
             await (0, webauthn_1.updateCredentialSignCount)(credentialId, verification.authenticationInfo.newCounter);
-            // Get staff info (must be active)
-            const staffResult = await (0, db_1.query)(`SELECT id, name, role, active FROM staff WHERE id = $1 AND active = true`, [credentialData.staffId]);
+            const staffResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, name, role, active FROM staff WHERE id = ${credentialData.staffId} AND active = true`);
             if (staffResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'Staff not found or inactive',
-                });
-            }
-            // Enforce active status
-            if (!staffResult.rows[0].active) {
-                return reply.status(403).send({
-                    error: 'Staff account is inactive',
-                });
+                return reply.status(404).send({ error: 'Staff not found or inactive' });
             }
             const staff = staffResult.rows[0];
-            // Create session and get the session ID
-            // Store only the SHA-256 hash of the token; the raw token is returned to the client once.
+            if (!staff.active) {
+                return reply.status(403).send({ error: 'Staff account is inactive' });
+            }
             const sessionToken = (0, utils_1.generateSessionToken)();
             const expiresAt = (0, utils_1.getSessionExpiry)();
             const tokenHash = (0, utils_1.hashSessionToken)(sessionToken);
-            const sessionResult = await (0, db_1.query)(`INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id`, [staff.id, body.deviceId, 'tablet', tokenHash, expiresAt]);
+            const sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO staff_sessions (staff_id, device_id, device_type, session_token, expires_at)
+         VALUES (${staff.id}, ${body.deviceId}, 'tablet', ${tokenHash}, ${expiresAt})
+         RETURNING id`);
             const sessionId = sessionResult.rows[0].id;
-            // Log audit action (use session UUID id, not the token string)
-            await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {
+            await (0, auditLog_1.insertAuditLogQuery)(drizzleQueryFn, {
                 staffId: staff.id,
                 action: 'STAFF_LOGIN_WEBAUTHN',
                 entityType: 'staff_session',
                 entityId: sessionId,
             });
-            // Create or update timeclock session for cleaning station sign-in (WebAuthn)
-            // Only if employee is not already signed into a register
-            const registerSession = await (0, db_1.query)(`SELECT COUNT(*) as count FROM register_sessions
-         WHERE employee_id = $1 AND signed_out_at IS NULL`, [staff.id]);
-            // If not signed into register, assume cleaning station sign-in
+            // Create or update timeclock session for cleaning station sign-in
+            const registerSession = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*) as count FROM register_sessions
+         WHERE employee_id = ${staff.id} AND signed_out_at IS NULL`);
             if (Number.parseInt(registerSession.rows[0]?.count || '0', 10) === 0) {
                 const now = new Date();
-                // Find nearest scheduled shift
-                const shiftResult = await (0, db_1.query)(`SELECT id, starts_at, ends_at
+                const shiftResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, starts_at, ends_at
            FROM employee_shifts
-           WHERE employee_id = $1
+           WHERE employee_id = ${staff.id}
            AND status != 'CANCELED'
            AND (
-             (starts_at <= $2 AND ends_at >= $2)
-             OR (starts_at > $2 AND starts_at <= $2 + INTERVAL '60 minutes')
+             (starts_at <= ${now} AND ends_at >= ${now})
+             OR (starts_at > ${now} AND starts_at <= ${drizzle_orm_1.sql.raw(`'${now.toISOString()}'::timestamp + INTERVAL '60 minutes'`)})
            )
-           ORDER BY ABS(EXTRACT(EPOCH FROM (starts_at - $2::timestamp)))
-           LIMIT 1`, [staff.id, now]);
-                const shiftId = shiftResult.rows.length > 0 ? shiftResult.rows[0].id : null;
-                // Check if employee already has an open timeclock session
-                const existingTimeclock = await (0, db_1.query)(`SELECT id FROM timeclock_sessions
-           WHERE employee_id = $1 AND clock_out_at IS NULL`, [staff.id]);
+           ORDER BY ABS(EXTRACT(EPOCH FROM (starts_at - ${now}::timestamp)))
+           LIMIT 1`);
+                const shiftRow = shiftResult.rows[0];
+                const shiftId = shiftRow ? shiftRow.id : null;
+                const existingTimeclock = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id FROM timeclock_sessions
+           WHERE employee_id = ${staff.id} AND clock_out_at IS NULL`);
                 if (existingTimeclock.rows.length === 0) {
-                    // Create new timeclock session for cleaning station
-                    await (0, db_1.query)(`INSERT INTO timeclock_sessions 
+                    await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO timeclock_sessions 
              (employee_id, shift_id, clock_in_at, source, notes)
-             VALUES ($1, $2, $3, 'OFFICE_DASHBOARD', NULL)`, [staff.id, shiftId, now]);
+             VALUES (${staff.id}, ${shiftId}, ${now}, 'OFFICE_DASHBOARD', NULL)`);
                 }
                 else if (shiftId) {
-                    // Update existing session to attach shift if not already attached
-                    await (0, db_1.query)(`UPDATE timeclock_sessions
-               SET shift_id = $1
-               WHERE id = $2 AND shift_id IS NULL`, [shiftId, existingTimeclock.rows[0].id]);
+                    const existingId = existingTimeclock.rows[0].id;
+                    await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE timeclock_sessions
+             SET shift_id = ${shiftId}
+             WHERE id = ${existingId} AND shift_id IS NULL`);
                 }
             }
             return reply.send({
@@ -354,20 +278,16 @@ async function webauthnRoutes(fastify) {
             });
         }
     });
-    /**
-     * GET /v1/auth/webauthn/credentials/:staffId
-     *
-     * Get all passkeys for a staff member (admin only).
-     */
+    // GET /v1/auth/webauthn/credentials/:staffId
     fastify.get('/v1/auth/webauthn/credentials/:staffId', {
         preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin],
     }, async (request, reply) => {
         try {
             const { staffId } = request.params;
-            const result = await (0, db_1.query)(`SELECT id, device_id, credential_id, sign_count, transports, created_at, last_used_at, revoked_at
+            const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, device_id, credential_id, sign_count, transports, created_at, last_used_at, revoked_at
          FROM staff_webauthn_credentials
-         WHERE staff_id = $1
-         ORDER BY created_at DESC`, [staffId]);
+         WHERE staff_id = ${staffId}
+         ORDER BY created_at DESC`);
             const credentials = result.rows.map((row) => ({
                 id: row.id,
                 deviceId: row.device_id,
@@ -389,12 +309,7 @@ async function webauthnRoutes(fastify) {
             });
         }
     });
-    /**
-     * POST /v1/auth/webauthn/credentials/:credentialId/revoke
-     *
-     * Revoke a passkey credential (admin only).
-     * Requires re-authentication for security.
-     */
+    // POST /v1/auth/webauthn/credentials/:credentialId/revoke
     fastify.post('/v1/auth/webauthn/credentials/:credentialId/revoke', {
         preHandler: [middleware_1.requireReauthForAdmin],
     }, async (request, reply) => {
@@ -404,20 +319,15 @@ async function webauthnRoutes(fastify) {
         }
         try {
             const { credentialId } = request.params;
-            // Get credential info before revoking
-            const credentialResult = await (0, db_1.query)(`SELECT id, staff_id FROM staff_webauthn_credentials WHERE credential_id = $1`, [credentialId]);
+            const credentialResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, staff_id FROM staff_webauthn_credentials WHERE credential_id = ${credentialId}`);
             if (credentialResult.rows.length === 0) {
-                return reply.status(404).send({
-                    error: 'Credential not found',
-                });
+                return reply.status(404).send({ error: 'Credential not found' });
             }
-            // Revoke credential
-            await (0, db_1.query)(`UPDATE staff_webauthn_credentials
+            await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE staff_webauthn_credentials
          SET revoked_at = NOW()
-         WHERE credential_id = $1
-         AND revoked_at IS NULL`, [credentialId]);
-            // Log audit action
-            await (0, auditLog_1.insertAuditLogQuery)(db_1.query, {
+         WHERE credential_id = ${credentialId}
+         AND revoked_at IS NULL`);
+            await (0, auditLog_1.insertAuditLogQuery)(drizzleQueryFn, {
                 staffId: staff.staffId,
                 action: 'STAFF_WEBAUTHN_REVOKED',
                 entityType: 'staff_webauthn_credential',

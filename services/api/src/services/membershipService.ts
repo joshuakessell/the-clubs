@@ -85,7 +85,7 @@ async function recomputeQuoteIfNeeded(
   const quote = isRenewal ? calculateRenewalQuote({ ...pricingInput, renewalHours }) : calculatePriceQuote(pricingInput);
   const quoteJson = JSON.stringify(quote);
 
-  await tx.execute(sql`UPDATE orders SET amount = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${pi.id}`);
+  await tx.execute(sql`UPDATE orders SET subtotal = ${quote.total}, total = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${pi.id}`);
   await tx.execute(sql`UPDATE lane_sessions SET price_quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${session.id}`);
 }
 

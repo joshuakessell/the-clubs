@@ -5,6 +5,8 @@ const middleware_1 = require("../../auth/middleware");
 const kioskToken_1 = require("../../auth/kioskToken");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
+const types_1 = require("../../checkin/types");
 const HttpError_1 = require("../../errors/HttpError");
 const selectionService_1 = require("../../services/selectionService");
 function isFlowCommandsEnabled() {
@@ -41,12 +43,10 @@ function registerCheckinSelectionRoutes(fastify) {
         // Flow commands path: delegate to flow-command endpoint
         if (isFlowCommandsEnabled()) {
             try {
-                const session = await (0, db_1.transaction)(async (client) => {
-                    const r = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
-                    if (r.rows.length === 0)
-                        throw new HttpError_1.HttpError(404, 'No active session found');
-                    return r.rows[0];
-                });
+                const sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`);
+                if (sessionResult.rows.length === 0)
+                    throw new HttpError_1.HttpError(404, 'No active session found');
+                const session = sessionResult.rows[0];
                 const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `prop-${Date.now()}-${Math.random().toString(16).slice(2)}`;
                 const response = await fastify.inject({
                     method: 'POST', url: `/v1/checkin/lane/${laneId}/flow-command`,
@@ -91,14 +91,16 @@ function registerCheckinSelectionRoutes(fastify) {
         // Flow commands path
         if (isFlowCommandsEnabled()) {
             try {
-                const session = await (0, db_1.transaction)(async (client) => {
-                    const sessionResult = request.body.sessionId
-                        ? await client.query(`SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2 LIMIT 1`, [request.body.sessionId, laneId])
-                        : await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE') ORDER BY created_at DESC LIMIT 1`, [laneId]);
-                    if (sessionResult.rows.length === 0)
-                        throw new HttpError_1.HttpError(404, 'No active session found');
-                    return sessionResult.rows[0];
-                });
+                let sessionResult;
+                if (request.body.sessionId) {
+                    sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${request.body.sessionId} AND lane_id = ${laneId} LIMIT 1`);
+                }
+                else {
+                    sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE') ORDER BY created_at DESC LIMIT 1`);
+                }
+                if (sessionResult.rows.length === 0)
+                    throw new HttpError_1.HttpError(404, 'No active session found');
+                const session = sessionResult.rows[0];
                 const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `wl-${Date.now()}-${Math.random().toString(16).slice(2)}`;
                 const response = await fastify.inject({
                     method: 'POST', url: `/v1/checkin/lane/${laneId}/flow-command`,
@@ -147,12 +149,10 @@ function registerCheckinSelectionRoutes(fastify) {
         // Flow commands path
         if (isFlowCommandsEnabled()) {
             try {
-                const session = await (0, db_1.transaction)(async (client) => {
-                    const r = await client.query(`SELECT * FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`, [laneId]);
-                    if (r.rows.length === 0)
-                        throw new HttpError_1.HttpError(404, 'No active session found');
-                    return r.rows[0];
-                });
+                const sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`);
+                if (sessionResult.rows.length === 0)
+                    throw new HttpError_1.HttpError(404, 'No active session found');
+                const session = sessionResult.rows[0];
                 const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `conf-${Date.now()}-${Math.random().toString(16).slice(2)}`;
                 const response = await fastify.inject({
                     method: 'POST', url: `/v1/checkin/lane/${laneId}/flow-command`,

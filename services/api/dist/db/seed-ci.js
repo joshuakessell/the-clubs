@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
  * Run via: `pnpm exec tsx src/db/seed-ci.ts`
  */
 const index_js_1 = require("./index.js");
+const drizzle_orm_1 = require("drizzle-orm");
 const shared_1 = require("@the-clubs/shared");
 const utils_js_1 = require("../auth/utils.js");
 async function seedCI() {
@@ -30,35 +31,35 @@ async function seedCI() {
             { number: '204', type: 'STANDARD', floor: 2 },
         ];
         for (const room of rooms) {
-            await (0, index_js_1.query)(`INSERT INTO rooms (number, type, status, floor, last_status_change)
-         VALUES ($1, $2, $3, $4, NOW())
-         ON CONFLICT (number) DO NOTHING`, [room.number, room.type, shared_1.RoomStatus.CLEAN, room.floor]);
+            await index_js_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO inventory_resources (number, kind, tier, status, floor, last_status_change)
+         VALUES (${room.number}, 'room', ${room.type}, ${shared_1.RoomStatus.CLEAN}, ${room.floor}, NOW())
+         ON CONFLICT (number) DO NOTHING`);
         }
         console.log(`[CI Seed] ✓ ${rooms.length} rooms`);
         // -- Lockers (5 lockers) --
         const lockerNumbers = ['001', '002', '003', '004', '005'];
         for (const num of lockerNumbers) {
-            await (0, index_js_1.query)(`INSERT INTO lockers (number, status)
-         VALUES ($1, $2)
-         ON CONFLICT (number) DO NOTHING`, [num, shared_1.RoomStatus.CLEAN]);
+            await index_js_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO inventory_resources (number, kind, status)
+         VALUES (${num}, 'locker', ${shared_1.RoomStatus.CLEAN})
+         ON CONFLICT (number) DO NOTHING`);
         }
         console.log(`[CI Seed] ✓ ${lockerNumbers.length} lockers`);
         // -- Staff (1 admin) --
         const qrHash = (0, utils_js_1.hashQrToken)('STAFF-CI');
         const pinHash = await (0, utils_js_1.hashPin)('111111');
-        await (0, index_js_1.query)(`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
-       VALUES ($1, $2, $3, $4, true)
-       ON CONFLICT DO NOTHING`, ['CI Admin', 'ADMIN', qrHash, pinHash]);
+        await index_js_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
+       VALUES (${'CI Admin'}, ${'ADMIN'}, ${qrHash}, ${pinHash}, true)
+       ON CONFLICT DO NOTHING`);
         console.log('[CI Seed] ✓ 1 staff user');
         // -- Device --
-        await (0, index_js_1.query)(`INSERT INTO devices (device_id, display_name, enabled)
-       VALUES ($1, $2, true)
-       ON CONFLICT (device_id) DO NOTHING`, ['register-ci', 'CI Register']);
+        await index_js_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO devices (device_id, display_name, enabled)
+       VALUES (${'register-ci'}, ${'CI Register'}, true)
+       ON CONFLICT (device_id) DO NOTHING`);
         console.log('[CI Seed] ✓ 1 device');
         // -- Agreement --
-        await (0, index_js_1.query)(`INSERT INTO agreements (version, title, body_text, active)
-       VALUES ($1, $2, $3, true)
-       ON CONFLICT DO NOTHING`, ['ci-v1', 'CI Test Agreement', 'Test agreement body for CI']);
+        await index_js_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO agreements (version, title, body_text, active)
+       VALUES (${'ci-v1'}, ${'CI Test Agreement'}, ${'Test agreement body for CI'}, true)
+       ON CONFLICT DO NOTHING`);
         console.log('[CI Seed] ✓ 1 agreement');
         console.log('[CI Seed] Done.');
     }

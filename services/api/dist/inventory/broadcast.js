@@ -2,17 +2,20 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.broadcastInventoryUpdate = broadcastInventoryUpdate;
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const available_1 = require("./available");
 /**
  * Helper to broadcast current inventory state.
+ * Queries the unified `inventory_resources` table instead of old rooms/lockers.
  */
 async function broadcastInventoryUpdate(broadcaster) {
-    const result = await (0, db_1.query)(`SELECT status, type as room_type, COUNT(*) as count
-     FROM rooms
-     WHERE type != 'LOCKER'
-     GROUP BY status, type`);
-    const lockerResult = await (0, db_1.query)(`SELECT status, COUNT(*) as count
-     FROM lockers
+    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT status, tier as room_type, COUNT(*) as count
+     FROM inventory_resources
+     WHERE kind = 'room'
+     GROUP BY status, tier`);
+    const lockerResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT status, COUNT(*) as count
+     FROM inventory_resources
+     WHERE kind = 'locker'
      GROUP BY status`);
     // Build detailed inventory
     const byType = {};
@@ -47,7 +50,7 @@ async function broadcastInventoryUpdate(broadcaster) {
     }
     let available;
     try {
-        available = await (0, available_1.computeInventoryAvailable)(db_1.query);
+        available = await (0, available_1.computeInventoryAvailable)();
     }
     catch {
         available = undefined;

@@ -3,8 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinLanguageRoutes = registerCheckinLanguageRoutes;
 const middleware_1 = require("../../auth/middleware");
 const kioskToken_1 = require("../../auth/kioskToken");
+const types_1 = require("../../checkin/types");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const payload_1 = require("../../checkin/payload");
 const HttpError_1 = require("../../errors/HttpError");
 function isFlowCommandsEnabled() {
@@ -15,27 +17,30 @@ function isFlowCommandsEnabled() {
  */
 async function setLanguageForLaneSession(fastify, params) {
     const { laneId, language, sessionId, customerName } = params;
-    const result = await (0, db_1.transaction)(async (client) => {
+    const result = await db_1.db.transaction(async (tx) => {
         // Session resolution: explicit ID → name fallback → lane fallback.
-        let sessionResult;
+        let sessionRows;
         if (sessionId) {
-            sessionResult = await client.query(`SELECT * FROM lane_sessions WHERE id = $1 LIMIT 1`, [sessionId]);
-            if (sessionResult.rows.length === 0 && customerName) {
-                sessionResult = await client.query(`SELECT * FROM lane_sessions
-           WHERE lane_id = $1 AND customer_display_name = $2
+            const r = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`);
+            sessionRows = r.rows;
+            if (sessionRows.length === 0 && customerName) {
+                const r2 = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions
+           WHERE lane_id = ${laneId} AND customer_display_name = ${customerName}
              AND status != 'COMPLETED' AND status != 'CANCELLED'
-           ORDER BY created_at DESC LIMIT 1`, [laneId, customerName]);
+           ORDER BY created_at DESC LIMIT 1`);
+                sessionRows = r2.rows;
             }
         }
         else {
-            sessionResult = await client.query(`SELECT * FROM lane_sessions
-         WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-         ORDER BY created_at DESC LIMIT 1`, [laneId]);
+            const r = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions
+         WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+         ORDER BY created_at DESC LIMIT 1`);
+            sessionRows = r.rows;
         }
-        if (sessionResult.rows.length === 0) {
+        if (sessionRows.length === 0) {
             throw new HttpError_1.HttpError(404, 'No active session found');
         }
-        const session = sessionResult.rows[0];
+        const session = sessionRows[0];
         const resolvedLaneId = session.lane_id || laneId;
         if (session.status === 'COMPLETED' || session.status === 'CANCELLED') {
             throw new HttpError_1.HttpError(404, 'No active session found');
@@ -43,24 +48,26 @@ async function setLanguageForLaneSession(fastify, params) {
         if (!session.customer_id) {
             throw new HttpError_1.HttpError(400, 'Session has no customer');
         }
-        await client.query(`UPDATE customers SET primary_language = $1, updated_at = NOW() WHERE id = $2`, [language, session.customer_id]);
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE customers SET primary_language = ${language}, updated_at = NOW() WHERE id = ${session.customer_id}`);
         if (isFlowCommandsEnabled()) {
             const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
                 ? crypto.randomUUID()
                 : `lang-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-            await client.query(`INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (session_id, command_id) DO NOTHING`, [session.id, commandId, 'CUSTOMER', 'SET_LANGUAGE', { language }]);
-            await client.query(`UPDATE lane_sessions
+            const payloadJson = JSON.stringify({ language });
+            await tx.execute((0, drizzle_orm_1.sql) `INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
+         VALUES (${session.id}, ${commandId}, 'CUSTOMER', 'SET_LANGUAGE', ${payloadJson})
+         ON CONFLICT (session_id, command_id) DO NOTHING`);
+            await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions
          SET flow_version = COALESCE(flow_version, 0) + 1,
-             flow_last_command_id = $1,
+             flow_last_command_id = ${commandId},
              flow_last_actor = 'CUSTOMER',
              updated_at = NOW()
-         WHERE id = $2`, [commandId, session.id]);
+         WHERE id = ${session.id}`);
         }
         return { sessionId: session.id, success: true, language, laneId: resolvedLaneId };
     });
-    const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, result.sessionId));
+    // buildFullSessionUpdatedPayload is already Drizzle-native
+    const { payload } = await (0, payload_1.buildFullSessionUpdatedPayload)(result.sessionId);
     fastify.broadcaster.broadcastSessionUpdated(payload, result.laneId || laneId);
     return result;
 }

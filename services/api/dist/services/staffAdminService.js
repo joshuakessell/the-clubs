@@ -41,77 +41,136 @@ exports.resetStaffPin = resetStaffPin;
  * Staff admin service — CRUD for staff accounts and PIN management.
  *
  * Extracted from routes/admin/staff.ts. No HTTP/Fastify concepts.
+ * Migrated to Drizzle ORM typed queries.
  */
 const db_1 = require("../db");
+const schema_1 = require("../db/schema");
+const drizzle_orm_1 = require("drizzle-orm");
 const auditLog_1 = require("../audit/auditLog");
 const HttpError_1 = require("../errors/HttpError");
 // ── Service Methods ──
 async function searchStaff(input) {
-    let whereClause = '1=1';
-    const params = [];
-    let paramIndex = 1;
+    const conditions = [];
     if (input.search) {
-        whereClause += ` AND (name ILIKE $${paramIndex} OR id::text = $${paramIndex})`;
-        params.push(`%${input.search}%`);
-        paramIndex++;
+        conditions.push((0, drizzle_orm_1.sql) `(${schema_1.staff.name} ILIKE ${'%' + input.search + '%'} OR ${schema_1.staff.id}::text = ${input.search})`);
     }
     if (input.role) {
-        whereClause += ` AND role = $${paramIndex}`;
-        params.push(input.role);
-        paramIndex++;
+        conditions.push((0, drizzle_orm_1.eq)(schema_1.staff.role, input.role));
     }
     if (input.active !== undefined) {
-        whereClause += ` AND active = $${paramIndex}`;
-        params.push(input.active === 'true');
-        paramIndex++;
+        conditions.push((0, drizzle_orm_1.eq)(schema_1.staff.active, input.active === 'true'));
     }
-    const result = await (0, db_1.query)(`SELECT s.id, s.name, s.role, s.active, s.created_at, MAX(ss.created_at) as last_login FROM staff s LEFT JOIN staff_sessions ss ON s.id = ss.staff_id WHERE ${whereClause} GROUP BY s.id, s.name, s.role, s.active, s.created_at ORDER BY s.name`);
-    return result.rows.map((row) => ({ id: row.id, name: row.name, role: row.role, active: row.active, createdAt: row.created_at.toISOString(), lastLogin: row.last_login?.toISOString() || null }));
+    const rows = await db_1.db
+        .select({
+        id: schema_1.staff.id,
+        name: schema_1.staff.name,
+        role: schema_1.staff.role,
+        active: schema_1.staff.active,
+        forcePinChange: schema_1.staff.forcePinChange,
+        createdAt: schema_1.staff.createdAt,
+        lastLogin: (0, drizzle_orm_1.max)(schema_1.staffSessions.createdAt),
+    })
+        .from(schema_1.staff)
+        .leftJoin(schema_1.staffSessions, (0, drizzle_orm_1.eq)(schema_1.staff.id, schema_1.staffSessions.staffId))
+        .where(conditions.length > 0 ? (0, drizzle_orm_1.and)(...conditions) : undefined)
+        .groupBy(schema_1.staff.id, schema_1.staff.name, schema_1.staff.role, schema_1.staff.active, schema_1.staff.forcePinChange, schema_1.staff.createdAt)
+        .orderBy((0, drizzle_orm_1.asc)(schema_1.staff.name));
+    return rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        role: row.role,
+        active: row.active,
+        forcePinChange: row.forcePinChange,
+        createdAt: row.createdAt,
+        lastLogin: row.lastLogin || null,
+    }));
 }
 async function createStaffMember(input, actorStaffId) {
     const { hashPin } = await Promise.resolve().then(() => __importStar(require('../auth/utils')));
     const pinHash = await hashPin(input.pin);
-    const result = await (0, db_1.query)(`INSERT INTO staff (name, role, pin_hash, active) VALUES ($1, $2, $3, $4) RETURNING id`, [input.name, input.role, pinHash, input.active]);
-    const staffId = result.rows[0].id;
-    await (0, auditLog_1.insertAuditLogQuery)(db_1.query, { staffId: actorStaffId, action: 'STAFF_CREATED', entityType: 'staff', entityId: staffId, newValue: { name: input.name, role: input.role, active: input.active } });
-    return { id: staffId, name: input.name, role: input.role, active: input.active };
+    return db_1.db.transaction(async (tx) => {
+        const [inserted] = await tx
+            .insert(schema_1.staff)
+            .values({
+            name: input.name,
+            role: input.role,
+            pinHash,
+            active: input.active,
+        })
+            .returning({ id: schema_1.staff.id });
+        const staffId = inserted.id;
+        await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
+            staffId: actorStaffId,
+            action: 'STAFF_CREATED',
+            entityType: 'staff',
+            entityId: staffId,
+            newValue: { name: input.name, role: input.role, active: input.active },
+        });
+        return { id: staffId, name: input.name, role: input.role, active: input.active };
+    });
 }
 async function updateStaffMember(staffId, input, actorStaffId) {
-    const updates = [];
-    const params = [];
-    let paramIndex = 1;
-    if (input.name !== undefined) {
-        updates.push(`name = $${paramIndex}`);
-        params.push(input.name);
-        paramIndex++;
-    }
-    if (input.role !== undefined) {
-        updates.push(`role = $${paramIndex}`);
-        params.push(input.role);
-        paramIndex++;
-    }
-    if (input.active !== undefined) {
-        updates.push(`active = $${paramIndex}`);
-        params.push(input.active);
-        paramIndex++;
-    }
-    if (updates.length === 0)
+    const updates = { updatedAt: (0, drizzle_orm_1.sql) `NOW()` };
+    if (input.name !== undefined)
+        updates.name = input.name;
+    if (input.role !== undefined)
+        updates.role = input.role;
+    if (input.active !== undefined)
+        updates.active = input.active;
+    if (input.forcePinChange !== undefined)
+        updates.forcePinChange = input.forcePinChange;
+    if (Object.keys(updates).length <= 1)
         throw new HttpError_1.HttpError(400, 'No fields to update');
-    params.push(staffId);
-    const result = await (0, db_1.query)(`UPDATE staff SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${paramIndex} RETURNING id, name, role, active`, params);
-    if (result.rows.length === 0)
-        throw new HttpError_1.HttpError(404, 'Staff not found');
-    const staff = result.rows[0];
-    const action = input.active !== undefined ? (input.active ? 'STAFF_ACTIVATED' : 'STAFF_DEACTIVATED') : 'STAFF_UPDATED';
-    await (0, auditLog_1.insertAuditLogQuery)(db_1.query, { staffId: actorStaffId, action, entityType: 'staff', entityId: staff.id, newValue: input });
-    return staff;
+    return db_1.db.transaction(async (tx) => {
+        const [updated] = await tx
+            .update(schema_1.staff)
+            .set(updates)
+            .where((0, drizzle_orm_1.eq)(schema_1.staff.id, staffId))
+            .returning({
+            id: schema_1.staff.id,
+            name: schema_1.staff.name,
+            role: schema_1.staff.role,
+            active: schema_1.staff.active,
+        });
+        if (!updated)
+            throw new HttpError_1.HttpError(404, 'Staff not found');
+        let action;
+        if (input.active === undefined) {
+            action = 'STAFF_UPDATED';
+        }
+        else if (input.active) {
+            action = 'STAFF_ACTIVATED';
+        }
+        else {
+            action = 'STAFF_DEACTIVATED';
+        }
+        await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
+            staffId: actorStaffId,
+            action,
+            entityType: 'staff',
+            entityId: updated.id,
+            newValue: input,
+        });
+        return updated;
+    });
 }
 async function resetStaffPin(staffId, actorStaffId) {
     const { hashPin } = await Promise.resolve().then(() => __importStar(require('../auth/utils')));
     const pinHash = await hashPin('000000');
-    const staffResult = await (0, db_1.query)(`UPDATE staff SET pin_hash = $1, force_pin_change = true, updated_at = NOW() WHERE id = $2 RETURNING id, name`, [pinHash, staffId]);
-    if (staffResult.rows.length === 0)
-        throw new HttpError_1.HttpError(404, 'Staff not found');
-    await (0, auditLog_1.insertAuditLogQuery)(db_1.query, { staffId: actorStaffId, action: 'STAFF_PIN_RESET', entityType: 'staff', entityId: staffId });
-    return { success: true, name: staffResult.rows[0].name };
+    return db_1.db.transaction(async (tx) => {
+        const [updated] = await tx
+            .update(schema_1.staff)
+            .set({ pinHash, forcePinChange: true, updatedAt: (0, drizzle_orm_1.sql) `NOW()` })
+            .where((0, drizzle_orm_1.eq)(schema_1.staff.id, staffId))
+            .returning({ id: schema_1.staff.id, name: schema_1.staff.name });
+        if (!updated)
+            throw new HttpError_1.HttpError(404, 'Staff not found');
+        await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
+            staffId: actorStaffId,
+            action: 'STAFF_PIN_RESET',
+            entityType: 'staff',
+            entityId: staffId,
+        });
+        return { success: true, name: updated.name };
+    });
 }

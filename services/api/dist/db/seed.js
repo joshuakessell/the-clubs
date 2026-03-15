@@ -2,10 +2,19 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.seed = seed;
 const index_1 = require("./index");
+const drizzle_orm_1 = require("drizzle-orm");
 const shared_1 = require("@the-clubs/shared");
 const utils_1 = require("../auth/utils");
 const loadEnv_1 = require("../env/loadEnv");
 (0, loadEnv_1.loadEnvFromDotEnvIfPresent)();
+// Fallback defaults for local dev (matching docker-compose.yml: 5433->5432)
+if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+    process.env.DB_HOST = 'localhost';
+    process.env.DB_PORT = '5433';
+    process.env.DB_NAME = 'club_operations';
+    process.env.DB_USER = 'clubops';
+    process.env.DB_PASSWORD = 'club-ops-dev';
+}
 /**
  * Seed data for development and testing.
  *
@@ -39,58 +48,62 @@ async function seed() {
         console.log('Starting seed process...');
         // Enforce facility inventory contract (delete any invalid legacy rooms)
         const desiredRoomNumbers = seedRooms.map((r) => r.number);
-        const deletedRooms = await (0, index_1.query)(`WITH del AS (
-         DELETE FROM rooms
-         WHERE NOT (number = ANY($1::text[]))
+        const roomArrayLiteral = `ARRAY[${desiredRoomNumbers.map((n) => `'${n}'`).join(',')}]::text[]`;
+        const deletedRooms = await index_1.db.execute((0, drizzle_orm_1.sql) `WITH del AS (
+         DELETE FROM inventory_resources
+         WHERE kind = 'room'
+           AND NOT (number = ANY(${drizzle_orm_1.sql.raw(roomArrayLiteral)}))
          RETURNING 1
        )
-       SELECT COUNT(*)::text as count FROM del`, [desiredRoomNumbers]);
-        if (Number.parseInt(deletedRooms.rows[0]?.count || '0', 10) > 0) {
-            console.log(`🧹 Removed ${deletedRooms.rows[0]?.count ?? '0'} invalid legacy room(s) from inventory`);
+       SELECT COUNT(*)::text as count FROM del`);
+        const deletedRoomCount = Number.parseInt(deletedRooms.rows[0]?.count || '0', 10);
+        if (deletedRoomCount > 0) {
+            console.log(`🧹 Removed ${deletedRoomCount} invalid legacy room(s) from inventory`);
         }
         for (const roomSeed of seedRooms) {
-            const roomResult = await (0, index_1.query)(`INSERT INTO rooms (number, type, status, floor, last_status_change)
-         VALUES ($1, $2, $3, $4, NOW())
+            const roomResult = await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO inventory_resources (number, kind, tier, status, floor, last_status_change)
+         VALUES (${roomSeed.number}, 'room', ${roomSeed.type}, ${shared_1.RoomStatus.CLEAN}, ${roomSeed.floor}, NOW())
          ON CONFLICT (number) DO UPDATE
-           SET type = EXCLUDED.type,
+           SET tier = EXCLUDED.tier,
                floor = EXCLUDED.floor,
                updated_at = NOW()
-         RETURNING id`, [roomSeed.number, roomSeed.type, shared_1.RoomStatus.CLEAN, roomSeed.floor]);
+         RETURNING id`);
             const roomId = roomResult.rows[0]?.id ?? '';
-            await (0, index_1.query)(`INSERT INTO key_tags (room_id, tag_type, tag_code, is_active)
-         VALUES ($1, 'QR', $2, true)
+            await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active)
+         VALUES (${roomId}, 'QR', ${roomSeed.tagCode}, true)
          ON CONFLICT (tag_code) DO UPDATE
-           SET room_id = EXCLUDED.room_id,
-               locker_id = NULL,
+           SET resource_id = EXCLUDED.resource_id,
                is_active = true,
-               updated_at = NOW()`, [roomId, roomSeed.tagCode]);
+               updated_at = NOW()`);
         }
         console.log(`\n✅ Rooms inventory ensured (${seedRooms.length} rooms)`);
         // Enforce facility inventory contract (delete any invalid legacy lockers)
         const desiredLockerNumbers = seedLockers.map((l) => l.number);
-        const deletedLockers = await (0, index_1.query)(`WITH del AS (
-         DELETE FROM lockers
-         WHERE NOT (number = ANY($1::text[]))
+        const lockerArrayLiteral = `ARRAY[${desiredLockerNumbers.map((n) => `'${n}'`).join(',')}]::text[]`;
+        const deletedLockers = await index_1.db.execute((0, drizzle_orm_1.sql) `WITH del AS (
+         DELETE FROM inventory_resources
+         WHERE kind = 'locker'
+           AND NOT (number = ANY(${drizzle_orm_1.sql.raw(lockerArrayLiteral)}))
          RETURNING 1
        )
-       SELECT COUNT(*)::text as count FROM del`, [desiredLockerNumbers]);
-        if (Number.parseInt(deletedLockers.rows[0]?.count || '0', 10) > 0) {
-            console.log(`🧹 Removed ${deletedLockers.rows[0]?.count ?? '0'} invalid legacy locker(s) from inventory`);
+       SELECT COUNT(*)::text as count FROM del`);
+        const deletedLockerCount = Number.parseInt(deletedLockers.rows[0]?.count || '0', 10);
+        if (deletedLockerCount > 0) {
+            console.log(`🧹 Removed ${deletedLockerCount} invalid legacy locker(s) from inventory`);
         }
         for (const lockerSeed of seedLockers) {
-            const lockerResult = await (0, index_1.query)(`INSERT INTO lockers (number, status)
-         VALUES ($1, $2)
+            const lockerResult = await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO inventory_resources (number, kind, status)
+         VALUES (${lockerSeed.number}, 'locker', ${shared_1.RoomStatus.CLEAN})
          ON CONFLICT (number) DO UPDATE
            SET updated_at = NOW()
-         RETURNING id`, [lockerSeed.number, shared_1.RoomStatus.CLEAN]);
+         RETURNING id`);
             const lockerId = lockerResult.rows[0]?.id ?? '';
-            await (0, index_1.query)(`INSERT INTO key_tags (locker_id, tag_type, tag_code, is_active)
-         VALUES ($1, 'QR', $2, true)
+            await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active)
+         VALUES (${lockerId}, 'QR', ${lockerSeed.tagCode}, true)
          ON CONFLICT (tag_code) DO UPDATE
-           SET locker_id = EXCLUDED.locker_id,
-               room_id = NULL,
+           SET resource_id = EXCLUDED.resource_id,
                is_active = true,
-               updated_at = NOW()`, [lockerId, lockerSeed.tagCode]);
+               updated_at = NOW()`);
         }
         console.log(`\n✅ Lockers inventory ensured (${seedLockers.length} lockers, 001–108)`);
         console.log('\nScan tokens for testing (sample):');
@@ -120,7 +133,7 @@ async function seed() {
             { name: 'Manager Dallas', role: 'ADMIN', qrToken: 'STAFF-012', pin: '654321' },
         ];
         // Check if staff already exist
-        const existingStaff = await (0, index_1.query)('SELECT COUNT(*) as count FROM staff');
+        const existingStaff = await index_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*) as count FROM staff`);
         if (Number.parseInt(existingStaff.rows[0]?.count || '0', 10) > 0) {
             console.log('⚠️  Staff users already exist. Updating existing staff to match seed data...');
             // Update existing staff if they match old names or create new ones
@@ -128,22 +141,24 @@ async function seed() {
                 const qrTokenHash = (0, utils_1.hashQrToken)(staff.qrToken);
                 const pinHash = await (0, utils_1.hashPin)(staff.pin);
                 // Check if staff with this name or matching old names exists
-                const existing = await (0, index_1.query)(`SELECT id, name FROM staff 
-           WHERE name = $1 
-           OR (name = 'John Staff' AND $1 = 'John Erikson')
-           OR (name = 'Jane Admin' AND $1 = 'Cruz Martinez')
-           LIMIT 1`, [staff.name]);
+                const existing = await index_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, name FROM staff 
+           WHERE name = ${staff.name} 
+           OR (name = 'John Staff' AND ${staff.name} = 'John Erikson')
+           OR (name = 'Jane Admin' AND ${staff.name} = 'Cruz Martinez')
+           LIMIT 1`);
                 if (existing.rows.length > 0) {
+                    const existingId = existing.rows[0]?.id ?? '';
+                    const existingName = existing.rows[0]?.name ?? 'Unknown';
                     // Update existing staff
-                    await (0, index_1.query)(`UPDATE staff 
-             SET name = $1, role = $2, qr_token_hash = $3, pin_hash = $4, active = true
-             WHERE id = $5`, [staff.name, staff.role, qrTokenHash, pinHash, existing.rows[0]?.id ?? '']);
-                    console.log(`✓ Updated staff: ${existing.rows[0]?.name ?? 'Unknown'} → ${staff.name} (${staff.role})`);
+                    await index_1.db.execute((0, drizzle_orm_1.sql) `UPDATE staff 
+             SET name = ${staff.name}, role = ${staff.role}, qr_token_hash = ${qrTokenHash}, pin_hash = ${pinHash}, active = true
+             WHERE id = ${existingId}`);
+                    console.log(`✓ Updated staff: ${existingName} → ${staff.name} (${staff.role})`);
                 }
                 else {
                     // Create new staff if doesn't exist
-                    await (0, index_1.query)(`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
-             VALUES ($1, $2, $3, $4, true)`, [staff.name, staff.role, qrTokenHash, pinHash]);
+                    await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
+             VALUES (${staff.name}, ${staff.role}, ${qrTokenHash}, ${pinHash}, true)`);
                     console.log(`✓ Seeded staff: ${staff.name} (${staff.role})`);
                 }
             }
@@ -154,8 +169,8 @@ async function seed() {
             for (const staff of staffUsers) {
                 const qrTokenHash = (0, utils_1.hashQrToken)(staff.qrToken);
                 const pinHash = await (0, utils_1.hashPin)(staff.pin);
-                await (0, index_1.query)(`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
-           VALUES ($1, $2, $3, $4, true)`, [staff.name, staff.role, qrTokenHash, pinHash]);
+                await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
+           VALUES (${staff.name}, ${staff.role}, ${qrTokenHash}, ${pinHash}, true)`);
                 console.log(`✓ Seeded staff: ${staff.name} (${staff.role})`);
             }
             console.log('\n✅ Staff users seeded successfully');
@@ -174,34 +189,30 @@ async function seed() {
             { deviceId: 'register-3', displayName: 'Register 3' },
         ];
         for (const device of seedDevices) {
-            const existing = await (0, index_1.query)('SELECT COUNT(*) as count FROM devices WHERE device_id = $1', [device.deviceId]);
+            const existing = await index_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*) as count FROM devices WHERE device_id = ${device.deviceId}`);
             if (Number.parseInt(existing.rows[0]?.count || '0', 10) === 0) {
-                await (0, index_1.query)(`INSERT INTO devices (device_id, display_name, enabled)
-           VALUES ($1, $2, true)`, [device.deviceId, device.displayName]);
+                await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO devices (device_id, display_name, enabled)
+           VALUES (${device.deviceId}, ${device.displayName}, true)`);
                 console.log(`✓ Seeded device: ${device.displayName} (${device.deviceId})`);
             }
             else {
                 // Update existing device to ensure it's enabled
-                await (0, index_1.query)(`UPDATE devices SET enabled = true, display_name = $1 WHERE device_id = $2`, [
-                    device.displayName,
-                    device.deviceId,
-                ]);
+                await index_1.db.execute((0, drizzle_orm_1.sql) `UPDATE devices SET enabled = true, display_name = ${device.displayName} WHERE device_id = ${device.deviceId}`);
                 console.log(`✓ Updated device: ${device.displayName} (${device.deviceId})`);
             }
         }
         console.log('✅ Devices seeded successfully');
         // Seed active agreement
         console.log('\nSeeding active agreement...');
-        const existingAgreement = await (0, index_1.query)('SELECT COUNT(*) as count FROM agreements WHERE active = true');
+        const existingAgreement = await index_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*) as count FROM agreements WHERE active = true`);
         const agreementBodyText = shared_1.AGREEMENT_LEGAL_BODY_HTML_BY_LANG.EN;
         if (Number.parseInt(existingAgreement.rows[0]?.count || '0', 10) > 0) {
             // Update existing active agreement if body_text is empty
-            const activeAgreement = await (0, index_1.query)('SELECT body_text FROM agreements WHERE active = true LIMIT 1');
+            const activeAgreement = await index_1.db.execute((0, drizzle_orm_1.sql) `SELECT body_text FROM agreements WHERE active = true LIMIT 1`);
+            const bodyText = activeAgreement.rows[0]?.body_text;
             if (activeAgreement.rows.length > 0 &&
-                (!activeAgreement.rows[0]?.body_text || activeAgreement.rows[0].body_text.trim() === '')) {
-                await (0, index_1.query)(`UPDATE agreements SET body_text = $1 WHERE active = true`, [
-                    agreementBodyText,
-                ]);
+                (!bodyText || bodyText.trim() === '')) {
+                await index_1.db.execute((0, drizzle_orm_1.sql) `UPDATE agreements SET body_text = ${agreementBodyText} WHERE active = true`);
                 console.log('✓ Updated active agreement with real content');
             }
             else {
@@ -209,8 +220,8 @@ async function seed() {
             }
         }
         else {
-            await (0, index_1.query)(`INSERT INTO agreements (version, title, body_text, active)
-         VALUES ($1, $2, $3, true)`, ['demo-v1', 'Club Dallas Entry & Liability Waiver (Demo)', agreementBodyText]);
+            await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO agreements (version, title, body_text, active)
+         VALUES (${'demo-v1'}, ${'Club Dallas Entry & Liability Waiver (Demo)'}, ${agreementBodyText}, true)`);
             console.log('✓ Seeded active agreement: demo-v1');
             console.log('✅ Agreement seeded successfully');
         }
@@ -229,15 +240,15 @@ async function seed() {
             { sku: 'facial-toner', name: 'Facial Toner', price: 16, sortOrder: 10, imageUrl: '/images/products/facial-toner.png' },
         ];
         for (const product of retailProducts) {
-            await (0, index_1.query)(`INSERT INTO products (sku, name, price, category, sort_order, image_url, is_active)
-         VALUES ($1, $2, $3, 'RETAIL', $4, $5, true)
+            await index_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO products (sku, name, price, category, sort_order, image_url, is_active)
+         VALUES (${product.sku}, ${product.name}, ${product.price}, 'RETAIL', ${product.sortOrder}, ${product.imageUrl}, true)
          ON CONFLICT (sku) DO UPDATE SET
            name       = EXCLUDED.name,
            price      = EXCLUDED.price,
            sort_order = EXCLUDED.sort_order,
            image_url  = EXCLUDED.image_url,
            is_active  = true,
-           updated_at = NOW()`, [product.sku, product.name, product.price, product.sortOrder, product.imageUrl]);
+           updated_at = NOW()`);
         }
         console.log(`✅ Retail products seeded (${retailProducts.length} items)`);
     }

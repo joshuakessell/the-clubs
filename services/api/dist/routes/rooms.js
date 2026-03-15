@@ -3,20 +3,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.roomsRoutes = roomsRoutes;
 const zod_1 = require("zod");
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const middleware_1 = require("../auth/middleware");
 const OfferableRoomsQuerySchema = zod_1.z.object({
     tier: zod_1.z.enum(['STANDARD', 'DOUBLE', 'SPECIAL']),
 });
-/**
- * Room routes (offerable rooms for waitlist upgrades).
- */
 async function roomsRoutes(fastify) {
-    /**
-     * GET /v1/rooms/offerable?tier=STANDARD|DOUBLE|SPECIAL
-     *
-     * Returns CLEAN, unassigned rooms of the given tier excluding rooms reserved by OFFERED waitlist entries.
-     * Staff-only.
-     */
     fastify.get('/v1/rooms/offerable', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff) {
             return reply.status(401).send({ error: 'Unauthorized' });
@@ -32,12 +24,12 @@ async function roomsRoutes(fastify) {
             });
         }
         try {
-            const result = await (0, db_1.query)(`SELECT r.id, r.number, r.type
-           FROM rooms r
+            const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT r.id, r.number, r.tier
+           FROM inventory_resources r
            WHERE r.status = 'CLEAN'
              AND r.assigned_to_customer_id IS NULL
-             AND r.type = $1
-             -- Exclude rooms "selected" by an active lane session (reservation semantics).
+             AND r.kind = 'room'
+             AND r.tier = ${qs.tier}
              AND NOT EXISTS (
                SELECT 1
                FROM lane_sessions ls
@@ -59,11 +51,11 @@ async function roomsRoutes(fastify) {
                JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
                JOIN visits v ON v.id = w.visit_id
                WHERE w.status = 'OFFERED'
-                 AND w.room_id = r.id
+                 AND w.resource_id = r.id
                  AND v.ended_at IS NULL
                  AND cb.ends_at > NOW()
              )
-           ORDER BY r.number ASC`, [qs.tier]);
+           ORDER BY r.number ASC`);
             return reply.send({ rooms: result.rows });
         }
         catch (error) {

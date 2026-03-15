@@ -32,9 +32,9 @@ async function listShiftsWithCompliance(filters) {
     const db = (0, db_1.getDb)();
     const conditions = [];
     if (filters.from)
-        conditions.push((0, drizzle_orm_1.gte)(schema_1.employeeShifts.startsAt, filters.from));
+        conditions.push((0, drizzle_orm_1.gte)(schema_1.employeeShifts.startsAt, new Date(filters.from)));
     if (filters.to)
-        conditions.push((0, drizzle_orm_1.lte)(schema_1.employeeShifts.endsAt, filters.to));
+        conditions.push((0, drizzle_orm_1.lte)(schema_1.employeeShifts.endsAt, new Date(filters.to)));
     if (filters.employeeId)
         conditions.push((0, drizzle_orm_1.eq)(schema_1.employeeShifts.employeeId, filters.employeeId));
     const shifts = await db.select({
@@ -50,8 +50,8 @@ async function listShiftsWithCompliance(filters) {
         const mappedShift = {
             id: shift.id,
             employee_id: shift.employeeId,
-            starts_at: new Date(shift.startsAt),
-            ends_at: new Date(shift.endsAt),
+            starts_at: shift.startsAt,
+            ends_at: shift.endsAt,
             shift_code: shift.shiftCode,
             status: shift.status,
             notes: shift.notes,
@@ -62,8 +62,8 @@ async function listShiftsWithCompliance(filters) {
         return {
             id: shift.id, employeeId: shift.employeeId, employeeName,
             shiftCode: shift.shiftCode,
-            scheduledStart: new Date(shift.startsAt).toISOString(),
-            scheduledEnd: new Date(shift.endsAt).toISOString(),
+            scheduledStart: shift.startsAt.toISOString(),
+            scheduledEnd: shift.endsAt.toISOString(),
             actualClockIn: compliance.actualClockIn?.toISOString() || null,
             actualClockOut: compliance.actualClockOut?.toISOString() || null,
             workedMinutesInWindow: compliance.workedMinutesInWindow, scheduledMinutes: compliance.scheduledMinutes,
@@ -75,9 +75,9 @@ async function listScheduleShifts(filters) {
     const db = (0, db_1.getDb)();
     const conditions = [];
     if (filters.from)
-        conditions.push((0, drizzle_orm_1.gte)(schema_1.employeeShifts.startsAt, filters.from));
+        conditions.push((0, drizzle_orm_1.gte)(schema_1.employeeShifts.startsAt, new Date(filters.from)));
     if (filters.to)
-        conditions.push((0, drizzle_orm_1.lte)(schema_1.employeeShifts.endsAt, filters.to));
+        conditions.push((0, drizzle_orm_1.lte)(schema_1.employeeShifts.endsAt, new Date(filters.to)));
     const shifts = await db.select({
         shift: schema_1.employeeShifts,
         employeeName: schema_1.staff.name
@@ -89,8 +89,8 @@ async function listScheduleShifts(filters) {
     return shifts.map(({ shift, employeeName }) => ({
         id: shift.id, employeeId: shift.employeeId, employeeName,
         shiftCode: shift.shiftCode,
-        scheduledStart: new Date(shift.startsAt).toISOString(),
-        scheduledEnd: new Date(shift.endsAt).toISOString(),
+        scheduledStart: shift.startsAt.toISOString(),
+        scheduledEnd: shift.endsAt.toISOString(),
         status: shift.status, notes: shift.notes,
     }));
 }
@@ -99,7 +99,7 @@ async function updateShift(shiftId, input, staffId) {
     return db.transaction(async (tx) => {
         const setClause = {
             updatedBy: staffId,
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date()
         };
         if (input.starts_at !== undefined)
             setClause.startsAt = input.starts_at;
@@ -139,8 +139,8 @@ async function updateShift(shiftId, input, staffId) {
         return {
             ...r.shift,
             employee_name: r.employee_name,
-            starts_at: new Date(r.shift.startsAt),
-            ends_at: new Date(r.shift.endsAt),
+            starts_at: r.shift.startsAt,
+            ends_at: r.shift.endsAt,
             shift_code: r.shift.shiftCode,
             employee_id: r.shift.employeeId,
             created_by: r.shift.createdBy,
@@ -154,14 +154,14 @@ async function createShift(input, staffId) {
     const db = (0, db_1.getDb)();
     const overlaps = await db.select({ id: schema_1.employeeShifts.id })
         .from(schema_1.employeeShifts)
-        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.employeeShifts.employeeId, input.employee_id), (0, drizzle_orm_1.sql) `${schema_1.employeeShifts.status} != 'CANCELED'`, (0, drizzle_orm_1.lt)(schema_1.employeeShifts.startsAt, input.ends_at), (0, drizzle_orm_1.gt)(schema_1.employeeShifts.endsAt, input.starts_at)));
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.employeeShifts.employeeId, input.employee_id), (0, drizzle_orm_1.sql) `${schema_1.employeeShifts.status} != 'CANCELED'`, (0, drizzle_orm_1.lt)(schema_1.employeeShifts.startsAt, new Date(input.ends_at)), (0, drizzle_orm_1.gt)(schema_1.employeeShifts.endsAt, new Date(input.starts_at))));
     if (overlaps.length > 0)
         return { conflict: true, conflictingShiftIds: overlaps.map(r => r.id), shift: null };
     const result = await db.transaction(async (tx) => {
         const created = await tx.insert(schema_1.employeeShifts).values({
             employeeId: input.employee_id,
-            startsAt: input.starts_at,
-            endsAt: input.ends_at,
+            startsAt: new Date(input.starts_at),
+            endsAt: new Date(input.ends_at),
             shiftCode: input.shift_code,
             notes: input.notes ?? null,
             color: input.color ?? '#3b82f6',
@@ -183,8 +183,8 @@ async function createShift(input, staffId) {
         shift: {
             ...result,
             employee_name: emp?.name ?? 'Unknown',
-            starts_at: new Date(result.startsAt),
-            ends_at: new Date(result.endsAt),
+            starts_at: result.startsAt,
+            ends_at: result.endsAt,
             employee_id: result.employeeId,
             shift_code: result.shiftCode,
             created_by: result.createdBy,
@@ -200,7 +200,7 @@ async function cancelShift(shiftId, staffId) {
             .set({
             status: 'CANCELED',
             updatedBy: staffId,
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date()
         })
             .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.employeeShifts.id, shiftId), (0, drizzle_orm_1.sql) `${schema_1.employeeShifts.status} != 'CANCELED'`))
             .returning({ id: schema_1.employeeShifts.id });
@@ -223,15 +223,15 @@ async function bulkCreateShifts(shifts, staffId) {
             }
             const overlap = await tx.select({ id: schema_1.employeeShifts.id })
                 .from(schema_1.employeeShifts)
-                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.employeeShifts.employeeId, shift.employee_id), (0, drizzle_orm_1.sql) `${schema_1.employeeShifts.status} != 'CANCELED'`, (0, drizzle_orm_1.lt)(schema_1.employeeShifts.startsAt, shift.ends_at), (0, drizzle_orm_1.gt)(schema_1.employeeShifts.endsAt, shift.starts_at)));
+                .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.employeeShifts.employeeId, shift.employee_id), (0, drizzle_orm_1.sql) `${schema_1.employeeShifts.status} != 'CANCELED'`, (0, drizzle_orm_1.lt)(schema_1.employeeShifts.startsAt, new Date(shift.ends_at)), (0, drizzle_orm_1.gt)(schema_1.employeeShifts.endsAt, new Date(shift.starts_at))));
             if (overlap.length > 0) {
                 conflicts.push({ index: i, error: 'Overlaps with existing shift' });
                 continue;
             }
             const result = await tx.insert(schema_1.employeeShifts).values({
                 employeeId: shift.employee_id,
-                startsAt: shift.starts_at,
-                endsAt: shift.ends_at,
+                startsAt: new Date(shift.starts_at),
+                endsAt: new Date(shift.ends_at),
                 shiftCode: shift.shift_code,
                 notes: shift.notes ?? null,
                 color: shift.color ?? '#3b82f6',
@@ -274,9 +274,9 @@ async function listTimeclockSessions(filters) {
     const db = (0, db_1.getDb)();
     const conditions = [];
     if (filters.from)
-        conditions.push((0, drizzle_orm_1.gte)(schema_1.timeclockSessions.clockInAt, filters.from));
+        conditions.push((0, drizzle_orm_1.gte)(schema_1.timeclockSessions.clockInAt, new Date(filters.from)));
     if (filters.to)
-        conditions.push((0, drizzle_orm_1.lte)(schema_1.timeclockSessions.clockInAt, filters.to));
+        conditions.push((0, drizzle_orm_1.lte)(schema_1.timeclockSessions.clockInAt, new Date(filters.to)));
     if (filters.employeeId)
         conditions.push((0, drizzle_orm_1.eq)(schema_1.timeclockSessions.employeeId, filters.employeeId));
     const sessions = await db.select({
@@ -289,7 +289,7 @@ async function listTimeclockSessions(filters) {
         .orderBy((0, drizzle_orm_1.desc)(schema_1.timeclockSessions.clockInAt));
     return sessions.map((s) => ({
         id: s.session.id, employeeId: s.session.employeeId, employeeName: s.employeeName, shiftId: s.session.shiftId,
-        clockInAt: new Date(s.session.clockInAt).toISOString(), clockOutAt: s.session.clockOutAt ? new Date(s.session.clockOutAt).toISOString() : null, source: s.session.source, notes: s.session.notes,
+        clockInAt: s.session.clockInAt.toISOString(), clockOutAt: s.session.clockOutAt?.toISOString() ?? null, source: s.session.source, notes: s.session.notes,
     }));
 }
 async function updateTimeclockSession(sessionId, input, staffId) {
@@ -322,8 +322,8 @@ async function updateTimeclockSession(sessionId, input, staffId) {
             employee_name: r.employee_name,
             employee_id: r.session.employeeId,
             shift_id: r.session.shiftId,
-            clock_in_at: new Date(r.session.clockInAt),
-            clock_out_at: r.session.clockOutAt ? new Date(r.session.clockOutAt) : null,
+            clock_in_at: r.session.clockInAt,
+            clock_out_at: r.session.clockOutAt ?? null,
         };
     });
 }
@@ -339,7 +339,7 @@ async function closeTimeclockSession(sessionId, staffId, notes) {
             throw new Error('Session is already closed');
         await tx.update(schema_1.timeclockSessions)
             .set({
-            clockOutAt: new Date().toISOString(),
+            clockOutAt: new Date(),
             notes: notes ?? session.notes
         })
             .where((0, drizzle_orm_1.eq)(schema_1.timeclockSessions.id, sessionId));
@@ -356,8 +356,8 @@ async function closeTimeclockSession(sessionId, staffId, notes) {
             employee_name: r.employee_name,
             employee_id: r.session.employeeId,
             shift_id: r.session.shiftId,
-            clock_in_at: new Date(r.session.clockInAt),
-            clock_out_at: r.session.clockOutAt ? new Date(r.session.clockOutAt) : null,
+            clock_in_at: r.session.clockInAt,
+            clock_out_at: r.session.clockOutAt ?? null,
         };
     });
 }
@@ -366,8 +366,8 @@ function mapTradeRow(r) {
     return {
         id: r.id, requesterId: r.requesterId, requesterName: r.requesterName, requesterShiftId: r.requesterShiftId,
         targetId: r.targetId, targetName: r.targetName, targetShiftId: r.targetShiftId,
-        status: r.status, decidedBy: r.decidedBy, decidedAt: r.decidedAt ? new Date(r.decidedAt).toISOString() : null,
-        decisionNotes: r.decisionNotes, createdAt: new Date(r.createdAt).toISOString(),
+        status: r.status, decidedBy: r.decidedBy, decidedAt: r.decidedAt instanceof Date ? r.decidedAt.toISOString() : r.decidedAt ?? null,
+        decisionNotes: r.decisionNotes, createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt,
     };
 }
 async function listMyTradeRequests(staffId, filters) {
@@ -451,8 +451,8 @@ async function decideTradeRequest(tradeId, status, staffId, role, decisionNotes)
       WHERE id = ${tradeId}
     `);
         if (status === 'APPROVED') {
-            await tx.update(schema_1.employeeShifts).set({ employeeId: trade.target_id, updatedBy: staffId, updatedAt: new Date().toISOString() }).where((0, drizzle_orm_1.eq)(schema_1.employeeShifts.id, trade.requester_shift_id));
-            await tx.update(schema_1.employeeShifts).set({ employeeId: trade.requester_id, updatedBy: staffId, updatedAt: new Date().toISOString() }).where((0, drizzle_orm_1.eq)(schema_1.employeeShifts.id, trade.target_shift_id));
+            await tx.update(schema_1.employeeShifts).set({ employeeId: trade.target_id, updatedBy: staffId, updatedAt: new Date() }).where((0, drizzle_orm_1.eq)(schema_1.employeeShifts.id, trade.requester_shift_id));
+            await tx.update(schema_1.employeeShifts).set({ employeeId: trade.requester_id, updatedBy: staffId, updatedAt: new Date() }).where((0, drizzle_orm_1.eq)(schema_1.employeeShifts.id, trade.target_shift_id));
         }
         await (0, auditLog_1.insertAuditLogDrizzle)(tx, { staffId, action: 'UPDATE', entityType: 'shift_trade_request', entityId: tradeId, newValue: { status, decisionNotes: decisionNotes ?? null } });
         return trade;

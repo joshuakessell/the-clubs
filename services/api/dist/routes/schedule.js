@@ -3,13 +3,30 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.scheduleRoutes = scheduleRoutes;
 const zod_1 = require("zod");
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const middleware_1 = require("../auth/middleware");
 const IsoDateTimeSchema = zod_1.z.string().datetime();
 /**
- * Schedule routes for authenticated staff (non-admin safe).
- *
- * These endpoints intentionally do NOT return compliance metrics.
+ * Adapter for dynamic SQL — schedule.ts builds optional WHERE clauses
+ * with positional params.
  */
+function toQueryable() {
+    return {
+        async query(queryText, params) {
+            const parts = queryText.split(/\$\d+/);
+            const values = params ?? [];
+            let built = drizzle_orm_1.sql.empty();
+            for (let i = 0; i < parts.length; i++) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+                if (i < values.length) {
+                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+                }
+            }
+            const result = await db_1.db.execute(built);
+            return { rows: result.rows };
+        },
+    };
+}
 async function scheduleRoutes(fastify) {
     fastify.get('/v1/schedule/shifts', {
         preHandler: [middleware_1.requireAuth],
@@ -18,7 +35,7 @@ async function scheduleRoutes(fastify) {
         const to = request.query.to ? IsoDateTimeSchema.parse(request.query.to) : undefined;
         const params = [];
         let i = 0;
-        let sql = `
+        let queryText = `
       SELECT
         es.id,
         es.employee_id,
@@ -34,16 +51,17 @@ async function scheduleRoutes(fastify) {
     `;
         if (from) {
             i++;
-            sql += ` AND es.starts_at >= $${i}`;
+            queryText += ` AND es.starts_at >= $${i}`;
             params.push(from);
         }
         if (to) {
             i++;
-            sql += ` AND es.ends_at <= $${i}`;
+            queryText += ` AND es.ends_at <= $${i}`;
             params.push(to);
         }
-        sql += ` ORDER BY es.starts_at ASC`;
-        const shifts = await (0, db_1.query)(sql, params);
+        queryText += ` ORDER BY es.starts_at ASC`;
+        const qClient = toQueryable();
+        const shifts = await qClient.query(queryText, params);
         return reply.send(shifts.rows.map((shift) => ({
             id: shift.id,
             employeeId: shift.employee_id,

@@ -5,6 +5,7 @@ const zod_1 = require("zod");
 const middleware_1 = require("../auth/middleware");
 const idempotency_1 = require("../middleware/idempotency");
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const clubEventLog_1 = require("../activity/clubEventLog");
 const HttpError_1 = require("../errors/HttpError");
 const StartBreakSchema = zod_1.z.object({
@@ -17,36 +18,33 @@ const EndBreakSchema = zod_1.z.object({
 async function breakRoutes(fastify) {
     /**
      * POST /v1/breaks/start
-     *
-     * Start a break for the authenticated staff member.
      */
-    fastify.post('/v1/breaks/start', { schema: { body: StartBreakSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/breaks/start', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
         try {
-            const result = await (0, db_1.transaction)(async (client) => {
-                const openBreak = await client.query(`SELECT * FROM staff_break_sessions
-             WHERE staff_id = $1 AND status = 'OPEN'
+            const result = await db_1.db.transaction(async (tx) => {
+                const openBreak = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, staff_id, timeclock_session_id, started_at, ended_at, break_type, status, notes FROM staff_break_sessions
+             WHERE staff_id = ${request.staff.staffId} AND status = 'OPEN'
              ORDER BY started_at DESC
-             LIMIT 1`, [request.staff.staffId]);
+             LIMIT 1`);
                 if (openBreak.rows.length > 0) {
                     throw new HttpError_1.HttpError(409, 'Break already in progress');
                 }
-                const timeclock = await client.query(`SELECT id FROM timeclock_sessions
-             WHERE employee_id = $1 AND clock_out_at IS NULL
+                const timeclock = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM timeclock_sessions
+             WHERE employee_id = ${request.staff.staffId} AND clock_out_at IS NULL
              ORDER BY clock_in_at DESC
-             LIMIT 1`, [request.staff.staffId]);
+             LIMIT 1`);
                 if (timeclock.rows.length === 0) {
                     throw new HttpError_1.HttpError(400, 'No active timeclock session');
                 }
-                const insert = await client.query(`INSERT INTO staff_break_sessions
+                const insert = await tx.execute((0, drizzle_orm_1.sql) `INSERT INTO staff_break_sessions
              (staff_id, timeclock_session_id, break_type, status, notes)
-             VALUES ($1, $2, $3, 'OPEN', $4)
-             RETURNING *`, [request.staff.staffId, timeclock.rows[0].id, body.breakType, body.notes || null]);
+             VALUES (${request.staff.staffId}, ${timeclock.rows[0].id}, ${body.breakType}, 'OPEN', ${body.notes || null})
+             RETURNING id, staff_id, timeclock_session_id, started_at, ended_at, break_type, status, notes`);
                 const breakRow = insert.rows[0];
-                // Emit club event for analytics
-                await (0, clubEventLog_1.insertClubEvent)(client, {
+                await (0, clubEventLog_1.insertClubEventDrizzle)(tx, {
                     eventType: 'BREAK_START',
                     eventDomain: 'HR',
                     sourceApp: 'EMPLOYEE_REGISTER',
@@ -83,33 +81,30 @@ async function breakRoutes(fastify) {
     });
     /**
      * POST /v1/breaks/end
-     *
-     * End the currently open break for the authenticated staff member.
      */
-    fastify.post('/v1/breaks/end', { schema: { body: EndBreakSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/breaks/end', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
         try {
-            const result = await (0, db_1.transaction)(async (client) => {
-                const openBreak = await client.query(`SELECT * FROM staff_break_sessions
-             WHERE staff_id = $1 AND status = 'OPEN'
+            const result = await db_1.db.transaction(async (tx) => {
+                const openBreak = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, staff_id, timeclock_session_id, started_at, ended_at, break_type, status, notes FROM staff_break_sessions
+             WHERE staff_id = ${request.staff.staffId} AND status = 'OPEN'
              ORDER BY started_at DESC
              LIMIT 1
-             FOR UPDATE`, [request.staff.staffId]);
+             FOR UPDATE`);
                 if (openBreak.rows.length === 0) {
                     throw new HttpError_1.HttpError(404, 'No active break found');
                 }
                 const current = openBreak.rows[0];
-                const updated = await client.query(`UPDATE staff_break_sessions
+                const updated = await tx.execute((0, drizzle_orm_1.sql) `UPDATE staff_break_sessions
              SET status = 'CLOSED',
                  ended_at = NOW(),
-                 notes = COALESCE($1, notes)
-             WHERE id = $2
-             RETURNING *`, [body.notes ?? null, current.id]);
+                 notes = COALESCE(${body.notes ?? null}, notes)
+             WHERE id = ${current.id}
+             RETURNING id, staff_id, timeclock_session_id, started_at, ended_at, break_type, status, notes`);
                 const endedBreak = updated.rows[0];
-                // Emit club event for analytics
-                await (0, clubEventLog_1.insertClubEvent)(client, {
+                await (0, clubEventLog_1.insertClubEventDrizzle)(tx, {
                     eventType: 'BREAK_END',
                     eventDomain: 'HR',
                     sourceApp: 'EMPLOYEE_REGISTER',

@@ -6,7 +6,7 @@ const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const staffAdminService_1 = require("../../services/staffAdminService");
 const CreateStaffSchema = zod_1.z.object({ name: zod_1.z.string().min(1), role: zod_1.z.enum(['STAFF', 'ADMIN']), pin: zod_1.z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'), active: zod_1.z.boolean().optional().default(true) });
-const UpdateStaffSchema = zod_1.z.object({ name: zod_1.z.string().min(1).optional(), role: zod_1.z.enum(['STAFF', 'ADMIN']).optional(), active: zod_1.z.boolean().optional() });
+const UpdateStaffSchema = zod_1.z.object({ name: zod_1.z.string().min(1).optional(), role: zod_1.z.enum(['STAFF', 'ADMIN']).optional(), active: zod_1.z.boolean().optional(), forcePinChange: zod_1.z.boolean().optional() });
 function registerAdminStaffRoutes(fastify) {
     fastify.get('/v1/admin/staff', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         try {
@@ -17,7 +17,7 @@ function registerAdminStaffRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.post('/v1/admin/staff', { schema: { body: CreateStaffSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.post('/v1/admin/staff', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -29,7 +29,7 @@ function registerAdminStaffRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.patch('/v1/admin/staff/:id', { schema: { body: UpdateStaffSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.patch('/v1/admin/staff/:id', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;

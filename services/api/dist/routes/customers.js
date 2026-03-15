@@ -103,7 +103,7 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/:customerId/notes
-    fastify.post('/v1/customers/:customerId/notes', { schema: { body: CreateCustomerNoteSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/customers/:customerId/notes', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const parsed = request.body;
@@ -131,12 +131,12 @@ async function customerRoutes(fastify) {
             return reply.send({ customer });
         }
         catch (error) {
-            fastify.log.error(error, 'Failed to fetch customer profile');
+            fastify.log.error({ err: error, customerId: request.params.id }, 'Failed to fetch customer profile');
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
     // POST /v1/customers/create-from-scan
-    fastify.post('/v1/customers/create-from-scan', { schema: { body: CreateFromScanSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/customers/create-from-scan', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -154,7 +154,7 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/match-identity
-    fastify.post('/v1/customers/match-identity', { schema: { body: MatchIdentitySchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/customers/match-identity', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -172,7 +172,7 @@ async function customerRoutes(fastify) {
         }
     });
     // POST /v1/customers/create-manual
-    fastify.post('/v1/customers/create-manual', { schema: { body: CreateManualSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/customers/create-manual', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;

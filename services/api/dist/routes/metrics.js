@@ -2,19 +2,12 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.metricsRoutes = metricsRoutes;
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const middleware_1 = require("../auth/middleware");
 /**
  * Metrics routes for upgrades and waitlist analytics.
  */
 async function metricsRoutes(fastify) {
-    /**
-     * GET /v1/metrics/upgrades - Get upgrade metrics
-     *
-     * Returns:
-     * - Count of upgrades per day
-     * - Average time on waitlist until upgrade
-     * - Upgrades by tier
-     */
     fastify.get('/v1/metrics/upgrades', {
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
@@ -24,38 +17,35 @@ async function metricsRoutes(fastify) {
         const { startDate, endDate } = request.query;
         const start = startDate
             ? new Date(startDate)
-            : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default: last 30 days
+            : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
         const end = endDate ? new Date(endDate) : new Date();
         try {
-            // Count upgrades per day
-            const dailyCountResult = await (0, db_1.query)(`SELECT 
+            const dailyCountResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT 
            DATE(completed_at) as date,
            COUNT(*)::int as count
          FROM waitlist
          WHERE status = 'COMPLETED'
-           AND completed_at >= $1
-           AND completed_at <= $2
+           AND completed_at >= ${start}
+           AND completed_at <= ${end}
          GROUP BY DATE(completed_at)
-         ORDER BY date ASC`, [start, end]);
-            // Average time on waitlist until upgrade
-            const avgTimeResult = await (0, db_1.query)(`SELECT 
+         ORDER BY date ASC`);
+            const avgTimeResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT 
            AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 60)::numeric(10, 2) as avg_minutes
          FROM waitlist
          WHERE status = 'COMPLETED'
-           AND completed_at >= $1
-           AND completed_at <= $2
+           AND completed_at >= ${start}
+           AND completed_at <= ${end}
            AND completed_at IS NOT NULL
-           AND created_at IS NOT NULL`, [start, end]);
-            // Upgrades by tier
-            const tierCountResult = await (0, db_1.query)(`SELECT 
+           AND created_at IS NOT NULL`);
+            const tierCountResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT 
            desired_tier,
            COUNT(*)::int as count
          FROM waitlist
          WHERE status = 'COMPLETED'
-           AND completed_at >= $1
-           AND completed_at <= $2
+           AND completed_at >= ${start}
+           AND completed_at <= ${end}
          GROUP BY desired_tier
-         ORDER BY desired_tier`, [start, end]);
+         ORDER BY desired_tier`);
             return reply.send({
                 period: {
                     start: start.toISOString(),
@@ -82,14 +72,6 @@ async function metricsRoutes(fastify) {
             });
         }
     });
-    /**
-     * GET /v1/metrics/waitlist - Get waitlist metrics
-     *
-     * Returns:
-     * - Active waitlist count
-     * - Offered waitlist count
-     * - Average wait time for active entries
-     */
     fastify.get('/v1/metrics/waitlist', {
         preHandler: [middleware_1.requireAuth],
     }, async (request, reply) => {
@@ -97,12 +79,9 @@ async function metricsRoutes(fastify) {
             return reply.status(401).send({ error: 'Unauthorized' });
         }
         try {
-            // Active waitlist count
-            const activeCountResult = await (0, db_1.query)(`SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'ACTIVE'`);
-            // Offered waitlist count
-            const offeredCountResult = await (0, db_1.query)(`SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'OFFERED'`);
-            // Average wait time for active entries (in minutes)
-            const avgWaitResult = await (0, db_1.query)(`SELECT 
+            const activeCountResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'ACTIVE'`);
+            const offeredCountResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'OFFERED'`);
+            const avgWaitResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT 
            AVG(EXTRACT(EPOCH FROM (NOW() - created_at)) / 60)::numeric(10, 2) as avg_minutes
          FROM waitlist
          WHERE status = 'ACTIVE'`);

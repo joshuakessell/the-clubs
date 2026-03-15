@@ -14,6 +14,7 @@ exports.storeCredential = storeCredential;
 exports.updateCredentialSignCount = updateCredentialSignCount;
 exports.cleanupExpiredChallenges = cleanupExpiredChallenges;
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const crypto_1 = __importDefault(require("crypto"));
 function parseTransports(value) {
     if (!value || value.length === 0)
@@ -60,25 +61,25 @@ function generateChallenge() {
 async function storeChallenge(challenge, staffId, deviceId, type) {
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + 2); // 2 minute TTL
-    await (0, db_1.query)(`INSERT INTO webauthn_challenges (challenge, staff_id, device_id, type, expires_at)
-     VALUES ($1, $2, $3, $4, $5)`, [challenge, staffId, deviceId, type, expiresAt]);
+    await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO webauthn_challenges (challenge, staff_id, device_id, type, expires_at)
+     VALUES (${challenge}, ${staffId}, ${deviceId}, ${type}, ${expiresAt})`);
 }
 /**
  * Retrieve and consume a WebAuthn challenge.
  * Returns the challenge data if valid, null if expired or not found.
  */
 async function consumeChallenge(challenge) {
-    const result = await (0, db_1.query)(`SELECT staff_id, device_id, type
+    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT staff_id, device_id, type
      FROM webauthn_challenges
-     WHERE challenge = $1
+     WHERE challenge = ${challenge}
      AND expires_at > NOW()
-     FOR UPDATE SKIP LOCKED`, [challenge]);
+     FOR UPDATE SKIP LOCKED`);
     if (result.rows.length === 0) {
         return null;
     }
     const row = result.rows[0];
     // Delete the challenge after consuming it (single-use)
-    await (0, db_1.query)(`DELETE FROM webauthn_challenges WHERE challenge = $1`, [challenge]);
+    await db_1.db.execute((0, drizzle_orm_1.sql) `DELETE FROM webauthn_challenges WHERE challenge = ${challenge}`);
     return {
         staffId: row.staff_id,
         deviceId: row.device_id,
@@ -89,11 +90,11 @@ async function consumeChallenge(challenge) {
  * Get all active WebAuthn credentials for a staff member.
  */
 async function getStaffCredentials(staffId) {
-    const result = await (0, db_1.query)(`SELECT credential_id, public_key, sign_count, transports
+    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT credential_id, public_key, sign_count, transports
      FROM staff_webauthn_credentials
-     WHERE staff_id = $1
+     WHERE staff_id = ${staffId}
      AND revoked_at IS NULL
-     ORDER BY created_at DESC`, [staffId]);
+     ORDER BY created_at DESC`);
     return result.rows.map((row) => ({
         credentialID: Buffer.from(row.credential_id, 'base64url'),
         credentialPublicKey: Buffer.from(row.public_key, 'base64'),
@@ -105,10 +106,10 @@ async function getStaffCredentials(staffId) {
  * Get a credential by credential ID (for authentication).
  */
 async function getCredentialByCredentialId(credentialId) {
-    const result = await (0, db_1.query)(`SELECT staff_id, public_key, sign_count, transports
+    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT staff_id, public_key, sign_count, transports
      FROM staff_webauthn_credentials
-     WHERE credential_id = $1
-     AND revoked_at IS NULL`, [credentialId]);
+     WHERE credential_id = ${credentialId}
+     AND revoked_at IS NULL`);
     if (result.rows.length === 0) {
         return null;
     }
@@ -127,30 +128,25 @@ async function getCredentialByCredentialId(credentialId) {
  * Store a new WebAuthn credential after successful registration.
  */
 async function storeCredential(staffId, deviceId, credentialId, publicKey, signCount, transports) {
-    await (0, db_1.query)(`INSERT INTO staff_webauthn_credentials 
+    const publicKeyBase64 = publicKey.toString('base64');
+    const transportsJson = transports ? JSON.stringify(transports) : null;
+    await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO staff_webauthn_credentials 
      (staff_id, device_id, credential_id, public_key, sign_count, transports)
-     VALUES ($1, $2, $3, $4, $5, $6)`, [
-        staffId,
-        deviceId,
-        credentialId,
-        publicKey.toString('base64'),
-        signCount,
-        transports ? JSON.stringify(transports) : null,
-    ]);
+     VALUES (${staffId}, ${deviceId}, ${credentialId}, ${publicKeyBase64}, ${signCount}, ${transportsJson})`);
 }
 /**
  * Update credential sign count after successful authentication.
  */
 async function updateCredentialSignCount(credentialId, newSignCount) {
-    await (0, db_1.query)(`UPDATE staff_webauthn_credentials
-     SET sign_count = $1, last_used_at = NOW()
-     WHERE credential_id = $2
-     AND revoked_at IS NULL`, [newSignCount, credentialId]);
+    await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE staff_webauthn_credentials
+     SET sign_count = ${newSignCount}, last_used_at = NOW()
+     WHERE credential_id = ${credentialId}
+     AND revoked_at IS NULL`);
 }
 /**
  * Clean up expired challenges (should be run periodically).
  */
 async function cleanupExpiredChallenges() {
-    const result = await (0, db_1.query)(`DELETE FROM webauthn_challenges WHERE expires_at < NOW()`);
-    return result.rowCount || 0;
+    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `DELETE FROM webauthn_challenges WHERE expires_at < NOW() RETURNING id`);
+    return result.rows.length;
 }

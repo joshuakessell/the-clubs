@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.processScanId = processScanId;
+const types_1 = require("../../checkin/types");
 const identity_1 = require("../../checkin/identity");
 const payload_1 = require("../../checkin/payload");
 const utils_1 = require("../../checkin/utils");
@@ -139,14 +140,14 @@ async function processScanId(client, params) {
            renewal_hours = NULL,
            updated_at = NOW()
        WHERE id = $5
-       RETURNING *`, [customerId, customerName, staffId, computedMode, existingSession.rows[0].id]);
+       RETURNING ${types_1.LANE_SESSION_COLS}`, [customerId, customerName, staffId, computedMode, existingSession.rows[0].id]);
         session = updateResult.rows[0];
     }
     else {
         const newSessionResult = await client.query(`INSERT INTO lane_sessions
        (lane_id, status, staff_id, customer_id, customer_display_name, checkin_mode, renewal_hours)
        VALUES ($1, 'ACTIVE', $2, $3, $4, $5, NULL)
-       RETURNING *`, [laneId, staffId, customerId, customerName, computedMode]);
+       RETURNING ${types_1.LANE_SESSION_COLS}`, [laneId, staffId, customerId, customerName, computedMode]);
         session = newSessionResult.rows[0];
     }
     // ── Step 9: Fetch customer info for response ──
@@ -214,16 +215,15 @@ async function assertNoActiveVisit(client, customerId) {
     if (activeVisit.rows.length === 0)
         return;
     const activeVisitId = activeVisit.rows[0].id;
-    const activeBlock = await client.query(`SELECT cb.starts_at, cb.ends_at, cb.rental_type, r.number as room_number, l.number as locker_number
+    const activeBlock = await client.query(`SELECT cb.starts_at, cb.ends_at, cb.rental_type, r.number as resource_number, r.kind as resource_kind
      FROM checkin_blocks cb
-     LEFT JOIN rooms r ON cb.room_id = r.id
-     LEFT JOIN lockers l ON cb.locker_id = l.id
+     LEFT JOIN inventory_resources r ON cb.resource_id = r.id
      WHERE cb.visit_id = $1
      ORDER BY cb.ends_at DESC
      LIMIT 1`, [activeVisitId]);
     const block = activeBlock.rows[0];
-    const assignedResourceType = block?.room_number ? 'room' : block?.locker_number ? 'locker' : null;
-    const assignedResourceNumber = block?.room_number ?? block?.locker_number ?? null;
+    const assignedResourceType = block?.resource_kind === 'locker' ? 'locker' : block?.resource_number ? 'room' : null;
+    const assignedResourceNumber = block?.resource_number ?? null;
     const waitlistResult = await client.query(`SELECT id, desired_tier, backup_tier, status FROM waitlist
      WHERE visit_id = $1 AND status IN ('ACTIVE', 'OFFERED')
      ORDER BY created_at DESC LIMIT 1`, [activeVisitId]);
@@ -234,9 +234,9 @@ async function assertNoActiveVisit(client, customerId) {
         rentalType: block?.rental_type ?? null,
         assignedResourceType,
         assignedResourceNumber,
-        checkinAt: block?.starts_at ? block.starts_at.toISOString() : null,
-        checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
-        overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
+        checkinAt: block?.starts_at ? new Date(block.starts_at).toISOString() : null,
+        checkoutAt: block?.ends_at ? new Date(block.ends_at).toISOString() : null,
+        overdue: block?.ends_at ? new Date(block.ends_at).getTime() < Date.now() : null,
         waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
     };
     throw err;
@@ -255,7 +255,8 @@ async function fetchCustomerInfoForResponse(client, session, computedMode) {
     const customerPrimaryLanguage = customer.primary_language;
     let customerDobMonthDay;
     if (customer.dob) {
-        customerDobMonthDay = `${String(customer.dob.getMonth() + 1).padStart(2, '0')}/${String(customer.dob.getDate()).padStart(2, '0')}`;
+        const dobDate = new Date(customer.dob);
+        customerDobMonthDay = `${String(dobDate.getMonth() + 1).padStart(2, '0')}/${String(dobDate.getDate()).padStart(2, '0')}`;
     }
     const membershipCardType = customer.membership_card_type;
     const membershipValidUntilDate = customer.membership_valid_until

@@ -21,14 +21,22 @@ import { writeOfflineOutboxRecord } from '../../checkin/offlineOutbox';
 function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const parts = queryText.split(/\$\d+/);
       const values = params ?? [];
       let built = sql.empty();
-      for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
-        if (i < values.length) {
-          built = sql`${built}${values[i]}`;
-        }
+      // Use matchAll to find $N placeholders and their positions
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        // Append the literal text before this placeholder
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        // Parse the placeholder number and map to the correct param
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      // Append any trailing literal text
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
       }
       const result = await tx.execute(built);
       return { rows: result.rows as T[] };

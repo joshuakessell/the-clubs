@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.agreementsRoutes = agreementsRoutes;
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const shared_1 = require("@the-clubs/shared");
 /**
  * Agreement routes.
@@ -14,7 +15,7 @@ async function agreementsRoutes(fastify) {
      */
     fastify.get('/v1/agreements/active', async (_request, reply) => {
         try {
-            const result = await (0, db_1.query)(`SELECT id, version, title, body_text
+            const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, version, title, body_text
          FROM agreements
          WHERE active = true
          ORDER BY created_at DESC

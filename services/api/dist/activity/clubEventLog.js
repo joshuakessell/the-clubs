@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildClubEventSearchBlob = buildClubEventSearchBlob;
 exports.insertClubEvent = insertClubEvent;
+exports.insertClubEventDrizzle = insertClubEventDrizzle;
+const drizzle_orm_1 = require("drizzle-orm");
 // ---------------------------------------------------------------------------
 // Searchable metadata keys (extracted into search_blob for trigram search)
 // ---------------------------------------------------------------------------
@@ -10,7 +12,7 @@ const SEARCHABLE_METADATA_KEYS = [
     'orderId',
     'laneId',
     'laneSessionId',
-    'paymentIntentId',
+    'orderId',
     'checkoutRequestId',
     'waitlistId',
     'roomNumber',
@@ -118,4 +120,53 @@ async function insertClubEvent(client, input) {
         throw new Error('Club event insert deduped but row not found');
     }
     return { id: existing.rows[0].id, deduped: true };
+}
+const schema_1 = require("../db/schema");
+/**
+ * Drizzle-native club event writer — uses tx.insert() for type-safe inserts.
+ * Use this instead of insertClubEvent when operating within a Drizzle transaction.
+ */
+async function insertClubEventDrizzle(tx, input) {
+    const occurredAt = input.occurredAt ?? new Date();
+    const metadata = input.metadata ?? {};
+    const searchBlob = buildClubEventSearchBlob(input);
+    const result = await tx
+        .insert(schema_1.clubEvents)
+        .values({
+        occurredAt,
+        eventType: input.eventType,
+        eventDomain: input.eventDomain,
+        sourceApp: input.sourceApp,
+        registerId: input.registerId ?? null,
+        staffId: input.staffId ?? null,
+        staffName: input.staffName ?? null,
+        customerId: input.customerId ?? null,
+        customerName: input.customerName ?? null,
+        visitId: input.visitId ?? null,
+        orderId: input.orderId ?? null,
+        amount: input.amount ?? null,
+        currency: input.currency ?? 'USD',
+        summary: input.summary,
+        metadata,
+        searchBlob,
+        dedupeKey: input.dedupeKey ?? null,
+    })
+        .onConflictDoNothing({ target: schema_1.clubEvents.dedupeKey, where: (0, drizzle_orm_1.sql) `${schema_1.clubEvents.dedupeKey} IS NOT NULL` })
+        .returning({ id: schema_1.clubEvents.id });
+    if (result.length > 0) {
+        return { id: result[0].id, deduped: false };
+    }
+    // Deduplication occurred — look up existing row
+    if (!input.dedupeKey) {
+        throw new Error('Failed to insert club event');
+    }
+    const [existing] = await tx
+        .select({ id: schema_1.clubEvents.id })
+        .from(schema_1.clubEvents)
+        .where((0, drizzle_orm_1.sql) `${schema_1.clubEvents.dedupeKey} = ${input.dedupeKey}`)
+        .limit(1);
+    if (!existing) {
+        throw new Error('Club event insert deduped but row not found');
+    }
+    return { id: existing.id, deduped: true };
 }

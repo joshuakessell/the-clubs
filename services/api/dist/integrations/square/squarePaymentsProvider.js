@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SquarePaymentsProvider = void 0;
 const node_crypto_1 = __importDefault(require("node:crypto"));
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const squareClient_1 = require("./squareClient");
 const squareLogger_1 = require("./squareLogger");
 const squarePaymentMapper_1 = require("./squarePaymentMapper");
@@ -44,9 +45,9 @@ function extractSquareErrorCodes(error) {
 async function persistExternalRef(internalPaymentId, externalId) {
     if (!internalPaymentId)
         return;
-    await (0, db_1.query)(`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id)
-     VALUES ('square', 'payment', $1, $2)
-     ON CONFLICT DO NOTHING`, [internalPaymentId, externalId]);
+    await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id)
+     VALUES ('square', 'payment', ${internalPaymentId}, ${externalId})
+     ON CONFLICT DO NOTHING`);
 }
 function matchesFilters(record, filters) {
     if (!filters)

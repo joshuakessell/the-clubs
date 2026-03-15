@@ -36,14 +36,22 @@ import { calculateRenewalQuote, type RentalType } from '../pricing/engine';
 function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const parts = queryText.split(/\$\d+/);
       const values = params ?? [];
       let built = sql.empty();
-      for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
-        if (i < values.length) {
-          built = sql`${built}${values[i]}`;
-        }
+      // Use matchAll to find $N placeholders and their positions
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        // Append the literal text before this placeholder
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        // Parse the placeholder number and map to the correct param
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      // Append any trailing literal text
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
       }
       const result = await (tx as any).execute(built);
       return { rows: result.rows as T[] };
@@ -433,7 +441,7 @@ export async function completeManualCheckout(
 
     if (waitlistRows.length > 0) {
       const waitlistIds = waitlistRows.map((r) => r.id);
-      await tx.execute(sql`UPDATE waitlist SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by_staff_id = NULL, updated_at = NOW() WHERE id = ANY(${waitlistIds}::uuid[])`);
+      await tx.execute(sql`UPDATE waitlist SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by_staff_id = NULL, updated_at = NOW() WHERE id IN (${sql.join(waitlistIds.map(id => sql`${id}::uuid`), sql`, `)})`);
       const auditStaffId = looksLikeUuid(staff.staffId) ? staff.staffId : null;
       for (const wl of waitlistRows) {
         await insertAuditLogDrizzle(tx, {
@@ -670,12 +678,12 @@ export async function markFeePaid(
 
         const existingOrder = await tx.execute<Record<string, unknown>>(
           sql`INSERT INTO orders
-           (amount, status, quote_json, payment_method, register_number, tip, paid_at, paid_by_staff_id)
-           VALUES (${feeAmount}, 'PAID', ${quoteJson}::jsonb, ${body.paymentMethod ?? null}, ${resolvedRegisterNumber}, ${body.tip ?? 0}, NOW(), ${staff.staffId})
-           RETURNING id, amount, payment_method, register_number, tip`
+           (subtotal, discount, tax, tip, total, currency, status, quote_json, payment_method, register_number, paid_at, paid_by_staff_id)
+           VALUES (${feeAmount}, 0, 0, ${body.tip ?? 0}, ${feeAmount + (body.tip ?? 0)}, 'USD', 'PAID', ${quoteJson}::jsonb, ${body.paymentMethod ?? null}, ${resolvedRegisterNumber}, NOW(), ${staff.staffId})
+           RETURNING id, total, payment_method, register_number, tip`
         );
 
-        const intent = existingOrder.rows[0] as unknown as { id: string; amount: number | string; payment_method?: string | null; register_number?: number | null; tip?: number | null };
+        const intent = existingOrder.rows[0] as unknown as { id: string; total: number | string; payment_method?: string | null; register_number?: number | null; tip?: number | null };
         const lineItems = [{ kind: 'LATE_FEE' as const, name: 'Late Fee', quantity: 1, unitPrice: feeAmount, total: feeAmount }];
         const totals = computeOrderTotals(lineItems, feeAmount, intent.tip ?? 0);
 
@@ -872,7 +880,7 @@ export async function completeStaffCheckout(
 
     if (waitlistRows.length > 0) {
       const waitlistIds = waitlistRows.map((r) => r.id);
-      await tx.execute(sql`UPDATE waitlist SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by_staff_id = NULL, updated_at = NOW() WHERE id = ANY(${waitlistIds}::uuid[])`);
+      await tx.execute(sql`UPDATE waitlist SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by_staff_id = NULL, updated_at = NOW() WHERE id IN (${sql.join(waitlistIds.map(id => sql`${id}::uuid`), sql`, `)})`);
       const auditStaffId = looksLikeUuid(staff.staffId) ? staff.staffId : null;
       for (const row of waitlistRows) {
         await insertAuditLogDrizzle(tx, {

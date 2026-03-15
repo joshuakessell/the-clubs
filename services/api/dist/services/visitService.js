@@ -9,7 +9,7 @@ exports.createFinalExtension = createFinalExtension;
  * Migrated to Drizzle ORM in Phase 3.
  *
  * Uses domain helpers from Phase 0:
- *   - domain/resourceAssignment.ts (assignRoom, assignLocker)
+ *   - domain/resourceAssignment.ts (assignResource)
  *   - domain/customerGuards.ts (assertNotBanned, assertCustomerExists)
  */
 const db_1 = require("../db");
@@ -26,10 +26,10 @@ function formatVisit(visit, overrideUpdatedAt) {
     return {
         id: visit.id,
         customerId: visit.customerId,
-        startedAt: visit.startedAt,
-        endedAt: visit.endedAt,
-        createdAt: visit.createdAt,
-        updatedAt: overrideUpdatedAt?.toISOString() ?? visit.updatedAt,
+        startedAt: visit.startedAt.toISOString(),
+        endedAt: visit.endedAt?.toISOString() ?? null,
+        createdAt: visit.createdAt.toISOString(),
+        updatedAt: overrideUpdatedAt?.toISOString() ?? visit.updatedAt.toISOString(),
     };
 }
 function formatBlock(block) {
@@ -37,15 +37,14 @@ function formatBlock(block) {
         id: block.id,
         visitId: block.visitId,
         blockType: block.blockType,
-        startsAt: block.startsAt,
-        endsAt: block.endsAt,
+        startsAt: block.startsAt.toISOString(),
+        endsAt: block.endsAt.toISOString(),
         rentalType: block.rentalType,
-        roomId: block.roomId,
-        lockerId: block.lockerId,
+        resourceId: block.resourceId,
         sessionId: block.sessionId,
         agreementSigned: block.agreementSigned,
-        createdAt: block.createdAt,
-        updatedAt: block.updatedAt,
+        createdAt: block.createdAt.toISOString(),
+        updatedAt: block.updatedAt.toISOString(),
     };
 }
 // ── Service Methods ──
@@ -74,12 +73,9 @@ async function createVisit(input) {
         if (existingVisit.length > 0) {
             throw new HttpError_1.HttpError(409, 'Member already has an active visit');
         }
-        // 3. Handle room/locker assignment using Phase 0 helpers (now Drizzle-native)
-        const assignedRoomId = input.roomId
-            ? await (0, resourceAssignment_1.assignRoom)(tx, input.roomId, input.customerId)
-            : null;
-        const assignedLockerId = input.lockerId
-            ? await (0, resourceAssignment_1.assignLocker)(tx, input.lockerId, input.customerId)
+        // 3. Handle resource assignment using unified assignResource
+        const assignedResourceId = input.resourceId
+            ? await (0, resourceAssignment_1.assignResource)(tx, input.resourceId, input.customerId)
             : null;
         // 4. Create the visit
         const now = new Date();
@@ -88,7 +84,7 @@ async function createVisit(input) {
             .insert(schema_1.visits)
             .values({
             customerId: input.customerId,
-            startedAt: now.toISOString(),
+            startedAt: now,
         })
             .returning();
         if (!visit)
@@ -99,11 +95,10 @@ async function createVisit(input) {
             .values({
             visitId: visit.id,
             blockType: 'INITIAL',
-            startsAt: now.toISOString(),
-            endsAt: initialBlockEndsAt.toISOString(),
+            startsAt: now,
+            endsAt: initialBlockEndsAt,
             rentalType: input.rentalType,
-            roomId: assignedRoomId,
-            lockerId: assignedLockerId,
+            resourceId: assignedResourceId,
         })
             .returning();
         if (!block)
@@ -121,10 +116,19 @@ async function createVisit(input) {
 async function renewVisit(input) {
     return db_1.db.transaction(async (tx) => {
         const requestedRenewalHours = input.renewalHours ?? 6;
-        // 1. Get the visit and verify it's active (FOR UPDATE)
-        const visitRows = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = ${input.visitId} FOR UPDATE`);
-        const visit = (0, customerGuards_1.assertCustomerExists)(visitRows.rows, 'Visit');
-        if (visit.ended_at) {
+        // 1. Get the visit and verify it's active (FOR UPDATE — native Drizzle lock)
+        const visitRows = await tx
+            .select({
+            id: schema_1.visits.id,
+            customerId: schema_1.visits.customerId,
+            startedAt: schema_1.visits.startedAt,
+            endedAt: schema_1.visits.endedAt,
+        })
+            .from(schema_1.visits)
+            .where((0, drizzle_orm_1.eq)(schema_1.visits.id, input.visitId))
+            .for('update');
+        const visit = (0, customerGuards_1.assertCustomerExists)(visitRows, 'Visit');
+        if (visit.endedAt) {
             throw new HttpError_1.HttpError(400, 'Visit has already ended');
         }
         // 2. Verify customer exists & not banned
@@ -136,21 +140,33 @@ async function renewVisit(input) {
             bannedUntil: schema_1.customers.bannedUntil,
         })
             .from(schema_1.customers)
-            .where((0, drizzle_orm_1.eq)(schema_1.customers.id, visit.customer_id));
+            .where((0, drizzle_orm_1.eq)(schema_1.customers.id, visit.customerId));
         const customer = (0, customerGuards_1.assertCustomerExists)(customerRows);
-        (0, customerGuards_1.assertNotBanned)({ banned_until: customer.bannedUntil ? new Date(customer.bannedUntil) : null });
-        // 3. Get all existing blocks for this visit
-        const blocksResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id, session_id, agreement_signed
-       FROM checkin_blocks WHERE visit_id = ${visit.id} ORDER BY ends_at DESC`);
-        const blocks = blocksResult.rows;
+        (0, customerGuards_1.assertNotBanned)({ banned_until: customer.bannedUntil });
+        // 3. Get all existing blocks for this visit (Drizzle returns Date via mode: 'date')
+        const blocks = await tx
+            .select({
+            id: schema_1.checkinBlocks.id,
+            visitId: schema_1.checkinBlocks.visitId,
+            blockType: schema_1.checkinBlocks.blockType,
+            startsAt: schema_1.checkinBlocks.startsAt,
+            endsAt: schema_1.checkinBlocks.endsAt,
+            rentalType: schema_1.checkinBlocks.rentalType,
+            resourceId: schema_1.checkinBlocks.resourceId,
+            sessionId: schema_1.checkinBlocks.sessionId,
+            agreementSigned: schema_1.checkinBlocks.agreementSigned,
+        })
+            .from(schema_1.checkinBlocks)
+            .where((0, drizzle_orm_1.eq)(schema_1.checkinBlocks.visitId, visit.id))
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.checkinBlocks.endsAt));
         if (blocks.length === 0) {
             throw new HttpError_1.HttpError(400, 'Visit has no blocks');
         }
-        // 4. Check renewal hour limit — need Date objects for calculation
+        // 4. Check renewal hour limit — Drizzle returns Date objects natively
         const blocksForCalc = blocks.map((b) => ({
-            starts_at: new Date(b.starts_at),
-            ends_at: new Date(b.ends_at),
-            block_type: b.block_type,
+            starts_at: b.startsAt,
+            ends_at: b.endsAt,
+            block_type: b.blockType,
         }));
         const totalHoursIfRenewed = (0, utils_1.calculateTotalHoursWithExtension)(blocksForCalc, requestedRenewalHours);
         if (totalHoursIfRenewed > 14) {
@@ -168,14 +184,9 @@ async function renewVisit(input) {
         }
         const renewalStartsAt = latestBlockEnd;
         const renewalEndsAt = new Date(renewalStartsAt.getTime() + requestedRenewalHours * 60 * 60 * 1000);
-        // 6. Room/locker assignment (renewal allows reassign-to-same)
-        const assignedRoomId = input.roomId
-            ? await (0, resourceAssignment_1.assignRoom)(tx, input.roomId, visit.customer_id, {
-                allowReassignToSame: true,
-            })
-            : null;
-        const assignedLockerId = input.lockerId
-            ? await (0, resourceAssignment_1.assignLocker)(tx, input.lockerId, visit.customer_id, {
+        // 6. Resource assignment (renewal allows reassign-to-same)
+        const assignedResourceId = input.resourceId
+            ? await (0, resourceAssignment_1.assignResource)(tx, input.resourceId, visit.customerId, {
                 allowReassignToSame: true,
             })
             : null;
@@ -185,11 +196,10 @@ async function renewVisit(input) {
             .values({
             visitId: visit.id,
             blockType: requestedRenewalHours === 2 ? 'FINAL2H' : 'RENEWAL',
-            startsAt: renewalStartsAt.toISOString(),
-            endsAt: renewalEndsAt.toISOString(),
+            startsAt: renewalStartsAt,
+            endsAt: renewalEndsAt,
             rentalType: input.rentalType,
-            roomId: assignedRoomId,
-            lockerId: assignedLockerId,
+            resourceId: assignedResourceId,
         })
             .returning();
         if (!block)
@@ -197,10 +207,10 @@ async function renewVisit(input) {
         return {
             visit: {
                 id: visit.id,
-                customerId: visit.customer_id,
-                startedAt: visit.started_at,
-                endedAt: visit.ended_at,
-                createdAt: visit.started_at,
+                customerId: visit.customerId,
+                startedAt: visit.startedAt.toISOString(),
+                endedAt: null,
+                createdAt: visit.startedAt.toISOString(),
                 updatedAt: new Date().toISOString(),
             },
             block: formatBlock(block),
@@ -213,26 +223,46 @@ async function renewVisit(input) {
  */
 async function createFinalExtension(input) {
     return db_1.db.transaction(async (tx) => {
-        // 1. Get visit and verify it's active (FOR UPDATE)
-        const visitRows = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = ${input.visitId} FOR UPDATE`);
-        const visit = (0, customerGuards_1.assertCustomerExists)(visitRows.rows, 'Visit');
-        if (visit.ended_at) {
+        // 1. Get visit and verify it's active (FOR UPDATE — native Drizzle lock)
+        const visitRows = await tx
+            .select({
+            id: schema_1.visits.id,
+            customerId: schema_1.visits.customerId,
+            startedAt: schema_1.visits.startedAt,
+            endedAt: schema_1.visits.endedAt,
+        })
+            .from(schema_1.visits)
+            .where((0, drizzle_orm_1.eq)(schema_1.visits.id, input.visitId))
+            .for('update');
+        const visit = (0, customerGuards_1.assertCustomerExists)(visitRows, 'Visit');
+        if (visit.endedAt) {
             throw new HttpError_1.HttpError(400, 'Visit has already ended');
         }
-        // 2. Get all blocks and validate state
-        const blocksResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id
-       FROM checkin_blocks WHERE visit_id = ${visit.id} ORDER BY ends_at DESC`);
-        const blocks = blocksResult.rows;
+        // 2. Get all blocks and validate state (Drizzle returns Date via mode: 'date')
+        const blocks = await tx
+            .select({
+            id: schema_1.checkinBlocks.id,
+            visitId: schema_1.checkinBlocks.visitId,
+            blockType: schema_1.checkinBlocks.blockType,
+            startsAt: schema_1.checkinBlocks.startsAt,
+            endsAt: schema_1.checkinBlocks.endsAt,
+            rentalType: schema_1.checkinBlocks.rentalType,
+            resourceId: schema_1.checkinBlocks.resourceId,
+        })
+            .from(schema_1.checkinBlocks)
+            .where((0, drizzle_orm_1.eq)(schema_1.checkinBlocks.visitId, visit.id))
+            .orderBy((0, drizzle_orm_1.desc)(schema_1.checkinBlocks.endsAt));
         if (blocks.length !== 2) {
             throw new HttpError_1.HttpError(400, `Final extension requires exactly 2 blocks (current: ${blocks.length}). Visit must have completed two 6-hour blocks first.`);
         }
-        if (blocks.some((b) => b.block_type === 'FINAL2H')) {
+        if (blocks.some((b) => b.blockType === 'FINAL2H')) {
             throw new HttpError_1.HttpError(400, 'Final extension has already been applied to this visit');
         }
+        // Drizzle returns Date objects natively — no wrapping needed
         const blocksForCalc = blocks.map((b) => ({
-            starts_at: new Date(b.starts_at),
-            ends_at: new Date(b.ends_at),
-            block_type: b.block_type,
+            starts_at: b.startsAt,
+            ends_at: b.endsAt,
+            block_type: b.blockType,
         }));
         const totalHours = (0, utils_1.calculateTotalHours)(blocksForCalc);
         if (totalHours !== 12) {
@@ -245,14 +275,9 @@ async function createFinalExtension(input) {
         if (!latestBlockEnd) {
             throw new HttpError_1.HttpError(400, 'Cannot determine extension start time');
         }
-        // 3. Room/locker assignment (reassign-to-same allowed)
-        const assignedRoomId = input.roomId
-            ? await (0, resourceAssignment_1.assignRoom)(tx, input.roomId, visit.customer_id, {
-                allowReassignToSame: true,
-            })
-            : null;
-        const assignedLockerId = input.lockerId
-            ? await (0, resourceAssignment_1.assignLocker)(tx, input.lockerId, visit.customer_id, {
+        // 3. Resource assignment (reassign-to-same allowed)
+        const assignedResourceId = input.resourceId
+            ? await (0, resourceAssignment_1.assignResource)(tx, input.resourceId, visit.customerId, {
                 allowReassignToSame: true,
             })
             : null;
@@ -264,22 +289,26 @@ async function createFinalExtension(input) {
             .values({
             visitId: visit.id,
             blockType: 'FINAL2H',
-            startsAt: extensionStartsAt.toISOString(),
-            endsAt: extensionEndsAt.toISOString(),
+            startsAt: extensionStartsAt,
+            endsAt: extensionEndsAt,
             rentalType: input.rentalType,
-            roomId: assignedRoomId,
-            lockerId: assignedLockerId,
+            resourceId: assignedResourceId,
             agreementSigned: true,
         })
             .returning();
         if (!block)
             throw new HttpError_1.HttpError(500, 'Failed to create extension block');
-        // 5. Create payment intent for $20 flat fee
-        const [paymentIntent] = await tx
-            .insert(schema_1.paymentIntents)
+        // 5. Create order for $20 flat fee (replaces paymentIntents)
+        const [order] = await tx
+            .insert(schema_1.orders)
             .values({
-            amount: '20.00',
-            status: 'DUE',
+            customerId: visit.customerId,
+            visitId: visit.id,
+            status: 'OPEN',
+            subtotal: '20.00',
+            discount: '0',
+            tax: '0',
+            total: '20.00',
             quoteJson: {
                 type: 'FINAL_EXTENSION',
                 visitId: visit.id,
@@ -289,8 +318,16 @@ async function createFinalExtension(input) {
             },
         })
             .returning();
-        if (!paymentIntent)
-            throw new HttpError_1.HttpError(500, 'Failed to create payment intent');
+        if (!order)
+            throw new HttpError_1.HttpError(500, 'Failed to create extension order');
+        await tx.insert(schema_1.orderLineItems).values({
+            orderId: order.id,
+            kind: 'FINAL_EXTENSION',
+            name: 'Final 2-Hour Extension',
+            quantity: 1,
+            unitPrice: '20.00',
+            total: '20.00',
+        });
         // 6. Audit log — Drizzle-native, type-safe insert
         await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
             staffId: input.staffId,
@@ -306,24 +343,24 @@ async function createFinalExtension(input) {
                 blockType: 'FINAL2H',
                 extensionHours: 2,
                 newEndsAt: extensionEndsAt.toISOString(),
-                paymentIntentId: paymentIntent.id,
+                orderId: order.id,
                 rentalType: input.rentalType,
             },
         });
         return {
             visit: {
                 id: visit.id,
-                customerId: visit.customer_id,
-                startedAt: visit.started_at,
-                endedAt: visit.ended_at,
-                createdAt: visit.started_at,
+                customerId: visit.customerId,
+                startedAt: visit.startedAt.toISOString(),
+                endedAt: null,
+                createdAt: visit.startedAt.toISOString(),
                 updatedAt: new Date().toISOString(),
             },
             block: formatBlock(block),
-            paymentIntentId: paymentIntent.id,
-            amount: typeof paymentIntent.amount === 'string'
-                ? Number.parseFloat(paymentIntent.amount)
-                : Number(paymentIntent.amount),
+            orderId: order.id,
+            amount: typeof order.total === 'string'
+                ? Number.parseFloat(order.total)
+                : Number(order.total),
         };
     }, { isolationLevel: 'serializable' });
 }

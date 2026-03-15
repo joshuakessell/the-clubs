@@ -6,6 +6,7 @@ exports.requireReauth = requireReauth;
 exports.requireReauthForAdmin = requireReauthForAdmin;
 exports.optionalAuth = optionalAuth;
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const utils_1 = require("./utils");
 /**
  * Extract and validate session token from Authorization header.
@@ -23,17 +24,17 @@ async function extractStaffFromToken(request) {
     const token = authHeader.substring(7);
     const tokenHash = (0, utils_1.hashSessionToken)(token);
     try {
-        const sessionResult = await (0, db_1.query)(`SELECT 
+        const sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT 
         ss.staff_id,
         ss.id,
         s.name,
         s.role
       FROM staff_sessions ss
       JOIN staff s ON s.id = ss.staff_id
-      WHERE ss.session_token = $1 
+      WHERE ss.session_token = ${tokenHash} 
         AND ss.revoked_at IS NULL
         AND ss.expires_at > NOW()
-        AND s.active = true`, [tokenHash]);
+        AND s.active = true`);
         if (sessionResult.rows.length === 0) {
             // Log the first 8 chars of the token hash for correlation (safe — hash is not reversible)
             request.log.warn({ tokenHashPrefix: tokenHash.slice(0, 8), tokenRawPrefix: token.slice(0, 8), url: request.url }, 'auth_reject: no active session found for token hash');
@@ -48,10 +49,10 @@ async function extractStaffFromToken(request) {
         };
         // Sliding window: extend session expiry on each authenticated request.
         // Only fires if less than 23h remain (throttles to ~1 write/hour max).
-        (0, db_1.query)(`UPDATE staff_sessions
+        db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE staff_sessions
        SET expires_at = NOW() + INTERVAL '24 hours'
-       WHERE session_token = $1
-         AND expires_at - NOW() < INTERVAL '23 hours'`, [tokenHash]).catch(() => { }); // fire-and-forget, non-blocking
+       WHERE session_token = ${tokenHash}
+         AND expires_at - NOW() < INTERVAL '23 hours'`).catch(() => { }); // fire-and-forget, non-blocking
         return true;
     }
     catch (error) {
@@ -123,11 +124,11 @@ async function requireReauth(request, reply) {
     const token = authHeader.substring(7);
     const tokenHash = (0, utils_1.hashSessionToken)(token);
     try {
-        const sessionResult = await (0, db_1.query)(`SELECT reauth_ok_until
+        const sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT reauth_ok_until
        FROM staff_sessions
-       WHERE session_token = $1
+       WHERE session_token = ${tokenHash}
          AND revoked_at IS NULL
-         AND expires_at > NOW()`, [tokenHash]);
+         AND expires_at > NOW()`);
         if (sessionResult.rows.length === 0) {
             reply.status(401).send({
                 error: 'Unauthorized',

@@ -61,14 +61,18 @@ function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       // Build parameterized sql using Drizzle's sql.raw + parameters
-      const parts = queryText.split(/\$\d+/);
       const values = params ?? [];
       let built = sql.empty();
-      for (let i = 0; i < parts.length; i++) {
-        built = sql`${built}${sql.raw(parts[i]!)}`;
-        if (i < values.length) {
-          built = sql`${built}${values[i]}`;
-        }
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
       }
       const result = await tx.execute<Record<string, unknown>>(built);
       return { rows: result.rows as unknown as T[] };
@@ -135,7 +139,7 @@ export async function createCheckoutOrder(laneId: string) {
       order = openRows[0]!;
       if (openRows.length > 1) {
         const extraIds = openRows.slice(1).map((r) => r.id);
-        await tx.execute(sql`UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id = ANY(${extraIds}::uuid[])`);
+        await tx.execute(sql`UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id IN (${sql.join(extraIds.map(id => sql`${id}::uuid`), sql`, `)})`);
       }
       await tx.execute(sql`UPDATE orders SET total = ${totalStr}, subtotal = ${totalStr}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${order.id}`);
     } else {

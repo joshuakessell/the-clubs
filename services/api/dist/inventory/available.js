@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.computeInventoryAvailable = computeInventoryAvailable;
 const shared_1 = require("@the-clubs/shared");
+const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 function getRoomTier(roomNumber) {
     const num = Number.parseInt(roomNumber, 10);
     return (0, shared_1.getRoomTierFromNumber)(num);
@@ -10,19 +12,20 @@ function getRoomTier(roomNumber) {
  * Canonical implementation used by both:
  * - GET /v1/inventory/available
  * - INVENTORY_UPDATED broadcaster helpers
+ *
+ * Queries the unified `inventory_resources` table (rooms + lockers).
  */
-async function computeInventoryAvailable(queryFn) {
-    const result = await queryFn(`SELECT number, status, assigned_to_customer_id
-     FROM rooms
-     WHERE status = 'CLEAN'
-       AND assigned_to_customer_id IS NULL
-       AND type != 'LOCKER'
-       -- Exclude resources "selected" by an active lane session (reservation semantics).
+async function computeInventoryAvailable() {
+    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT r.number, r.status, r.assigned_to_customer_id
+     FROM inventory_resources r
+     WHERE r.kind = 'room'
+       AND r.status = 'CLEAN'
+       AND r.assigned_to_customer_id IS NULL
        AND NOT EXISTS (
          SELECT 1
          FROM lane_sessions ls
          WHERE ls.assigned_resource_type = 'room'
-           AND ls.assigned_resource_id = rooms.id
+           AND ls.assigned_resource_id = r.id
            AND ls.status = ANY (
              ARRAY[
                'ACTIVE'::public.lane_session_status,
@@ -33,16 +36,16 @@ async function computeInventoryAvailable(queryFn) {
              ]
            )
        )`);
-    const lockerResult = await queryFn(`SELECT COUNT(*) as count
-     FROM lockers
-     WHERE status = 'CLEAN'
-       AND assigned_to_customer_id IS NULL
-       -- Exclude resources "selected" by an active lane session (reservation semantics).
+    const lockerResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT COUNT(*) as count
+     FROM inventory_resources r
+     WHERE r.kind = 'locker'
+       AND r.status = 'CLEAN'
+       AND r.assigned_to_customer_id IS NULL
        AND NOT EXISTS (
          SELECT 1
          FROM lane_sessions ls
          WHERE ls.assigned_resource_type = 'locker'
-           AND ls.assigned_resource_id = lockers.id
+           AND ls.assigned_resource_id = r.id
            AND ls.status = ANY (
              ARRAY[
                'ACTIVE'::public.lane_session_status,
@@ -63,7 +66,7 @@ async function computeInventoryAvailable(queryFn) {
         rawRooms[tier]++;
     }
     const lockers = Number.parseInt(lockerResult.rows[0]?.count ?? '0', 10);
-    const waitlistDemandRows = await queryFn(`SELECT w.desired_tier::text as tier, COUNT(*) as count
+    const waitlistDemandResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT w.desired_tier::text as tier, COUNT(*) as count
      FROM waitlist w
      JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
      JOIN visits v ON v.id = w.visit_id
@@ -76,7 +79,7 @@ async function computeInventoryAvailable(queryFn) {
         DOUBLE: 0,
         STANDARD: 0,
     };
-    for (const row of waitlistDemandRows.rows) {
+    for (const row of waitlistDemandResult.rows) {
         const tier = row.tier;
         if (tier === 'SPECIAL' || tier === 'DOUBLE' || tier === 'STANDARD') {
             waitlistDemand[tier] = Number.parseInt(row.count, 10);

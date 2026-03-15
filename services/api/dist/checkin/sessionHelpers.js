@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.resolveActiveSession = resolveActiveSession;
 exports.validateAndLockResource = validateAndLockResource;
 exports.recordResourceSelection = recordResourceSelection;
+const types_1 = require("./types");
 const HttpError_1 = require("../errors/HttpError");
 /**
  * Active lane-session statuses used for typical "find the current session" lookups.
@@ -24,12 +25,12 @@ async function resolveActiveSession(client, laneId, opts) {
     const lock = opts?.forUpdate ? ' FOR UPDATE' : '';
     // If sessionId is given, try explicit lookup first.
     if (opts?.sessionId) {
-        const byId = await client.query(`SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2${lock} LIMIT 1`, [opts.sessionId, laneId]);
+        const byId = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 AND lane_id = $2${lock} LIMIT 1`, [opts.sessionId, laneId]);
         if (byId.rows.length > 0)
             return byId.rows[0];
     }
     // Fallback: most recent active session on the lane.
-    const result = await client.query(`SELECT * FROM lane_sessions
+    const result = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions
      WHERE lane_id = $1 AND status IN (${statuses})
      ORDER BY created_at DESC
      LIMIT 1${lock}`, [laneId]);

@@ -41,7 +41,7 @@ function normalizeKind(value) {
     return undefined;
 }
 function buildReceiptNumber(order) {
-    const date = order.created_at.toISOString().slice(0, 10).replaceAll(/-/g, '');
+    const date = new Date(order.created_at).toISOString().slice(0, 10).replaceAll(/-/g, '');
     return `R-${date}-${order.id}`;
 }
 function parseQuote(raw) {
@@ -176,7 +176,7 @@ function computeOrderTotals(lineItems, amount, tip) {
     };
 }
 async function ensureOrderWithReceipt(client, input) {
-    const existingOrder = await client.query(`SELECT * FROM orders WHERE metadata_json->>$1 = $2 LIMIT 1`, [input.dedupeKey.field, input.dedupeKey.value]);
+    const existingOrder = await client.query(`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json FROM orders WHERE metadata_json->>$1 = $2 LIMIT 1`, [input.dedupeKey.field, input.dedupeKey.value]);
     let order;
     if (existingOrder.rows.length > 0) {
         order = existingOrder.rows[0];
@@ -191,7 +191,7 @@ async function ensureOrderWithReceipt(client, input) {
        (customer_id, register_session_id, created_by_staff_id, status,
         subtotal, discount, tax, tip, total, currency, metadata_json)
        VALUES ($1, $2, $3, 'PAID', $4, $5, $6, $7, $8, $9, $10)
-       RETURNING *`, [
+       RETURNING id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json`, [
             input.customerId ?? null,
             input.registerSessionId ?? null,
             input.createdByStaffId ?? null,
@@ -225,7 +225,7 @@ async function ensureOrderWithReceipt(client, input) {
     if (existingReceipt.rows.length > 0) {
         return { order, receipt: existingReceipt.rows[0] };
     }
-    const lineItems = await client.query(`SELECT * FROM order_line_items WHERE order_id = $1`, [order.id]);
+    const lineItems = await client.query(`SELECT id, order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json FROM order_line_items WHERE order_id = $1`, [order.id]);
     const receiptNumber = buildReceiptNumber(order);
     const receiptJson = {
         receiptNumber,

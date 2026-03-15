@@ -3,8 +3,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinHighlightRoutes = registerCheckinHighlightRoutes;
 const middleware_1 = require("../../auth/middleware");
 const schemas_1 = require("../../checkin/schemas");
+const types_1 = require("../../checkin/types");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const HttpError_1 = require("../../errors/HttpError");
 function registerCheckinHighlightRoutes(fastify) {
     /**
@@ -25,20 +27,27 @@ function registerCheckinHighlightRoutes(fastify) {
         }
         const { step, option, sessionId } = parsed.data;
         try {
-            const resolved = await (0, db_1.transaction)(async (client) => {
-                const sessionResult = sessionId
-                    ? await client.query(`SELECT * FROM lane_sessions WHERE id = $1 LIMIT 1`, [sessionId])
-                    : await client.query(`SELECT * FROM lane_sessions
-                 WHERE lane_id = $1
-                   AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-                 ORDER BY created_at DESC
-                 LIMIT 1`, [laneId]);
+            let resolved;
+            if (sessionId) {
+                const sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`);
                 if (sessionResult.rows.length === 0) {
                     throw new HttpError_1.HttpError(404, 'No active session found');
                 }
                 const session = sessionResult.rows[0];
-                return { laneId: session.lane_id || laneId, sessionId: session.id };
-            });
+                resolved = { laneId: session.lane_id || laneId, sessionId: session.id };
+            }
+            else {
+                const sessionResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions
+               WHERE lane_id = ${laneId}
+                 AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+               ORDER BY created_at DESC
+               LIMIT 1`);
+                if (sessionResult.rows.length === 0) {
+                    throw new HttpError_1.HttpError(404, 'No active session found');
+                }
+                const session = sessionResult.rows[0];
+                resolved = { laneId: session.lane_id || laneId, sessionId: session.id };
+            }
             const payload = {
                 sessionId: resolved.sessionId,
                 step,

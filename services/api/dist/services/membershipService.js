@@ -10,6 +10,7 @@ exports.buildSessionPayload = buildSessionPayload;
  * Extracted from routes/checkin/membership.ts. Zero HTTP/Fastify concepts.
  */
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const engine_1 = require("../pricing/engine");
 const types_1 = require("../checkin/types");
 const payload_1 = require("../checkin/payload");
@@ -24,25 +25,29 @@ class ServiceError extends Error {
     }
 }
 // ── Helpers ──
-async function findSession(client, laneId, sessionId) {
-    const sessionResult = sessionId
-        ? await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 LIMIT 1`, [sessionId])
-        : await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1
-         AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-         ORDER BY created_at DESC LIMIT 1`, [laneId]);
+async function findSession(tx, laneId, sessionId) {
+    let sessionResult;
+    if (sessionId) {
+        sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`);
+    }
+    else {
+        sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId}
+       AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+       ORDER BY created_at DESC LIMIT 1`);
+    }
     if (sessionResult.rows.length === 0)
         throw new ServiceError(404, 'No active session found');
     return sessionResult.rows[0];
 }
 // ── Quote recomputation (extracted to reduce cognitive complexity) ──
-async function recomputeQuoteIfNeeded(client, session, intent) {
-    if (!session.payment_intent_id || !session.selection_confirmed)
+async function recomputeQuoteIfNeeded(tx, session, intent) {
+    if (!session.order_id || !session.selection_confirmed)
         return;
-    const intentResult = await client.query(`SELECT ${types_1.PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]);
+    const intentResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.ORDER_COLS)} FROM orders WHERE id = ${session.order_id} LIMIT 1`);
     const pi = intentResult.rows[0];
-    if (pi?.status !== 'DUE')
+    if (pi?.status !== 'OPEN')
         return;
-    const customerResult = await client.query(`SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`, [session.customer_id]);
+    const customerResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = ${session.customer_id}`);
     const customer = customerResult.rows[0];
     const customerAge = customer ? (0, identity_1.calculateAge)(customer.dob) : undefined;
     const membershipCardType = customer?.membership_card_type
@@ -60,56 +65,62 @@ async function recomputeQuoteIfNeeded(client, session, intent) {
         includeSixMonthMembershipPurchase: intent !== 'NONE',
     };
     const quote = isRenewal ? (0, engine_1.calculateRenewalQuote)({ ...pricingInput, renewalHours }) : (0, engine_1.calculatePriceQuote)(pricingInput);
-    await client.query(`UPDATE payment_intents SET amount = $1, quote_json = $2, updated_at = NOW() WHERE id = $3`, [quote.total, JSON.stringify(quote), pi.id]);
-    await client.query(`UPDATE lane_sessions SET price_quote_json = $1, updated_at = NOW() WHERE id = $2`, [JSON.stringify(quote), session.id]);
+    const quoteJson = JSON.stringify(quote);
+    await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders SET amount = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${pi.id}`);
+    await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET price_quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${session.id}`);
 }
 // ── Service Methods ──
 async function setMembershipPurchaseIntent(laneId, intent, sessionId) {
-    return (0, db_1.transaction)(async (client) => {
-        const session = await findSession(client, laneId, sessionId);
+    return db_1.db.transaction(async (tx) => {
+        const session = await findSession(tx, laneId, sessionId);
         const resolvedLaneId = session.lane_id || laneId;
         if (!session.customer_id)
             throw new ServiceError(400, 'Session has no customer');
         const intentValue = intent === 'NONE' ? null : intent;
         const requestedAt = intent === 'NONE' ? null : new Date();
-        const updatedSession = (await client.query(`UPDATE lane_sessions SET membership_purchase_intent = $1, membership_purchase_requested_at = $2, updated_at = NOW() WHERE id = $3 RETURNING *`, [intentValue, requestedAt, session.id])).rows[0];
+        const updatedResult = await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET membership_purchase_intent = ${intentValue}, membership_purchase_requested_at = ${requestedAt}, updated_at = NOW() WHERE id = ${session.id} RETURNING ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)}`);
+        const updatedSession = updatedResult.rows[0];
         // If DUE payment intent exists and selection confirmed, recompute quote immediately
-        await recomputeQuoteIfNeeded(client, updatedSession, intent);
+        await recomputeQuoteIfNeeded(tx, updatedSession, intent);
         return { sessionId: updatedSession.id, laneId: resolvedLaneId };
     });
 }
 async function setMembershipChoice(laneId, choice, sessionId) {
-    return (0, db_1.transaction)(async (client) => {
-        const session = await findSession(client, laneId, sessionId);
+    return db_1.db.transaction(async (tx) => {
+        const session = await findSession(tx, laneId, sessionId);
         const resolvedLaneId = session.lane_id || laneId;
         const value = choice === 'NONE' ? null : choice;
-        await client.query(`UPDATE lane_sessions SET membership_choice = $1, updated_at = NOW() WHERE id = $2`, [value, session.id]);
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET membership_choice = ${value}, updated_at = NOW() WHERE id = ${session.id}`);
         return { sessionId: session.id, laneId: resolvedLaneId };
     });
 }
 async function completeMembershipPurchase(laneId, membershipNumber, sessionId) {
-    return (0, db_1.transaction)(async (client) => {
-        const session = await findSession(client, laneId, sessionId);
+    return db_1.db.transaction(async (tx) => {
+        const session = await findSession(tx, laneId, sessionId);
         const resolvedLaneId = session.lane_id || laneId;
         if (!session.customer_id)
             throw new ServiceError(400, 'Session has no customer');
-        // NOTE: membership_purchase_intent and payment_intent_id may have been
-        // cleared during session reset. For completed sessions, validate via
-        // the payment_intents table directly if the session still has a reference.
-        if (session.payment_intent_id) {
-            const intentResult = await client.query(`SELECT ${types_1.PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]);
+        if (session.order_id) {
+            const intentResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.ORDER_COLS)} FROM orders WHERE id = ${session.order_id} LIMIT 1`);
             const pi = intentResult.rows[0];
             if (pi && pi.status !== 'PAID') {
                 throw new ServiceError(400, 'Payment intent must be PAID before completing membership');
             }
         }
-        // If payment_intent_id was cleared (session reset), the payment was already
-        // confirmed during the check-in flow — proceed with the membership update.
-        await client.query(`UPDATE customers SET membership_number = $1, membership_card_type = 'SIX_MONTH', membership_valid_until = (CURRENT_DATE + INTERVAL '6 months')::date, updated_at = NOW() WHERE id = $2`, [membershipNumber.trim(), session.customer_id]);
-        await client.query(`UPDATE lane_sessions SET membership_number = $1, membership_purchase_intent = NULL, membership_purchase_requested_at = NULL, updated_at = NOW() WHERE id = $2`, [membershipNumber.trim(), session.id]);
+        const trimmedNumber = membershipNumber.trim();
+        await tx.execute((0, drizzle_orm_1.sql) `
+      UPDATE customers SET membership_number = ${trimmedNumber}, membership_card_type = 'SIX_MONTH',
+      membership_valid_until = (CURRENT_DATE + INTERVAL '6 months')::date, updated_at = NOW()
+      WHERE id = ${session.customer_id}
+    `);
+        await tx.execute((0, drizzle_orm_1.sql) `
+      UPDATE lane_sessions SET membership_number = ${trimmedNumber},
+      membership_purchase_intent = NULL, membership_purchase_requested_at = NULL,
+      updated_at = NOW() WHERE id = ${session.id}
+    `);
         return { sessionId: session.id, laneId: resolvedLaneId };
     });
 }
 async function buildSessionPayload(sessionId) {
-    return (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, sessionId));
+    return (0, payload_1.buildFullSessionUpdatedPayload)(sessionId);
 }

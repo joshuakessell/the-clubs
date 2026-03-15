@@ -4,15 +4,13 @@ exports.registerCheckinDemoPaymentRoutes = registerCheckinDemoPaymentRoutes;
 const middleware_1 = require("../../auth/middleware");
 const kioskToken_1 = require("../../auth/kioskToken");
 const payload_1 = require("../../checkin/payload");
+const types_1 = require("../../checkin/types");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const customerActivityLog_1 = require("../../activity/customerActivityLog");
 const HttpError_1 = require("../../errors/HttpError");
 const SPLIT_CARD_LINE_ITEM = 'Card Payment';
-/**
- * Recalculate a price quote after a split-card payment.
- * Removes any prior Card Payment line items and adds a new one for the split amount.
- */
 function recalculateSplitQuote(baseQuote, splitAmount) {
     const cardLineTotal = baseQuote.lineItems
         .filter((item) => item.description === SPLIT_CARD_LINE_ITEM)
@@ -36,29 +34,26 @@ function recalculateSplitQuote(baseQuote, splitAmount) {
     return { nextQuote, remainingTotal };
 }
 function registerCheckinDemoPaymentRoutes(fastify) {
-    /**
-     * POST /v1/checkin/lane/:laneId/demo-take-payment
-     *
-     * Demo endpoint to take payment (must be called after selection is confirmed).
-     */
-    fastify.post('/v1/checkin/lane/:laneId/demo-take-payment', {
-        preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff],
-    }, async (request, reply) => {
+    fastify.post('/v1/checkin/lane/:laneId/demo-take-payment', { preHandler: [middleware_1.optionalAuth, kioskToken_1.requireKioskTokenOrStaff] }, async (request, reply) => {
         const staffId = request.staff?.staffId ?? null;
         const { laneId } = request.params;
         const { outcome, declineReason, registerNumber, splitCardAmount, sessionId } = request.body;
         try {
-            const result = await (0, db_1.transaction)(async (client) => {
-                const sessionResult = sessionId
-                    ? await client.query(`SELECT * FROM lane_sessions
-           WHERE id = $1
-             AND lane_id = $2
+            const result = await db_1.db.transaction(async (tx) => {
+                let sessionResult;
+                if (sessionId) {
+                    sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions
+           WHERE id = ${sessionId}
+             AND lane_id = ${laneId}
              AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-           LIMIT 1`, [sessionId, laneId])
-                    : await client.query(`SELECT * FROM lane_sessions
-           WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+           LIMIT 1`);
+                }
+                else {
+                    sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions
+           WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
            ORDER BY created_at DESC
-           LIMIT 1`, [laneId]);
+           LIMIT 1`);
+                }
                 if (sessionResult.rows.length === 0) {
                     throw new HttpError_1.HttpError(404, 'No active session found');
                 }
@@ -66,17 +61,17 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                 if (!session.selection_confirmed) {
                     throw new HttpError_1.HttpError(400, 'Selection must be confirmed before payment');
                 }
-                if (!session.payment_intent_id) {
+                if (!session.order_id) {
                     throw new HttpError_1.HttpError(400, 'Payment intent must be created first');
                 }
-                const intentResult = await client.query(`SELECT * FROM payment_intents WHERE id = $1`, [session.payment_intent_id]);
+                const intentResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.ORDER_COLS)} FROM orders WHERE id = ${session.order_id}`);
                 if (intentResult.rows.length === 0) {
                     throw new HttpError_1.HttpError(404, 'Payment intent not found');
                 }
                 const intent = intentResult.rows[0];
                 const normalizedSplitAmount = outcome === 'CREDIT_SUCCESS' ? (0, utils_1.toNumber)(splitCardAmount) : undefined;
                 if (outcome === 'CREDIT_SUCCESS' && normalizedSplitAmount !== undefined) {
-                    if (intent.status !== 'DUE') {
+                    if (intent.status !== 'OPEN') {
                         throw new HttpError_1.HttpError(409, 'Payment intent is not payable');
                     }
                     const baseQuote = (0, utils_1.parsePriceQuote)(session.price_quote_json) ?? (0, utils_1.parsePriceQuote)(intent.quote_json);
@@ -84,14 +79,15 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                         throw new HttpError_1.HttpError(400, 'No price quote available for session');
                     }
                     const { nextQuote, remainingTotal } = recalculateSplitQuote(baseQuote, normalizedSplitAmount);
-                    await client.query(`UPDATE payment_intents
-             SET amount = $1, quote_json = $2, failure_reason = NULL, failure_at = NULL, updated_at = NOW()
-             WHERE id = $3`, [remainingTotal, JSON.stringify(nextQuote), intent.id]);
-                    await client.query(`UPDATE lane_sessions SET price_quote_json = $1, updated_at = NOW() WHERE id = $2`, [JSON.stringify(nextQuote), session.id]);
+                    const nextQuoteJson = JSON.stringify(nextQuote);
+                    await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders
+             SET amount = ${remainingTotal}, quote_json = ${nextQuoteJson}, failure_reason = NULL, failure_at = NULL, updated_at = NOW()
+             WHERE id = ${intent.id}`);
+                    await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET price_quote_json = ${nextQuoteJson}, updated_at = NOW() WHERE id = ${session.id}`);
                     return {
                         sessionId: session.id,
                         success: true,
-                        paymentIntentId: intent.id,
+                        orderId: intent.id,
                         status: intent.status,
                         quote: nextQuote,
                     };
@@ -100,29 +96,22 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                 const isSuccess = outcome === 'CASH_SUCCESS' || outcome === 'CREDIT_SUCCESS';
                 const amount = typeof intent.amount === 'number' ? intent.amount : Number(intent.amount);
                 if (isSuccess) {
-                    // Mark as paid
-                    await client.query(`UPDATE payment_intents
+                    await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders
              SET status = 'PAID',
                  paid_at = NOW(),
-                 payment_method = $1,
-                 register_number = $2,
-                 paid_by_staff_id = $3,
+                 payment_method = ${paymentMethod},
+                 register_number = ${registerNumber || null},
+                 paid_by_staff_id = ${staffId},
                  failure_reason = NULL,
                  failure_at = NULL,
                  updated_at = NOW()
-             WHERE id = $4`, [
-                        paymentMethod,
-                        registerNumber || null,
-                        staffId,
-                        intent.id,
-                    ]);
-                    // Update session status
-                    await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [session.id]);
+             WHERE id = ${intent.id}`);
+                    await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = ${session.id}`);
                     // Activity event + spend ledger: non-critical, must not roll back payment
                     if (session.customer_id) {
                         try {
-                            await client.query('SAVEPOINT activity_logging');
-                            await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+                            await tx.execute(drizzle_orm_1.sql.raw('SAVEPOINT activity_logging'));
+                            await (0, customerActivityLog_1.insertCustomerActivityEventDrizzle)(tx, {
                                 customerId: session.customer_id,
                                 actionType: 'PAYMENT_COMPLETED',
                                 actionCategory: 'PAYMENT',
@@ -134,60 +123,47 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                                 metadata: {
                                     laneId,
                                     laneSessionId: session.id,
-                                    paymentIntentId: intent.id,
+                                    orderId: intent.id,
                                     paymentMethod,
                                     amount: amount,
                                 },
                                 dedupeKey: `ACT:PAYMENT_COMPLETED:${intent.id}`,
                             });
-                            // Spend ledger: RENTAL_FEE (check-in fee paid)
-                            // Look up the active visit so the ledger entry is linked to the visit
-                            const visitRow = await client.query(`SELECT id FROM visits WHERE customer_id = $1 AND checked_out_at IS NULL ORDER BY checked_in_at DESC LIMIT 1`, [session.customer_id]);
+                            const visitRow = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM visits WHERE customer_id = ${session.customer_id} AND checked_out_at IS NULL ORDER BY checked_in_at DESC LIMIT 1`);
                             const activeVisitId = visitRow.rows[0]?.id ?? null;
                             const amountInt = Math.round(amount);
-                            await client.query(`INSERT INTO customer_spend_ledger_entries
+                            await tx.execute((0, drizzle_orm_1.sql) `INSERT INTO customer_spend_ledger_entries
                      (occurred_at, customer_id, visit_id, entry_type, amount, currency,
                       source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
                    VALUES
-                     (NOW(), $1::uuid, $2::uuid, 'RENTAL_FEE', $3::bigint, 'USD',
-                      $4, $5, $6::uuid, $7, $8, $9::jsonb, $10)
-                   ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`, [
-                                session.customer_id,
-                                activeVisitId,
-                                amountInt,
-                                request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK',
-                                request.staff ? 'STAFF' : 'CUSTOMER',
-                                staffId,
-                                request.staff?.name ?? null,
-                                `Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`,
-                                { paymentIntentId: intent.id, paymentMethod, laneSessionId: session.id },
-                                `LEDGER:RENTAL_FEE:${intent.id}`,
-                            ]);
-                            await client.query('RELEASE SAVEPOINT activity_logging');
+                     (NOW(), ${session.customer_id}::uuid, ${activeVisitId}::uuid, 'RENTAL_FEE', ${amountInt}::bigint, 'USD',
+                      ${request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK'}, ${request.staff ? 'STAFF' : 'CUSTOMER'}, ${staffId}::uuid, ${request.staff?.name ?? null}, ${`Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`}, ${JSON.stringify({ orderId: intent.id, paymentMethod, laneSessionId: session.id })}::jsonb, ${'LEDGER:RENTAL_FEE:' + intent.id})
+                   ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`);
+                            await tx.execute(drizzle_orm_1.sql.raw('RELEASE SAVEPOINT activity_logging'));
                         }
                         catch (activityErr) {
-                            await client.query('ROLLBACK TO SAVEPOINT activity_logging');
+                            await tx.execute(drizzle_orm_1.sql.raw('ROLLBACK TO SAVEPOINT activity_logging'));
                             request.log.warn(activityErr, 'Non-critical: failed to log payment activity/ledger');
                         }
                     }
                 }
                 else {
                     // CREDIT_DECLINE
-                    await client.query(`UPDATE payment_intents
-             SET failure_reason = $1,
+                    await tx.execute((0, drizzle_orm_1.sql) `UPDATE orders
+             SET failure_reason = ${declineReason || 'Payment declined'},
                  failure_at = NOW(),
                  updated_at = NOW()
-             WHERE id = $2`, [declineReason || 'Payment declined', intent.id]);
-                    await client.query(`UPDATE lane_sessions
-             SET last_payment_decline_reason = $1,
+             WHERE id = ${intent.id}`);
+                    await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions
+             SET last_payment_decline_reason = ${declineReason || 'Payment declined'},
                  last_payment_decline_at = NOW(),
                  updated_at = NOW()
-             WHERE id = $2`, [declineReason || 'Payment declined', session.id]);
+             WHERE id = ${session.id}`);
                     // Activity event: PAYMENT_DECLINED (non-critical)
                     if (session.customer_id) {
                         try {
-                            await client.query('SAVEPOINT decline_activity_logging');
-                            await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+                            await tx.execute(drizzle_orm_1.sql.raw('SAVEPOINT decline_activity_logging'));
+                            await (0, customerActivityLog_1.insertCustomerActivityEventDrizzle)(tx, {
                                 customerId: session.customer_id,
                                 actionType: 'PAYMENT_DECLINED',
                                 actionCategory: 'PAYMENT',
@@ -199,41 +175,41 @@ function registerCheckinDemoPaymentRoutes(fastify) {
                                 metadata: {
                                     laneId,
                                     laneSessionId: session.id,
-                                    paymentIntentId: intent.id,
+                                    orderId: intent.id,
                                     declineReason: declineReason || 'Payment declined',
                                 },
                                 dedupeKey: `ACT:PAYMENT_DECLINED:${intent.id}:${Date.now()}`,
                             });
-                            await client.query('RELEASE SAVEPOINT decline_activity_logging');
+                            await tx.execute(drizzle_orm_1.sql.raw('RELEASE SAVEPOINT decline_activity_logging'));
                         }
                         catch (activityErr) {
-                            await client.query('ROLLBACK TO SAVEPOINT decline_activity_logging');
+                            await tx.execute(drizzle_orm_1.sql.raw('ROLLBACK TO SAVEPOINT decline_activity_logging'));
                             request.log.warn(activityErr, 'Non-critical: failed to log payment decline activity');
                         }
                     }
                 }
-                // Strategic log: payment outcome
                 request.log.info({
                     outcome,
                     paymentMethod,
                     amount: intent.amount,
                     sessionId: session.id,
-                    paymentIntentId: intent.id,
+                    orderId: intent.id,
                     customerId: session.customer_id,
                     laneId,
                 }, isSuccess ? 'Payment completed' : 'Payment declined');
                 return {
                     sessionId: session.id,
                     success: isSuccess,
-                    paymentIntentId: intent.id,
+                    orderId: intent.id,
                     status: isSuccess ? 'PAID' : intent.status,
                 };
             });
-            const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, result.sessionId));
+            // buildFullSessionUpdatedPayload is already Drizzle-native
+            const { payload } = await (0, payload_1.buildFullSessionUpdatedPayload)(result.sessionId);
             fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
             return reply.send({
                 success: result.success,
-                paymentIntentId: result.paymentIntentId,
+                orderId: result.orderId,
                 status: result.status,
                 quote: 'quote' in result ? result.quote : undefined,
             });

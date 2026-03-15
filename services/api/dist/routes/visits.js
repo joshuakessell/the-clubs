@@ -9,113 +9,21 @@ const active_1 = require("./visits/active");
 const visitService_1 = require("../services/visitService");
 /**
  * Schema for creating an initial visit.
+ * Uses unified `resourceId` instead of separate roomId/lockerId.
  */
-const CreateVisitSchema = zod_1.z
-    .object({
+const CreateVisitSchema = zod_1.z.object({
     customerId: zod_1.z.string().uuid(),
     rentalType: zod_1.z.enum(['STANDARD', 'DOUBLE', 'SPECIAL', 'LOCKER', 'GYM_LOCKER']),
-    roomId: zod_1.z.string().uuid().optional(),
-    lockerId: zod_1.z.string().uuid().optional(),
-})
-    .superRefine((v, ctx) => {
-    const hasRoom = Boolean(v.roomId);
-    const hasLocker = Boolean(v.lockerId);
-    if (hasRoom && hasLocker) {
-        ctx.addIssue({
-            code: zod_1.z.ZodIssueCode.custom,
-            message: 'Provide either roomId or lockerId, not both',
-            path: ['roomId'],
-        });
-        return;
-    }
-    const isLockerRental = v.rentalType === 'LOCKER' || v.rentalType === 'GYM_LOCKER';
-    if (isLockerRental) {
-        if (!hasLocker) {
-            ctx.addIssue({
-                code: zod_1.z.ZodIssueCode.custom,
-                message: `lockerId is required for rentalType ${v.rentalType}`,
-                path: ['lockerId'],
-            });
-        }
-        if (hasRoom) {
-            ctx.addIssue({
-                code: zod_1.z.ZodIssueCode.custom,
-                message: `roomId must not be provided for rentalType ${v.rentalType}`,
-                path: ['roomId'],
-            });
-        }
-    }
-    else {
-        if (!hasRoom) {
-            ctx.addIssue({
-                code: zod_1.z.ZodIssueCode.custom,
-                message: `roomId is required for rentalType ${v.rentalType}`,
-                path: ['roomId'],
-            });
-        }
-        if (hasLocker) {
-            ctx.addIssue({
-                code: zod_1.z.ZodIssueCode.custom,
-                message: `lockerId must not be provided for rentalType ${v.rentalType}`,
-                path: ['lockerId'],
-            });
-        }
-    }
+    resourceId: zod_1.z.string().uuid(),
 });
 /**
  * Schema for renewing a visit.
+ * Uses unified `resourceId` instead of separate roomId/lockerId.
  */
-const RenewVisitSchema = zod_1.z
-    .object({
+const RenewVisitSchema = zod_1.z.object({
     rentalType: zod_1.z.enum(['STANDARD', 'DOUBLE', 'SPECIAL', 'LOCKER', 'GYM_LOCKER']),
-    roomId: zod_1.z.string().uuid().optional(),
-    lockerId: zod_1.z.string().uuid().optional(),
+    resourceId: zod_1.z.string().uuid(),
     renewalHours: zod_1.z.union([zod_1.z.literal(2), zod_1.z.literal(6)]).optional(),
-})
-    .superRefine((v, ctx) => {
-    const hasRoom = Boolean(v.roomId);
-    const hasLocker = Boolean(v.lockerId);
-    if (hasRoom && hasLocker) {
-        ctx.addIssue({
-            code: zod_1.z.ZodIssueCode.custom,
-            message: 'Provide either roomId or lockerId, not both',
-            path: ['roomId'],
-        });
-        return;
-    }
-    const isLockerRental = v.rentalType === 'LOCKER' || v.rentalType === 'GYM_LOCKER';
-    if (isLockerRental) {
-        if (!hasLocker) {
-            ctx.addIssue({
-                code: zod_1.z.ZodIssueCode.custom,
-                message: `lockerId is required for rentalType ${v.rentalType}`,
-                path: ['lockerId'],
-            });
-        }
-        if (hasRoom) {
-            ctx.addIssue({
-                code: zod_1.z.ZodIssueCode.custom,
-                message: `roomId must not be provided for rentalType ${v.rentalType}`,
-                path: ['roomId'],
-            });
-        }
-    }
-    else {
-        if (!hasRoom) {
-            ctx.addIssue({
-                code: zod_1.z.ZodIssueCode.custom,
-                message: `roomId is required for rentalType ${v.rentalType}`,
-                path: ['roomId'],
-            });
-        }
-        if (hasLocker) {
-            ctx.addIssue({
-                code: zod_1.z.ZodIssueCode.custom,
-                message: `lockerId must not be provided for rentalType ${v.rentalType}`,
-                path: ['lockerId'],
-            });
-        }
-    }
 });
 /**
  * Visit management routes.
@@ -127,7 +35,7 @@ async function visitRoutes(fastify) {
      *
      * Creates a new visit and initial 6-hour block.
      */
-    fastify.post('/v1/visits', { schema: { body: CreateVisitSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/visits', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -135,8 +43,7 @@ async function visitRoutes(fastify) {
             const result = await (0, visitService_1.createVisit)({
                 customerId: body.customerId,
                 rentalType: body.rentalType,
-                roomId: body.roomId,
-                lockerId: body.lockerId,
+                resourceId: body.resourceId,
             });
             // Broadcast inventory update AFTER commit for immediate UI refresh.
             if (fastify.broadcaster) {
@@ -167,8 +74,7 @@ async function visitRoutes(fastify) {
             const result = await (0, visitService_1.renewVisit)({
                 visitId: request.params.visitId,
                 rentalType: body.rentalType,
-                roomId: body.roomId,
-                lockerId: body.lockerId,
+                resourceId: body.resourceId,
                 renewalHours: body.renewalHours,
             });
             // Broadcast inventory update AFTER commit for immediate UI refresh.
@@ -195,13 +101,12 @@ async function visitRoutes(fastify) {
             return reply.status(401).send({ error: 'Unauthorized' });
         }
         const { visitId } = request.params;
-        const { rentalType, roomId, lockerId } = request.body;
+        const { rentalType, resourceId } = request.body;
         try {
             const result = await (0, visitService_1.createFinalExtension)({
                 visitId,
                 rentalType,
-                roomId,
-                lockerId,
+                resourceId,
                 staffId: staff.staffId,
             });
             return reply.status(201).send(result);

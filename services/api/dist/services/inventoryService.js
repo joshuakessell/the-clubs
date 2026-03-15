@@ -7,9 +7,9 @@ exports.getRoomsByTier = getRoomsByTier;
 exports.getAllRooms = getAllRooms;
 exports.getDetailedInventory = getDetailedInventory;
 /**
- * Inventory service — consolidated data-fetching logic for room and locker inventory.
+ * Inventory service — consolidated data-fetching logic for inventory resources.
  *
- * Migrated to Drizzle ORM typed queries (Phase 3).
+ * Migrated to unified `inventory_resources` table (Phase 3).
  * Uses `db.select()` for type-safe reads, `db.execute(sql`...`)` for LATERAL joins.
  * This module contains ZERO HTTP/Fastify concepts.
  */
@@ -18,7 +18,6 @@ const schema_1 = require("../db/schema");
 const drizzle_orm_1 = require("drizzle-orm");
 const shared_1 = require("@the-clubs/shared");
 const available_1 = require("../inventory/available");
-const db_2 = require("../db");
 // ── Helpers ──
 function getRoomTier(roomNumber) {
     return (0, shared_1.getRoomTierFromNumber)(Number.parseInt(roomNumber, 10));
@@ -30,47 +29,68 @@ function getRoomTier(roomNumber) {
 async function getInventorySummary() {
     const roomRows = await db_1.db
         .select({
-        status: schema_1.rooms.status,
-        roomType: schema_1.rooms.type,
+        status: schema_1.inventoryResources.status,
+        tier: schema_1.inventoryResources.tier,
         count: (0, drizzle_orm_1.count)(),
     })
-        .from(schema_1.rooms)
-        .where((0, drizzle_orm_1.ne)(schema_1.rooms.type, 'LOCKER'))
-        .groupBy(schema_1.rooms.status, schema_1.rooms.type)
-        .orderBy(schema_1.rooms.type, schema_1.rooms.status);
+        .from(schema_1.inventoryResources)
+        .where((0, drizzle_orm_1.eq)(schema_1.inventoryResources.kind, 'room'))
+        .groupBy(schema_1.inventoryResources.status, schema_1.inventoryResources.tier)
+        .orderBy(schema_1.inventoryResources.tier, schema_1.inventoryResources.status);
     const lockerRows = await db_1.db
         .select({
-        status: schema_1.lockers.status,
+        status: schema_1.inventoryResources.status,
         count: (0, drizzle_orm_1.count)(),
     })
-        .from(schema_1.lockers)
-        .groupBy(schema_1.lockers.status)
-        .orderBy(schema_1.lockers.status);
+        .from(schema_1.inventoryResources)
+        .where((0, drizzle_orm_1.eq)(schema_1.inventoryResources.kind, 'locker'))
+        .groupBy(schema_1.inventoryResources.status)
+        .orderBy(schema_1.inventoryResources.status);
+    // Count active/offered waitlist entries per desired tier
+    const waitlistRows = await db_1.db
+        .select({
+        desiredTier: schema_1.waitlist.desiredTier,
+        cnt: (0, drizzle_orm_1.count)(),
+    })
+        .from(schema_1.waitlist)
+        .where((0, drizzle_orm_1.inArray)(schema_1.waitlist.status, ['ACTIVE', 'OFFERED']))
+        .groupBy(schema_1.waitlist.desiredTier);
+    const waitlistByTier = {};
+    for (const row of waitlistRows) {
+        waitlistByTier[row.desiredTier] = row.cnt;
+    }
     const byType = {
-        STANDARD: { clean: 0, cleaning: 0, dirty: 0, total: 0 },
-        DOUBLE: { clean: 0, cleaning: 0, dirty: 0, total: 0 },
-        SPECIAL: { clean: 0, cleaning: 0, dirty: 0, total: 0 },
+        STANDARD: { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 },
+        DOUBLE: { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 },
+        SPECIAL: { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 },
     };
     let overallClean = 0;
     let overallCleaning = 0;
     let overallDirty = 0;
     for (const row of roomRows) {
         const cnt = row.count;
-        const roomType = row.roomType;
-        const status = roomType ? row.status.toLowerCase() : null;
-        if (!roomType || !status)
+        const tier = row.tier;
+        const status = tier ? row.status.toLowerCase() : null;
+        if (!tier || !status)
             continue;
-        if (!byType[roomType]) {
-            byType[roomType] = { clean: 0, cleaning: 0, dirty: 0, total: 0 };
+        if (!byType[tier]) {
+            byType[tier] = { clean: 0, cleaning: 0, dirty: 0, total: 0, availableForCheckin: 0 };
         }
-        byType[roomType][status] = cnt;
-        byType[roomType].total += cnt;
+        byType[tier][status] = cnt;
+        byType[tier].total += cnt;
         if (status === 'clean')
             overallClean += cnt;
         else if (status === 'cleaning')
             overallCleaning += cnt;
         else if (status === 'dirty')
             overallDirty += cnt;
+    }
+    // Compute availableForCheckin: clean rooms minus waitlist reservations (floor at 0)
+    for (const tier of ['STANDARD', 'DOUBLE', 'SPECIAL']) {
+        const t = byType[tier];
+        if (t) {
+            t.availableForCheckin = Math.max(0, t.clean - (waitlistByTier[tier] ?? 0));
+        }
     }
     let lockerClean = 0;
     let lockerCleaning = 0;
@@ -87,6 +107,7 @@ async function getInventorySummary() {
     }
     return {
         byType,
+        waitlistByTier,
         overall: {
             clean: overallClean,
             cleaning: overallCleaning,
@@ -105,7 +126,7 @@ async function getInventorySummary() {
  * GET /v1/inventory/available — Delegates to existing computeInventoryAvailable.
  */
 async function getInventoryAvailable() {
-    return (0, available_1.computeInventoryAvailable)(db_2.query);
+    return (0, available_1.computeInventoryAvailable)();
 }
 /**
  * GET /v1/inventory/unavailable-options — Currently unavailable resources for waitlist selection.
@@ -113,20 +134,20 @@ async function getInventoryAvailable() {
 async function getUnavailableOptions() {
     const roomRows = await db_1.db
         .select({
-        number: schema_1.rooms.number,
-        status: schema_1.rooms.status,
+        number: schema_1.inventoryResources.number,
+        status: schema_1.inventoryResources.status,
     })
-        .from(schema_1.rooms)
-        .where((0, drizzle_orm_1.sql) `${schema_1.rooms.type} != 'LOCKER' AND (${schema_1.rooms.status} IN ('OCCUPIED', 'DIRTY', 'CLEANING') OR ${schema_1.rooms.assignedToCustomerId} IS NOT NULL)`)
-        .orderBy(schema_1.rooms.number);
+        .from(schema_1.inventoryResources)
+        .where((0, drizzle_orm_1.sql) `${schema_1.inventoryResources.kind} = 'room' AND (${schema_1.inventoryResources.status} IN ('OCCUPIED', 'DIRTY', 'CLEANING') OR ${schema_1.inventoryResources.assignedToCustomerId} IS NOT NULL)`)
+        .orderBy(schema_1.inventoryResources.number);
     const lockerRows = await db_1.db
         .select({
-        number: schema_1.lockers.number,
-        status: schema_1.lockers.status,
+        number: schema_1.inventoryResources.number,
+        status: schema_1.inventoryResources.status,
     })
-        .from(schema_1.lockers)
-        .where((0, drizzle_orm_1.or)((0, drizzle_orm_1.sql) `${schema_1.lockers.status} IN ('OCCUPIED', 'DIRTY', 'CLEANING')`, (0, drizzle_orm_1.isNotNull)(schema_1.lockers.assignedToCustomerId)))
-        .orderBy(schema_1.lockers.number);
+        .from(schema_1.inventoryResources)
+        .where((0, drizzle_orm_1.sql) `${schema_1.inventoryResources.kind} = 'locker' AND (${schema_1.inventoryResources.status} IN ('OCCUPIED', 'DIRTY', 'CLEANING') OR ${schema_1.inventoryResources.assignedToCustomerId} IS NOT NULL)`)
+        .orderBy(schema_1.inventoryResources.number);
     const roomsByTier = {
         SPECIAL: [],
         DOUBLE: [],
@@ -156,16 +177,16 @@ async function getUnavailableOptions() {
 async function getRoomsByTier() {
     const roomRows = await db_1.db
         .select({
-        id: schema_1.rooms.id,
-        number: schema_1.rooms.number,
-        status: schema_1.rooms.status,
-        assignedToCustomerId: schema_1.rooms.assignedToCustomerId,
+        id: schema_1.inventoryResources.id,
+        number: schema_1.inventoryResources.number,
+        status: schema_1.inventoryResources.status,
+        assignedToCustomerId: schema_1.inventoryResources.assignedToCustomerId,
         checkoutAt: schema_1.checkinBlocks.endsAt,
     })
-        .from(schema_1.rooms)
-        .leftJoin(schema_1.checkinBlocks, (0, drizzle_orm_1.sql) `${schema_1.checkinBlocks.roomId} = ${schema_1.rooms.id} AND ${schema_1.checkinBlocks.endsAt} > NOW()`)
-        .where((0, drizzle_orm_1.ne)(schema_1.rooms.type, 'LOCKER'))
-        .orderBy(schema_1.rooms.number);
+        .from(schema_1.inventoryResources)
+        .leftJoin(schema_1.checkinBlocks, (0, drizzle_orm_1.sql) `${schema_1.checkinBlocks.resourceId} = ${schema_1.inventoryResources.id} AND ${schema_1.checkinBlocks.endsAt} > NOW()`)
+        .where((0, drizzle_orm_1.eq)(schema_1.inventoryResources.kind, 'room'))
+        .orderBy(schema_1.inventoryResources.number);
     const now = new Date();
     const expiringSoonThreshold = new Date(now.getTime() + 30 * 60 * 1000);
     const byTier = {
@@ -200,13 +221,14 @@ async function getRoomsByTier() {
     // Get lockers
     const lockerRows = await db_1.db
         .select({
-        id: schema_1.lockers.id,
-        number: schema_1.lockers.number,
-        status: schema_1.lockers.status,
-        assignedToCustomerId: schema_1.lockers.assignedToCustomerId,
+        id: schema_1.inventoryResources.id,
+        number: schema_1.inventoryResources.number,
+        status: schema_1.inventoryResources.status,
+        assignedToCustomerId: schema_1.inventoryResources.assignedToCustomerId,
     })
-        .from(schema_1.lockers)
-        .orderBy(schema_1.lockers.number);
+        .from(schema_1.inventoryResources)
+        .where((0, drizzle_orm_1.eq)(schema_1.inventoryResources.kind, 'locker'))
+        .orderBy(schema_1.inventoryResources.number);
     const lockerResult = {
         available: [],
         assigned: [],
@@ -227,20 +249,20 @@ async function getRoomsByTier() {
 async function getAllRooms() {
     const roomRows = await db_1.db
         .select({
-        id: schema_1.rooms.id,
-        number: schema_1.rooms.number,
-        type: schema_1.rooms.type,
-        status: schema_1.rooms.status,
-        floor: schema_1.rooms.floor,
-        lastStatusChange: schema_1.rooms.lastStatusChange,
-        assignedToCustomerId: schema_1.rooms.assignedToCustomerId,
+        id: schema_1.inventoryResources.id,
+        number: schema_1.inventoryResources.number,
+        type: schema_1.inventoryResources.tier,
+        status: schema_1.inventoryResources.status,
+        floor: schema_1.inventoryResources.floor,
+        lastStatusChange: schema_1.inventoryResources.lastStatusChange,
+        assignedToCustomerId: schema_1.inventoryResources.assignedToCustomerId,
         assignedCustomerName: schema_1.customers.name,
-        overrideFlag: schema_1.rooms.overrideFlag,
+        overrideFlag: schema_1.inventoryResources.overrideFlag,
     })
-        .from(schema_1.rooms)
-        .leftJoin(schema_1.customers, (0, drizzle_orm_1.eq)(schema_1.rooms.assignedToCustomerId, schema_1.customers.id))
-        .where((0, drizzle_orm_1.ne)(schema_1.rooms.type, 'LOCKER'))
-        .orderBy(schema_1.rooms.number);
+        .from(schema_1.inventoryResources)
+        .leftJoin(schema_1.customers, (0, drizzle_orm_1.eq)(schema_1.inventoryResources.assignedToCustomerId, schema_1.customers.id))
+        .where((0, drizzle_orm_1.eq)(schema_1.inventoryResources.kind, 'room'))
+        .orderBy(schema_1.inventoryResources.number);
     const result = roomRows.map((row) => ({
         id: row.id,
         number: row.number,
@@ -264,7 +286,7 @@ async function getDetailedInventory() {
     const roomResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT 
        r.id,
        r.number,
-       r.type,
+       r.tier AS type,
        r.status,
        r.floor,
        r.last_status_change,
@@ -275,47 +297,48 @@ async function getDetailedInventory() {
        cb.visit_id as visit_id,
        cb.starts_at as checkin_at,
        cb.ends_at as checkout_at
-     FROM rooms r
+     FROM inventory_resources r
      LEFT JOIN customers c ON r.assigned_to_customer_id = c.id
      LEFT JOIN LATERAL (
        SELECT cb.id as occupancy_id, cb.visit_id, cb.starts_at, cb.ends_at
        FROM checkin_blocks cb
        JOIN visits v ON v.id = cb.visit_id
-       WHERE cb.room_id = r.id
+       WHERE cb.resource_id = r.id
          AND v.ended_at IS NULL
        ORDER BY cb.ends_at DESC
        LIMIT 1
      ) cb ON TRUE
-     WHERE r.type != 'LOCKER'
+     WHERE r.kind = 'room'
      ORDER BY 
        CASE WHEN r.status = 'CLEAN' THEN 0 ELSE 1 END,
        cb.ends_at ASC NULLS LAST,
        r.number`);
     const lockerResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT 
-       l.id,
-       l.number,
-       l.status,
-       l.assigned_to_customer_id,
+       r.id,
+       r.number,
+       r.status,
+       r.assigned_to_customer_id,
        c.name as assigned_customer_name,
        cb.occupancy_id as occupancy_id,
        cb.visit_id as visit_id,
        cb.starts_at as checkin_at,
        cb.ends_at as checkout_at
-     FROM lockers l
-     LEFT JOIN customers c ON l.assigned_to_customer_id = c.id
+     FROM inventory_resources r
+     LEFT JOIN customers c ON r.assigned_to_customer_id = c.id
      LEFT JOIN LATERAL (
        SELECT cb.id as occupancy_id, cb.visit_id, cb.starts_at, cb.ends_at
        FROM checkin_blocks cb
        JOIN visits v ON v.id = cb.visit_id
-       WHERE cb.locker_id = l.id
+       WHERE cb.resource_id = r.id
          AND v.ended_at IS NULL
        ORDER BY cb.ends_at DESC
        LIMIT 1
      ) cb ON TRUE
+     WHERE r.kind = 'locker'
      ORDER BY 
-       CASE WHEN l.status = 'CLEAN' THEN 0 ELSE 1 END,
+       CASE WHEN r.status = 'CLEAN' THEN 0 ELSE 1 END,
        cb.ends_at ASC NULLS LAST,
-       l.number`);
+       r.number`);
     const roomList = roomResult.rows.map((row) => ({
         id: row.id,
         number: row.number,

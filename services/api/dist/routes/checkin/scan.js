@@ -8,8 +8,30 @@ const payload_1 = require("../../checkin/payload");
 const schemas_1 = require("../../checkin/schemas");
 const utils_1 = require("../../checkin/utils");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const scanService_1 = require("../../services/checkin/scanService");
 const scanIdService_1 = require("../../services/checkin/scanIdService");
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by scanIdService.processScanId.
+ */
+function toQueryable(tx) {
+    return {
+        async query(queryText, params) {
+            const parts = queryText.split(/\$\d+/);
+            const values = params ?? [];
+            let built = drizzle_orm_1.sql.empty();
+            for (let i = 0; i < parts.length; i++) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+                if (i < values.length) {
+                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+                }
+            }
+            const result = await tx.execute(built);
+            return { rows: result.rows };
+        },
+    };
+}
 function registerCheckinScanRoutes(fastify) {
     /**
      * POST /v1/checkin/scan — Server-side scan normalization and customer matching.
@@ -56,13 +78,13 @@ function registerCheckinScanRoutes(fastify) {
         }
         const body = parsed.data;
         try {
-            const result = await (0, db_1.transaction)(async (client) => (0, scanIdService_1.processScanId)(client, {
+            const result = await db_1.db.transaction(async (tx) => (0, scanIdService_1.processScanId)(toQueryable(tx), {
                 laneId: request.params.laneId,
                 staffId: request.staff.staffId,
                 body,
             }));
-            // Broadcast full session update
-            const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, result.sessionId));
+            // buildFullSessionUpdatedPayload is already Drizzle-native — no transaction wrapper needed
+            const { payload } = await (0, payload_1.buildFullSessionUpdatedPayload)(result.sessionId);
             fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
             return reply.send(result);
         }

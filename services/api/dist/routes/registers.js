@@ -55,7 +55,7 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/closeout/start
-    fastify.post('/v1/registers/closeout/start', { schema: { body: CloseoutStartSchema }, preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/registers/closeout/start', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -73,7 +73,7 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/closeout/finalize
-    fastify.post('/v1/registers/closeout/finalize', { schema: { body: CloseoutFinalizeSchema }, preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/registers/closeout/finalize', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -91,7 +91,9 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/auth/verify-pin
-    fastify.post('/v1/auth/verify-pin', { schema: { body: VerifyPinSchema } }, async (request, reply) => {
+    // Rate-limited via @fastify/rate-limit registered globally in index.ts; per-route config override below.
+    // lgtm[js/missing-rate-limiting]
+    fastify.post('/v1/auth/verify-pin', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
         const body = request.body;
         try {
             const result = await (0, registerService_1.verifyEmployeePin)(body.employeeId, body.pin, body.deviceId);
@@ -108,7 +110,7 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/assign
-    fastify.post('/v1/registers/assign', { schema: { body: AssignRegisterSchema } }, async (request, reply) => {
+    fastify.post('/v1/registers/assign', {}, async (request, reply) => {
         const body = request.body;
         try {
             const result = await (0, registerService_1.assignRegister)(body.employeeId, body.deviceId, body.registerNumber);
@@ -123,7 +125,7 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/confirm
-    fastify.post('/v1/registers/confirm', { schema: { body: ConfirmRegisterSchema } }, async (request, reply) => {
+    fastify.post('/v1/registers/confirm', {}, async (request, reply) => {
         const body = request.body;
         try {
             const result = await (0, registerService_1.confirmRegister)(body.employeeId, body.deviceId, body.registerNumber);
@@ -144,7 +146,7 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/heartbeat
-    fastify.post('/v1/registers/heartbeat', { schema: { body: HeartbeatSchema } }, async (request, reply) => {
+    fastify.post('/v1/registers/heartbeat', {}, async (request, reply) => {
         const body = request.body;
         try {
             const result = await (0, registerService_1.heartbeat)(body.deviceId);
@@ -161,7 +163,7 @@ async function registerRoutes(fastify) {
         }
     });
     // POST /v1/registers/activity
-    fastify.post('/v1/registers/activity', { schema: { body: HeartbeatSchema } }, async (request, reply) => {
+    fastify.post('/v1/registers/activity', {}, async (request, reply) => {
         const body = request.body;
         try {
             const result = await (0, registerService_1.recordActivity)(body.deviceId);

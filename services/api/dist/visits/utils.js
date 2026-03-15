@@ -5,7 +5,7 @@ exports.calculateTotalHoursWithExtension = calculateTotalHoursWithExtension;
 exports.getLatestBlockEnd = getLatestBlockEnd;
 function calculateTotalHours(blocks) {
     return blocks.reduce((sum, block) => {
-        const hours = (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
+        const hours = (new Date(block.ends_at).getTime() - new Date(block.starts_at).getTime()) / (1000 * 60 * 60);
         return sum + hours;
     }, 0);
 }

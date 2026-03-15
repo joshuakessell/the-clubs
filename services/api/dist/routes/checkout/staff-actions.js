@@ -3,7 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckoutStaffRoutes = registerCheckoutStaffRoutes;
 const middleware_1 = require("../../auth/middleware");
 const idempotency_1 = require("../../middleware/idempotency");
-const schemas_1 = require("../../checkout/schemas");
 const shared_1 = require("@the-clubs/shared");
 const broadcast_1 = require("../../inventory/broadcast");
 const checkoutService_1 = require("../../services/checkoutService");
@@ -44,7 +43,7 @@ function registerCheckoutStaffRoutes(fastify) {
     /**
      * POST /v1/checkout/:requestId/mark-fee-paid
      */
-    fastify.post('/v1/checkout/:requestId/mark-fee-paid', { schema: { body: schemas_1.MarkFeePaidSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/checkout/:requestId/mark-fee-paid', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
@@ -124,9 +123,9 @@ function registerCheckoutStaffRoutes(fastify) {
             // Broadcast inventory updates
             if (fastify.broadcaster) {
                 await (0, broadcast_1.broadcastInventoryUpdate)(fastify.broadcaster);
-                if (result.roomId) {
+                if (result.resourceId) {
                     fastify.broadcaster.broadcastRoomStatusChanged({
-                        roomId: result.roomId,
+                        roomId: result.resourceId,
                         previousStatus: shared_1.RoomStatus.CLEAN,
                         newStatus: shared_1.RoomStatus.DIRTY,
                         changedBy: request.staff.staffId,

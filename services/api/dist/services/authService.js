@@ -74,7 +74,7 @@ async function loginWithPin(staffLookup, pin, deviceId, deviceType, isDemoMode) 
             deviceId,
             deviceType: deviceType || 'tablet',
             sessionToken: tokenHash,
-            expiresAt: expiresAt.toISOString(),
+            expiresAt: expiresAt,
         }).returning({ id: schema_1.staffSessions.id });
         if (!session)
             throw new Error("Failed to create session");
@@ -106,7 +106,7 @@ async function loginWithPin(staffLookup, pin, deviceId, deviceType, isDemoMode) 
                     await tx.insert(schema_1.timeclockSessions).values({
                         employeeId: staffRow.id,
                         shiftId,
-                        clockInAt: now.toISOString(),
+                        clockInAt: now,
                         source: 'OFFICE_DASHBOARD',
                     });
                 }
@@ -149,7 +149,7 @@ async function changeStaffPin(staffId, currentPin, newPin) {
         const { hashPin } = await Promise.resolve().then(() => __importStar(require('../auth/utils')));
         const newPinHash = await hashPin(newPin);
         await tx.update(schema_1.staff)
-            .set({ pinHash: newPinHash, forcePinChange: false, updatedAt: new Date().toISOString() })
+            .set({ pinHash: newPinHash, forcePinChange: false, updatedAt: new Date() })
             .where((0, drizzle_orm_1.eq)(schema_1.staff.id, staffId));
         await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
             staffId,
@@ -169,7 +169,7 @@ async function logoutSession(tokenHash) {
         if (!session)
             return;
         await tx.update(schema_1.staffSessions)
-            .set({ revokedAt: new Date().toISOString() })
+            .set({ revokedAt: new Date() })
             .where((0, drizzle_orm_1.eq)(schema_1.staffSessions.id, session.id));
         await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
             staffId: session.staffId,
@@ -182,11 +182,11 @@ async function logoutSession(tokenHash) {
                 where: (s, { eq, and, isNull }) => and(eq(s.employeeId, session.staffId), isNull(s.signedOutAt))
             });
             const otherStaffSession = await tx.query.staffSessions.findFirst({
-                where: (s, { eq, and, isNull, gt }) => and(eq(s.staffId, session.staffId), isNull(s.revokedAt), gt(s.expiresAt, new Date().toISOString()))
+                where: (s, { eq, and, isNull, gt }) => and(eq(s.staffId, session.staffId), isNull(s.revokedAt), gt(s.expiresAt, new Date()))
             });
             if (!otherRegister && !otherStaffSession) {
                 await tx.update(schema_1.timeclockSessions)
-                    .set({ clockOutAt: new Date().toISOString() })
+                    .set({ clockOutAt: new Date() })
                     .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.timeclockSessions.employeeId, session.staffId), (0, drizzle_orm_1.isNull)(schema_1.timeclockSessions.clockOutAt)));
             }
         }
@@ -199,7 +199,10 @@ async function reauthWithPin(staffId, pin, tokenHash) {
         const staffRow = await tx.query.staff.findFirst({
             where: (staff, { eq, and }) => and(eq(staff.id, staffId), eq(staff.active, true))
         });
-        if (!staffRow?.pinHash || !(await (0, utils_1.verifyPin)(pin, staffRow.pinHash))) {
+        if (!staffRow)
+            throw new Error("Invalid credentials");
+        const isDemoMode = process.env.DEMO_MODE === 'true';
+        if (!isDemoMode && (!staffRow.pinHash || !(await (0, utils_1.verifyPin)(pin, staffRow.pinHash)))) {
             throw new Error("Invalid credentials");
         }
         const session = await tx.query.staffSessions.findFirst({
@@ -209,7 +212,7 @@ async function reauthWithPin(staffId, pin, tokenHash) {
             throw new Error("Session not found");
         const reauthOkUntil = new Date(Date.now() + 5 * 60 * 1000);
         await tx.update(schema_1.staffSessions)
-            .set({ reauthOkUntil: reauthOkUntil.toISOString() })
+            .set({ reauthOkUntil: reauthOkUntil })
             .where((0, drizzle_orm_1.eq)(schema_1.staffSessions.id, session.id));
         await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
             staffId,
@@ -249,7 +252,7 @@ async function verifyReauthWebauthn(staffId, deviceId, tokenHash, origin, creden
     const drizzleDb = (0, db_1.getDb)();
     return drizzleDb.transaction(async (tx) => {
         const challengeRow = await tx.query.webauthnChallenges.findFirst({
-            where: (c, { eq, and, gt }) => and(eq(c.staffId, staffId), eq(c.deviceId, deviceId), eq(c.type, 'reauth'), gt(c.expiresAt, new Date().toISOString())),
+            where: (c, { eq, and, gt }) => and(eq(c.staffId, staffId), eq(c.deviceId, deviceId), eq(c.type, 'reauth'), gt(c.expiresAt, new Date())),
             orderBy: (c, { desc }) => [desc(c.createdAt)]
         });
         if (!challengeRow)
@@ -279,7 +282,7 @@ async function verifyReauthWebauthn(staffId, deviceId, tokenHash, origin, creden
             throw new Error("Session not found");
         const reauthOkUntil = new Date(Date.now() + 5 * 60 * 1000);
         await tx.update(schema_1.staffSessions)
-            .set({ reauthOkUntil: reauthOkUntil.toISOString() })
+            .set({ reauthOkUntil: reauthOkUntil })
             .where((0, drizzle_orm_1.eq)(schema_1.staffSessions.id, session.id));
         await (0, auditLog_1.insertAuditLogDrizzle)(tx, {
             staffId,

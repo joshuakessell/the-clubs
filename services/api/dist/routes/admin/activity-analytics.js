@@ -4,6 +4,7 @@ exports.registerAdminActivityAnalyticsRoutes = registerAdminActivityAnalyticsRou
 const zod_1 = require("zod");
 const middleware_1 = require("../../auth/middleware");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const AnalyticsSchema = zod_1.z.object({
     from: zod_1.z.string().datetime().optional(),
     to: zod_1.z.string().datetime().optional(),
@@ -25,65 +26,51 @@ function registerAdminActivityAnalyticsRoutes(fastify) {
         const from = parsed.from ? new Date(parsed.from) : new Date(to.getTime() - 7 * 86400000);
         const tz = parsed.tz || 'America/Chicago';
         try {
-            const checkinsByHour = await (0, db_1.query)(`
-          SELECT to_char(date_trunc('hour', started_at AT TIME ZONE $3), 'YYYY-MM-DD HH24:00') as bucket,
+            const checkinsByHour = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT to_char(date_trunc('hour', started_at AT TIME ZONE ${tz}), 'YYYY-MM-DD HH24:00') as bucket,
                  COUNT(*)::text as count
           FROM visits
-          WHERE started_at >= $1 AND started_at <= $2
+          WHERE started_at >= ${from} AND started_at <= ${to}
           GROUP BY 1
-          ORDER BY 1
-          `, [from, to, tz]);
-            const revenueByHour = await (0, db_1.query)(`
-          SELECT to_char(date_trunc('hour', paid_at AT TIME ZONE $3), 'YYYY-MM-DD HH24:00') as bucket,
+          ORDER BY 1`);
+            const revenueByHour = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT to_char(date_trunc('hour', paid_at AT TIME ZONE ${tz}), 'YYYY-MM-DD HH24:00') as bucket,
                  COALESCE(SUM(amount), 0)::bigint::text as total
-          FROM payment_intents
-          WHERE status = 'PAID' AND paid_at >= $1 AND paid_at <= $2
+          FROM orders
+          WHERE status = 'PAID' AND paid_at >= ${from} AND paid_at <= ${to}
           GROUP BY 1
-          ORDER BY 1
-          `, [from, to, tz]);
-            const heatmapCheckins = await (0, db_1.query)(`
-          SELECT EXTRACT(DOW FROM started_at AT TIME ZONE $3)::int as dow,
-                 EXTRACT(HOUR FROM started_at AT TIME ZONE $3)::int as hour,
+          ORDER BY 1`);
+            const heatmapCheckins = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(DOW FROM started_at AT TIME ZONE ${tz})::int as dow,
+                 EXTRACT(HOUR FROM started_at AT TIME ZONE ${tz})::int as hour,
                  COUNT(*)::text as count
           FROM visits
-          WHERE started_at >= $1 AND started_at <= $2
+          WHERE started_at >= ${from} AND started_at <= ${to}
           GROUP BY 1, 2
-          ORDER BY 1, 2
-          `, [from, to, tz]);
-            const revenueHeatmap = await (0, db_1.query)(`
-          SELECT EXTRACT(DOW FROM paid_at AT TIME ZONE $3)::int as dow,
-                 EXTRACT(HOUR FROM paid_at AT TIME ZONE $3)::int as hour,
+          ORDER BY 1, 2`);
+            const revenueHeatmap = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT EXTRACT(DOW FROM paid_at AT TIME ZONE ${tz})::int as dow,
+                 EXTRACT(HOUR FROM paid_at AT TIME ZONE ${tz})::int as hour,
                  COALESCE(SUM(amount), 0)::bigint::text as total
-          FROM payment_intents
-          WHERE status = 'PAID' AND paid_at >= $1 AND paid_at <= $2
+          FROM orders
+          WHERE status = 'PAID' AND paid_at >= ${from} AND paid_at <= ${to}
           GROUP BY 1, 2
-          ORDER BY 1, 2
-          `, [from, to, tz]);
-            const paymentSplit = await (0, db_1.query)(`
-          SELECT payment_method,
+          ORDER BY 1, 2`);
+            const paymentSplit = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT payment_method,
                  COALESCE(SUM(amount), 0)::bigint::text as total
-          FROM payment_intents
-          WHERE status = 'PAID' AND paid_at >= $1 AND paid_at <= $2
+          FROM orders
+          WHERE status = 'PAID' AND paid_at >= ${from} AND paid_at <= ${to}
           GROUP BY payment_method
-          ORDER BY payment_method NULLS LAST
-          `, [from, to]);
-            const itemTotals = await (0, db_1.query)(`
-          SELECT oli.kind as category,
+          ORDER BY payment_method NULLS LAST`);
+            const itemTotals = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT oli.kind as category,
                  COALESCE(SUM(oli.total), 0)::bigint::text as total
           FROM order_line_items oli
           JOIN orders o ON o.id = oli.order_id
-          WHERE o.paid_at >= $1 AND o.paid_at <= $2
+          WHERE o.paid_at >= ${from} AND o.paid_at <= ${to}
           GROUP BY oli.kind
-          ORDER BY total DESC
-          `, [from, to]);
-            const aovByDay = await (0, db_1.query)(`
-          SELECT to_char(date_trunc('day', paid_at AT TIME ZONE $3), 'YYYY-MM-DD') as bucket,
+          ORDER BY total DESC`);
+            const aovByDay = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT to_char(date_trunc('day', paid_at AT TIME ZONE ${tz}), 'YYYY-MM-DD') as bucket,
                  COALESCE(AVG(amount), 0)::numeric(12,2)::text as avg_dollars
-          FROM payment_intents
-          WHERE status = 'PAID' AND paid_at >= $1 AND paid_at <= $2
+          FROM orders
+          WHERE status = 'PAID' AND paid_at >= ${from} AND paid_at <= ${to}
           GROUP BY 1
-          ORDER BY 1
-          `, [from, to, tz]);
+          ORDER BY 1`);
             return reply.send({
                 from: from.toISOString(),
                 to: to.toISOString(),

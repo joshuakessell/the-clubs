@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.expireWaitlistEntries = expireWaitlistEntries;
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
 /**
  * Expires ACTIVE/OFFERED waitlist entries when their scheduled checkin block ends
  * (or the underlying visit has ended).
@@ -9,7 +10,7 @@ const db_1 = require("../db");
  * Returns the number of entries expired.
  */
 async function expireWaitlistEntries(fastify) {
-    const result = await (0, db_1.query)(`
+    const result = await db_1.db.execute((0, drizzle_orm_1.sql) `
     UPDATE waitlist w
     SET status = 'EXPIRED',
         updated_at = NOW()

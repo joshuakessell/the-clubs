@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.laneSessionCommandsRelations = exports.clubEventsRelations = exports.schedulePatternsRelations = exports.lateCheckoutBanAlertsRelations = exports.customerSpendLedgerEntriesRelations = exports.customerActivityEventsRelations = exports.customerNotesRelations = exports.receiptsRelations = exports.orderLineItemsRelations = exports.ordersRelations = exports.staffBreakSessionsRelations = exports.cashDrawerEventsRelations = exports.cashDrawerSessionsRelations = exports.auditLogRelations = exports.lateCheckoutEventsRelations = exports.cleaningEventsRelations = exports.cleaningBatchesRelations = exports.cleaningBatchRoomsRelations = exports.checkoutRequestsRelations = exports.registerSessionsRelations = exports.paymentIntentsRelations = exports.chargesRelations = exports.inventoryReservationsRelations = exports.laneSessionsRelations = exports.agreementsRelations = exports.agreementSignaturesRelations = exports.checkinBlocksRelations = exports.waitlistRelations = exports.keyTagsRelations = exports.roomsRelations = exports.lockersRelations = exports.webauthnChallengesRelations = exports.timeclockSessionsRelations = exports.timeOffRequestsRelations = exports.staffWebauthnCredentialsRelations = exports.shiftTemplatesRelations = exports.employeeShiftsRelations = exports.staffSessionsRelations = exports.staffRelations = exports.employeeDocumentsRelations = exports.customersRelations = exports.visitsRelations = void 0;
+exports.laneSessionCommandsRelations = exports.clubEventsRelations = exports.schedulePatternsRelations = exports.lateCheckoutBanAlertsRelations = exports.customerSpendLedgerEntriesRelations = exports.customerActivityEventsRelations = exports.customerNotesRelations = exports.receiptsRelations = exports.orderLineItemsRelations = exports.ordersRelations = exports.staffBreakSessionsRelations = exports.cashDrawerEventsRelations = exports.cashDrawerSessionsRelations = exports.auditLogRelations = exports.lateCheckoutEventsRelations = exports.cleaningEventsRelations = exports.cleaningBatchesRelations = exports.cleaningBatchRoomsRelations = exports.checkoutRequestsRelations = exports.registerSessionsRelations = exports.inventoryReservationsRelations = exports.laneSessionsRelations = exports.agreementsRelations = exports.agreementSignaturesRelations = exports.checkinBlocksRelations = exports.waitlistRelations = exports.keyTagsRelations = exports.inventoryResourcesRelations = exports.webauthnChallengesRelations = exports.timeclockSessionsRelations = exports.timeOffRequestsRelations = exports.staffWebauthnCredentialsRelations = exports.shiftTemplatesRelations = exports.employeeShiftsRelations = exports.staffSessionsRelations = exports.staffRelations = exports.employeeDocumentsRelations = exports.customersRelations = exports.visitsRelations = void 0;
 const relations_1 = require("drizzle-orm/relations");
 const schema_1 = require("./schema");
 exports.visitsRelations = (0, relations_1.relations)(schema_1.visits, ({ one, many }) => ({
@@ -10,14 +10,13 @@ exports.visitsRelations = (0, relations_1.relations)(schema_1.visits, ({ one, ma
     }),
     waitlists: many(schema_1.waitlist),
     checkinBlocks: many(schema_1.checkinBlocks),
-    charges: many(schema_1.charges),
+    orders: many(schema_1.orders),
     customerSpendLedgerEntries: many(schema_1.customerSpendLedgerEntries),
     lateCheckoutBanAlerts: many(schema_1.lateCheckoutBanAlerts),
 }));
 exports.customersRelations = (0, relations_1.relations)(schema_1.customers, ({ many }) => ({
     visits: many(schema_1.visits),
-    lockers: many(schema_1.lockers),
-    rooms: many(schema_1.rooms),
+    inventoryResources: many(schema_1.inventoryResources),
     checkoutRequests: many(schema_1.checkoutRequests),
     lateCheckoutEvents: many(schema_1.lateCheckoutEvents),
     orders: many(schema_1.orders),
@@ -72,7 +71,6 @@ exports.staffRelations = (0, relations_1.relations)(schema_1.staff, ({ many }) =
     }),
     webauthnChallenges: many(schema_1.webauthnChallenges),
     waitlists: many(schema_1.waitlist),
-    paymentIntents: many(schema_1.paymentIntents),
     registerSessions: many(schema_1.registerSessions),
     checkoutRequests: many(schema_1.checkoutRequests),
     cleaningEvents: many(schema_1.cleaningEvents),
@@ -187,17 +185,9 @@ exports.webauthnChallengesRelations = (0, relations_1.relations)(schema_1.webaut
         references: [schema_1.staff.id]
     }),
 }));
-exports.lockersRelations = (0, relations_1.relations)(schema_1.lockers, ({ one, many }) => ({
+exports.inventoryResourcesRelations = (0, relations_1.relations)(schema_1.inventoryResources, ({ one, many }) => ({
     customer: one(schema_1.customers, {
-        fields: [schema_1.lockers.assignedToCustomerId],
-        references: [schema_1.customers.id]
-    }),
-    keyTags: many(schema_1.keyTags),
-    checkinBlocks: many(schema_1.checkinBlocks),
-}));
-exports.roomsRelations = (0, relations_1.relations)(schema_1.rooms, ({ one, many }) => ({
-    customer: one(schema_1.customers, {
-        fields: [schema_1.rooms.assignedToCustomerId],
+        fields: [schema_1.inventoryResources.assignedToCustomerId],
         references: [schema_1.customers.id]
     }),
     keyTags: many(schema_1.keyTags),
@@ -207,13 +197,9 @@ exports.roomsRelations = (0, relations_1.relations)(schema_1.rooms, ({ one, many
     cleaningEvents: many(schema_1.cleaningEvents),
 }));
 exports.keyTagsRelations = (0, relations_1.relations)(schema_1.keyTags, ({ one, many }) => ({
-    locker: one(schema_1.lockers, {
-        fields: [schema_1.keyTags.lockerId],
-        references: [schema_1.lockers.id]
-    }),
-    room: one(schema_1.rooms, {
-        fields: [schema_1.keyTags.roomId],
-        references: [schema_1.rooms.id]
+    resource: one(schema_1.inventoryResources, {
+        fields: [schema_1.keyTags.resourceId],
+        references: [schema_1.inventoryResources.id]
     }),
     checkoutRequests: many(schema_1.checkoutRequests),
 }));
@@ -227,9 +213,9 @@ exports.waitlistRelations = (0, relations_1.relations)(schema_1.waitlist, ({ one
         references: [schema_1.checkinBlocks.id],
         relationName: "waitlist_checkinBlockId_checkinBlocks_id"
     }),
-    room: one(schema_1.rooms, {
-        fields: [schema_1.waitlist.roomId],
-        references: [schema_1.rooms.id]
+    resource: one(schema_1.inventoryResources, {
+        fields: [schema_1.waitlist.resourceId],
+        references: [schema_1.inventoryResources.id]
     }),
     visit: one(schema_1.visits, {
         fields: [schema_1.waitlist.visitId],
@@ -245,13 +231,9 @@ exports.checkinBlocksRelations = (0, relations_1.relations)(schema_1.checkinBloc
         relationName: "waitlist_checkinBlockId_checkinBlocks_id"
     }),
     agreementSignatures: many(schema_1.agreementSignatures),
-    locker: one(schema_1.lockers, {
-        fields: [schema_1.checkinBlocks.lockerId],
-        references: [schema_1.lockers.id]
-    }),
-    room: one(schema_1.rooms, {
-        fields: [schema_1.checkinBlocks.roomId],
-        references: [schema_1.rooms.id]
+    resource: one(schema_1.inventoryResources, {
+        fields: [schema_1.checkinBlocks.resourceId],
+        references: [schema_1.inventoryResources.id]
     }),
     laneSession: one(schema_1.laneSessions, {
         fields: [schema_1.checkinBlocks.sessionId],
@@ -266,7 +248,6 @@ exports.checkinBlocksRelations = (0, relations_1.relations)(schema_1.checkinBloc
         references: [schema_1.waitlist.id],
         relationName: "checkinBlocks_waitlistId_waitlist_id"
     }),
-    charges: many(schema_1.charges),
     lateCheckoutBanAlerts: many(schema_1.lateCheckoutBanAlerts),
 }));
 exports.agreementSignaturesRelations = (0, relations_1.relations)(schema_1.agreementSignatures, ({ one }) => ({
@@ -285,13 +266,9 @@ exports.agreementsRelations = (0, relations_1.relations)(schema_1.agreements, ({
 exports.laneSessionsRelations = (0, relations_1.relations)(schema_1.laneSessions, ({ one, many }) => ({
     checkinBlocks: many(schema_1.checkinBlocks),
     inventoryReservations: many(schema_1.inventoryReservations),
-    paymentIntents: many(schema_1.paymentIntents, {
-        relationName: "paymentIntents_laneSessionId_laneSessions_id"
-    }),
-    paymentIntent: one(schema_1.paymentIntents, {
-        fields: [schema_1.laneSessions.paymentIntentId],
-        references: [schema_1.paymentIntents.id],
-        relationName: "laneSessions_paymentIntentId_paymentIntents_id"
+    order: one(schema_1.orders, {
+        fields: [schema_1.laneSessions.orderId],
+        references: [schema_1.orders.id],
     }),
     customer: one(schema_1.customers, {
         fields: [schema_1.laneSessions.customerId],
@@ -317,35 +294,6 @@ exports.inventoryReservationsRelations = (0, relations_1.relations)(schema_1.inv
     waitlist: one(schema_1.waitlist, {
         fields: [schema_1.inventoryReservations.waitlistId],
         references: [schema_1.waitlist.id]
-    }),
-}));
-exports.chargesRelations = (0, relations_1.relations)(schema_1.charges, ({ one }) => ({
-    checkinBlock: one(schema_1.checkinBlocks, {
-        fields: [schema_1.charges.checkinBlockId],
-        references: [schema_1.checkinBlocks.id]
-    }),
-    paymentIntent: one(schema_1.paymentIntents, {
-        fields: [schema_1.charges.paymentIntentId],
-        references: [schema_1.paymentIntents.id]
-    }),
-    visit: one(schema_1.visits, {
-        fields: [schema_1.charges.visitId],
-        references: [schema_1.visits.id]
-    }),
-}));
-exports.paymentIntentsRelations = (0, relations_1.relations)(schema_1.paymentIntents, ({ one, many }) => ({
-    charges: many(schema_1.charges),
-    laneSession: one(schema_1.laneSessions, {
-        fields: [schema_1.paymentIntents.laneSessionId],
-        references: [schema_1.laneSessions.id],
-        relationName: "paymentIntents_laneSessionId_laneSessions_id"
-    }),
-    staff: one(schema_1.staff, {
-        fields: [schema_1.paymentIntents.paidByStaffId],
-        references: [schema_1.staff.id]
-    }),
-    laneSessions: many(schema_1.laneSessions, {
-        relationName: "laneSessions_paymentIntentId_paymentIntents_id"
     }),
 }));
 exports.registerSessionsRelations = (0, relations_1.relations)(schema_1.registerSessions, ({ one, many }) => ({
@@ -377,18 +325,18 @@ exports.cleaningBatchRoomsRelations = (0, relations_1.relations)(schema_1.cleani
         fields: [schema_1.cleaningBatchRooms.batchId],
         references: [schema_1.cleaningBatches.id]
     }),
-    room: one(schema_1.rooms, {
-        fields: [schema_1.cleaningBatchRooms.roomId],
-        references: [schema_1.rooms.id]
+    resource: one(schema_1.inventoryResources, {
+        fields: [schema_1.cleaningBatchRooms.resourceId],
+        references: [schema_1.inventoryResources.id]
     }),
 }));
 exports.cleaningBatchesRelations = (0, relations_1.relations)(schema_1.cleaningBatches, ({ many }) => ({
     cleaningBatchRooms: many(schema_1.cleaningBatchRooms),
 }));
 exports.cleaningEventsRelations = (0, relations_1.relations)(schema_1.cleaningEvents, ({ one }) => ({
-    room: one(schema_1.rooms, {
-        fields: [schema_1.cleaningEvents.roomId],
-        references: [schema_1.rooms.id]
+    resource: one(schema_1.inventoryResources, {
+        fields: [schema_1.cleaningEvents.resourceId],
+        references: [schema_1.inventoryResources.id]
     }),
     staff: one(schema_1.staff, {
         fields: [schema_1.cleaningEvents.staffId],
@@ -453,16 +401,27 @@ exports.ordersRelations = (0, relations_1.relations)(schema_1.orders, ({ one, ma
         fields: [schema_1.orders.customerId],
         references: [schema_1.customers.id]
     }),
+    visit: one(schema_1.visits, {
+        fields: [schema_1.orders.visitId],
+        references: [schema_1.visits.id]
+    }),
     registerSession: one(schema_1.registerSessions, {
         fields: [schema_1.orders.registerSessionId],
         references: [schema_1.registerSessions.id]
     }),
-    staff: one(schema_1.staff, {
+    staff_createdBy: one(schema_1.staff, {
         fields: [schema_1.orders.createdByStaffId],
-        references: [schema_1.staff.id]
+        references: [schema_1.staff.id],
+        relationName: "orders_createdByStaffId_staff_id"
+    }),
+    staff_paidBy: one(schema_1.staff, {
+        fields: [schema_1.orders.paidByStaffId],
+        references: [schema_1.staff.id],
+        relationName: "orders_paidByStaffId_staff_id"
     }),
     orderLineItems: many(schema_1.orderLineItems),
     receipts: many(schema_1.receipts),
+    laneSessions: many(schema_1.laneSessions),
 }));
 exports.orderLineItemsRelations = (0, relations_1.relations)(schema_1.orderLineItems, ({ one }) => ({
     order: one(schema_1.orders, {

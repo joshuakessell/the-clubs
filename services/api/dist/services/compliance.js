@@ -1,24 +1,33 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.computeCompliance = computeCompliance;
+/**
+ * Compliance service — business logic for shift compliance metrics.
+ *
+ * Migrated to Drizzle ORM typed queries.
+ */
 const db_1 = require("../db");
+const schema_1 = require("../db/schema");
+const drizzle_orm_1 = require("drizzle-orm");
 const GRACE_MINUTES = 5;
 /**
  * Compute compliance metrics for a scheduled shift.
  */
 async function computeCompliance(shift, employeeId) {
     // Find timeclock sessions for this employee that overlap with shift window
-    const sessions = await (0, db_1.query)(`SELECT id, clock_in_at, clock_out_at, shift_id
-     FROM timeclock_sessions
-     WHERE employee_id = $1
-     AND (
-       (clock_in_at <= $2 AND (clock_out_at IS NULL OR clock_out_at >= $3))
-       OR (clock_in_at >= $3 AND clock_in_at <= $2)
-     )
-     ORDER BY clock_in_at`, [employeeId, shift.ends_at, shift.starts_at]);
-    const scheduledMinutes = Math.floor((shift.ends_at.getTime() - shift.starts_at.getTime()) / (1000 * 60));
+    const sessions = await db_1.db
+        .select({
+        id: schema_1.timeclockSessions.id,
+        clockInAt: schema_1.timeclockSessions.clockInAt,
+        clockOutAt: schema_1.timeclockSessions.clockOutAt,
+        shiftId: schema_1.timeclockSessions.shiftId,
+    })
+        .from(schema_1.timeclockSessions)
+        .where((0, drizzle_orm_1.and)((0, drizzle_orm_1.eq)(schema_1.timeclockSessions.employeeId, employeeId), (0, drizzle_orm_1.or)((0, drizzle_orm_1.and)((0, drizzle_orm_1.lte)(schema_1.timeclockSessions.clockInAt, shift.ends_at), (0, drizzle_orm_1.or)((0, drizzle_orm_1.isNull)(schema_1.timeclockSessions.clockOutAt), (0, drizzle_orm_1.gte)(schema_1.timeclockSessions.clockOutAt, shift.starts_at))), (0, drizzle_orm_1.and)((0, drizzle_orm_1.gte)(schema_1.timeclockSessions.clockInAt, shift.starts_at), (0, drizzle_orm_1.lte)(schema_1.timeclockSessions.clockInAt, shift.ends_at)))))
+        .orderBy((0, drizzle_orm_1.asc)(schema_1.timeclockSessions.clockInAt));
+    const scheduledMinutes = Math.floor((new Date(shift.ends_at).getTime() - new Date(shift.starts_at).getTime()) / (1000 * 60));
     // If no sessions found, it's a no-show
-    if (sessions.rows.length === 0) {
+    if (sessions.length === 0) {
         return {
             workedMinutesInWindow: 0,
             scheduledMinutes,
@@ -33,17 +42,16 @@ async function computeCompliance(shift, employeeId) {
             actualClockOut: null,
         };
     }
-    // Find session that matches this shift (by shift_id or by time overlap)
     let matchingSession = null;
     // First, try to find by shift_id
-    if (sessions.rows.some((s) => s.shift_id === shift.id)) {
-        matchingSession = sessions.rows.find((s) => s.shift_id === shift.id) || null;
+    if (sessions.some((s) => s.shiftId === shift.id)) {
+        matchingSession = sessions.find((s) => s.shiftId === shift.id) || null;
     }
     else {
         // Find session with best overlap
         let maxOverlap = 0;
-        for (const session of sessions.rows) {
-            const overlap = calculateOverlap(shift.starts_at, shift.ends_at, session.clock_in_at, session.clock_out_at || new Date());
+        for (const session of sessions) {
+            const overlap = calculateOverlap(shift.starts_at, shift.ends_at, session.clockInAt, session.clockOutAt ?? new Date());
             if (overlap > maxOverlap) {
                 maxOverlap = overlap;
                 matchingSession = session;
@@ -65,18 +73,20 @@ async function computeCompliance(shift, employeeId) {
             actualClockOut: null,
         };
     }
+    const clockInDate = matchingSession.clockInAt;
+    const clockOutDate = matchingSession.clockOutAt ?? null;
     // Calculate worked minutes within shift window
-    const workedMinutesInWindow = calculateOverlap(shift.starts_at, shift.ends_at, matchingSession.clock_in_at, matchingSession.clock_out_at || new Date());
+    const workedMinutesInWindow = calculateOverlap(shift.starts_at, shift.ends_at, clockInDate, clockOutDate || new Date());
     const compliancePercent = scheduledMinutes > 0 ? Math.round((workedMinutesInWindow / scheduledMinutes) * 100) : 0;
     // Determine flags
-    const clockInTime = matchingSession.clock_in_at.getTime();
-    const clockOutTime = matchingSession.clock_out_at ? matchingSession.clock_out_at.getTime() : null;
-    const shiftStartTime = shift.starts_at.getTime();
-    const shiftEndTime = shift.ends_at.getTime();
+    const clockInTime = clockInDate.getTime();
+    const clockOutTime = clockOutDate ? clockOutDate.getTime() : null;
+    const shiftStartTime = new Date(shift.starts_at).getTime();
+    const shiftEndTime = new Date(shift.ends_at).getTime();
     const graceMs = GRACE_MINUTES * 60 * 1000;
     const lateClockIn = clockInTime > shiftStartTime + graceMs;
     const earlyClockOut = clockOutTime !== null && clockOutTime < shiftEndTime - graceMs;
-    const missingClockOut = clockOutTime === null && shift.ends_at < new Date();
+    const missingClockOut = clockOutTime === null && new Date(shift.ends_at) < new Date();
     return {
         workedMinutesInWindow,
         scheduledMinutes,
@@ -87,8 +97,8 @@ async function computeCompliance(shift, employeeId) {
             missingClockOut,
             noShow: false,
         },
-        actualClockIn: matchingSession.clock_in_at,
-        actualClockOut: matchingSession.clock_out_at,
+        actualClockIn: clockInDate,
+        actualClockOut: clockOutDate,
     };
 }
 /**

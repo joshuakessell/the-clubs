@@ -10,8 +10,12 @@ exports.recordKioskSignature = recordKioskSignature;
  * Extracted from routes/checkin/agreements.ts to separate HTTP concerns from domain logic.
  * Unifies the duplicated sign-agreement + manual-signature-override flows into a single
  * processAgreementSigning() function. This module contains ZERO HTTP/Fastify concepts.
+ *
+ * Migrated to Drizzle ORM — uses db.execute(sql) and db.transaction().
  */
 const db_1 = require("../db");
+const drizzle_orm_1 = require("drizzle-orm");
+const types_1 = require("../checkin/types");
 const helpers_1 = require("../checkin/helpers");
 const waitlist_1 = require("../checkin/waitlist");
 const pdf_generator_1 = require("../utils/pdf-generator");
@@ -20,6 +24,27 @@ const customerActivityLog_1 = require("../activity/customerActivityLog");
 const clubEventLog_1 = require("../activity/clubEventLog");
 const shared_1 = require("@the-clubs/shared");
 const HttpError_1 = require("../errors/HttpError");
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the Queryable/PoolClient interface
+ * expected by external helpers (selectRoomForNewCheckin, assertAssignedResourcePersistedAndUnavailable).
+ */
+function toQueryable(tx) {
+    return {
+        async query(queryText, params) {
+            const parts = queryText.split(/\$\d+/);
+            const values = params ?? [];
+            let built = drizzle_orm_1.sql.empty();
+            for (let i = 0; i < parts.length; i++) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+                if (i < values.length) {
+                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+                }
+            }
+            const result = await tx.execute(built);
+            return { rows: result.rows };
+        },
+    };
+}
 // ── Helpers ──
 function isFlowCommandsEnabled() {
     return process.env.FLOW_COMMANDS === 'true';
@@ -56,25 +81,26 @@ function buildAgreementTimeBlockHtml(params) {
     });
     return `<p><strong>${label}</strong> ${block}</p>`;
 }
-async function findActiveSession(client, laneId, sessionId, statusFilter = `('AWAITING_SIGNATURE', 'AWAITING_PAYMENT')`) {
+// ── Shared session lookup ──
+async function findActiveSession(tx, laneId, sessionId, statusFilter = `('AWAITING_SIGNATURE', 'AWAITING_PAYMENT')`) {
     let sessionResult;
     if (sessionId) {
-        sessionResult = await client.query(`SELECT * FROM lane_sessions
-       WHERE id = $1 AND lane_id = $2 AND status IN ${statusFilter}
-       LIMIT 1`, [sessionId, laneId]);
+        sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions
+       WHERE id = ${sessionId} AND lane_id = ${laneId} AND status IN ${drizzle_orm_1.sql.raw(statusFilter)}
+       LIMIT 1`);
     }
     else {
-        sessionResult = await client.query(`SELECT * FROM lane_sessions
-       WHERE lane_id = $1 AND status IN ${statusFilter}
+        sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions
+       WHERE lane_id = ${laneId} AND status IN ${drizzle_orm_1.sql.raw(statusFilter)}
        ORDER BY created_at DESC
-       LIMIT 1`, [laneId]);
+       LIMIT 1`);
     }
     if (sessionResult.rows.length === 0) {
         throw new HttpError_1.HttpError(404, 'No active session found');
     }
     return sessionResult.rows[0];
 }
-async function validatePrerequisites(client, session) {
+async function validatePrerequisites(tx, session) {
     // Agreement signing is required only for CHECKIN and RENEWAL lane sessions
     if (session.checkin_mode !== 'CHECKIN' && session.checkin_mode !== 'RENEWAL') {
         throw new HttpError_1.HttpError(400, 'Agreement signing is only required for CHECKIN and RENEWAL check-ins');
@@ -84,45 +110,50 @@ async function validatePrerequisites(client, session) {
         throw new HttpError_1.HttpError(400, 'Selection must be confirmed/locked before signing agreement');
     }
     // Check payment is paid
-    if (!session.payment_intent_id) {
+    if (!session.order_id) {
         throw new HttpError_1.HttpError(400, 'Payment intent must be created before signing agreement');
     }
-    const intentResult = await client.query(`SELECT status FROM payment_intents WHERE id = $1`, [session.payment_intent_id]);
+    const intentResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT status FROM orders WHERE id = ${session.order_id}`);
     if (intentResult.rows.length === 0 || intentResult.rows[0].status !== 'PAID') {
         throw new HttpError_1.HttpError(400, 'Payment must be marked as paid before signing agreement');
     }
 }
-async function fetchCustomerInfo(client, session) {
+async function fetchCustomerInfo(tx, session) {
     const customerResult = session.customer_id
-        ? await client.query(`SELECT name, dob, membership_number, primary_language FROM customers WHERE id = $1`, [session.customer_id])
+        ? await tx.execute((0, drizzle_orm_1.sql) `SELECT name, dob, membership_number, primary_language FROM customers WHERE id = ${session.customer_id}`)
         : { rows: [] };
+    const row = customerResult.rows[0];
     return {
-        customerName: customerResult.rows[0]?.name || session.customer_display_name || 'Customer',
-        customerDob: customerResult.rows[0]?.dob ?? null,
-        membershipNumber: customerResult.rows[0]?.membership_number || session.membership_number || undefined,
-        customerLang: customerResult.rows[0]?.primary_language === 'ES' ? 'ES' : 'EN',
+        customerName: row?.name || session.customer_display_name || 'Customer',
+        customerDob: row?.dob ?? null,
+        membershipNumber: row?.membership_number || session.membership_number || undefined,
+        customerLang: row?.primary_language === 'ES' ? 'ES' : 'EN',
     };
 }
-async function computeRenewalTimeBlock(client, session, renewalHours) {
-    const visitResult = await client.query(`SELECT id FROM visits WHERE customer_id = $1 AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`, [session.customer_id]);
+async function computeRenewalTimeBlock(tx, session, renewalHours) {
+    const visitResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM visits WHERE customer_id = ${session.customer_id} AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`);
     if (visitResult.rows.length === 0) {
         throw new HttpError_1.HttpError(400, 'No active visit found for renewal');
     }
     const visitId = visitResult.rows[0].id;
-    const blocksResult = await client.query(`SELECT starts_at, ends_at, room_id, locker_id FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC`, [visitId]);
+    const blocksResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT starts_at, ends_at, resource_id FROM checkin_blocks WHERE visit_id = ${visitId} ORDER BY ends_at DESC`);
     if (blocksResult.rows.length === 0) {
         throw new HttpError_1.HttpError(400, 'Visit has no blocks');
     }
     let currentTotalHours = 0;
     for (const block of blocksResult.rows) {
-        const hours = (block.ends_at.getTime() - block.starts_at.getTime()) / (1000 * 60 * 60);
+        const hours = (new Date(block.ends_at).getTime() - new Date(block.starts_at).getTime()) / (1000 * 60 * 60);
         currentTotalHours += hours;
     }
     const latestBlock = blocksResult.rows[0];
-    const latestBlockEnd = latestBlock.ends_at;
-    const diffMs = Math.abs(latestBlockEnd.getTime() - Date.now());
-    if (diffMs > 60 * 60 * 1000) {
-        throw new HttpError_1.HttpError(400, 'Renewal is only available within 1 hour of checkout');
+    const latestBlockEnd = new Date(latestBlock.ends_at);
+    const minutesUntilCheckout = (latestBlockEnd.getTime() - Date.now()) / (1000 * 60);
+    // Eligible: < 45 min before checkout AND < 29 min past checkout
+    if (minutesUntilCheckout > 45) {
+        throw new HttpError_1.HttpError(400, 'Renewal is only available within 45 minutes of checkout');
+    }
+    if (minutesUntilCheckout < -29) {
+        throw new HttpError_1.HttpError(400, 'Renewal window has expired (more than 29 minutes past checkout)');
     }
     if (currentTotalHours + renewalHours > 14) {
         throw new HttpError_1.HttpError(400, `Renewal would exceed 14-hour maximum. Current total: ${currentTotalHours} hours, renewal would add ${renewalHours} hours.`);
@@ -130,146 +161,123 @@ async function computeRenewalTimeBlock(client, session, renewalHours) {
     const startsAt = latestBlockEnd;
     const endsAt = new Date(startsAt.getTime() + renewalHours * 60 * 60 * 1000);
     const blockType = renewalHours === 2 ? 'FINAL2H' : 'RENEWAL';
-    const resource = await resolveRenewalResource(client, session, latestBlock);
+    const resource = await resolveRenewalResource(tx, session, latestBlock);
     return { visitId, blockType, startsAt, endsAt, ...resource };
 }
-async function resolveRenewalResource(client, session, latestBlock) {
-    if (latestBlock.room_id) {
-        const room = (await client.query(`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 LIMIT 1`, [latestBlock.room_id])).rows[0];
-        if (!room)
-            throw new HttpError_1.HttpError(400, 'Renewal room assignment not found');
-        if (room.assigned_to_customer_id !== session.customer_id || room.status !== 'OCCUPIED') {
-            throw new HttpError_1.HttpError(409, `Room ${room.number} is not currently assigned to this customer`);
-        }
-        return { assignedResourceId: room.id, assignedResourceType: 'room', assignedResourceNumber: room.number };
+async function resolveRenewalResource(tx, session, latestBlock) {
+    if (!latestBlock.resource_id) {
+        throw new HttpError_1.HttpError(400, 'Active visit has no assigned resource');
     }
-    if (latestBlock.locker_id) {
-        const locker = (await client.query(`SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 LIMIT 1`, [latestBlock.locker_id])).rows[0];
-        if (!locker)
-            throw new HttpError_1.HttpError(400, 'Renewal locker assignment not found');
-        if (locker.assigned_to_customer_id !== session.customer_id || locker.status !== 'OCCUPIED') {
-            throw new HttpError_1.HttpError(409, `Locker ${locker.number} is not currently assigned to this customer`);
-        }
-        return { assignedResourceId: locker.id, assignedResourceType: 'locker', assignedResourceNumber: locker.number };
+    const resourceResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${latestBlock.resource_id} LIMIT 1`);
+    const resource = resourceResult.rows[0];
+    if (!resource)
+        throw new HttpError_1.HttpError(400, 'Renewal resource assignment not found');
+    if (resource.assigned_to_customer_id !== session.customer_id || resource.status !== 'OCCUPIED') {
+        throw new HttpError_1.HttpError(409, `Resource ${resource.number} is not currently assigned to this customer`);
     }
-    throw new HttpError_1.HttpError(400, 'Active visit has no assigned room or locker');
+    const resourceType = resource.kind === 'locker' ? 'locker' : 'room';
+    return { assignedResourceId: resource.id, assignedResourceType: resourceType, assignedResourceNumber: resource.number };
 }
-async function resolvePreAssignedResource(client, session, assignedResourceId, assignedResourceType) {
-    if (assignedResourceType === 'room') {
-        const room = (await client.query(`SELECT id, number, type, status, assigned_to_customer_id FROM rooms WHERE id = $1 FOR UPDATE`, [assignedResourceId])).rows[0];
-        if (!room)
-            throw new HttpError_1.HttpError(404, 'Selected room not found');
-        if (room.status !== 'CLEAN' || room.assigned_to_customer_id) {
-            throw new HttpError_1.HttpError(409, `Selected room ${room.number} is no longer available`);
-        }
-        const selectedByOther = await client.query(`SELECT id FROM lane_sessions
-       WHERE id <> $1
-         AND assigned_resource_type = 'room'
-         AND assigned_resource_id = $2
-         AND status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
-       LIMIT 1`, [session.id, assignedResourceId]);
-        if (selectedByOther.rows.length > 0) {
-            throw new HttpError_1.HttpError(409, `Selected room ${room.number} is reserved by another lane session`);
-        }
-        return room.number;
+async function resolvePreAssignedResource(tx, session, assignedResourceId, assignedResourceType) {
+    const resourceResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${assignedResourceId} FOR UPDATE`);
+    const resource = resourceResult.rows[0];
+    if (!resource)
+        throw new HttpError_1.HttpError(404, `Selected ${assignedResourceType} not found`);
+    if (resource.status !== 'CLEAN' || resource.assigned_to_customer_id) {
+        throw new HttpError_1.HttpError(409, `Selected ${assignedResourceType} ${resource.number} is no longer available`);
     }
-    const locker = (await client.query(`SELECT id, number, status, assigned_to_customer_id FROM lockers WHERE id = $1 FOR UPDATE`, [assignedResourceId])).rows[0];
-    if (!locker)
-        throw new HttpError_1.HttpError(404, 'Selected locker not found');
-    if (locker.status !== 'CLEAN' || locker.assigned_to_customer_id) {
-        throw new HttpError_1.HttpError(409, `Selected locker ${locker.number} is no longer available`);
-    }
-    const selectedByOther = await client.query(`SELECT id FROM lane_sessions
-     WHERE id <> $1
-       AND assigned_resource_type = 'locker'
-       AND assigned_resource_id = $2
+    const selectedByOther = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM lane_sessions
+     WHERE id <> ${session.id}
+       AND assigned_resource_type = ${assignedResourceType}
+       AND assigned_resource_id = ${assignedResourceId}
        AND status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
-     LIMIT 1`, [session.id, assignedResourceId]);
+     LIMIT 1`);
     if (selectedByOther.rows.length > 0) {
-        throw new HttpError_1.HttpError(409, `Selected locker ${locker.number} is reserved by another lane session`);
+        throw new HttpError_1.HttpError(409, `Selected ${assignedResourceType} ${resource.number} is reserved by another lane session`);
     }
-    return locker.number;
+    return resource.number;
 }
-async function autoAssignResource(client, rentalType) {
+async function autoAssignResource(tx, rentalType) {
     if (rentalType === 'LOCKER' || rentalType === 'GYM_LOCKER') {
-        const locker = (await client.query(`SELECT id, number, status, assigned_to_customer_id
-         FROM lockers
-         WHERE status = 'CLEAN' AND assigned_to_customer_id IS NULL
-         AND NOT EXISTS (
-           SELECT 1 FROM lane_sessions ls
-           WHERE ls.assigned_resource_type = 'locker'
-             AND ls.assigned_resource_id = lockers.id
-             AND ls.status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
-         )
-         ORDER BY number LIMIT 1 FOR UPDATE SKIP LOCKED`)).rows[0];
+        const lockerResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, number, kind, tier, status, assigned_to_customer_id
+       FROM inventory_resources
+       WHERE kind = 'locker' AND status = 'CLEAN' AND assigned_to_customer_id IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM lane_sessions ls
+         WHERE ls.assigned_resource_type = 'locker'
+           AND ls.assigned_resource_id = inventory_resources.id
+           AND ls.status = ANY(ARRAY['ACTIVE'::public.lane_session_status, 'AWAITING_CUSTOMER'::public.lane_session_status, 'AWAITING_ASSIGNMENT'::public.lane_session_status, 'AWAITING_PAYMENT'::public.lane_session_status, 'AWAITING_SIGNATURE'::public.lane_session_status])
+       )
+       ORDER BY number LIMIT 1 FOR UPDATE SKIP LOCKED`);
+        const locker = lockerResult.rows[0];
         if (!locker)
             throw new HttpError_1.HttpError(409, 'No available lockers');
         return { id: locker.id, type: 'locker', number: locker.number };
     }
-    const room = await (0, helpers_1.selectRoomForNewCheckin)(client, rentalType);
+    // Use toQueryable() adapter for external helper that expects PoolClient
+    const room = await (0, helpers_1.selectRoomForNewCheckin)(toQueryable(tx), rentalType);
     if (!room)
         throw new HttpError_1.HttpError(409, 'No available rooms');
     return { id: room.id, type: 'room', number: room.number };
 }
-async function markResourceOccupied(client, isRenewal, resourceType, customerId, resourceId) {
+async function markResourceOccupied(tx, isRenewal, resourceType, customerId, resourceId) {
     if (isRenewal)
         return;
-    if (resourceType === 'room') {
-        await client.query(`UPDATE rooms SET status = 'OCCUPIED', assigned_to_customer_id = $1, last_status_change = NOW(), updated_at = NOW() WHERE id = $2`, [customerId, resourceId]);
-    }
-    else {
-        await client.query(`UPDATE lockers SET status = 'OCCUPIED', assigned_to_customer_id = $1, updated_at = NOW() WHERE id = $2`, [customerId, resourceId]);
-    }
+    await tx.execute((0, drizzle_orm_1.sql) `UPDATE inventory_resources SET status = 'OCCUPIED', assigned_to_customer_id = ${customerId}, last_status_change = NOW(), updated_at = NOW() WHERE id = ${resourceId}`);
 }
-async function maybeInsertFlowCommand(client, sessionId) {
+async function maybeInsertFlowCommand(tx, sessionId) {
     if (!isFlowCommandsEnabled())
         return;
     const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
         ? crypto.randomUUID()
         : `agr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    await client.query(`INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (session_id, command_id) DO NOTHING`, [sessionId, commandId, 'CUSTOMER', 'SET_STEP', { step: 'ASSIGNMENT' }]);
-    await client.query(`UPDATE lane_sessions
+    const payloadJson = JSON.stringify({ step: 'ASSIGNMENT' });
+    await tx.execute((0, drizzle_orm_1.sql) `INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
+     VALUES (${sessionId}, ${commandId}, 'CUSTOMER', 'SET_STEP', ${payloadJson}::jsonb)
+     ON CONFLICT (session_id, command_id) DO NOTHING`);
+    await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions
      SET flow_step = 'ASSIGNMENT',
          flow_version = COALESCE(flow_version, 0) + 1,
-         flow_last_command_id = $1,
+         flow_last_command_id = ${commandId},
          flow_last_actor = 'CUSTOMER',
          updated_at = NOW()
-     WHERE id = $2`, [commandId, sessionId]);
+     WHERE id = ${sessionId}`);
 }
 async function createVisitAndBlock(params) {
     let visitId = params.visitId;
     if (!visitId) {
-        const visitResult = await params.client.query(`INSERT INTO visits (customer_id, started_at) VALUES ($1, $2) RETURNING id`, [params.customerId, params.startsAt]);
+        const visitResult = await params.tx.execute((0, drizzle_orm_1.sql) `INSERT INTO visits (customer_id, started_at) VALUES (${params.customerId}, ${params.startsAt}) RETURNING id`);
         visitId = visitResult.rows[0].id;
     }
-    const blockResult = await params.client.query(`INSERT INTO checkin_blocks
-     (visit_id, block_type, starts_at, ends_at, rental_type, room_id, locker_id, session_id, agreement_signed, agreement_pdf, agreement_signed_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, $10)
-     RETURNING id`, [
-        visitId,
-        params.blockType,
-        params.startsAt,
-        params.endsAt,
-        params.rentalType,
-        params.resourceType === 'room' ? params.resourceId : null,
-        params.resourceType === 'locker' ? params.resourceId : null,
-        params.sessionId,
-        params.pdfBuffer,
-        params.signedAt,
-    ]);
-    return { visitId, checkinBlockId: blockResult.rows[0].id };
+    const blockResult = await params.tx.execute((0, drizzle_orm_1.sql) `INSERT INTO checkin_blocks
+     (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, session_id, agreement_signed, agreement_pdf, agreement_signed_at)
+     VALUES (${visitId}, ${params.blockType}, ${params.startsAt}, ${params.endsAt}, ${params.rentalType}, ${params.resourceId}, ${params.sessionId}, true, ${params.pdfBuffer}, ${params.signedAt})
+     RETURNING id`);
+    return { visitId: visitId, checkinBlockId: blockResult.rows[0].id };
 }
-async function maybeCreateWaitlist(client, session, visitId, checkinBlockId, assignedResourceId) {
+async function maybeCreateWaitlist(tx, session, visitId, checkinBlockId, assignedResourceId) {
     if (!session.waitlist_desired_type || !session.backup_rental_type)
         return undefined;
-    const waitlistResult = await client.query(`INSERT INTO waitlist
-     (visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially, status)
-     VALUES ($1, $2, $3, $4, $5, 'ACTIVE')
-     RETURNING id`, [visitId, checkinBlockId, session.waitlist_desired_type, session.backup_rental_type, assignedResourceId]);
+    // Parse desired_tiers from session's waitlist_desired_types_json
+    let desiredTiersArray = [session.waitlist_desired_type];
+    if (session.waitlist_desired_types_json) {
+        try {
+            const parsed = typeof session.waitlist_desired_types_json === 'string'
+                ? JSON.parse(session.waitlist_desired_types_json)
+                : session.waitlist_desired_types_json;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+                desiredTiersArray = parsed.map(String);
+            }
+        }
+        catch { /* use default single tier */ }
+    }
+    const desiredTiersSql = `{${desiredTiersArray.join(',')}}`;
+    const waitlistResult = await tx.execute((0, drizzle_orm_1.sql) `INSERT INTO waitlist
+     (visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status)
+     VALUES (${visitId}, ${checkinBlockId}, ${session.waitlist_desired_type}, ${desiredTiersSql}::rental_type[], ${session.backup_rental_type}, 'ACTIVE')
+     RETURNING id`);
     const waitlistId = waitlistResult.rows[0].id;
-    await client.query(`UPDATE checkin_blocks SET waitlist_id = $1 WHERE id = $2`, [waitlistId, checkinBlockId]);
+    await tx.execute((0, drizzle_orm_1.sql) `UPDATE checkin_blocks SET waitlist_id = ${waitlistId} WHERE id = ${checkinBlockId}`);
     return {
         waitlistId,
         status: 'ACTIVE',
@@ -278,28 +286,17 @@ async function maybeCreateWaitlist(client, session, visitId, checkinBlockId, ass
     };
 }
 async function storeSignatureArtifact(params) {
-    await params.client.query(`INSERT INTO agreement_signatures
+    await params.tx.execute((0, drizzle_orm_1.sql) `INSERT INTO agreement_signatures
      (agreement_id, checkin_block_id, customer_name, membership_number, signed_at, signature_png_base64, agreement_text_snapshot, agreement_version, user_agent, ip_address)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`, [
-        params.agreementId,
-        params.checkinBlockId,
-        params.customerName,
-        params.membershipNumber || null,
-        params.signedAt,
-        params.signatureData,
-        params.agreementTextSnapshot,
-        params.agreementVersion,
-        params.userAgent || null,
-        params.ipAddress || null,
-    ]);
+     VALUES (${params.agreementId}, ${params.checkinBlockId}, ${params.customerName}, ${params.membershipNumber || null}, ${params.signedAt}, ${params.signatureData}, ${params.agreementTextSnapshot}, ${params.agreementVersion}, ${params.userAgent || null}, ${params.ipAddress || null})`);
 }
-async function maybeCompleteSession(client, sessionId) {
+async function maybeCompleteSession(tx, sessionId) {
     if (isFlowCommandsEnabled())
         return;
-    await client.query(`UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`, [sessionId]);
+    await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = ${sessionId}`);
 }
-async function fetchActiveAgreement(client) {
-    const result = await client.query(`SELECT id, body_text, version, title FROM agreements WHERE active = true ORDER BY created_at DESC LIMIT 1`);
+async function fetchActiveAgreement(tx) {
+    const result = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, body_text, version, title FROM agreements WHERE active = true ORDER BY created_at DESC LIMIT 1`);
     if (result.rows.length === 0) {
         throw new HttpError_1.HttpError(404, 'No active agreement found');
     }
@@ -316,7 +313,7 @@ function extractSignatureData(signaturePayload, isManualOverride) {
     }
     return data;
 }
-async function resolveTimeBlock(client, session, signedAt) {
+async function resolveTimeBlock(tx, session, signedAt) {
     const isRenewal = session.checkin_mode === 'RENEWAL';
     if (!isRenewal) {
         return {
@@ -333,7 +330,7 @@ async function resolveTimeBlock(client, session, signedAt) {
     if (!renewalHours) {
         throw new HttpError_1.HttpError(400, 'Renewal hours not set for this session');
     }
-    const renewal = await computeRenewalTimeBlock(client, session, renewalHours);
+    const renewal = await computeRenewalTimeBlock(tx, session, renewalHours);
     return {
         isRenewal: true,
         visitId: renewal.visitId,
@@ -345,7 +342,7 @@ async function resolveTimeBlock(client, session, signedAt) {
         renewalResourceNumber: renewal.assignedResourceNumber,
     };
 }
-async function resolveResourceAssignment(client, session, timeBlock, rentalType) {
+async function resolveResourceAssignment(tx, session, timeBlock, rentalType) {
     if (timeBlock.isRenewal && timeBlock.renewalResourceId && timeBlock.renewalResourceType) {
         return {
             id: timeBlock.renewalResourceId,
@@ -356,10 +353,10 @@ async function resolveResourceAssignment(client, session, timeBlock, rentalType)
     const assignedResourceId = session.assigned_resource_id;
     const assignedResourceType = session.assigned_resource_type;
     if (assignedResourceId && assignedResourceType) {
-        const number = await resolvePreAssignedResource(client, session, assignedResourceId, assignedResourceType);
+        const number = await resolvePreAssignedResource(tx, session, assignedResourceId, assignedResourceType);
         return { id: assignedResourceId, type: assignedResourceType, number };
     }
-    return autoAssignResource(client, rentalType);
+    return autoAssignResource(tx, rentalType);
 }
 function buildAgreementTextSnapshot(startsAt, endsAt, customerLang, agreementBodyText) {
     const timeBlockHtml = buildAgreementTimeBlockHtml({ startsAt, endsAt, lang: customerLang });
@@ -375,29 +372,29 @@ function buildAgreementTextSnapshot(startsAt, endsAt, customerLang, agreementBod
  */
 async function processAgreementSigning(input) {
     const isManualOverride = input.signaturePayload === 'MANUAL_OVERRIDE';
-    const coreResult = await (0, db_1.transaction)(async (client) => {
-        const session = await findActiveSession(client, input.laneId, input.sessionId);
-        await validatePrerequisites(client, session);
-        const { customerName, customerDob, membershipNumber, customerLang } = await fetchCustomerInfo(client, session);
-        const agreement = await fetchActiveAgreement(client);
+    const coreResult = await db_1.db.transaction(async (tx) => {
+        const session = await findActiveSession(tx, input.laneId, input.sessionId);
+        await validatePrerequisites(tx, session);
+        const { customerName, customerDob, membershipNumber, customerLang } = await fetchCustomerInfo(tx, session);
+        const agreement = await fetchActiveAgreement(tx);
         const signatureData = extractSignatureData(input.signaturePayload, isManualOverride);
         const signedAt = new Date();
         if (!session.customer_id) {
             throw new HttpError_1.HttpError(400, 'Session has no customer; cannot complete check-in');
         }
-        const timeBlock = await resolveTimeBlock(client, session, signedAt);
+        const timeBlock = await resolveTimeBlock(tx, session, signedAt);
         const rentalType = (session.desired_rental_type || session.backup_rental_type || 'LOCKER');
-        const resource = await resolveResourceAssignment(client, session, timeBlock, rentalType);
-        await markResourceOccupied(client, timeBlock.isRenewal, resource.type, session.customer_id, resource.id);
+        const resource = await resolveResourceAssignment(tx, session, timeBlock, rentalType);
+        await markResourceOccupied(tx, timeBlock.isRenewal, resource.type, session.customer_id, resource.id);
         // Update lane session snapshot
-        await client.query(`UPDATE lane_sessions
-       SET assigned_resource_id = $1,
-           assigned_resource_type = $2,
-           agreement_signed_method = $3,
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions
+       SET assigned_resource_id = ${resource.id},
+           assigned_resource_type = ${resource.type},
+           agreement_signed_method = ${isManualOverride ? 'MANUAL' : 'DIGITAL'},
            agreement_bypass_pending = false,
            updated_at = NOW()
-       WHERE id = $4`, [resource.id, resource.type, isManualOverride ? 'MANUAL' : 'DIGITAL', session.id]);
-        await maybeInsertFlowCommand(client, session.id);
+       WHERE id = ${session.id}`);
+        await maybeInsertFlowCommand(tx, session.id);
         // Build agreement text + PDF
         const agreementTextSnapshot = buildAgreementTextSnapshot(timeBlock.startsAt, timeBlock.endsAt, customerLang, agreement.body_text);
         const agreementTitleForPdf = customerLang === 'ES' ? 'Acuerdo del Club' : agreement.title;
@@ -415,25 +412,25 @@ async function processAgreementSigning(input) {
                 : { signatureImageBase64: signatureData }),
         });
         const { visitId, checkinBlockId } = await createVisitAndBlock({
-            client, visitId: timeBlock.visitId, customerId: session.customer_id,
+            tx, visitId: timeBlock.visitId, customerId: session.customer_id,
             blockType: timeBlock.blockType, startsAt: timeBlock.startsAt, endsAt: timeBlock.endsAt,
             rentalType, resourceType: resource.type, resourceId: resource.id,
             sessionId: session.id, pdfBuffer, signedAt,
         });
-        const waitlistInfo = await maybeCreateWaitlist(client, session, visitId, checkinBlockId, resource.id);
+        const waitlistInfo = await maybeCreateWaitlist(tx, session, visitId, checkinBlockId, resource.id);
         await (0, helpers_1.assertAssignedResourcePersistedAndUnavailable)({
-            client, sessionId: session.id, customerId: session.customer_id,
+            client: toQueryable(tx), sessionId: session.id, customerId: session.customer_id,
             resourceType: resource.type, resourceId: resource.id, resourceNumber: resource.number,
         });
         if (!isManualOverride && signatureData) {
             await storeSignatureArtifact({
-                client, agreementId: agreement.id, checkinBlockId, customerName,
+                tx, agreementId: agreement.id, checkinBlockId, customerName,
                 membershipNumber, signedAt, signatureData, agreementTextSnapshot,
                 agreementVersion: agreement.version,
                 userAgent: input.ctx.userAgent, ipAddress: input.ctx.ipAddress,
             });
         }
-        await maybeCompleteSession(client, session.id);
+        await maybeCompleteSession(tx, session.id);
         return {
             success: true,
             sessionId: session.id,
@@ -448,11 +445,11 @@ async function processAgreementSigning(input) {
         };
     });
     // Activity events (separate transaction — after main commit)
-    await (0, db_1.transaction)(async (client) => {
+    await db_1.db.transaction(async (tx) => {
         // Look up customer name for event summaries
-        const custRow = await client.query(`SELECT name FROM customers WHERE id = $1`, [coreResult.customerId]);
+        const custRow = await tx.execute((0, drizzle_orm_1.sql) `SELECT name FROM customers WHERE id = ${coreResult.customerId}`);
         const customerName = custRow.rows[0]?.name ?? 'Customer';
-        await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+        await (0, customerActivityLog_1.insertCustomerActivityEventDrizzle)(tx, {
             customerId: coreResult.customerId,
             actionType: 'AGREEMENT_SIGNED',
             actionCategory: 'CHECKIN',
@@ -473,7 +470,7 @@ async function processAgreementSigning(input) {
             dedupeKey: coreResult.checkinBlockId ? `ACT:AGREEMENT_SIGNED:${coreResult.checkinBlockId}` : null,
             searchParts: [coreResult.assignedResourceNumber ?? ''],
         });
-        await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+        await (0, customerActivityLog_1.insertCustomerActivityEventDrizzle)(tx, {
             customerId: coreResult.customerId,
             actionType: 'CHECKIN_COMPLETED',
             actionCategory: 'CHECKIN',
@@ -491,7 +488,7 @@ async function processAgreementSigning(input) {
             dedupeKey: coreResult.visitId ? `ACT:CHECKIN_COMPLETED:${coreResult.visitId}` : null,
             searchParts: [coreResult.visitId ?? '', coreResult.checkinBlockId ?? ''],
         });
-        await (0, clubEventLog_1.insertClubEvent)(client, {
+        await (0, clubEventLog_1.insertClubEventDrizzle)(tx, {
             eventType: 'CHECKIN_COMPLETED',
             eventDomain: 'CHECKIN',
             sourceApp: input.ctx.sourceApp === 'CUSTOMER_KIOSK' ? 'CUSTOMER_KIOSK' : 'EMPLOYEE_REGISTER',
@@ -513,7 +510,7 @@ async function processAgreementSigning(input) {
         // Log room/locker assignment
         if (coreResult.assignedResourceType && coreResult.assignedResourceNumber) {
             const isRoom = coreResult.assignedResourceType === 'room';
-            await (0, clubEventLog_1.insertClubEvent)(client, {
+            await (0, clubEventLog_1.insertClubEventDrizzle)(tx, {
                 eventType: isRoom ? 'ROOM_ASSIGNED' : 'LOCKER_ASSIGNED',
                 eventDomain: 'INVENTORY',
                 sourceApp: input.ctx.sourceApp === 'CUSTOMER_KIOSK' ? 'CUSTOMER_KIOSK' : 'EMPLOYEE_REGISTER',
@@ -529,7 +526,12 @@ async function processAgreementSigning(input) {
                     checkinBlockId: coreResult.checkinBlockId,
                     laneSessionId: coreResult.sessionId,
                 },
-                dedupeKey: coreResult.checkinBlockId ? `CLUB:${isRoom ? 'ROOM' : 'LOCKER'}_ASSIGNED:${coreResult.checkinBlockId}` : null,
+                dedupeKey: (() => {
+                    if (!coreResult.checkinBlockId)
+                        return null;
+                    const label = isRoom ? 'ROOM' : 'LOCKER';
+                    return `CLUB:${label}_ASSIGNED:${coreResult.checkinBlockId}`;
+                })(),
             });
         }
     });
@@ -539,22 +541,22 @@ async function processAgreementSigning(input) {
  * Staff-only: request bypass of digital agreement so staff can collect a physical signature.
  */
 async function requestAgreementBypass(input) {
-    return (0, db_1.transaction)(async (client) => {
-        const session = await findActiveSession(client, input.laneId, input.sessionId);
+    return db_1.db.transaction(async (tx) => {
+        const session = await findActiveSession(tx, input.laneId, input.sessionId);
         if (session.checkin_mode !== 'CHECKIN' && session.checkin_mode !== 'RENEWAL') {
             throw new HttpError_1.HttpError(400, 'Agreement bypass is only required for CHECKIN and RENEWAL check-ins');
         }
         if (!session.selection_confirmed) {
             throw new HttpError_1.HttpError(400, 'Selection must be confirmed before bypassing agreement');
         }
-        if (!session.payment_intent_id) {
+        if (!session.order_id) {
             throw new HttpError_1.HttpError(400, 'Payment intent must be created before bypassing agreement');
         }
-        const intentResult = await client.query(`SELECT status FROM payment_intents WHERE id = $1`, [session.payment_intent_id]);
+        const intentResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT status FROM orders WHERE id = ${session.order_id}`);
         if (intentResult.rows.length === 0 || intentResult.rows[0].status !== 'PAID') {
             throw new HttpError_1.HttpError(400, 'Payment must be marked as paid before bypassing agreement');
         }
-        await client.query(`UPDATE lane_sessions SET agreement_bypass_pending = true, updated_at = NOW() WHERE id = $1`, [session.id]);
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET agreement_bypass_pending = true, updated_at = NOW() WHERE id = ${session.id}`);
         return { sessionId: session.id, laneId: session.lane_id || input.laneId };
     });
 }
@@ -562,23 +564,23 @@ async function requestAgreementBypass(input) {
  * Customer confirms or declines cross-type assignment.
  */
 async function processCustomerConfirm(input) {
-    return (0, db_1.transaction)(async (client) => {
-        const sessionResult = await client.query(`SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2`, [input.sessionId, input.laneId]);
+    return db_1.db.transaction(async (tx) => {
+        const sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${input.sessionId} AND lane_id = ${input.laneId}`);
         if (sessionResult.rows.length === 0) {
             throw new HttpError_1.HttpError(404, 'Session not found');
         }
         const session = sessionResult.rows[0];
         if (input.confirmed) {
-            return resolveConfirmation(client, session);
+            return resolveConfirmation(tx, session);
         }
-        return resolveDecline(client, session);
+        return resolveDecline(tx, session);
     });
 }
-async function resolveConfirmation(client, session) {
+async function resolveConfirmation(tx, session) {
     if (!session.assigned_resource_type || !session.assigned_resource_id) {
         throw new HttpError_1.HttpError(400, 'No assigned resource to confirm');
     }
-    const { confirmedType, confirmedNumber } = await lookupAssignedResource(client, session.assigned_resource_type, session.assigned_resource_id);
+    const { confirmedType, confirmedNumber } = await lookupAssignedResource(tx, session.assigned_resource_type, session.assigned_resource_id);
     return {
         success: true,
         confirmed: true,
@@ -589,30 +591,18 @@ async function resolveConfirmation(client, session) {
         },
     };
 }
-async function lookupAssignedResource(client, resourceType, resourceId) {
-    if (resourceType === 'room') {
-        const roomRes = await client.query(`SELECT number FROM rooms WHERE id = $1 LIMIT 1`, [resourceId]);
-        if (roomRes.rows.length === 0)
-            throw new HttpError_1.HttpError(404, 'Assigned room not found');
-        return { confirmedType: (0, waitlist_1.getRoomTier)(roomRes.rows[0].number), confirmedNumber: roomRes.rows[0].number };
-    }
-    if (resourceType === 'locker') {
-        const lockerRes = await client.query(`SELECT number FROM lockers WHERE id = $1 LIMIT 1`, [resourceId]);
-        if (lockerRes.rows.length === 0)
-            throw new HttpError_1.HttpError(404, 'Assigned locker not found');
-        return { confirmedType: 'LOCKER', confirmedNumber: lockerRes.rows[0].number };
-    }
-    throw new HttpError_1.HttpError(400, 'Invalid assigned resource type');
+async function lookupAssignedResource(tx, resourceType, resourceId) {
+    const res = await tx.execute((0, drizzle_orm_1.sql) `SELECT number, kind FROM inventory_resources WHERE id = ${resourceId} LIMIT 1`);
+    if (res.rows.length === 0)
+        throw new HttpError_1.HttpError(404, 'Assigned resource not found');
+    const row = res.rows[0];
+    const confirmedType = row.kind === 'locker' ? 'LOCKER' : (0, waitlist_1.getRoomTier)(row.number);
+    return { confirmedType, confirmedNumber: row.number };
 }
-async function resolveDecline(client, session) {
+async function resolveDecline(tx, session) {
     if (session.assigned_resource_id) {
-        if (session.assigned_resource_type === 'room') {
-            await client.query(`UPDATE rooms SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = $1`, [session.assigned_resource_id]);
-        }
-        else if (session.assigned_resource_type === 'locker') {
-            await client.query(`UPDATE lockers SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = $1`, [session.assigned_resource_id]);
-        }
-        await client.query(`UPDATE lane_sessions SET assigned_resource_id = NULL, assigned_resource_type = NULL, updated_at = NOW() WHERE id = $1`, [session.id]);
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE inventory_resources SET assigned_to_customer_id = NULL, updated_at = NOW() WHERE id = ${session.assigned_resource_id}`);
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions SET assigned_resource_id = NULL, assigned_resource_type = NULL, updated_at = NOW() WHERE id = ${session.id}`);
     }
     return {
         success: true,
@@ -628,13 +618,13 @@ async function resolveDecline(client, session) {
  * Does NOT trigger full check-in completion.
  */
 async function recordKioskSignature(input) {
-    return (0, db_1.transaction)(async (client) => {
-        const session = await findActiveSession(client, input.laneId, input.sessionId, `('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')`);
-        await client.query(`UPDATE lane_sessions
+    return db_1.db.transaction(async (tx) => {
+        const session = await findActiveSession(tx, input.laneId, input.sessionId, `('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')`);
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE lane_sessions
        SET agreement_signed_method = 'DIGITAL',
            agreement_bypass_pending = false,
            updated_at = NOW()
-       WHERE id = $1`, [session.id]);
+       WHERE id = ${session.id}`);
         return session.id;
     });
 }

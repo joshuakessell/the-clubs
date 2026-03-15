@@ -4,9 +4,31 @@ exports.registerAdminCustomerRoutes = registerAdminCustomerRoutes;
 const utils_1 = require("../../checkin/utils");
 const zod_1 = require("zod");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const middleware_1 = require("../../auth/middleware");
 const auditLog_1 = require("../../audit/auditLog");
 const HttpError_1 = require("../../errors/HttpError");
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertAuditLog.
+ */
+function toQueryable(tx) {
+    return {
+        async query(queryText, params) {
+            const parts = queryText.split(/\$\d+/);
+            const values = params ?? [];
+            let built = drizzle_orm_1.sql.empty();
+            for (let i = 0; i < parts.length; i++) {
+                built = (0, drizzle_orm_1.sql) `${built}${drizzle_orm_1.sql.raw(parts[i])}`;
+                if (i < values.length) {
+                    built = (0, drizzle_orm_1.sql) `${built}${values[i]}`;
+                }
+            }
+            const result = await tx.execute(built);
+            return { rows: result.rows };
+        },
+    };
+}
 // Admin customer search and update delegates to inline service-like functions below.
 // The agreements endpoint is also included. These could be further extracted into
 // customerAdminService.ts, but the 3 endpoints are kept here for now.
@@ -17,8 +39,13 @@ function registerAdminCustomerRoutes(fastify) {
         if (search.length < 2)
             return reply.send({ customers: [] });
         try {
-            const result = await (0, db_1.query)(`SELECT c.id, c.name, c.dob, c.membership_number, c.membership_card_type, c.membership_valid_until, c.primary_language, c.past_due_balance, (SELECT MAX(v.started_at) FROM visits v WHERE v.customer_id = c.id) as last_visit FROM customers c WHERE c.name ILIKE $1 OR c.membership_number ILIKE $1 ORDER BY c.name ASC LIMIT $2`, [`%${search}%`, limit]);
-            return reply.send({ customers: result.rows.map((r) => ({ id: r.id, name: r.name, dob: r.dob, membershipNumber: r.membership_number, membershipCardType: r.membership_card_type, membershipValidUntil: r.membership_valid_until?.toISOString() ?? null, primaryLanguage: r.primary_language || null, pastDueBalance: Number.parseFloat(String(r.past_due_balance || 0)), lastVisit: r.last_visit?.toISOString() ?? null })) });
+            const searchPattern = `%${search}%`;
+            const result = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT c.id, c.name, c.dob, c.membership_number, c.membership_card_type, c.membership_valid_until, c.primary_language, c.past_due_balance, (SELECT MAX(v.started_at) FROM visits v WHERE v.customer_id = c.id) as last_visit FROM customers c WHERE c.name ILIKE ${searchPattern} OR c.membership_number ILIKE ${searchPattern} ORDER BY c.name ASC LIMIT ${limit}`);
+            const toISO = (v) => { if (!v)
+                return null; if (v instanceof Date)
+                return v.toISOString(); if (typeof v === 'string')
+                return v; return null; };
+            return reply.send({ customers: result.rows.map((r) => ({ id: r.id, name: r.name, dob: r.dob, membershipNumber: r.membership_number, membershipCardType: r.membership_card_type, membershipValidUntil: toISO(r.membership_valid_until), primaryLanguage: r.primary_language || null, pastDueBalance: Number.parseFloat(String(r.past_due_balance || 0)), lastVisit: toISO(r.last_visit) })) });
         }
         catch (e) {
             request.log.error(e, 'Failed to search customers');
@@ -26,16 +53,17 @@ function registerAdminCustomerRoutes(fastify) {
         }
     });
     const UpdateSchema = zod_1.z.object({ pastDueBalance: zod_1.z.number().min(0).optional() }).refine((b) => b.pastDueBalance !== undefined, { message: 'At least one field is required' });
-    fastify.patch('/v1/admin/customers/:id', { schema: { body: UpdateSchema }, preHandler: [middleware_1.requireReauthForAdmin] }, async (request, reply) => {
+    fastify.patch('/v1/admin/customers/:id', { preHandler: [middleware_1.requireReauthForAdmin] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
         try {
-            const result = await (0, db_1.transaction)(async (client) => {
-                const existing = await client.query(`SELECT id, name, membership_number, primary_language, past_due_balance FROM customers WHERE id = $1 FOR UPDATE`, [request.params.id]);
+            const result = await db_1.db.transaction(async (tx) => {
+                const existing = await tx.execute((0, drizzle_orm_1.sql) `SELECT id, name, membership_number, primary_language, past_due_balance FROM customers WHERE id = ${request.params.id} FOR UPDATE`);
                 if (existing.rows.length === 0)
                     throw new HttpError_1.HttpError(404, 'Customer not found');
                 const before = existing.rows[0];
+                // Dynamic SQL for updates using toQueryable adapter
                 const updates = [];
                 const params = [];
                 let idx = 1;
@@ -45,9 +73,10 @@ function registerAdminCustomerRoutes(fastify) {
                     idx++;
                 }
                 params.push(request.params.id);
-                const updated = await client.query(`UPDATE customers SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING id, name, membership_number, primary_language, past_due_balance`, params);
+                const queryText = `UPDATE customers SET ${updates.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING id, name, membership_number, primary_language, past_due_balance`;
+                const updated = await toQueryable(tx).query(queryText, params);
                 const after = updated.rows[0];
-                await (0, auditLog_1.insertAuditLog)(client, { staffId: request.staff.staffId, userId: request.staff.staffId, userRole: request.staff.role, action: 'UPDATE', entityType: 'customer', entityId: request.params.id, oldValue: { pastDueBalance: Number.parseFloat(String(before.past_due_balance || 0)) }, newValue: { pastDueBalance: Number.parseFloat(String(after.past_due_balance || 0)) } });
+                await (0, auditLog_1.insertAuditLogDrizzle)(tx, { staffId: request.staff.staffId, userId: request.staff.staffId, userRole: request.staff.role, action: 'UPDATE', entityType: 'customer', entityId: request.params.id, oldValue: { pastDueBalance: Number.parseFloat(String(before.past_due_balance || 0)) }, newValue: { pastDueBalance: Number.parseFloat(String(after.past_due_balance || 0)) } });
                 return after;
             });
             return reply.send({ id: result.id, name: result.name, membershipNumber: result.membership_number, primaryLanguage: result.primary_language || null, pastDueBalance: Number.parseFloat(String(result.past_due_balance || 0)) });
@@ -64,18 +93,22 @@ function registerAdminCustomerRoutes(fastify) {
         const { customerId } = request.params;
         const limit = Math.min(Math.max(Number.parseInt(request.query.limit || '25', 10) || 25, 1), 100);
         try {
-            const visitsResult = await (0, db_1.query)(`SELECT id, started_at, ended_at FROM visits WHERE customer_id = $1 ORDER BY started_at DESC LIMIT $2`, [customerId, limit]);
+            const visitsResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT id, started_at, ended_at FROM visits WHERE customer_id = ${customerId} ORDER BY started_at DESC LIMIT ${limit}`);
             if (visitsResult.rows.length === 0)
                 return reply.send({ visits: [] });
             const visitIds = visitsResult.rows.map((v) => v.id);
-            const blocksResult = await (0, db_1.query)(`SELECT cb.id, cb.visit_id, cb.block_type::text as block_type, cb.starts_at, cb.ends_at, cb.rental_type::text as rental_type, r.number as room_number, l.number as locker_number, cb.agreement_signed, cb.agreement_signed_at, (cb.agreement_pdf IS NOT NULL) as has_pdf, pi.amount as payment_total, pi.payment_method, sig.signature_png_base64, sig.signature_strokes_json, sig.created_at as signature_created_at, sig.agreement_version, sig.agreement_text_snapshot FROM checkin_blocks cb LEFT JOIN rooms r ON r.id = cb.room_id LEFT JOIN lockers l ON l.id = cb.locker_id LEFT JOIN lane_sessions ls ON ls.id = cb.session_id LEFT JOIN payment_intents pi ON pi.id = ls.payment_intent_id LEFT JOIN LATERAL (SELECT signature_png_base64, signature_strokes_json, created_at, agreement_version, agreement_text_snapshot FROM agreement_signatures WHERE checkin_block_id = cb.id ORDER BY created_at DESC LIMIT 1) sig ON TRUE WHERE cb.visit_id = ANY($1::uuid[]) ORDER BY cb.starts_at DESC, cb.id DESC`, [visitIds]);
+            const blocksResult = await db_1.db.execute((0, drizzle_orm_1.sql) `SELECT cb.id, cb.visit_id, cb.block_type::text as block_type, cb.starts_at, cb.ends_at, cb.rental_type::text as rental_type, r.number as resource_number, r.kind as resource_kind, cb.agreement_signed, cb.agreement_signed_at, (cb.agreement_pdf IS NOT NULL) as has_pdf, pi.total as payment_total, pi.payment_method, sig.signature_png_base64, sig.signature_strokes_json, sig.created_at as signature_created_at, sig.agreement_version, sig.agreement_text_snapshot FROM checkin_blocks cb LEFT JOIN inventory_resources r ON r.id = cb.resource_id LEFT JOIN lane_sessions ls ON ls.id = cb.session_id LEFT JOIN orders pi ON pi.id = ls.order_id LEFT JOIN LATERAL (SELECT signature_png_base64, signature_strokes_json, created_at, agreement_version, agreement_text_snapshot FROM agreement_signatures WHERE checkin_block_id = cb.id ORDER BY created_at DESC LIMIT 1) sig ON TRUE WHERE cb.visit_id IN (${drizzle_orm_1.sql.join(visitIds.map(id => (0, drizzle_orm_1.sql) `${id}::uuid`), (0, drizzle_orm_1.sql) `, `)}) ORDER BY cb.starts_at DESC, cb.id DESC`);
             const blocksByVisit = new Map();
             for (const b of blocksResult.rows) {
                 const arr = blocksByVisit.get(b.visit_id) ?? [];
                 arr.push(b);
                 blocksByVisit.set(b.visit_id, arr);
             }
-            return reply.send({ visits: visitsResult.rows.map((v) => ({ visitId: v.id, visitStartedAt: v.started_at.toISOString(), visitEndedAt: v.ended_at?.toISOString() ?? null, checkinBlocks: (blocksByVisit.get(v.id) ?? []).map((b) => ({ checkinBlockId: b.id, blockType: b.block_type, startsAt: b.starts_at.toISOString(), endsAt: b.ends_at.toISOString(), rentalType: b.rental_type, roomNumber: b.room_number, lockerNumber: b.locker_number, agreementSigned: b.agreement_signed, agreementSignedAt: b.agreement_signed_at?.toISOString() ?? null, hasPdf: b.has_pdf, paymentTotal: b.payment_total ? Number.parseFloat(b.payment_total) : null, paymentMethod: b.payment_method, hasSignature: Boolean(b.signature_png_base64) || Boolean(b.signature_strokes_json), signatureCreatedAt: b.signature_created_at?.toISOString() ?? null, agreementVersion: b.agreement_version, agreementTitle: null })) })) });
+            const toISO = (v) => { if (v instanceof Date)
+                return v.toISOString(); return String(v ?? ''); };
+            const toISONull = (v) => { if (!v)
+                return null; return toISO(v); };
+            return reply.send({ visits: visitsResult.rows.map((v) => ({ visitId: v.id, visitStartedAt: toISO(v.started_at), visitEndedAt: toISONull(v.ended_at), checkinBlocks: (blocksByVisit.get(v.id) ?? []).map((b) => ({ checkinBlockId: b.id, blockType: b.block_type, startsAt: toISO(b.starts_at), endsAt: toISO(b.ends_at), rentalType: b.rental_type, resourceNumber: b.resource_number, resourceKind: b.resource_kind, agreementSigned: b.agreement_signed, agreementSignedAt: toISONull(b.agreement_signed_at), hasPdf: b.has_pdf, paymentTotal: b.payment_total ? Number.parseFloat(b.payment_total) : null, paymentMethod: b.payment_method, hasSignature: Boolean(b.signature_png_base64) || Boolean(b.signature_strokes_json), signatureCreatedAt: toISONull(b.signature_created_at), agreementVersion: b.agreement_version, agreementTitle: null })) })) });
         }
         catch (e) {
             request.log.error(e, 'Failed to fetch customer agreements');

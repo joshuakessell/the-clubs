@@ -3,7 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.registerCheckinNoteRoutes = registerCheckinNoteRoutes;
 const middleware_1 = require("../../auth/middleware");
 const payload_1 = require("../../checkin/payload");
+const types_1 = require("../../checkin/types");
 const db_1 = require("../../db");
+const drizzle_orm_1 = require("drizzle-orm");
 const customerActivityLog_1 = require("../../activity/customerActivityLog");
 const clubEventLog_1 = require("../../activity/clubEventLog");
 const HttpError_1 = require("../../errors/HttpError");
@@ -26,11 +28,11 @@ function registerCheckinNoteRoutes(fastify) {
             return reply.status(400).send({ error: 'Note is required' });
         }
         try {
-            const result = await (0, db_1.transaction)(async (client) => {
-                const sessionResult = await client.query(`SELECT * FROM lane_sessions
-           WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+            const result = await db_1.db.transaction(async (tx) => {
+                const sessionResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT ${drizzle_orm_1.sql.raw(types_1.LANE_SESSION_COLS)} FROM lane_sessions
+           WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
            ORDER BY created_at DESC
-           LIMIT 1`, [laneId]);
+           LIMIT 1`);
                 if (sessionResult.rows.length === 0) {
                     throw new HttpError_1.HttpError(404, 'No active session found');
                 }
@@ -38,21 +40,21 @@ function registerCheckinNoteRoutes(fastify) {
                 if (!session.customer_id) {
                     throw new HttpError_1.HttpError(400, 'Session has no customer');
                 }
-                const customerResult = await client.query(`SELECT id FROM customers WHERE id = $1`, [session.customer_id]);
+                const customerResult = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM customers WHERE id = ${session.customer_id}`);
                 if (customerResult.rows.length === 0) {
                     throw new HttpError_1.HttpError(404, 'Customer not found');
                 }
                 const trimmed = note.trim();
-                const inserted = await client.query(`
+                const inserted = await tx.execute((0, drizzle_orm_1.sql) `
             INSERT INTO customer_notes
               (customer_id, created_by_staff_id, created_by_staff_name, source_app, note, is_important)
             VALUES
-              ($1::uuid, $2::uuid, $3, 'EMPLOYEE_REGISTER', $4, false)
+              (${session.customer_id}::uuid, ${staff.staffId}::uuid, ${staff.name}, 'EMPLOYEE_REGISTER', ${trimmed}, false)
             RETURNING id
-            `, [session.customer_id, staff.staffId, staff.name, trimmed]);
+            `);
                 const noteId = inserted.rows[0].id;
                 const preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
-                await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+                await (0, customerActivityLog_1.insertCustomerActivityEventDrizzle)(tx, {
                     customerId: session.customer_id,
                     actionType: 'NOTE_ADDED',
                     actionCategory: 'NOTE',
@@ -67,7 +69,7 @@ function registerCheckinNoteRoutes(fastify) {
                     },
                 });
                 // Emit unified club event for analytics
-                await (0, clubEventLog_1.insertClubEvent)(client, {
+                await (0, clubEventLog_1.insertClubEventDrizzle)(tx, {
                     eventType: 'NOTE_ADDED',
                     eventDomain: 'NOTE',
                     sourceApp: 'EMPLOYEE_REGISTER',
@@ -85,7 +87,8 @@ function registerCheckinNoteRoutes(fastify) {
                 });
                 return { sessionId: session.id, success: true, noteId };
             });
-            const { payload } = await (0, db_1.transaction)((client) => (0, payload_1.buildFullSessionUpdatedPayload)(client, result.sessionId));
+            // buildFullSessionUpdatedPayload is already Drizzle-native
+            const { payload } = await (0, payload_1.buildFullSessionUpdatedPayload)(result.sessionId);
             fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
             return reply.send(result);
         }

@@ -25,19 +25,19 @@ const CashDrawerEventSchema = zod_1.z.object({
 });
 const CashDrawerCloseSchema = zod_1.z.object({ countedCash: zod_1.z.number().int().nonnegative(), notes: zod_1.z.string().optional().nullable() });
 async function cashDrawerRoutes(fastify) {
-    fastify.post('/v1/cash-drawers/open', { schema: { body: CashDrawerOpenSchema }, preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
+    fastify.post('/v1/cash-drawers/open', { preHandler: [middleware_1.requireAuth, idempotency_1.idempotencyKey] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
         return reply.send(await (0, cashDrawerService_1.openDrawerSession)(body, request.staff.staffId));
     });
-    fastify.post('/v1/cash-drawers/:sessionId/events', { schema: { body: CashDrawerEventSchema }, preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/cash-drawers/:sessionId/events', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;
         return reply.send(await (0, cashDrawerService_1.recordDrawerEvent)(request.params.sessionId, body, request.staff.staffId));
     });
-    fastify.post('/v1/cash-drawers/:sessionId/close', { schema: { body: CashDrawerCloseSchema }, preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
+    fastify.post('/v1/cash-drawers/:sessionId/close', { preHandler: [middleware_1.requireAuth] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;

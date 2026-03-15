@@ -19,7 +19,7 @@ async function timeclockRoutes(fastify) {
             return reply.status(500).send({ error: 'Internal server error' });
         }
     });
-    fastify.patch('/v1/admin/timeclock/:sessionId', { schema: { body: UpdateTimeclockSchema }, preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+    fastify.patch('/v1/admin/timeclock/:sessionId', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         const body = request.body;

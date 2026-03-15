@@ -3,13 +3,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SEARCHABLE_METADATA_KEYS = void 0;
 exports.buildSearchBlob = buildSearchBlob;
 exports.insertCustomerActivityEvent = insertCustomerActivityEvent;
+exports.insertCustomerActivityEventDrizzle = insertCustomerActivityEventDrizzle;
 exports.SEARCHABLE_METADATA_KEYS = [
     'visitId',
     'checkinBlockId',
     'laneId',
     'laneSessionId',
     'orderId',
-    'paymentIntentId',
+    'orderId',
     'checkoutRequestId',
     'waitlistId',
     'roomNumber',
@@ -88,4 +89,51 @@ async function insertCustomerActivityEvent(client, input) {
         throw new Error('Customer activity event insert deduped but row not found');
     }
     return { id: existing.rows[0].id, deduped: true };
+}
+const schema_1 = require("../db/schema");
+const drizzle_orm_1 = require("drizzle-orm");
+/**
+ * Drizzle-native version of insertCustomerActivityEvent.
+ * Accepts a Drizzle transaction instead of pg.PoolClient.
+ */
+async function insertCustomerActivityEventDrizzle(tx, input) {
+    const occurredAt = input.occurredAt ?? new Date();
+    const metadata = input.metadata ?? {};
+    const searchBlob = buildSearchBlob(input);
+    const result = await tx
+        .insert(schema_1.customerActivityEvents)
+        .values({
+        occurredAt,
+        customerId: input.customerId,
+        actionType: input.actionType,
+        actionCategory: input.actionCategory,
+        sourceApp: input.sourceApp,
+        actorType: input.actorType,
+        actorStaffId: input.actorStaffId ?? null,
+        actorStaffName: input.actorStaffName ?? null,
+        summary: input.summary,
+        metadata,
+        searchBlob,
+        dedupeKey: input.dedupeKey ?? null,
+    })
+        .onConflictDoNothing({
+        target: schema_1.customerActivityEvents.dedupeKey,
+        where: (0, drizzle_orm_1.sql) `dedupe_key IS NOT NULL`,
+    })
+        .returning({ id: schema_1.customerActivityEvents.id });
+    if (result.length > 0) {
+        return { id: result[0].id, deduped: false };
+    }
+    if (!input.dedupeKey) {
+        throw new Error('Failed to insert customer activity event');
+    }
+    const existing = await tx
+        .select({ id: schema_1.customerActivityEvents.id })
+        .from(schema_1.customerActivityEvents)
+        .where((0, drizzle_orm_1.eq)(schema_1.customerActivityEvents.dedupeKey, input.dedupeKey))
+        .limit(1);
+    if (existing.length === 0) {
+        throw new Error('Customer activity event insert deduped but row not found');
+    }
+    return { id: existing[0].id, deduped: true };
 }

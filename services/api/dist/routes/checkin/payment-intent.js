@@ -11,10 +11,10 @@ function registerCheckinPaymentIntentRoutes(fastify) {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
-            const result = await (0, paymentService_1.createPaymentIntent)(request.params.laneId);
+            const result = await (0, paymentService_1.createCheckoutOrder)(request.params.laneId);
             const { payload } = await (0, paymentService_1.getSessionPayload)(result.sessionId);
             fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
-            return reply.send({ paymentIntentId: result.paymentIntentId, amount: result.amount, quote: result.quote });
+            return reply.send({ orderId: result.orderId, amount: result.amount, quote: result.quote });
         }
         catch (error) {
             request.log.error(error, 'Failed to create payment intent');
@@ -29,8 +29,8 @@ function registerCheckinPaymentIntentRoutes(fastify) {
         if (!request.staff)
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
-            const result = await (0, paymentService_1.markPaymentPaid)({
-                paymentIntentId: request.params.id,
+            const result = await (0, paymentService_1.markOrderPaid)({
+                orderId: request.params.id,
                 staffId: request.staff.staffId,
                 ...request.body,
             });

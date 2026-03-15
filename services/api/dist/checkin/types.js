@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PAYMENT_INTENT_COLS = exports.LANE_SESSION_COLS = void 0;
+exports.ORDER_COLS = exports.LANE_SESSION_COLS = void 0;
 /* ── Shared column-list constants ─────────────────────────────── */
 /*
  * These mirror the field names in the TypeScript interfaces above.
@@ -14,7 +14,7 @@ exports.LANE_SESSION_COLS = [
     'backup_rental_type', 'waitlist_requested_resource_number', 'waitlist_requested_resource_type',
     'assigned_resource_id', 'assigned_resource_type',
     'price_quote_json', 'disclaimers_ack_json',
-    'payment_intent_id', 'agreement_bypass_pending', 'agreement_signed_method',
+    'order_id', 'agreement_bypass_pending', 'agreement_signed_method',
     'membership_purchase_intent', 'membership_purchase_requested_at', 'membership_choice',
     'kiosk_acknowledged_at', 'checkin_mode', 'renewal_hours',
     'proposed_rental_type', 'proposed_by',
@@ -25,8 +25,8 @@ exports.LANE_SESSION_COLS = [
     'last_past_due_decline_reason', 'last_past_due_decline_at',
     'created_at', 'updated_at',
 ].join(', ');
-exports.PAYMENT_INTENT_COLS = [
-    'id', 'lane_session_id', 'amount', 'tip', 'status',
-    'quote_json', 'payment_method', 'failure_reason', 'failure_at',
-    'register_number', 'paid_by_staff_id',
+exports.ORDER_COLS = [
+    'id', 'lane_session_id', 'visit_id', 'subtotal', 'discount', 'tax', 'tip',
+    'total', 'status', 'quote_json', 'payment_method', 'failure_reason', 'failure_at',
+    'register_number', 'paid_by_staff_id', 'square_transaction_id', 'paid_at',
 ].join(', ');
