@@ -55,7 +55,7 @@ describe('RoomSchema', () => {
 describe('RoomStatusUpdateSchema', () => {
   it('accepts valid update', () => {
     const result = RoomStatusUpdateSchema.safeParse({
-      roomId: '550e8400-e29b-41d4-a716-446655440000',
+      resourceId: '550e8400-e29b-41d4-a716-446655440000',
       newStatus: 'CLEAN',
     });
     expect(result.success).toBe(true);
@@ -63,7 +63,7 @@ describe('RoomStatusUpdateSchema', () => {
 
   it('rejects invalid UUID', () => {
     const result = RoomStatusUpdateSchema.safeParse({
-      roomId: 'bad',
+      resourceId: 'bad',
       newStatus: 'CLEAN',
     });
     expect(result.success).toBe(false);
@@ -71,7 +71,7 @@ describe('RoomStatusUpdateSchema', () => {
 
   it('defaults override to false', () => {
     const result = RoomStatusUpdateSchema.safeParse({
-      roomId: '550e8400-e29b-41d4-a716-446655440000',
+      resourceId: '550e8400-e29b-41d4-a716-446655440000',
       newStatus: 'DIRTY',
     });
     expect(result.success).toBe(true);
@@ -84,7 +84,7 @@ describe('RoomStatusUpdateSchema', () => {
 describe('BatchStatusUpdateSchema', () => {
   it('accepts valid batch', () => {
     const result = BatchStatusUpdateSchema.safeParse({
-      roomIds: ['550e8400-e29b-41d4-a716-446655440000'],
+      resourceIds: ['550e8400-e29b-41d4-a716-446655440000'],
       newStatus: 'CLEAN',
     });
     expect(result.success).toBe(true);
@@ -92,7 +92,7 @@ describe('BatchStatusUpdateSchema', () => {
 
   it('rejects empty roomIds', () => {
     const result = BatchStatusUpdateSchema.safeParse({
-      roomIds: [],
+      resourceIds: [],
       newStatus: 'CLEAN',
     });
     expect(result.success).toBe(false);
