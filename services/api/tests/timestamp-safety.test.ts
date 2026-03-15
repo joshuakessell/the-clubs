@@ -194,12 +194,6 @@ describe('Timestamp safety — toDate() wrapping prevents 500s', () => {
         const visitId = visitResult.rows[0]!.id;
 
         await pool.query(
-          `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, session_id, agreement_signed)
-           VALUES ($1, 'INITIAL', NOW(), NOW() + INTERVAL '6 hours', 'LOCKER', $2, false)`,
-          [visitId, sessionId]
-        );
-
-        await pool.query(
           `INSERT INTO lane_sessions (
             id, lane_id, status, staff_id, customer_id, customer_display_name,
             desired_rental_type, selection_confirmed
@@ -207,6 +201,12 @@ describe('Timestamp safety — toDate() wrapping prevents 500s', () => {
           VALUES ($1, $2, 'ACTIVE', $3, $4, 'Timestamp Test Customer',
                   'LOCKER', false)`,
           [sessionId, laneId, testStaffId, customerId]
+        );
+
+        await pool.query(
+          `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, session_id, agreement_signed)
+           VALUES ($1, 'INITIAL', NOW(), NOW() + INTERVAL '6 hours', 'LOCKER', $2, false)`,
+          [visitId, sessionId]
         );
 
         const res = await fastify.inject({

@@ -85,14 +85,14 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
       created_at: Date; updated_at: Date;
     }>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status, created_at, updated_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
-    const waitlist = waitlistResult.rows[0]!;
+    const waitlist = waitlistResult.rows[0];
     if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Waitlist entry must be OFFERED (current: ${waitlist.status})`);
 
     const blockResult = await tx.execute<{
       id: string; visit_id: string; resource_id: string | null; rental_type: string; ends_at: Date; session_id: string | null;
     }>(sql`SELECT id, visit_id, resource_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = ${waitlist.checkin_block_id} FOR UPDATE`);
     if (blockResult.rows.length === 0) throw new HttpError(404, 'Check-in block not found');
-    const block = blockResult.rows[0]!;
+    const block = blockResult.rows[0];
 
     let originalLineItems: Array<{ description: string; amount: number }> | undefined;
     let originalTotal: number | undefined;
@@ -129,7 +129,7 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     const upgradeFeeCents = Math.round(upgradeFee * 100);
     const quoteJson = JSON.stringify({ type: 'UPGRADE', fromTier: block.rental_type, toTier: newRoomTier, amount: upgradeFee, waitlistId, newRoomId: roomId, newRoomNumber: newRoom.number });
     const intentResult = await tx.execute<{ id: string; total: number | string }>(sql`INSERT INTO orders (status, subtotal, discount, tax, tip, total, currency, metadata_json, quote_json) VALUES ('OPEN', ${upgradeFeeCents}, 0, 0, 0, ${upgradeFeeCents}, 'USD', ${quoteJson}::jsonb, ${quoteJson}::jsonb) RETURNING id, total`);
-    const pendingOrder = intentResult.rows[0]!;
+    const pendingOrder = intentResult.rows[0];
 
     await insertAuditLogDrizzle(tx, {
       staffId: staff.staffId, action: 'UPGRADE_STARTED', entityType: 'waitlist', entityId: waitlistId,
@@ -137,7 +137,7 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
       newValue: { desiredTier: waitlist.desired_tier, newRoomId: roomId, newRoomNumber: newRoom.number, upgradeFee, orderId: pendingOrder.id, disclaimerAcknowledged: true },
     });
 
-    const customerId = (await tx.execute<{ customer_id: string }>(sql`SELECT customer_id FROM visits WHERE id = ${waitlist.visit_id} LIMIT 1`)).rows[0]!.customer_id;
+    const customerId = (await tx.execute<{ customer_id: string }>(sql`SELECT customer_id FROM visits WHERE id = ${waitlist.visit_id} LIMIT 1`)).rows[0].customer_id;
 
     return {
       waitlistId, orderId: pendingOrder.id,
@@ -166,24 +166,24 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
   return db.transaction(async (tx) => {
     const intentResult = await tx.execute<{ id: string; total: number | string; status: string; metadata_json: unknown }>(sql`SELECT id, total, status, metadata_json FROM orders WHERE id = ${orderId}`);
     if (intentResult.rows.length === 0) throw new HttpError(404, 'Payment intent not found');
-    const intent = intentResult.rows[0]!;
+    const intent = intentResult.rows[0];
     if (intent.status !== 'PAID') throw new HttpError(400, `Payment must be PAID (current: ${intent.status})`);
 
     const waitlistResult = await tx.execute<{
       id: string; visit_id: string; checkin_block_id: string; desired_tier: string; backup_tier: string; status: string;
     }>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, backup_tier, status FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
-    const waitlist = waitlistResult.rows[0]!;
+    const waitlist = waitlistResult.rows[0];
     if (waitlist.status !== 'OFFERED') throw new HttpError(400, `Waitlist entry must be OFFERED (current: ${waitlist.status})`);
 
     const blockResult = await tx.execute<{
       id: string; visit_id: string; resource_id: string | null; rental_type: string; ends_at: Date; session_id: string | null;
     }>(sql`SELECT id, visit_id, resource_id, rental_type::text as rental_type, ends_at, session_id FROM checkin_blocks WHERE id = ${waitlist.checkin_block_id} FOR UPDATE`);
     if (blockResult.rows.length === 0) throw new HttpError(404, 'Check-in block not found');
-    const block = blockResult.rows[0]!;
+    const block = blockResult.rows[0];
 
     const rawTotal = toNumber(intent.total);
-    const upgradeAmount = rawTotal !== undefined ? (rawTotal / 100) : undefined;
+    const upgradeAmount = rawTotal === undefined ? undefined : (rawTotal / 100);
     const quote = (typeof intent.metadata_json === 'string' ? JSON.parse(intent.metadata_json) : intent.metadata_json) as { newRoomId?: string; newRoomNumber?: string; newRoomTier?: string; waitlistId?: string };
     if (!quote.newRoomId) throw new HttpError(400, 'Room ID not found in payment intent (upgrade must be fulfilled first)');
 
@@ -212,8 +212,7 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
     if (upgradeAmount !== undefined) {
       const existingCharge = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE order_id = ${orderId} LIMIT 1`);
       if (existingCharge.rows.length === 0) {
-        const upgradeAmountCents = Math.round(upgradeAmount * 100);
-        await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, discount, tax, total) VALUES (${orderId}, 'UPGRADE', 'Upgrade Fee', 1, ${upgradeAmountCents}, 0, 0, ${upgradeAmountCents})`);
+        await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, discount, tax, total) VALUES (${orderId}, 'UPGRADE', 'Upgrade Fee', 1, ${upgradeAmount}, 0, 0, ${upgradeAmount})`);
       }
     }
 
@@ -224,8 +223,8 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
     });
 
     const customerIdRow = await tx.execute<{ customer_id: string; name: string }>(sql`SELECT v.customer_id, c.name FROM visits v JOIN customers c ON c.id = v.customer_id WHERE v.id = ${waitlist.visit_id} LIMIT 1`);
-    const customerId = customerIdRow.rows[0]!.customer_id;
-    const customerName = customerIdRow.rows[0]!.name;
+    const customerId = customerIdRow.rows[0].customer_id;
+    const customerName = customerIdRow.rows[0].name;
 
     await insertCustomerActivityEventDrizzle(tx, {
       customerId, actionType: 'UPGRADE_COMPLETED', actionCategory: 'UPGRADE', sourceApp: 'EMPLOYEE_REGISTER',

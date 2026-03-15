@@ -671,7 +671,13 @@ describe('Checkout Flow', () => {
         kind: string;
         total: string;
         checkin_block_id: string;
-      }>(`SELECT oli.kind, oli.total, oli.checkin_block_id FROM order_line_items oli JOIN orders o ON o.id = oli.order_id WHERE o.visit_id = $1`, [testVisitId]);
+      }>(
+        `SELECT oli.kind, oli.total, o.metadata_json->>'occupancyId' as checkin_block_id 
+         FROM order_line_items oli 
+         JOIN orders o ON o.id = oli.order_id 
+         WHERE o.customer_id = (SELECT customer_id FROM visits WHERE id = $1)`,
+        [testVisitId]
+      );
       expect(
         chargesRes.rows.some((r) => r.kind === 'LATE_FEE' && r.checkin_block_id === testBlockId)
       ).toBe(true);

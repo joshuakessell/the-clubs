@@ -41,7 +41,7 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
 
         const revenueByHour = await db.execute<Record<string, unknown>>(
           sql`SELECT to_char(date_trunc('hour', paid_at AT TIME ZONE ${tz}), 'YYYY-MM-DD HH24:00') as bucket,
-                 COALESCE(SUM(amount), 0)::bigint::text as total
+                 COALESCE(SUM(total), 0)::bigint::text as total
           FROM orders
           WHERE status = 'PAID' AND paid_at >= ${from} AND paid_at <= ${to}
           GROUP BY 1
@@ -61,7 +61,7 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
         const revenueHeatmap = await db.execute<Record<string, unknown>>(
           sql`SELECT EXTRACT(DOW FROM paid_at AT TIME ZONE ${tz})::int as dow,
                  EXTRACT(HOUR FROM paid_at AT TIME ZONE ${tz})::int as hour,
-                 COALESCE(SUM(amount), 0)::bigint::text as total
+                 COALESCE(SUM(total), 0)::bigint::text as total
           FROM orders
           WHERE status = 'PAID' AND paid_at >= ${from} AND paid_at <= ${to}
           GROUP BY 1, 2
@@ -70,7 +70,7 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
 
         const paymentSplit = await db.execute<Record<string, unknown>>(
           sql`SELECT payment_method,
-                 COALESCE(SUM(amount), 0)::bigint::text as total
+                 COALESCE(SUM(total), 0)::bigint::text as total
           FROM orders
           WHERE status = 'PAID' AND paid_at >= ${from} AND paid_at <= ${to}
           GROUP BY payment_method
@@ -89,7 +89,7 @@ export function registerAdminActivityAnalyticsRoutes(fastify: FastifyInstance): 
 
         const aovByDay = await db.execute<Record<string, unknown>>(
           sql`SELECT to_char(date_trunc('day', paid_at AT TIME ZONE ${tz}), 'YYYY-MM-DD') as bucket,
-                 COALESCE(AVG(amount), 0)::numeric(12,2)::text as avg_dollars
+                 COALESCE(AVG(total), 0)::numeric(12,2)::text as avg_dollars
           FROM orders
           WHERE status = 'PAID' AND paid_at >= ${from} AND paid_at <= ${to}
           GROUP BY 1

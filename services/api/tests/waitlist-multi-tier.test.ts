@@ -28,9 +28,9 @@ vi.mock('../src/auth/middleware.js', async () => {
     );
     if (existing.rows.length > 0) {
       return {
-        staffId: existing.rows[0]!.id,
-        name: existing.rows[0]!.name,
-        role: existing.rows[0]!.role,
+        staffId: existing.rows[0].id,
+        name: existing.rows[0].name,
+        role: existing.rows[0].role,
       };
     }
     const created = await query<{ id: string; name: string; role: 'STAFF' | 'ADMIN' }>(
@@ -38,7 +38,7 @@ vi.mock('../src/auth/middleware.js', async () => {
        VALUES ('Test Staff', 'STAFF', 'test-hash', true)
        RETURNING id, name, role`
     );
-    const row = created.rows[0]!;
+    const row = created.rows[0];
     return { staffId: row.id, name: row.name, role: row.role };
   }
   return {
@@ -73,7 +73,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
   beforeAll(async () => {
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -134,7 +134,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
     const customer = await pool.query<{ id: string }>(
       `INSERT INTO customers (name) VALUES ('Tier Test Customer') RETURNING id`
     );
-    const customerId = customer.rows[0]!.id;
+    const customerId = customer.rows[0].id;
 
     const visit = await pool.query<{ id: string }>(
       `INSERT INTO visits (customer_id, started_at, ended_at)
@@ -142,7 +142,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
        RETURNING id`,
       [customerId]
     );
-    const visitId = visit.rows[0]!.id;
+    const visitId = visit.rows[0].id;
 
     const block = await pool.query<{ id: string }>(
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type)
@@ -150,7 +150,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
        RETURNING id`,
       [visitId, opts.blockRentalType]
     );
-    const blockId = block.rows[0]!.id;
+    const blockId = block.rows[0].id;
 
     // Build desired_tiers array if provided
     const tiersArray = opts.desiredTiers ?? [opts.desiredTier];
@@ -166,7 +166,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
         ...(opts.offeredRoomId ? [opts.offeredRoomId] : []),
       ]
     );
-    const waitlistId = waitlist.rows[0]!.id;
+    const waitlistId = waitlist.rows[0].id;
 
     return { customerId, visitId, blockId, waitlistId };
   }
@@ -178,7 +178,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
        RETURNING id`,
       [number, type]
     );
-    return result.rows[0]!.id;
+    return result.rows[0].id;
   }
 
   // ── offerUpgrade tests (waitlistService.ts) ──
@@ -222,8 +222,8 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/v1/waitlist/offer',
-        payload: { waitlistId, resourceId: doubleRoomId },
+        url: `/v1/waitlist/${waitlistId}/offer`,
+        payload: { resourceId: doubleRoomId },
       });
 
       expect(res.statusCode).toBe(200);
@@ -246,8 +246,8 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/v1/waitlist/offer',
-        payload: { waitlistId, resourceId: specialRoomId },
+        url: `/v1/waitlist/${waitlistId}/offer`,
+        payload: { resourceId: specialRoomId },
       });
 
       expect(res.statusCode).toBe(409);
@@ -269,8 +269,8 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
 
       const res = await app.inject({
         method: 'POST',
-        url: '/v1/waitlist/offer',
-        payload: { waitlistId, resourceId: standardRoomId },
+        url: `/v1/waitlist/${waitlistId}/offer`,
+        payload: { resourceId: standardRoomId },
       });
 
       expect(res.statusCode).toBe(200);
@@ -390,23 +390,23 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
         `SELECT rental_type::text, resource_id FROM checkin_blocks WHERE id = $1`,
         [blockId]
       );
-      expect(blockCheck.rows[0]!.rental_type).toBe('DOUBLE');
-      expect(blockCheck.rows[0]!.resource_id).toBe(doubleRoomId);
+      expect(blockCheck.rows[0].rental_type).toBe('DOUBLE');
+      expect(blockCheck.rows[0].resource_id).toBe(doubleRoomId);
 
       // Verify: waitlist entry is COMPLETED
       const wlCheck = await pool.query<{ status: string }>(
         `SELECT status::text as status FROM waitlist WHERE id = $1`,
         [waitlistId]
       );
-      expect(wlCheck.rows[0]!.status).toBe('COMPLETED');
+      expect(wlCheck.rows[0].status).toBe('COMPLETED');
 
       // Verify: room is now OCCUPIED and assigned
       const roomCheck = await pool.query<{ status: string; assigned_to_customer_id: string | null }>(
         `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
         [doubleRoomId]
       );
-      expect(roomCheck.rows[0]!.status).toBe('OCCUPIED');
-      expect(roomCheck.rows[0]!.assigned_to_customer_id).not.toBeNull();
+      expect(roomCheck.rows[0].status).toBe('OCCUPIED');
+      expect(roomCheck.rows[0].assigned_to_customer_id).not.toBeNull();
 
       // Verify: upgrade fee is recorded as order line item
       const chargeCheck = await pool.query<{ type: string; amount: string }>(
@@ -414,7 +414,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
         [orderId]
       );
       expect(chargeCheck.rows.length).toBe(1);
-      expect(chargeCheck.rows[0]!.type).toBe('UPGRADE_FEE');
+      expect(chargeCheck.rows[0].type).toBe('UPGRADE_FEE');
     });
   });
 });

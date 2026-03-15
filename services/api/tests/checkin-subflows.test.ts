@@ -19,11 +19,11 @@ vi.mock('../src/auth/middleware.js', async () => {
     const existing = await query<{ id: string; name: string; role: string }>(
       `SELECT id, name, role FROM staff WHERE active = true ORDER BY created_at ASC LIMIT 1`
     );
-    if (existing.rows.length > 0) return { staffId: existing.rows[0]!.id, name: existing.rows[0]!.name, role: existing.rows[0]!.role };
+    if (existing.rows.length > 0) return { staffId: existing.rows[0].id, name: existing.rows[0].name, role: existing.rows[0].role };
     const created = await query<{ id: string; name: string; role: string }>(
       `INSERT INTO staff (name, role, pin_hash, active) VALUES ('Test Staff', 'STAFF', 'test-hash', true) RETURNING id, name, role`
     );
-    return { staffId: created.rows[0]!.id, name: created.rows[0]!.name, role: created.rows[0]!.role };
+    return { staffId: created.rows[0].id, name: created.rows[0].name, role: created.rows[0].role };
   }
   return {
     requireAuth: async (request: any) => { request.staff = await ensureStaff(); },
@@ -48,7 +48,7 @@ describe('Checkin sub-flow smoke tests', () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5433', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',

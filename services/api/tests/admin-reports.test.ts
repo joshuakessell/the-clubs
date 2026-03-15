@@ -8,7 +8,7 @@
  *         admin/activity-analytics, admin/devices, admin/messages,
  *         admin/metrics, admin/register-sessions
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import pg from 'pg';
 import { adminRoutes } from '../src/routes/admin.js';
@@ -22,11 +22,11 @@ vi.mock('../src/auth/middleware.js', async () => {
     const existing = await query<{ id: string; name: string; role: string }>(
       `SELECT id, name, role FROM staff WHERE active = true ORDER BY created_at ASC LIMIT 1`
     );
-    if (existing.rows.length > 0) return { staffId: existing.rows[0]!.id, name: existing.rows[0]!.name, role: existing.rows[0]!.role };
+    if (existing.rows.length > 0) return { staffId: existing.rows[0].id, name: existing.rows[0].name, role: existing.rows[0].role };
     const created = await query<{ id: string; name: string; role: string }>(
       `INSERT INTO staff (name, role, pin_hash, active) VALUES ('Test Admin', 'ADMIN', 'test-hash', true) RETURNING id, name, role`
     );
-    return { staffId: created.rows[0]!.id, name: created.rows[0]!.name, role: created.rows[0]!.role };
+    return { staffId: created.rows[0].id, name: created.rows[0].name, role: created.rows[0].role };
   }
   return {
     requireAuth: async (request: any) => { request.staff = await ensureStaff(); },
@@ -128,7 +128,7 @@ describe('Admin endpoints smoke tests', () => {
   // ── admin/club-analytics (6 endpoints) ──
 
   describe('admin/club-analytics', () => {
-    const qs = '?from=2026-01-01&to=2026-12-31';
+    const qs = '?from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z';
     it('GET employee-summary returns 200', async () => {
       if (skip()) return;
       const res = await app.inject({ method: 'GET', url: `/v1/admin/club-analytics/employee-summary${qs}` });

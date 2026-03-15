@@ -680,9 +680,10 @@ describe('Check-in Flow', () => {
 
         const chargeCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM order_line_items
-           WHERE visit_id = $1 AND checkin_block_id = $2 AND type = 'UPGRADE_FEE'`,
-          [visitId, blockId]
+           FROM order_line_items oli
+           JOIN orders o ON o.id = oli.order_id
+           WHERE o.quote_json->>'checkinBlockId' = $1 AND oli.kind = 'UPGRADE'`,
+          [blockId]
         );
         expect(Number.parseInt(chargeCheck.rows[0]!.count, 10)).toBe(1);
 
@@ -774,9 +775,10 @@ describe('Check-in Flow', () => {
 
         const chargeCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM order_line_items
-           WHERE visit_id = $1 AND checkin_block_id = $2 AND type = 'UPGRADE_FEE'`,
-          [visitId, blockId]
+           FROM order_line_items oli
+           JOIN orders o ON o.id = oli.order_id
+           WHERE o.quote_json->>'checkinBlockId' = $1 AND oli.kind = 'UPGRADE'`,
+          [blockId]
         );
         expect(Number.parseInt(chargeCheck.rows[0]!.count, 10)).toBe(0);
 

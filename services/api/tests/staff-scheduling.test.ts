@@ -83,7 +83,9 @@ describe('Staff scheduling smoke tests', () => {
     });
     it('POST /v1/admin/shifts creates a shift', async () => {
       if (skip()) return;
-      const staff = await pool.query<{ id: string }>(`SELECT id FROM staff LIMIT 1`);
+      const staff = await pool.query<{ id: string }>(
+        `INSERT INTO staff (name, role, pin_hash, active) VALUES ('Admin', 'ADMIN', 'hash', true) RETURNING id`
+      );
       const res = await app.inject({
         method: 'POST', url: '/v1/admin/shifts',
         payload: { employeeId: staff.rows[0]!.id, date: '2026-03-15', startTime: '09:00', endTime: '17:00' },

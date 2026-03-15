@@ -111,9 +111,7 @@ describe('POST /v1/checkin/lane/:laneId/reset — cancel broadcast', () => {
 
   /** Create an ACTIVE lane session and return its ID. */
   async function seedActiveSession(): Promise<string> {
-    const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`.padEnd(36, '0');
-    // Use a valid UUID format
-    const uuid = 'cccccccc-cccc-cccc-cccc-' + sessionId.replace(/-/g, '').slice(0, 12);
+    const uuid = crypto.randomUUID();
     await pool.query(
       `INSERT INTO lane_sessions (
         id, lane_id, status, staff_id, customer_id, customer_display_name,
