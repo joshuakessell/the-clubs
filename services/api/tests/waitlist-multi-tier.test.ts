@@ -157,7 +157,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
     const tiersSql = `{${tiersArray.join(',')}}`;
 
     const waitlist = await pool.query<{ id: string }>(
-      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status${opts.offeredRoomId ? ', room_id, offered_at' : ''})
+      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, status${opts.offeredRoomId ? ', resource_id, offered_at' : ''})
        VALUES ($1, $2, $3, $4::rental_type[], $5, $6${opts.offeredRoomId ? `, $7, NOW()` : ''})
        RETURNING id`,
       [
@@ -173,7 +173,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
 
   async function createRoom(number: string, type: string): Promise<string> {
     const result = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
        VALUES ($1, $2, 'CLEAN', 1)
        RETURNING id`,
       [number, type]
@@ -402,7 +402,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
 
       // Verify: room is now OCCUPIED and assigned
       const roomCheck = await pool.query<{ status: string; assigned_to_customer_id: string | null }>(
-        `SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`,
+        `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
         [doubleRoomId]
       );
       expect(roomCheck.rows[0]!.status).toBe('OCCUPIED');

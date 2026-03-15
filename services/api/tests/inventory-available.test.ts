@@ -49,19 +49,19 @@ describe('GET /v1/inventory/available (effective availability subtracts waitlist
     // Create clean, unassigned rooms: 3 STANDARD, 3 DOUBLE, 1 SPECIAL
     // Note: tier is computed by room number mapping in inventory route.
     await pool.query(
-      `INSERT INTO rooms (number, type, status, floor)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
        VALUES
-         ('200', 'STANDARD', 'CLEAN', 1),
-         ('202', 'STANDARD', 'CLEAN', 1),
-         ('203', 'STANDARD', 'CLEAN', 1),
-         ('216', 'DOUBLE',   'CLEAN', 2),
-         ('218', 'DOUBLE',   'CLEAN', 2),
-         ('225', 'DOUBLE',   'CLEAN', 2),
-         ('201', 'SPECIAL',  'CLEAN', 2)`
+         ('room', '200', 'STANDARD', 'CLEAN', 1),
+         ('room', '202', 'STANDARD', 'CLEAN', 1),
+         ('room', '203', 'STANDARD', 'CLEAN', 1),
+         ('room', '216', 'DOUBLE',   'CLEAN', 2),
+         ('room', '218', 'DOUBLE',   'CLEAN', 2),
+         ('room', '225', 'DOUBLE',   'CLEAN', 2),
+         ('room', '201', 'SPECIAL',  'CLEAN', 2)`
     );
 
     // Lockers remain unchanged by waitlist demand; keep one available locker.
-    await pool.query(`INSERT INTO lockers (number, status) VALUES ('001', 'CLEAN')`);
+    await pool.query(`INSERT INTO inventory_resources (kind, number, tier, status) VALUES ('locker', '001', 'LOCKER', 'CLEAN')`);
 
     // Create customer + active visit + active block (ends in future) for the waitlist join criteria.
     const cust = await pool.query<{ id: string }>(

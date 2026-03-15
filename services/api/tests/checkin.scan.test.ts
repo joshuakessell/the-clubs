@@ -182,7 +182,7 @@ describe('Check-in Flow', () => {
     await query(`DELETE FROM staff_sessions WHERE staff_id = $1`, [staffId]);
     await query(`DELETE FROM customers WHERE id = $1 OR membership_number = '12345'`, [customerId]);
     await query(`DELETE FROM staff WHERE id = $1`, [staffId]);
-    await query(`DELETE FROM rooms WHERE number IN ('200', '202', '203', '204')`);
+    await query(`DELETE FROM inventory_resources WHERE number IN ('200', '202', '203', '204')`);
   });
 
   afterAll(async () => {

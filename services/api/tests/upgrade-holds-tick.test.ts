@@ -51,8 +51,8 @@ describe('processUpgradeHoldsTick (locking + expiry)', () => {
   it('expires OFFERED entries and releases UPGRADE_HOLD reservations (no outer-join FOR UPDATE error)', async () => {
     if (!dbAvailable) return;
     const room = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('200', 'STANDARD', 'CLEAN', 1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
        RETURNING id`
     );
     const customer = await pool.query<{ id: string }>(
@@ -71,7 +71,7 @@ describe('processUpgradeHoldsTick (locking + expiry)', () => {
       [visit.rows[0]!.id]
     );
     const waitlist = await pool.query<{ id: string }>(
-      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, room_id, offered_at, offer_expires_at)
+      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, resource_id, offered_at, offer_expires_at)
        VALUES ($1, $2, 'STANDARD', 'LOCKER', 'OFFERED', $3, NOW() - INTERVAL '20 minutes', NOW() - INTERVAL '5 minutes')
        RETURNING id`,
       [visit.rows[0]!.id, block.rows[0]!.id, room.rows[0]!.id]
@@ -88,13 +88,13 @@ describe('processUpgradeHoldsTick (locking + expiry)', () => {
 
     const wl = await pool.query<{
       status: string;
-      room_id: string | null;
+      resource_id: string | null;
       offer_expires_at: Date | null;
-    }>(`SELECT status, room_id, offer_expires_at FROM waitlist WHERE id = $1`, [
+    }>(`SELECT status, resource_id, offer_expires_at FROM waitlist WHERE id = $1`, [
       waitlist.rows[0]!.id,
     ]);
     expect(wl.rows[0]!.status).toBe('ACTIVE');
-    expect(wl.rows[0]!.room_id).toBeNull();
+    expect(wl.rows[0]!.resource_id).toBeNull();
     expect(wl.rows[0]!.offer_expires_at).toBeNull();
 
     const ir = await pool.query<{ released_at: Date | null; release_reason: string | null }>(

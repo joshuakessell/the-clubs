@@ -108,14 +108,14 @@ describe('GET /v1/waitlist (offered room details)', () => {
   it('returns offered room id/number and keeps display identifier from current assignment', async () => {
     if (!dbAvailable) return;
     const locker = await pool.query<{ id: string }>(
-      `INSERT INTO lockers (number, status)
-       VALUES ('L05', 'CLEAN')
+      `INSERT INTO inventory_resources (kind, number, tier, status)
+       VALUES ('locker', 'L05', 'LOCKER', 'CLEAN')
        RETURNING id`
     );
 
     const offeredRoom = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('305', 'DOUBLE', 'CLEAN', 3)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '305', 'DOUBLE', 'CLEAN', 3)
        RETURNING id`
     );
 
@@ -133,14 +133,14 @@ describe('GET /v1/waitlist (offered room details)', () => {
     );
 
     const block = await pool.query<{ id: string }>(
-      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, locker_id)
+      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '30 minutes', NOW() + INTERVAL '90 minutes', 'STANDARD', $2)
        RETURNING id`,
       [visit.rows[0]!.id, locker.rows[0]!.id]
     );
 
     await pool.query(
-      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, room_id)
+      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, resource_id)
        VALUES ($1, $2, 'DOUBLE', 'STANDARD', 'OFFERED', NOW(), $3)`,
       [visit.rows[0]!.id, block.rows[0]!.id, offeredRoom.rows[0]!.id]
     );

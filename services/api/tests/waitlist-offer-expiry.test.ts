@@ -101,8 +101,8 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
   it('sets offer_expires_at and creates/updates inventory_reservations; re-offer extends to >= now+10m', async () => {
     if (!dbAvailable) return;
     const room = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('200', 'STANDARD', 'CLEAN', 1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
        RETURNING id`
     );
     const customer = await pool.query<{ id: string }>(

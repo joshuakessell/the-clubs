@@ -127,7 +127,7 @@ describe('Upgrade payment flow attaches charges', () => {
     );
     const laneSession = await pool.query<{ id: string }>(
       `INSERT INTO lane_sessions (lane_id, status, price_quote_json)
-       VALUES ('1', 'COMPLETED', $1)
+       VALUES ('room', '1', 'COMPLETED', $1)
        RETURNING id`,
       [
         JSON.stringify({
@@ -156,8 +156,8 @@ describe('Upgrade payment flow attaches charges', () => {
     ]);
 
     const room = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('200', 'STANDARD', 'CLEAN', 1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
        RETURNING id`
     );
 
@@ -169,7 +169,7 @@ describe('Upgrade payment flow attaches charges', () => {
     );
 
     const waitlist = await pool.query<{ id: string }>(
-      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, room_id, offered_at)
+      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, resource_id, offered_at)
        VALUES ($1, $2, 'STANDARD', 'LOCKER', 'OFFERED', $3, NOW())
        RETURNING id`,
       [visit.rows[0]!.id, block.rows[0]!.id, room.rows[0]!.id]

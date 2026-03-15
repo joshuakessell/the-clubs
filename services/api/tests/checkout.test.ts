@@ -151,21 +151,21 @@ describe('Checkout Flow', () => {
     testCustomerId = customerResult.rows[0]!.id;
 
     const roomResult = await pool.query(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('200', 'STANDARD', 'CLEAN', 1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
        RETURNING id`
     );
     testRoomId = roomResult.rows[0]!.id;
 
     const lockerResult = await pool.query(
-      `INSERT INTO lockers (number, status)
-       VALUES ('L01', 'CLEAN')
+      `INSERT INTO inventory_resources (kind, number, tier, status)
+       VALUES ('locker', 'L01', 'LOCKER', 'CLEAN')
        RETURNING id`
     );
     testLockerId = lockerResult.rows[0]!.id;
 
     const keyTagResult = await pool.query(
-      `INSERT INTO key_tags (room_id, tag_code, tag_type, is_active)
+      `INSERT INTO key_tags (resource_id, tag_code, tag_type, is_active)
        VALUES ($1, 'TEST-KEY-001', 'QR', true)
        RETURNING id`,
       [testRoomId]
@@ -198,14 +198,14 @@ describe('Checkout Flow', () => {
     testVisitId = visitResult.rows[0]!.id;
 
     const blockResult = await pool.query(
-      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id, has_tv_remote)
+      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, has_tv_remote)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '1 hour', 'STANDARD', $2, true)
        RETURNING id`,
       [testVisitId, testRoomId]
     );
     testBlockId = blockResult.rows[0]!.id;
 
-    await pool.query(`UPDATE rooms SET assigned_to_customer_id = $1 WHERE id = $2`, [
+    await pool.query(`UPDATE inventory_resources SET assigned_to_customer_id = $1 WHERE id = $2`, [
       testCustomerId,
       testRoomId,
     ]);
@@ -220,8 +220,8 @@ describe('Checkout Flow', () => {
       await pool.query('DELETE FROM checkin_blocks WHERE visit_id = $1', [testVisitId]);
       await pool.query('DELETE FROM visits WHERE id = $1', [testVisitId]);
       await pool.query('DELETE FROM key_tags WHERE id = $1', [testKeyTagId]);
-      await pool.query('DELETE FROM rooms WHERE id = $1', [testRoomId]);
-      await pool.query('DELETE FROM lockers WHERE id = $1', [testLockerId]);
+      await pool.query('DELETE FROM inventory_resources WHERE id = $1', [testRoomId]);
+      await pool.query('DELETE FROM inventory_resources WHERE id = $1', [testLockerId]);
       await pool.query('DELETE FROM staff_sessions WHERE staff_id = $1', [testStaffId]);
       await pool.query('DELETE FROM staff WHERE id = $1', [testStaffId]);
       await pool.query('DELETE FROM customers WHERE id = $1', [testCustomerId]);
@@ -511,7 +511,7 @@ describe('Checkout Flow', () => {
       expect(data.completed).toBe(true);
 
       // Verify room status was updated
-      const roomResult = await pool.query('SELECT status FROM rooms WHERE id = $1', [testRoomId]);
+      const roomResult = await pool.query('SELECT status FROM inventory_resources WHERE id = $1', [testRoomId]);
       expect(roomResult.rows[0]!.status).toBe(RoomStatus.DIRTY);
 
       // Verify visit was ended
@@ -572,7 +572,7 @@ describe('Checkout Flow', () => {
       );
       await pool.query('DELETE FROM waitlist WHERE id = ANY($1::uuid[])', [waitlistIds]);
       await pool.query(
-        'UPDATE rooms SET status = $1, assigned_to_customer_id = NULL WHERE id = $2',
+        'UPDATE inventory_resources SET status = $1, assigned_to_customer_id = NULL WHERE id = $2',
         [RoomStatus.CLEAN, testRoomId]
       );
       await pool.query('UPDATE visits SET ended_at = NULL WHERE id = $1', [testVisitId]);

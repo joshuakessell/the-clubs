@@ -134,8 +134,8 @@ describe('Manual Checkout APIs', () => {
     testCustomerId = customerResult.rows[0]!.id;
 
     const roomResult = await pool.query(
-      `INSERT INTO rooms (number, type, status, floor, assigned_to_customer_id)
-       VALUES ('200', 'STANDARD', 'OCCUPIED', 1, $1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor, assigned_to_customer_id)
+       VALUES ('room', '200', 'STANDARD', 'OCCUPIED', 1, $1)
        RETURNING id`,
       [testCustomerId]
     );
@@ -165,7 +165,7 @@ describe('Manual Checkout APIs', () => {
 
     // Make scheduled checkout ~95 minutes in the past (90+ => $35 + ban)
     const blockResult = await pool.query(
-      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id)
+      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '8 hours', NOW() - INTERVAL '95 minutes', 'STANDARD', $2)
        RETURNING id`,
       [testVisitId, testRoomId]
@@ -196,7 +196,7 @@ describe('Manual Checkout APIs', () => {
     // Reset for each test
     await pool.query(`UPDATE visits SET ended_at = NULL WHERE id = $1`, [testVisitId]);
     await pool.query(
-      `UPDATE rooms SET status = 'OCCUPIED', assigned_to_customer_id = $1 WHERE id = $2`,
+      `UPDATE inventory_resources SET status = 'OCCUPIED', assigned_to_customer_id = $1 WHERE id = $2`,
       [testCustomerId, testRoomId]
     );
     await pool.query(`UPDATE customers SET past_due_balance = 0, banned_until = NULL WHERE id = $1`, [
@@ -279,7 +279,7 @@ describe('Manual Checkout APIs', () => {
     expect(visit.rows[0]!.ended_at).not.toBeNull();
 
     const room = await pool.query<{ status: string; assigned_to_customer_id: string | null }>(
-      `SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`,
+      `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
       [testRoomId]
     );
     expect(room.rows[0]!.status).toBe('DIRTY');
