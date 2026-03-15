@@ -94,8 +94,8 @@ describe('Visit and Renewal Flows', () => {
     // Insert test room with ON CONFLICT handling (handle number conflicts)
     await pool.query(
       `INSERT INTO inventory_resources (id, kind, number, tier, status, floor)
-       VALUES ($1, '200', 'STANDARD', 'CLEAN', 1)
-       ON CONFLICT (number) DO UPDATE SET id = EXCLUDED.id, type = EXCLUDED.type, status = EXCLUDED.status, floor = EXCLUDED.floor`,
+       VALUES ($1, 'room', '200', 'STANDARD', 'CLEAN', 1)
+       ON CONFLICT (number) DO UPDATE SET id = EXCLUDED.id, tier = EXCLUDED.tier, status = EXCLUDED.status, floor = EXCLUDED.floor`,
       [testRoomId]
     );
   });

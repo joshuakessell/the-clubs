@@ -944,10 +944,11 @@ describe('Check-in Flow', () => {
         });
 
         const intentResult = await query<{ id: string }>(
-          `INSERT INTO orders (lane_session_id, amount, status, quote_json)
+          `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, currency, status, quote_json)
          VALUES (
            (SELECT id FROM lane_sessions WHERE lane_id = $1 ORDER BY created_at DESC LIMIT 1),
-           50.00,
+           50.00, 0, 0, 0, 50.00,
+           'USD',
            'OPEN',
            '{"total": 50, "lineItems": []}'
          )

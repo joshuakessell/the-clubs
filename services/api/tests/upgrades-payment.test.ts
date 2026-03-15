@@ -127,7 +127,7 @@ describe('Upgrade payment flow attaches charges', () => {
     );
     const laneSession = await pool.query<{ id: string }>(
       `INSERT INTO lane_sessions (lane_id, status, price_quote_json)
-       VALUES ('room', '1', 'COMPLETED', $1)
+       VALUES ('lane-1', 'COMPLETED', $1)
        RETURNING id`,
       [
         JSON.stringify({
@@ -141,8 +141,8 @@ describe('Upgrade payment flow attaches charges', () => {
     );
 
     const originalIntent = await pool.query<{ id: string }>(
-      `INSERT INTO orders (lane_session_id, amount, status, quote_json)
-       VALUES ($1, 20, 'PAID', $2)
+      `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, currency, status, quote_json)
+       VALUES ($1, 20, 0, 0, 0, 20, 'USD', 'PAID', $2)
        RETURNING id`,
       [
         laneSession.rows[0]!.id,
@@ -215,11 +215,11 @@ describe('Upgrade payment flow attaches charges', () => {
 
     expect(completeRes.statusCode).toBe(200);
 
-    const charge = await pool.query<{ type: string; amount: string; order_id: string }>(
-      `SELECT type, amount, order_id FROM order_line_items WHERE order_id = $1`,
+    const charge = await pool.query<{ kind: string; total: string; order_id: string }>(
+      `SELECT kind, total, order_id FROM order_line_items WHERE order_id = $1`,
       [fulfillJson.orderId]
     );
-    expect(charge.rows[0]?.type).toBe('UPGRADE_FEE');
-    expect(parseFloat(charge.rows[0]?.amount || '0')).toBeCloseTo(fulfillJson.upgradeFee);
+    expect(charge.rows[0]?.kind).toBe('UPGRADE');
+    expect(parseFloat(charge.rows[0]?.total || '0')).toBeCloseTo(fulfillJson.upgradeFee);
   });
 });

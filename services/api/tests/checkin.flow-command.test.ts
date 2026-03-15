@@ -92,9 +92,9 @@ describe('Check-in Flow Commands', () => {
 
     // Create dummy payment intents for tests that need them
     await query(
-      `INSERT INTO orders (id, amount, status, quote_json)
-       VALUES ('00000000-0000-0000-0000-000000000000', 0, 'OPEN', '{}'::jsonb),
-              ('11111111-1111-1111-1111-111111111111', 0, 'OPEN', '{}'::jsonb)
+      `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json)
+       VALUES ('00000000-0000-0000-0000-000000000000', 0, 0, 0, 0, 0, 'USD', 'OPEN', '{}'::jsonb),
+              ('11111111-1111-1111-1111-111111111111', 0, 0, 0, 0, 0, 'USD', 'OPEN', '{}'::jsonb)
        ON CONFLICT (id) DO NOTHING`
     );
   });
