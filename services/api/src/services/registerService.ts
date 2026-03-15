@@ -65,7 +65,6 @@ type CashDrawerSessionFullRow = CashDrawerSessionRow & {
 function toQueryable(tx: DrizzleTx | typeof db) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      let idx = 0;
       const parts = queryText.split(/\$\d+/);
       const values = params ?? [];
       let built = sql.empty();

@@ -100,7 +100,6 @@ export async function switchResource(input: SwitchResourceInput) {
 
     // Validate target
     let targetResourceNumber = '';
-    let targetRentalType: RentalTier;
     const targetRes = await tx.execute<{ id: string; number: string; kind: string; status: string; assigned_to_customer_id: string | null }>(
       sql`SELECT id, number, kind, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${input.targetResourceId} FOR UPDATE`
     );
@@ -108,7 +107,7 @@ export async function switchResource(input: SwitchResourceInput) {
     const target = targetRes.rows[0]!;
     if (target.status !== 'CLEAN' || target.assigned_to_customer_id) throw new HttpError(409, `Resource ${target.number} is not available`) satisfies SwitchHttpError;
     targetResourceNumber = target.number;
-    targetRentalType = target.kind === 'locker' ? 'LOCKER' : getTierFromRoomNumber(target.number);
+    const targetRentalType = target.kind === 'locker' ? 'LOCKER' : getTierFromRoomNumber(target.number);
 
     // Fee calculation
     const currentRentalType = normalizeRentalTier(block.rental_type);

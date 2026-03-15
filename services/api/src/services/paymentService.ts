@@ -61,7 +61,6 @@ function toQueryable(tx: DrizzleTx) {
   return {
     async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
       // Build parameterized sql using Drizzle's sql.raw + parameters
-      let idx = 0;
       const parts = queryText.split(/\$\d+/);
       const values = params ?? [];
       let built = sql.empty();
