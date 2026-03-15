@@ -637,7 +637,7 @@ describe('Checkout Flow', () => {
       await pool.query(`UPDATE customers SET past_due_balance = 0 WHERE id = $1`, [
         testCustomerId,
       ]);
-      await pool.query(`DELETE FROM order_line_items WHERE visit_id = $1`, [testVisitId]);
+      await pool.query(`DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = (SELECT customer_id FROM visits WHERE id = $1))`, [testVisitId]);
 
       // Create a checkout request that already has a late fee assessed + paid
       const requestResult = await pool.query(
@@ -678,7 +678,7 @@ describe('Checkout Flow', () => {
 
       // Clean up
       await pool.query('DELETE FROM checkout_requests WHERE id = $1', [requestId]);
-      await pool.query('DELETE FROM order_line_items WHERE visit_id = $1', [testVisitId]);
+      await pool.query('DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = (SELECT customer_id FROM visits WHERE id = $1))', [testVisitId]);
       await pool.query(`UPDATE customers SET past_due_balance = 0 WHERE id = $1`, [
         testCustomerId,
       ]);

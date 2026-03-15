@@ -174,7 +174,7 @@ describe('Multi-tier waitlist (desired_tiers[])', () => {
   async function createRoom(number: string, type: string): Promise<string> {
     const result = await pool.query<{ id: string }>(
       `INSERT INTO inventory_resources (kind, number, tier, status, floor)
-       VALUES ($1, $2, 'CLEAN', 1)
+       VALUES ('room', $1, $2, 'CLEAN', 1)
        RETURNING id`,
       [number, type]
     );

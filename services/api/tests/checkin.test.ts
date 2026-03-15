@@ -133,7 +133,7 @@ describe('Check-in Flow', () => {
       `DELETE FROM checkin_blocks WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
-      `DELETE FROM order_line_items WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
+      `DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
       `DELETE FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345')`
@@ -181,7 +181,7 @@ describe('Check-in Flow', () => {
       [customerId]
     );
     await query(
-      `DELETE FROM order_line_items WHERE visit_id IN (SELECT id FROM visits WHERE customer_id = $1)`,
+      `DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = $1)`,
       [customerId]
     );
     await query(`DELETE FROM visits WHERE customer_id = $1`, [customerId]);

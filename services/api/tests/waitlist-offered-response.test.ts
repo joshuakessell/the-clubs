@@ -153,7 +153,7 @@ describe('GET /v1/waitlist (offered room details)', () => {
     expect(body.entries).toHaveLength(1);
     const entry = body.entries[0];
 
-    expect(entry.roomId).toBe(offeredRoom.rows[0]!.id);
+    expect(entry.resourceId).toBe(offeredRoom.rows[0]!.id);
     expect(entry.offeredRoomNumber).toBe('305');
     // displayIdentifier should use the current assignment (locker) not the offered room
     expect(entry.displayIdentifier).toBe('L05');
