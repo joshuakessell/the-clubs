@@ -96,7 +96,8 @@ async function setupSecurityAndCors(fastify: FastifyInstance) {
   if (!rawOrigins) {
     allowedOrigins = defaultDevOrigins;
   } else if (rawOrigins.length === 1 && rawOrigins[0] === '*') {
-    allowedOrigins = defaultDevOrigins;
+    // Fastify cors explicitly requires `true` (not `['*']`) to reflect all origins.
+    allowedOrigins = true;
   } else {
     allowedOrigins = rawOrigins;
   }
