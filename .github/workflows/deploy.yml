@@ -230,11 +230,13 @@ jobs:
           HOST_PORT: ${{ needs.resolve-env.outputs.host_port }}
           PROJECT_NAME: ${{ needs.resolve-env.outputs.project_name }}
           ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          CLOUDFLARE_CERT_PEM: ${{ secrets.CLOUDFLARE_CERT_PEM }}
+          CLOUDFLARE_CERT_KEY: ${{ secrets.CLOUDFLARE_CERT_KEY }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP,HOST_PORT,PROJECT_NAME,ALLOWED_ORIGINS
+          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP,HOST_PORT,PROJECT_NAME,ALLOWED_ORIGINS,CLOUDFLARE_CERT_PEM,CLOUDFLARE_CERT_KEY
           command_timeout: 10m
           script: |
             set -e
@@ -273,24 +275,42 @@ jobs:
             docker rm -f club-ops-db club-ops-api 2>/dev/null || true
 
             # Set up nginx reverse proxy (shared by all environments — idempotent)
-            mkdir -p /home/ec2-user/nginx
+            mkdir -p /home/ec2-user/nginx/certs
             mv /home/ec2-user/infra/nginx/api-proxy.conf /home/ec2-user/nginx/api-proxy.conf
             rm -rf /home/ec2-user/infra
-            if docker ps -a --format '{{.Names}}' | grep -q '^api-proxy$'; then
-              # Proxy exists — config is bind-mounted so it's already updated; just reload
-              docker start api-proxy 2>/dev/null || true
-              docker exec api-proxy nginx -s reload 2>/dev/null || true
-              echo "✓ nginx proxy config reloaded"
+
+            # ── Install SSL Certificates ──
+            echo "Setting up SSL Certificates..."
+            if [ -n "$CLOUDFLARE_CERT_PEM" ] && [ -n "$CLOUDFLARE_CERT_KEY" ]; then
+              echo "Using provided Cloudflare Origin CA certificates from GitHub Secrets."
+              echo "$CLOUDFLARE_CERT_PEM" > /home/ec2-user/nginx/certs/origin.pem
+              echo "$CLOUDFLARE_CERT_KEY" > /home/ec2-user/nginx/certs/origin.key
             else
-              # First deploy or proxy was manually removed — create it
-              docker run -d --name api-proxy \
-                --restart unless-stopped \
-                --add-host host.docker.internal:host-gateway \
-                -p 80:80 \
-                -v /home/ec2-user/nginx/api-proxy.conf:/etc/nginx/conf.d/default.conf:ro \
-                nginx:alpine
-              echo "✓ nginx reverse proxy created on port 80"
+              echo "No Cloudflare certs provided. Checking for existing fallback..."
+              if [ ! -f /home/ec2-user/nginx/certs/origin.pem ]; then
+                echo "Generating a self-signed fallback certificate so Nginx can boot..."
+                openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                  -keyout /home/ec2-user/nginx/certs/origin.key \
+                  -out /home/ec2-user/nginx/certs/origin.pem \
+                  -subj "/CN=*.joshuakessell.com"
+              fi
             fi
+
+            # ── Ensure Nginx Container ──
+            if docker ps -a --format '{{.Names}}' | grep -q '^api-proxy$'; then
+              # Recreate proxy to ensure new port 443 mapping and cert volume mounts are active on upgrades
+              docker rm -f api-proxy 2>/dev/null || true
+            fi
+            
+            docker run -d --name api-proxy \
+              --restart unless-stopped \
+              --add-host host.docker.internal:host-gateway \
+              -p 80:80 \
+              -p 443:443 \
+              -v /home/ec2-user/nginx/api-proxy.conf:/etc/nginx/conf.d/default.conf:ro \
+              -v /home/ec2-user/nginx/certs:/etc/nginx/certs:ro \
+              nginx:alpine
+            echo "✓ nginx reverse proxy started on ports 80 and 443"
 
             # Start/restart this environment's stack (isolated by project name)
             docker compose -f docker-compose.prod.yml \
