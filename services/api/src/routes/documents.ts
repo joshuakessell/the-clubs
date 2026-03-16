@@ -37,7 +37,10 @@ async function ensureUploadsDir(): Promise<void> {
 export async function documentsRoutes(fastify: FastifyInstance): Promise<void> {
   fastify.get<{ Params: { employeeId: string } }>(
     '/v1/admin/employees/:employeeId/documents',
-    { preHandler: [requireAuth, requireAdmin] },
+    {
+      preHandler: [requireAuth, requireAdmin],
+      config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       try {
         const { employeeId } = request.params;
@@ -77,7 +80,10 @@ export async function documentsRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.post<{ Params: { employeeId: string } }>(
     '/v1/admin/employees/:employeeId/documents',
-    { preHandler: [requireAuth, requireAdmin] },
+    {
+      preHandler: [requireAuth, requireAdmin],
+      config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       try {
         if (!request.staff) {
@@ -165,7 +171,10 @@ export async function documentsRoutes(fastify: FastifyInstance): Promise<void> {
 
   fastify.get<{ Params: { documentId: string } }>(
     '/v1/admin/documents/:documentId',
-    { preHandler: [requireAuth] },
+    {
+      preHandler: [requireAuth],
+      config: { rateLimit: { max: 100, timeWindow: '1 minute' } },
+    },
     async (request, reply) => {
       try {
         const { documentId } = request.params;

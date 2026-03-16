@@ -129,6 +129,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/change-pin',
     {
       preHandler: [requireAuth],
+      config: {
+        rateLimit: { max: 10, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -167,6 +170,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/logout',
     {
       preHandler: [requireAuth],
+      config: {
+        rateLimit: { max: 10, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const authHeader = request.headers.authorization;
@@ -201,6 +207,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/me',
     {
       preHandler: [requireAuth],
+      config: {
+        rateLimit: { max: 200, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -233,6 +242,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/reauth-pin',
     {
       preHandler: [requireAuth],
+      config: {
+        rateLimit: { max: 10, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -286,6 +298,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/reauth/webauthn/options',
     {
       preHandler: [requireAuth],
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -323,6 +336,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/reauth/webauthn/verify',
     {
       preHandler: [requireAuth],
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (request, reply) => {
       if (!request.staff) {
