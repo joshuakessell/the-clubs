@@ -101,6 +101,7 @@ export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets
   const localLaneSockets = params?.localLaneSockets;
   const localLaneSSE = params?.localLaneSSE;
   const lastLaneVersions = new Map<string, number>();
+  const lastLaneSessionIds = new Map<string, string>();
   const log = params?.logger ?? console;
 
   // Global publish is a no-op (previously used for AppSync Events).
@@ -124,11 +125,20 @@ export function createBroadcaster(params?: { localLaneSockets?: LocalLaneSockets
     // Terminal statuses must always be delivered regardless of version ordering
     if (payload.status === 'COMPLETED' || payload.status === 'CANCELLED') {
       lastLaneVersions.delete(lane);
+      lastLaneSessionIds.delete(lane);
       return true;
     }
 
     const flowVersion = typeof payload.flowVersion === 'number' ? payload.flowVersion : null;
     if (flowVersion === null) return true;
+
+    // New session on the lane — reset version tracking so flowVersion:0 isn't dropped
+    const currentSessionId = typeof payload.sessionId === 'string' ? payload.sessionId : null;
+    const lastSessionId = lastLaneSessionIds.get(lane);
+    if (currentSessionId && currentSessionId !== lastSessionId) {
+      lastLaneVersions.delete(lane);
+      lastLaneSessionIds.set(lane, currentSessionId);
+    }
 
     const last = lastLaneVersions.get(lane);
     if (typeof last === 'number' && flowVersion < last) {

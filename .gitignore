@@ -1,5 +1,6 @@
 .DS_Store
 node_modules
+dist/
 .agents/
 .pnpm-lock.yaml
 .pnpm-workspace.yaml

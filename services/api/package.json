@@ -14,10 +14,10 @@
     "db:migrate": "pnpm exec tsx scripts/wait-for-db.ts && pnpm exec tsx scripts/migrate.ts",
     "db:migrate:status": "pnpm exec tsx scripts/wait-for-db.ts && pnpm exec tsx src/db/migrate-status.ts",
     "seed": "pnpm exec tsx scripts/wait-for-db.ts && pnpm exec tsx src/db/seed.ts",
-    "seed:demo": "DEMO_MODE=true pnpm exec tsx src/db/seed-demo/simulator.ts",
+    "seed:demo": "cross-env DEMO_MODE=true pnpm exec tsx src/db/seed-demo/simulator.ts",
     "seed:all": "pnpm -s run seed && pnpm -s run seed:demo",
     "offline:replay": "pnpm exec tsx scripts/replay-offline-outbox.ts",
-    "test": "TMPDIR=/tmp vitest run",
+    "test": "cross-env TMPDIR=/tmp vitest run",
     "lint": "eslint ."
   },
   "dependencies": {
