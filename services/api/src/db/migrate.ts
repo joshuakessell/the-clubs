@@ -110,9 +110,19 @@ function extractUpSql(content: string): string {
  * Returns the number of migrations applied.
  */
 export async function runPendingMigrations(): Promise<number> {
-  await ensureTrackingTable();
-
   const pool = getPool();
+
+  // Clean up legacy snapshot schema that blocks Drizzle enum drops (dependent objects error)
+  const preclient = await pool.connect();
+  try {
+    await preclient.query('DROP SCHEMA IF EXISTS demo_snapshot CASCADE');
+  } catch (err) {
+    console.warn('[migrate] Failed to drop legacy demo_snapshot schema:', err);
+  } finally {
+    preclient.release();
+  }
+
+  await ensureTrackingTable();
 
   // Get already-applied migrations
   const applied = await pool.query<{ filename: string }>(
