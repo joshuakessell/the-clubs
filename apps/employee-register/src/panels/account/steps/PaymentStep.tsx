@@ -13,13 +13,13 @@ export function PaymentStep() {
   const [splitCashInput, setSplitCashInput] = useState<string>('');
   const [splitCreditInput, setSplitCreditInput] = useState<string>(totalDollars.toFixed(2));
 
-  const splitCashDollars = Number.parseFloat(splitCashInput) || 0;
-  const splitCreditDollars = Number.parseFloat(splitCreditInput) || 0;
+  const splitCashDollars = Number(splitCashInput) || 0;
+  const splitCreditDollars = Number(splitCreditInput) || 0;
 
   const handleCashChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSplitCashInput(val);
-    const num = Number.parseFloat(val);
+    const num = Number(val);
     if (!Number.isNaN(num) && num <= totalDollars && val !== '') {
       setSplitCreditInput(Math.max(0, totalDollars - num).toFixed(2));
     }
@@ -28,7 +28,7 @@ export function PaymentStep() {
   const handleCreditChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSplitCreditInput(val);
-    const num = Number.parseFloat(val);
+    const num = Number(val);
     if (!Number.isNaN(num) && num <= totalDollars && val !== '') {
       setSplitCashInput(Math.max(0, totalDollars - num).toFixed(2));
     }
@@ -97,15 +97,83 @@ export function PaymentStep() {
     }
   };
 
+  const renderSplitUI = () => (
+    <div className="flex flex-col gap-3 rounded-lg border p-4" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
+      <span className="text-xs font-bold uppercase tracking-wider text-(--color-text-muted)">Split Payment</span>
+      <div className="flex items-center gap-3">
+        <div className="flex-1">
+          <label htmlFor="split-cash" className="text-[10px] font-medium uppercase tracking-wider text-(--color-status-success)">Cash ($)</label>
+          <input
+            id="split-cash"
+            type="number"
+            min={0}
+            max={totalDollars}
+            step={0.01}
+            value={splitCashInput}
+            onChange={handleCashChange}
+            className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-semibold"
+            style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+          />
+        </div>
+        <div className="flex-1">
+          <label htmlFor="split-credit" className="text-[10px] font-medium uppercase tracking-wider text-(--color-accent-primary)">Credit ($)</label>
+          <input
+            id="split-credit"
+            type="number"
+            min={0}
+            max={totalDollars}
+            step={0.01}
+            value={splitCreditInput}
+            onChange={handleCreditChange}
+            className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-semibold"
+            style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+          />
+        </div>
+      </div>
+      {splitCreditDollars > 0 && splitCreditDollars < 5 && (
+        <p className="text-xs font-medium text-(--color-status-error)">
+          Credit card minimum is $5.00
+        </p>
+      )}
+      {Math.abs(splitCashDollars + splitCreditDollars - totalDollars) > 0.01 && (
+        <p className="text-xs font-medium text-(--color-status-error)">
+          Total must equal ${totalDollars.toFixed(2)}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          disabled={loading || (splitCreditDollars > 0 && splitCreditDollars < 5) || Math.abs(splitCashDollars + splitCreditDollars - totalDollars) > 0.01}
+          onClick={() => { handleSplitPaid(); }}
+          className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition-colors"
+          style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', opacity: loading || splitCreditDollars < 0 ? 0.5 : 1 }}
+        >
+          {loading ? '…' : '✓ Confirm Split'}
+        </button>
+        <button
+          onClick={() => setShowSplit(false)}
+          className="rounded-lg border px-4 py-3 text-sm font-medium transition-colors border-(--color-border-default) text-(--color-text-muted)"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
         Collect Payment
       </h3>
 
+      {isPaid && (
+        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
+          <span className="text-sm font-semibold text-(--color-status-success)">
+            ✓ Paid via {sp.paymentMethod ?? 'N/A'}
+          </span>
+        </div>
+      )}
 
-
-      {sp.paymentTotal === undefined && (
+      {!isPaid && sp.paymentTotal === undefined && (
         <div className="rounded-lg border p-4 text-center" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
           <p className="text-sm text-(--color-text-muted)">
             Waiting for payment quote from server…
@@ -123,74 +191,9 @@ export function PaymentStep() {
       )}
 
       {/* Payment status / actions */}
-      {isPaid ? (
-        <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
-          <span className="text-sm font-semibold text-(--color-status-success)">
-            ✓ Paid via {sp.paymentMethod ?? 'N/A'}
-          </span>
-        </div>
-      ) : showSplit ? (
-        /* ── Split payment UI ── */
-        <div className="flex flex-col gap-3 rounded-lg border p-4" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-          <span className="text-xs font-bold uppercase tracking-wider text-(--color-text-muted)">Split Payment</span>
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <label htmlFor="split-cash" className="text-[10px] font-medium uppercase tracking-wider text-(--color-status-success)">Cash ($)</label>
-              <input
-                id="split-cash"
-                type="number"
-                min={0}
-                max={totalDollars}
-                step={0.01}
-                value={splitCashInput}
-                onChange={handleCashChange}
-                className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-semibold"
-                style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
-              />
-            </div>
-            <div className="flex-1">
-              <label htmlFor="split-credit" className="text-[10px] font-medium uppercase tracking-wider text-(--color-accent-primary)">Credit ($)</label>
-              <input
-                id="split-credit"
-                type="number"
-                min={0}
-                max={totalDollars}
-                step={0.01}
-                value={splitCreditInput}
-                onChange={handleCreditChange}
-                className="mt-1 h-10 w-full rounded-lg border px-3 text-sm font-semibold"
-                style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
-              />
-            </div>
-          </div>
-          {splitCreditDollars > 0 && splitCreditDollars < 5 && (
-            <p className="text-xs font-medium text-(--color-status-error)">
-              Credit card minimum is $5.00
-            </p>
-          )}
-          {Math.abs(splitCashDollars + splitCreditDollars - totalDollars) > 0.01 && (
-            <p className="text-xs font-medium text-(--color-status-error)">
-              Total must equal ${totalDollars.toFixed(2)}
-            </p>
-          )}
-          <div className="flex gap-2">
-            <button
-              disabled={loading || (splitCreditDollars > 0 && splitCreditDollars < 5) || Math.abs(splitCashDollars + splitCreditDollars - totalDollars) > 0.01}
-              onClick={() => { handleSplitPaid(); }}
-              className="flex-1 rounded-lg border px-4 py-3 text-sm font-bold transition-colors"
-              style={{ borderColor: 'var(--color-status-success)', color: 'var(--color-status-success)', backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', opacity: loading || splitCreditDollars < 0 ? 0.5 : 1 }}
-            >
-              {loading ? '…' : '✓ Confirm Split'}
-            </button>
-            <button
-              onClick={() => setShowSplit(false)}
-              className="rounded-lg border px-4 py-3 text-sm font-medium transition-colors border-(--color-border-default) text-(--color-text-muted)"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
+      {!isPaid && showSplit && renderSplitUI()}
+      
+      {!isPaid && !showSplit && (
         /* ── Payment buttons ── */
         <div className="flex flex-col gap-3">
           <div className="flex gap-3">

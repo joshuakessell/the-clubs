@@ -14,6 +14,7 @@ const utils_1 = require("../../checkin/utils");
 const laneFeatureFlags_1 = require("../../checkin/laneFeatureFlags");
 const laneAuthority_1 = require("../../checkin/laneAuthority");
 const offlineOutbox_1 = require("../../checkin/offlineOutbox");
+const customerActivityLog_1 = require("../../activity/customerActivityLog");
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
  * expected by getLaneFeatureFlags, assertLaneWriteAuthority, writeOfflineOutboxRecord.
@@ -320,7 +321,15 @@ async function applyFlowPaymentSideEffects(client, params) {
                     const bal = pastDueRes.rows[0]?.past_due_balance;
                     if (bal && Number(bal) > 0) {
                         await client.query(`UPDATE customers SET past_due_balance = 0, updated_at = NOW() WHERE id = $1`, [session.customer_id]);
-                        await client.query(`INSERT INTO customer_activity_events (customer_id, type, details_json, occurred_at) VALUES ($1, 'PAST_DUE_PAID', $2, NOW())`, [session.customer_id, JSON.stringify({ amount_paid: Number(bal), order_id: session.order_id })]);
+                        await (0, customerActivityLog_1.insertCustomerActivityEvent)(client, {
+                            customerId: session.customer_id,
+                            actionType: 'PAST_DUE_PAID',
+                            actionCategory: 'PAYMENT',
+                            sourceApp: 'CUSTOMER_KIOSK',
+                            actorType: 'SYSTEM',
+                            summary: 'Past due balance paid',
+                            metadata: { amount_paid: Number(bal), order_id: session.order_id },
+                        });
                     }
                 }
             }

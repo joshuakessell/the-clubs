@@ -25,4 +25,4 @@ exports.LANE_SESSION_COLS = [
     'last_past_due_decline_reason', 'last_past_due_decline_at',
     'created_at', 'updated_at',
 ].join(', ');
-exports.ORDER_COLS = "id, lane_session_id, subtotal, discount, tax, total, payment_method, split_cash_amount, split_credit_amount, square_transaction_id, paid_at, paid_by_staff_id, status, error, quote_json, created_at, updated_at";
+exports.ORDER_COLS = "id, lane_session_id, subtotal, discount, tax, total, payment_method, split_cash_amount, split_credit_amount, square_transaction_id, paid_at, paid_by_staff_id, status, failure_reason AS error, quote_json, created_at, updated_at";
