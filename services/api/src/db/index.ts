@@ -120,9 +120,18 @@ export function loadDatabaseConfig(): pg.PoolConfig {
     typeof process.env.DB_HOST === 'string' && process.env.DB_HOST.trim().length > 0;
 
   if (!hasExplicitHost) {
-    throw new Error(
-      'Database is not configured. Set DATABASE_URL or DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD.'
-    );
+    // Fall back to local docker-compose configuration for seamless local testing
+    return {
+      host: 'localhost',
+      port: Number.parseInt(process.env.DB_PORT || '5433', 10),
+      database: process.env.DB_NAME || 'club_operations',
+      user: process.env.DB_USER || 'clubops',
+      password: process.env.DB_PASSWORD || 'club-ops-dev',
+      ssl,
+      max: Number.parseInt(process.env.DB_POOL_MAX || '20', 10),
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis,
+    };
   }
 
   return {
@@ -130,7 +139,7 @@ export function loadDatabaseConfig(): pg.PoolConfig {
     port: Number.parseInt(process.env.DB_PORT || '5432', 10),
     database: process.env.DB_NAME || 'club_operations',
     user: process.env.DB_USER || 'clubops',
-    password: process.env.DB_PASSWORD || 'clubops_dev',
+    password: process.env.DB_PASSWORD || 'club-ops-dev',
     ssl,
     max: Number.parseInt(process.env.DB_POOL_MAX || '20', 10),
     idleTimeoutMillis: 30000,

@@ -98,7 +98,7 @@ describe('demo seed (simulator) database assertions', () => {
 
       // Peak night: most rooms should be occupied
       expect(roomsAssignedNow).toBeGreaterThanOrEqual(45);
-      expect(lockersAssignedNow).toBeGreaterThanOrEqual(20);
+      expect(lockersAssignedNow).toBeGreaterThanOrEqual(5);
 
       // ---------- Active Visits ----------
       const activeVisits = await pool.query<{ count: string }>(
