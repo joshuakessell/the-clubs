@@ -176,14 +176,43 @@ function calculatePriceQuote(input) {
         else {
             rentalFee = getBaseRoomPrice(input.rentalType, isWeekdayDiscount);
         }
-        const roomTypeName = input.rentalType === 'STANDARD'
-            ? 'Standard Room'
-            : input.rentalType === 'DOUBLE'
-                ? 'Double Room'
-                : 'Special Room';
+        let roomTypeName = 'Special Room';
+        if (input.rentalType === 'STANDARD') {
+            roomTypeName = 'Standard Room';
+        }
+        else if (input.rentalType === 'DOUBLE') {
+            roomTypeName = 'Double Room';
+        }
         lineItems.push({
             description: roomTypeName,
             amount: rentalFee,
+        });
+    }
+    // Calculate Waitlist Zero-Dollar display item
+    if (input.waitlistDesiredType && input.waitlistDesiredType !== input.rentalType) {
+        let waitlistDescription = '';
+        const hasMultipleWaitlists = input.waitlistDesiredTypesJson &&
+            input.waitlistDesiredTypesJson.includes('[') &&
+            JSON.parse(input.waitlistDesiredTypesJson).length > 1;
+        if (hasMultipleWaitlists) {
+            waitlistDescription = 'First Available (Waitlist)';
+        }
+        else {
+            let waitlistTypeName = 'Locker';
+            if (input.waitlistDesiredType === 'STANDARD') {
+                waitlistTypeName = 'Standard Room';
+            }
+            else if (input.waitlistDesiredType === 'DOUBLE') {
+                waitlistTypeName = 'Double Room';
+            }
+            else if (input.waitlistDesiredType === 'SPECIAL') {
+                waitlistTypeName = 'Special Room';
+            }
+            waitlistDescription = `${waitlistTypeName} (Waitlist)`;
+        }
+        lineItems.push({
+            description: waitlistDescription,
+            amount: 0,
         });
     }
     // Calculate membership fee

@@ -225,6 +225,7 @@ export interface SessionUpdatedPayload {
   agreementSigned?: boolean;
   agreementBypassPending?: boolean;
   agreementSignedMethod?: 'DIGITAL' | 'MANUAL';
+  waitlistDisclaimerAck?: boolean;
   assignedResourceType?: 'room' | 'locker';
   assignedResourceNumber?: string;
   checkoutAt?: string;

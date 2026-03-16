@@ -227,6 +227,11 @@ export async function buildFullSessionUpdatedPayload(
 
   const { waitlistPosition, waitlistEstimatedReadyAt } = await fetchWaitlistEstimates(session.waitlist_desired_type, session.waitlist_desired_types_json);
 
+  let waitlistDisclaimerAck = false;
+  if (isRecord(session.disclaimers_ack_json)) {
+    waitlistDisclaimerAck = session.disclaimers_ack_json['waitlistDisclaimerAck'] === true;
+  }
+
   const payload: SessionUpdatedPayload = {
     sessionId: session.id,
     customerId: session.customer_id ?? undefined,
@@ -267,6 +272,7 @@ export async function buildFullSessionUpdatedPayload(
     agreementSigned: blockForSession ? !!blockForSession.agreement_signed : false,
     agreementBypassPending: !!session.agreement_bypass_pending,
     agreementSignedMethod: parseAgreementMethod(session.agreement_signed_method),
+    waitlistDisclaimerAck,
     assignedResourceType: assignedResourceType || undefined,
     assignedResourceNumber,
     visitId: blockForSession?.visit_id || activeVisitId,

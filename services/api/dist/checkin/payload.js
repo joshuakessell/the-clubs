@@ -185,6 +185,10 @@ async function buildFullSessionUpdatedPayload(sessionId) {
     const ledgerTotal = total > 0 ? total : undefined;
     const customerMembershipValidUntil = formatMembershipValidUntil(customer?.membership_valid_until);
     const { waitlistPosition, waitlistEstimatedReadyAt } = await fetchWaitlistEstimates(session.waitlist_desired_type, session.waitlist_desired_types_json);
+    let waitlistDisclaimerAck = false;
+    if (isRecord(session.disclaimers_ack_json)) {
+        waitlistDisclaimerAck = session.disclaimers_ack_json['waitlistDisclaimerAck'] === true;
+    }
     const payload = {
         sessionId: session.id,
         customerId: session.customer_id ?? undefined,
@@ -223,6 +227,7 @@ async function buildFullSessionUpdatedPayload(sessionId) {
         agreementSigned: blockForSession ? !!blockForSession.agreement_signed : false,
         agreementBypassPending: !!session.agreement_bypass_pending,
         agreementSignedMethod: parseAgreementMethod(session.agreement_signed_method),
+        waitlistDisclaimerAck,
         assignedResourceType: assignedResourceType || undefined,
         assignedResourceNumber,
         visitId: blockForSession?.visit_id || activeVisitId,

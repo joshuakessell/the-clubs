@@ -80,7 +80,7 @@ export function RentalStep() {
       await sendFlowCommand({ type: 'CONFIRM_SELECTION' });
       await new Promise((r) => setTimeout(r, 100));
 
-      // Set waitlist desired types to all room types
+      // Set waitlist desired types to all room types, but do not automatically advance.
       await sendFlowCommand({
         type: 'WAITLIST_UPDATE',
         payload: {
@@ -89,16 +89,18 @@ export function RentalStep() {
           backupRentalType: 'LOCKER',
         },
       });
-      await new Promise((r) => setTimeout(r, 100));
-
-      // Route through WAITLIST_BACKUP → WAITLIST_DISCLAIMER (state machine doesn't allow direct skip)
-      await sendFlowCommand({ type: 'SET_STEP', payload: { step: 'WAITLIST_BACKUP' } });
-      await new Promise((r) => setTimeout(r, 100));
-      await sendFlowCommand({ type: 'SET_STEP', payload: { step: 'WAITLIST_DISCLAIMER' } });
     });
   };
 
   const handleNext = () => {
+    // If "First Available" is the only thing selected, send them down the waitlist path.
+    if (isFirstAvailableSelected) {
+      startTransition(async () => {
+        await sendFlowCommand({ type: 'SET_STEP', payload: { step: 'WAITLIST_BACKUP' } });
+      });
+      return;
+    }
+
     if (!effectiveSelection) return;
     startTransition(async () => {
       const unavailable = isTypeUnavailable(effectiveSelection, inventory);
@@ -108,7 +110,8 @@ export function RentalStep() {
   };
 
   // Show Next if there's an effective selection (even if unconfirmed, to support waitlist flow)
-  const showNext = !!effectiveSelection && !isFirstAvailableSelected;
+  // Or, if Waitlist (First Available) is explicitly highlighted.
+  const showNext = !!effectiveSelection || isFirstAvailableSelected;
 
   return (
     <div className="flex flex-col gap-4">
@@ -148,7 +151,7 @@ export function RentalStep() {
             <button
               key={type}
               disabled={loading || !allowed}
-              onClick={() => void handleToggle(type)}
+              onClick={() => { handleToggle(type); }}
               className="flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
               style={{
                 backgroundColor: isSelected
@@ -196,7 +199,7 @@ export function RentalStep() {
       {/* Waitlist (First Available) — distinct option */}
       <button
         disabled={loading}
-        onClick={() => void handleFirstAvailable()}
+        onClick={() => { handleFirstAvailable(); }}
         className="flex items-center justify-between rounded-lg border px-4 py-3 text-sm font-semibold transition-colors"
         style={{
           backgroundColor: isFirstAvailableSelected
@@ -228,7 +231,7 @@ export function RentalStep() {
       {showNext && (
         <button
           disabled={loading}
-          onClick={() => void handleNext()}
+          onClick={() => { handleNext(); }}
            className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition-colors bg-(--color-accent-primary) text-(--color-text-inverse)"
         >
           {loading ? 'Processing…' : 'Next →'}

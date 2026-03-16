@@ -489,6 +489,45 @@ export async function completeManualCheckout(
         }
       } else {
         await tx.execute(sql`UPDATE customers SET past_due_balance = past_due_balance + ${feeAmount}, updated_at = NOW() WHERE id = ${row.customer_id}`);
+
+        // Sync the explicit charge to the Spend Ledger so it is visible in the Kiosk and Office Dashboard
+        await insertCustomerSpendLedgerEntryDrizzle(tx, {
+          customerId: row.customer_id,
+          visitId: row.visit_id,
+          entryType: 'LATE_FEE',
+          amount: feeAmount,
+          sourceApp: 'EMPLOYEE_REGISTER',
+          actorType: 'STAFF',
+          actorStaffId: looksLikeUuid(staff.staffId) ? staff.staffId : null,
+          actorStaffName: staff.staffName,
+          summary: `Late fee assessed ($${feeAmount.toFixed(2)})`,
+          metadata: {
+            occupancyId: row.occupancy_id,
+            lateMinutes,
+            banApplied,
+          },
+          dedupeKey: `LEDGER:LATE_FEE:MANUAL:${row.occupancy_id}`,
+        });
+
+        // Sync the explicit charge to the Activity History so it is visible in the Kiosk and Office Dashboard
+        await insertCustomerActivityEventDrizzle(tx, {
+          customerId: row.customer_id,
+          actionType: 'LATE_FEE_ASSESSED',
+          actionCategory: 'CHECKOUT',
+          sourceApp: 'EMPLOYEE_REGISTER',
+          actorType: 'STAFF',
+          actorStaffId: looksLikeUuid(staff.staffId) ? staff.staffId : null,
+          actorStaffName: staff.staffName,
+          summary: `Late fee assessed ($${feeAmount.toFixed(2)})`,
+          metadata: {
+            occupancyId: row.occupancy_id,
+            visitId: row.visit_id,
+            lateMinutes,
+            banApplied,
+          },
+          dedupeKey: `ACT:LATE_FEE:MANUAL:${row.occupancy_id}`,
+          searchParts: [row.occupancy_id, row.visit_id],
+        });
       }
 
       // Club event for late fee

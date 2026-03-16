@@ -1,4 +1,4 @@
-import { useTransition } from 'react';
+import { useTransition, useEffect } from 'react';
 import { useCheckinFlow } from '../CheckinFlowContext';
 
 /**
@@ -26,6 +26,23 @@ export function WaitlistDisclaimerStep() {
       await sendFlowCommand({ type: 'BACK_STEP' });
     });
   };
+
+  /**
+   * Fast-forward bypass: if the customer already acked the waitlist
+   * disclaimer during a previous pass (stored in backend JSON and
+   * emitted via sp), we automatically skip this step and advance straight
+   * to payment without stalling the employee.
+   */
+  useEffect(() => {
+    if (sp.waitlistDisclaimerAck) {
+      sendFlowCommand({ type: 'SET_STEP', payload: { step: 'PAYMENT' } }).catch(console.error);
+    }
+  }, [sp.waitlistDisclaimerAck, sendFlowCommand]);
+
+  // If we are auto-forwarding, return null to avoid flash of content
+  if (sp.waitlistDisclaimerAck) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -85,7 +102,6 @@ export function WaitlistDisclaimerStep() {
         </ul>
       </div>
 
-      {/* Back button */}
       <button
         disabled={loading}
         onClick={() => void handleBack()}

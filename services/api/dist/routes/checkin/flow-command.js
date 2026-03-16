@@ -292,6 +292,16 @@ async function applyFlowPaymentSideEffects(client, params) {
         const includeSixMonth = session.membership_choice === 'SIX_MONTH' || !!session.membership_purchase_intent;
         const isRenewal = session.checkin_mode === 'RENEWAL';
         const renewalHours = session.renewal_hours === 2 || session.renewal_hours === 6 ? session.renewal_hours : null;
+        const sessionWaitlistType = session.waitlist_desired_type;
+        let parsedWaitlistTypesJson;
+        if (session.waitlist_desired_types_json !== null) {
+            if (typeof session.waitlist_desired_types_json === 'string') {
+                parsedWaitlistTypesJson = session.waitlist_desired_types_json;
+            }
+            else {
+                parsedWaitlistTypesJson = JSON.stringify(session.waitlist_desired_types_json);
+            }
+        }
         const pricingInput = {
             rentalType,
             customerAge,
@@ -299,6 +309,8 @@ async function applyFlowPaymentSideEffects(client, params) {
             membershipCardType,
             membershipValidUntil,
             includeSixMonthMembershipPurchase: includeSixMonth,
+            waitlistDesiredType: sessionWaitlistType,
+            waitlistDesiredTypesJson: parsedWaitlistTypesJson,
         };
         const quote = isRenewal && renewalHours
             ? (0, engine_1.calculateRenewalQuote)({ ...pricingInput, renewalHours })
@@ -467,6 +479,18 @@ function registerCheckinFlowCommandRoutes(fastify) {
                 const currentStep = parseFlowStep(session.flow_step) ?? 'RENTAL';
                 const { nextStep, clear } = computeFlowUpdate({ currentStep, type, payload });
                 const nextVersion = currentVersion + 1;
+                let finalDisclaimersAckJson = clear.agreement ? null : session.disclaimers_ack_json;
+                // If backward-clearing, preserve waitlistDisclaimerAck if it exists
+                if (clear.agreement &&
+                    typeof session.disclaimers_ack_json === 'object' &&
+                    session.disclaimers_ack_json !== null &&
+                    session.disclaimers_ack_json['waitlistDisclaimerAck'] === true) {
+                    finalDisclaimersAckJson = { waitlistDisclaimerAck: true };
+                }
+                // If moving forward from WAITLIST_DISCLAIMER, inject the acknowledgment
+                if (type === 'SET_STEP' && currentStep === 'WAITLIST_DISCLAIMER' && nextStep === 'PAYMENT') {
+                    finalDisclaimersAckJson = { ...(finalDisclaimersAckJson || {}), waitlistDisclaimerAck: true };
+                }
                 const stringifyIfObject = (val) => {
                     if (val === null || val === undefined)
                         return null;
@@ -496,6 +520,7 @@ function registerCheckinFlowCommandRoutes(fastify) {
                     clear.paymentIntent,
                     clear.agreement,
                     sessionId,
+                    stringifyIfObject(finalDisclaimersAckJson),
                 ];
                 // This complex UPDATE uses positional params ($1..$21) with many CASE
                 // expressions — best kept as raw SQL via the toQueryable adapter.
@@ -518,7 +543,7 @@ function registerCheckinFlowCommandRoutes(fastify) {
                  waitlist_requested_resource_type = CASE WHEN $13 THEN NULL ELSE $18::public.inventory_resource_type END,
                  order_id = CASE WHEN $19 THEN NULL ELSE order_id END,
                  price_quote_json = CASE WHEN $19 THEN NULL ELSE price_quote_json END,
-                 disclaimers_ack_json = CASE WHEN $19 THEN NULL ELSE disclaimers_ack_json END,
+                 disclaimers_ack_json = $22::jsonb,
                  agreement_bypass_pending = CASE WHEN $20 THEN false ELSE agreement_bypass_pending END,
                  updated_at = NOW()
              WHERE id = $21
