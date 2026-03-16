@@ -210,7 +210,7 @@ export interface SessionUpdatedPayload {
   pastDueBypassed?: boolean;
   orderId?: string;
   orderStatus?: 'OPEN' | 'PAID';
-  paymentMethod?: 'CASH' | 'CREDIT';
+  paymentMethod?: 'CASH' | 'CREDIT' | 'SPLIT';
   paymentTotal?: number;
   paymentLineItems?: Array<{
     description: string;

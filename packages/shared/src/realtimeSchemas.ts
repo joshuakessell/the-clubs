@@ -150,7 +150,7 @@ export const SessionUpdatedPayloadSchema =
       pastDueBypassed: z.boolean().optional(),
       orderId: z.preprocess((v) => (v === null ? undefined : v), z.string().optional()),
       orderStatus: z.enum(['OPEN', 'PAID']).optional(),
-      paymentMethod: z.enum(['CASH', 'CREDIT']).optional(),
+      paymentMethod: z.enum(['CASH', 'CREDIT', 'SPLIT']).optional(),
       paymentTotal: z.number().optional(),
       paymentLineItems: z
         .array(
