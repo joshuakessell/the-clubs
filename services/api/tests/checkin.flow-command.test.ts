@@ -732,8 +732,8 @@ describe('Check-in Flow Commands', () => {
     expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(0);
 
     // Verify customer activity event was logged
-    const events = await query<{ type: string }>(
-      `SELECT type FROM customer_activity_events WHERE customer_id = $1 AND type = 'PAST_DUE_PAID'`,
+    const events = await query<{ action_type: string }>(
+      `SELECT action_type FROM customer_activity_events WHERE customer_id = $1 AND action_type = 'PAST_DUE_PAID'`,
       [cid]
     );
     expect(events.rows.length).toBe(1);

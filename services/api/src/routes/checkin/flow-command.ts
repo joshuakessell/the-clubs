@@ -13,6 +13,7 @@ import { toDate } from '../../checkin/utils';
 import { getLaneFeatureFlags } from '../../checkin/laneFeatureFlags';
 import { assertLaneWriteAuthority } from '../../checkin/laneAuthority';
 import { writeOfflineOutboxRecord } from '../../checkin/offlineOutbox';
+import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
 
 /**
  * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
@@ -445,10 +446,15 @@ async function applyFlowPaymentSideEffects(
               `UPDATE customers SET past_due_balance = 0, updated_at = NOW() WHERE id = $1`,
               [session.customer_id]
             );
-            await client.query(
-              `INSERT INTO customer_activity_events (customer_id, action_type, action_category, source_app, actor_type, summary, metadata, occurred_at) VALUES ($1, 'PAST_DUE_PAID', 'PAYMENT', 'CUSTOMER_KIOSK', 'SYSTEM', 'Past due balance paid', $2, NOW())`,
-              [session.customer_id, JSON.stringify({ amount_paid: Number(bal), order_id: session.order_id })]
-            );
+            await insertCustomerActivityEvent(client, {
+              customerId: session.customer_id,
+              actionType: 'PAST_DUE_PAID',
+              actionCategory: 'PAYMENT',
+              sourceApp: 'CUSTOMER_KIOSK',
+              actorType: 'SYSTEM',
+              summary: 'Past due balance paid',
+              metadata: { amount_paid: Number(bal), order_id: session.order_id },
+            });
           }
         }
       }
