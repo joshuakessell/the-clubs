@@ -24,6 +24,18 @@ function toNumber(value: unknown): number | undefined {
   return undefined;
 }
 
+// ── Helpers ──
+
+async function releaseOldResource(tx: any, oldResourceId: string) {
+  const kindRes = await tx.execute(sql`SELECT kind FROM inventory_resources WHERE id = ${oldResourceId}`);
+  const oldKind = kindRes.rows[0]?.kind;
+  if (oldKind === 'locker') {
+    await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = ${oldResourceId}`);
+  } else {
+    await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = NOW(), updated_at = NOW() WHERE id = ${oldResourceId}`);
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -49,19 +61,32 @@ function getRoomTier(roomNumber: string): 'SPECIAL' | 'DOUBLE' | 'STANDARD' {
   return getRoomTierFromNumber(Number.parseInt(roomNumber, 10));
 }
 
+const UPGRADE_FEES: Record<string, Record<string, number>> = {
+  LOCKER: { STANDARD: 8, DOUBLE: 17, SPECIAL: 27 },
+  STANDARD: { DOUBLE: 9, SPECIAL: 19 },
+  DOUBLE: { SPECIAL: 9 },
+};
+
 function calculateUpgradeFee(fromTier: string, toTier: 'STANDARD' | 'DOUBLE' | 'SPECIAL'): number {
   const from = fromTier === 'LOCKER' || fromTier === 'GYM_LOCKER' ? 'LOCKER' : fromTier;
-  if (from === 'LOCKER') {
-    if (toTier === 'STANDARD') { return 8; }
-    if (toTier === 'DOUBLE') { return 17; }
-    if (toTier === 'SPECIAL') { return 27; }
-  } else if (from === 'STANDARD') {
-    if (toTier === 'DOUBLE') { return 9; }
-    if (toTier === 'SPECIAL') { return 19; }
-  } else if (from === 'DOUBLE') {
-    if (toTier === 'SPECIAL') { return 9; }
-  }
+  const fee = UPGRADE_FEES[from]?.[toTier];
+  if (fee !== undefined) return fee;
   throw new Error(`Invalid upgrade path: ${from} -> ${toTier}`);
+}
+
+function parseValidTiers(desired_tiers: unknown, desired_tier: unknown): string[] {
+  let validTiers: string[];
+  if (Array.isArray(desired_tiers) && desired_tiers.length > 0) {
+    validTiers = desired_tiers.map(String);
+  } else if (typeof desired_tiers === 'string' && desired_tiers.startsWith('{')) {
+    validTiers = desired_tiers.slice(1, -1).split(',').filter(Boolean);
+  } else {
+    validTiers = [];
+  }
+  if (validTiers.length === 0) {
+    validTiers = [String(desired_tier)];
+  }
+  return validTiers;
 }
 
 // ── Constants ──
@@ -113,24 +138,15 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
       originalTotal = toNumber(originalIntent?.total);
     }
 
-    const newRoomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${roomId} FOR UPDATE`);
+    const newRoomResult = await tx.execute<ResourceRow & Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${roomId} FOR UPDATE`);
     if (newRoomResult.rows.length === 0) throw new HttpError(404, 'Resource not found');
-    const newRoom = newRoomResult.rows[0] as unknown as ResourceRow;
+    const newRoom = newRoomResult.rows[0];
+    if (!newRoom) throw new HttpError(404, 'Resource not found');
     if (newRoom.status !== 'CLEAN') throw new HttpError(400, `Resource ${newRoom.number} is not available (status: ${newRoom.status})`);
     if (newRoom.assigned_to_customer_id) throw new HttpError(409, `Resource ${newRoom.number} is already assigned`);
 
     const newRoomTier = getRoomTier(newRoom.number);
-    let validTiers: string[];
-    if (Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0) {
-      validTiers = waitlist.desired_tiers.map(String);
-    } else if (typeof waitlist.desired_tiers === 'string' && waitlist.desired_tiers.startsWith('{')) {
-      validTiers = waitlist.desired_tiers.slice(1, -1).split(',').filter(Boolean);
-    } else {
-      validTiers = [];
-    }
-    if (validTiers.length === 0) {
-      validTiers = [String(waitlist.desired_tier)];
-    }
+    const validTiers = parseValidTiers(waitlist.desired_tiers, waitlist.desired_tier);
     if (!validTiers.includes(newRoomTier)) throw new HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but waitlist accepts ${validTiers.join(', ')}`);
 
     const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
@@ -196,20 +212,14 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
     if (!quote.newRoomId) throw new HttpError(400, 'Room ID not found in payment intent (upgrade must be fulfilled first)');
 
     const newRoomId = quote.newRoomId;
-    const newRoomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${newRoomId} FOR UPDATE`);
+    const newRoomResult = await tx.execute<ResourceRow & Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${newRoomId} FOR UPDATE`);
     if (newRoomResult.rows.length === 0) throw new HttpError(404, 'New resource not found');
-    const newRoom = newRoomResult.rows[0] as unknown as ResourceRow;
+    const newRoom = newRoomResult.rows[0];
+    if (!newRoom) throw new HttpError(404, 'New resource not found');
 
     const oldResourceId = block.resource_id;
     if (oldResourceId) {
-      // Determine old resource kind for correct status
-      const kindRes = await tx.execute<{ kind: string }>(sql`SELECT kind FROM inventory_resources WHERE id = ${oldResourceId}`);
-      const oldKind = kindRes.rows[0]?.kind;
-      if (oldKind === 'locker') {
-        await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = ${oldResourceId}`);
-      } else {
-        await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = NOW(), updated_at = NOW() WHERE id = ${oldResourceId}`);
-      }
+      await releaseOldResource(tx, oldResourceId);
     }
 
     await tx.execute(sql`UPDATE inventory_resources SET assigned_to_customer_id = (SELECT customer_id FROM visits WHERE id = ${waitlist.visit_id}), status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = ${newRoomId}`);

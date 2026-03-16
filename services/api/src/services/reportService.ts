@@ -111,7 +111,7 @@ export async function getHourlyHeatmap(weeks: number) {
   const revenueMap = new Map(revenue.rows.map((r) => [`${r.dow}-${r.hour}`, Number.parseFloat(r.total)]));
   const activityGrid: { day: string; hour: number; count: number }[] = [];
   const revenueGrid: { day: string; hour: number; total: number }[] = [];
-  for (let dow = 0; dow < 7; dow++) for (let hour = 0; hour < 24; hour++) { const key = `${dow}-${hour}`; activityGrid.push({ day: dayNames[dow]!, hour, count: activityMap.get(key) ?? 0 }); revenueGrid.push({ day: dayNames[dow]!, hour, total: revenueMap.get(key) ?? 0 }); }
+  for (let dow = 0; dow < 7; dow++) for (let hour = 0; hour < 24; hour++) { const key = `${dow}-${hour}`; activityGrid.push({ day: dayNames[dow] || 'Unknown', hour, count: activityMap.get(key) ?? 0 }); revenueGrid.push({ day: dayNames[dow] || 'Unknown', hour, total: revenueMap.get(key) ?? 0 }); }
   return { weeks: clampedWeeks, activityGrid, revenueGrid };
 }
 

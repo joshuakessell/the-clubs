@@ -39,40 +39,38 @@ export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
       let body: ResolveKeyInput;
       try {
         body = ResolveKeySchema.parse(request.body);
-      } catch (err) {
+      } catch {
         return reply.status(400).send({ error: 'Invalid request body' });
       }
 
       try {
-        const tagResult = await db.execute<Record<string, unknown>>(
+        const tagResult = await db.execute<KeyTagRow & Record<string, unknown>>(
           sql`SELECT id, resource_id, tag_code, tag_type, is_active
          FROM key_tags
          WHERE tag_code = ${body.token} AND is_active = true`
         );
 
-        if (tagResult.rows.length === 0) {
+        const tag = tagResult.rows[0];
+        if (!tag) {
           return reply.status(404).send({
             error: 'Key tag not found or inactive',
             token: body.token,
           });
         }
 
-        const tag = tagResult.rows[0] as unknown as KeyTagRow;
-
-        const resourceResult = await db.execute<Record<string, unknown>>(
+        const resourceResult = await db.execute<ResourceRow & Record<string, unknown>>(
           sql`SELECT id, number, kind, tier, status, floor, override_flag
          FROM inventory_resources
          WHERE id = ${tag.resource_id}`
         );
 
-        if (resourceResult.rows.length === 0) {
+        const resource = resourceResult.rows[0];
+        if (!resource) {
           return reply.status(404).send({
             error: 'Resource not found',
             token: body.token,
           });
         }
-
-        const resource = resourceResult.rows[0] as unknown as ResourceRow;
 
         return reply.send({
           resourceId: resource.id,

@@ -35,7 +35,8 @@ export async function resolveActiveSession(
       `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 AND lane_id = $2${lock} LIMIT 1`,
       [opts.sessionId, laneId],
     );
-    if (byId.rows.length > 0) return byId.rows[0]!;
+    const byIdRow = byId.rows[0];
+    if (byIdRow) return byIdRow;
   }
 
   // Fallback: most recent active session on the lane.
@@ -47,11 +48,12 @@ export async function resolveActiveSession(
     [laneId],
   );
 
-  if (result.rows.length === 0) {
+  const row = result.rows[0];
+  if (!row) {
     throw new HttpError(404, 'No active session found');
   }
 
-  return result.rows[0]!;
+  return row;
 }
 
 /**
@@ -84,11 +86,10 @@ export async function validateAndLockResource(
     [resourceId, resourceType],
   );
 
-  if (result.rows.length === 0) {
+  const resource = result.rows[0];
+  if (!resource) {
     throw new HttpError(404, `${label} not found`);
   }
-
-  const resource = result.rows[0]!;
 
   // 2. Room-specific: must be CLEAN.
   if (resourceType === 'room' && resource.status !== 'CLEAN') {

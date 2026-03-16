@@ -77,9 +77,9 @@ function toQueryable() {
       let lastIndex = 0;
       for (const match of queryText.matchAll(regex)) {
         built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        const paramIndex = Number.parseInt(match[1], 10) - 1;
         built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
+        lastIndex = match.index + match[0].length;
       }
       if (lastIndex < queryText.length) {
         built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
@@ -148,12 +148,16 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       const body = request.body as z.infer<typeof CreateProductSchema>;
 
       try {
-        const result = await db.execute<Record<string, unknown>>(
+        const result = await db.execute<ProductRow>(
           sql`INSERT INTO products (name, price, sku, category, sort_order)
            VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category ?? 'RETAIL'}, ${body.sortOrder ?? 0})
            RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`
         );
-        return reply.status(201).send({ product: formatRow(result.rows[0] as unknown as ProductRow) });
+        const row = result.rows[0];
+        if (!row) {
+          return reply.status(500).send({ error: 'Failed to create product' });
+        }
+        return reply.status(201).send({ product: formatRow(row) });
       } catch (error) {
         request.log.error(error, 'Failed to create product');
         return reply.status(500).send({ error: 'Internal server error' });
@@ -211,10 +215,11 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
           `UPDATE products SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`,
           params
         );
-        if (result.rows.length === 0) {
+        const row = result.rows[0];
+        if (!row) {
           return reply.status(404).send({ error: 'Product not found' });
         }
-        return reply.send({ product: formatRow(result.rows[0]!) });
+        return reply.send({ product: formatRow(row) });
       } catch (error) {
         request.log.error(error, 'Failed to update product');
         return reply.status(500).send({ error: 'Internal server error' });
@@ -229,13 +234,14 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
       try {
-        const result = await db.execute<Record<string, unknown>>(
+        const result = await db.execute<ProductRow>(
           sql`UPDATE products SET is_active = FALSE, updated_at = now() WHERE id = ${request.params.id} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`
         );
-        if (result.rows.length === 0) {
+        const row = result.rows[0];
+        if (!row) {
           return reply.status(404).send({ error: 'Product not found' });
         }
-        return reply.send({ product: formatRow(result.rows[0] as unknown as ProductRow) });
+        return reply.send({ product: formatRow(row) });
       } catch (error) {
         request.log.error(error, 'Failed to deactivate product');
         return reply.status(500).send({ error: 'Internal server error' });

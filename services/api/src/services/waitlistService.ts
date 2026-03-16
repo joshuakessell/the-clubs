@@ -22,6 +22,23 @@ interface WaitlistRow {
 
 interface ResourceRow { id: string; number: string; kind: string; tier: string; status: string; assigned_to_customer_id: string | null; }
 
+// ── Helpers ──
+
+function parseValidTiers(desired_tiers: unknown, desired_tier: unknown): string[] {
+  let validTiers: string[];
+  if (Array.isArray(desired_tiers) && desired_tiers.length > 0) {
+    validTiers = desired_tiers.map(String);
+  } else if (typeof desired_tiers === 'string' && desired_tiers.startsWith('{')) {
+    validTiers = desired_tiers.slice(1, -1).split(',').filter(Boolean);
+  } else {
+    validTiers = [];
+  }
+  if (validTiers.length === 0) {
+    validTiers = [String(desired_tier)];
+  }
+  return validTiers;
+}
+
 // ── Service Methods ──
 
 export async function listWaitlistEntries(status?: string, fastifyInstance?: FastifyInstance) {
@@ -81,17 +98,7 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
     const reservationConflict = await tx.execute<{ id: string }>(sql`SELECT id FROM inventory_reservations WHERE resource_type = 'room' AND resource_id = ${roomId} AND released_at IS NULL AND (waitlist_id IS NULL OR waitlist_id <> ${waitlistId}) LIMIT 1`);
     if (reservationConflict.rows.length > 0) throw new HttpError(409, `Room ${room.number} is reserved`);
 
-    let validTiers: string[];
-    if (Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0) {
-      validTiers = waitlist.desired_tiers.map(String);
-    } else if (typeof waitlist.desired_tiers === 'string' && waitlist.desired_tiers.startsWith('{')) {
-      validTiers = waitlist.desired_tiers.slice(1, -1).split(',').filter(Boolean);
-    } else {
-      validTiers = [];
-    }
-    if (validTiers.length === 0) {
-      validTiers = [String(waitlist.desired_tier)];
-    }
+    const validTiers = parseValidTiers(waitlist.desired_tiers, waitlist.desired_tier);
     if (!validTiers.includes(String(room.tier))) throw new HttpError(409, `Resource ${room.number} is ${room.tier}, but waitlist accepts ${validTiers.join(', ')}`);
 
     const reserved = await tx.execute<{ id: string }>(sql`SELECT w.id FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.status = 'OFFERED' AND w.resource_id = ${roomId} AND w.id <> ${waitlistId} AND v.ended_at IS NULL AND cb.ends_at > NOW() LIMIT 1`);
