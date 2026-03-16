@@ -34,25 +34,29 @@ function base64ToUint8Array(base64: string): Uint8Array {
 
 function decodeHtmlEntities(input: string): string {
   // Minimal entity decoding for our agreement content.
-  const replaced = input
-    .replaceAll(/&nbsp;/gi, ' ')
-    .replaceAll(/&amp;/gi, '&')
-    .replaceAll(/&quot;/gi, '"')
-    .replaceAll(/&#39;/g, "'")
-    .replaceAll(/&lt;/gi, '<')
-    .replaceAll(/&gt;/gi, '>');
-
-  // Numeric entities: &#123; or &#x1F600;
-  return replaced.replaceAll(/&#(x?[0-9a-fA-F]+);/g, (_m, raw) => {
-    try {
-      const s = String(raw);
+  // We use a single replace pass to prevent double-unescaping vulnerabilities (CodeQL js/double-escaping).
+  return input.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z0-9]+);/gi, (match, entity) => {
+    if (entity.startsWith('#')) {
+      const s = entity.slice(1);
       const codePoint =
         s.startsWith('x') || s.startsWith('X') ? parseInt(s.slice(1), 16) : parseInt(s, 10);
-      if (!Number.isFinite(codePoint)) return '';
-      return String.fromCodePoint(codePoint);
-    } catch {
-      return '';
+      if (!Number.isFinite(codePoint)) return match;
+      try {
+        return String.fromCodePoint(codePoint);
+      } catch {
+        return match;
+      }
     }
+    const map: Record<string, string> = {
+      nbsp: ' ',
+      amp: '&',
+      quot: '"',
+      apos: "'",
+      lt: '<',
+      gt: '>',
+    };
+    const lower = entity.toLowerCase();
+    return map[lower] ?? match;
   });
 }
 
@@ -75,21 +79,15 @@ function normalizeRuns(runs: InlineRun[]): InlineRun[] {
   return out;
 }
 
-function stripDangerousHtml(html: string): string {
-  // Remove scripts/styles entirely (defense-in-depth, even though agreement HTML is server-controlled).
-  return html
-    .replaceAll(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
-    .replaceAll(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, '')
-    .replaceAll(/<!--[\s\S]*?-->/g, '');
-}
-
 function parseAgreementHtmlToBlocks(inputHtml: string): Block[] {
-  const html = stripDangerousHtml(inputHtml || '');
+  const html = inputHtml || '';
   const tokens = html.split(/(<[^>]+>)/g).filter((t) => t.length > 0);
 
   const blocks: Block[] = [];
   let current: Block | null = null;
   const styleStack: InlineStyle[] = [{ bold: false, italic: false }];
+  let inIgnoreContent = 0; // stack count for script/style
+
 
   const currentStyle = (): InlineStyle => styleStack[styleStack.length - 1]!;
 
@@ -138,7 +136,9 @@ function parseAgreementHtmlToBlocks(inputHtml: string): Block[] {
 
   for (const token of tokens) {
     if (!token.startsWith('<')) {
-      appendText(token);
+      if (inIgnoreContent === 0) {
+        appendText(token);
+      }
       continue;
     }
 
@@ -148,6 +148,14 @@ function parseAgreementHtmlToBlocks(inputHtml: string): Block[] {
     const tag = m[1]!.toLowerCase();
     const isEnd = raw.startsWith('</');
     const isSelfClosing = raw.endsWith('/>') || tag === 'br';
+
+    if (tag === 'script' || tag === 'style') {
+      if (!isEnd && !isSelfClosing) inIgnoreContent++;
+      else if (isEnd && inIgnoreContent > 0) inIgnoreContent--;
+      continue;
+    }
+
+    if (inIgnoreContent > 0) continue; // Skip all other tags inside script/style
 
     if (!isEnd) {
       if (tag === 'p' || tag === 'h2' || tag === 'h3') {
