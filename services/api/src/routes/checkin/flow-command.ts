@@ -446,7 +446,7 @@ async function applyFlowPaymentSideEffects(
               [session.customer_id]
             );
             await client.query(
-              `INSERT INTO customer_activity_events (customer_id, type, details_json, occurred_at) VALUES ($1, 'PAST_DUE_PAID', $2, NOW())`,
+              `INSERT INTO customer_activity_events (customer_id, action_type, action_category, source_app, actor_type, summary, metadata, occurred_at) VALUES ($1, 'PAST_DUE_PAID', 'PAYMENT', 'CUSTOMER_KIOSK', 'SYSTEM', 'Past due balance paid', $2, NOW())`,
               [session.customer_id, JSON.stringify({ amount_paid: Number(bal), order_id: session.order_id })]
             );
           }

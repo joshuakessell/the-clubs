@@ -135,4 +135,4 @@ export const LANE_SESSION_COLS = [
   'created_at', 'updated_at',
 ].join(', ');
 
-export const ORDER_COLS = "id, lane_session_id, subtotal, discount, tax, total, payment_method, split_cash_amount, split_credit_amount, square_transaction_id, paid_at, paid_by_staff_id, status, error, quote_json, created_at, updated_at";
+export const ORDER_COLS = "id, lane_session_id, subtotal, discount, tax, total, payment_method, split_cash_amount, split_credit_amount, square_transaction_id, paid_at, paid_by_staff_id, status, failure_reason AS error, quote_json, created_at, updated_at";
