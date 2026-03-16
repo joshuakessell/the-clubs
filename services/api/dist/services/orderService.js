@@ -31,22 +31,29 @@ function buildReceiptNumber(order) {
     return `R-${date}-${order.id}`;
 }
 async function createOrder(input, staffId) {
-    const inserted = await db_1.db
-        .insert(schema_1.orders)
-        .values({
-        customerId: input.customerId ?? null,
-        registerSessionId: input.registerSessionId ?? null,
-        createdByStaffId: staffId,
-        status: 'OPEN',
-        subtotal: '0',
-        discount: '0',
-        tax: '0',
-        tip: '0',
-        total: '0',
-        currency: 'USD',
-        metadataJson: input.metadataJson ?? null,
-    })
-        .returning();
+    let inserted;
+    try {
+        inserted = await db_1.db
+            .insert(schema_1.orders)
+            .values({
+            customerId: input.customerId ?? null,
+            registerSessionId: input.registerSessionId ?? null,
+            createdByStaffId: staffId,
+            status: 'OPEN',
+            subtotal: '0',
+            discount: '0',
+            tax: '0',
+            tip: '0',
+            total: '0',
+            currency: 'USD',
+            metadataJson: input.metadataJson ?? null,
+        })
+            .returning();
+    }
+    catch (e) {
+        console.error('DATABASE INSERT ERROR:', e, { code: e.code, detail: e.detail });
+        throw e;
+    }
     const row = inserted[0];
     return { orderId: row.id, status: row.status, createdAt: row.createdAt.toISOString(), customerId: row.customerId, registerSessionId: row.registerSessionId };
 }

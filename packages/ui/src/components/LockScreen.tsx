@@ -23,6 +23,8 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
   const [isLoading, setIsLoading] = useState(false);
   const submittingRef = useRef(false);
 
+  const [isCatchingUp, setIsCatchingUp] = useState(false);
+
   // Staff picker state (select-only, no search)
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -109,6 +111,17 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
     const el = document.getElementById(`staff-option-${highlightedIndex}`);
     el?.scrollIntoView({ block: 'nearest' });
   }, [highlightedIndex]);
+
+  const handleCatchUp = async () => {
+    setIsCatchingUp(true);
+    try {
+      await fetch(getApiUrl('/api/v1/admin/demo-catchup'), { method: 'POST' });
+    } catch {
+      // silently fail
+    } finally {
+      setIsCatchingUp(false);
+    }
+  };
 
   // --- PIN digit handlers ---
   const clearPin = useCallback(() => {
@@ -433,6 +446,28 @@ style = {{
             )}
 </form>
   </div>
+
+  {/* Demo Catch-up Button */}
+  {typeof window !== 'undefined' && window.location.hostname.includes('demo') && (
+    <div className="absolute bottom-6 left-6">
+      <button
+        type="button"
+        onClick={() => void handleCatchUp()}
+        disabled={isCatchingUp}
+        className="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors duration-200"
+        style={{
+          backgroundColor: 'var(--color-surface-raised)',
+          borderColor: 'var(--color-border-subtle)',
+          color: 'var(--color-text-muted)',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+      >
+        {isCatchingUp ? 'Catching up...' : 'Catch-up Demo Data'}
+      </button>
+    </div>
+  )}
+
   </div>
 
 {/* Right: Branding Panel — matches Kiosk idle screen */}

@@ -180,7 +180,7 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
               <span className="text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                 Card Type
               </span>
-              <p><Badge color="primary" variant="light" size="sm">{customer.membershipCardType.replace(/_/g, ' ')}</Badge></p>
+              <p><Badge color="primary" variant="light" size="sm">{customer.membershipCardType.replaceAll('_', ' ')}</Badge></p>
             </div>
           )}
         </div>
@@ -211,36 +211,36 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
           <label className="flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 text-xs font-semibold"
             style={{ borderColor: isImportant ? 'var(--color-status-warning)' : 'var(--color-border-default)', color: isImportant ? 'var(--color-status-warning)' : 'var(--color-text-muted)' }}>
             <input type="checkbox" checked={isImportant} onChange={(e) => setIsImportant(e.target.checked)} className="sr-only" />
-            ⚠️ Important
+            <span>⚠️ Important</span>
           </label>
           <Button size="sm" onClick={() => void handleAddNote()} disabled={addingNote || !newNote.trim()}>
             {addingNote ? 'Adding…' : 'Add'}
           </Button>
         </div>
 
-        {notesLoading ? (
-          <div className="py-2 text-center text-sm text-(--color-text-muted)">Loading notes…</div>
-        ) : notes.length === 0 ? (
-          <div className="py-2 text-center text-sm text-(--color-text-muted)">No notes yet</div>
-        ) : (
-          <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
-            {notes.map((n) => (
-              <div key={n.id} className="rounded-lg border px-3 py-2"
-                style={{
-                  borderColor: n.isImportant ? 'color-mix(in oklch, var(--color-status-warning) 30%, var(--color-border-default))' : 'var(--color-border-subtle)',
-                  backgroundColor: n.isImportant ? 'color-mix(in oklch, var(--color-status-warning) 4%, transparent)' : 'transparent',
-                }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-(--color-text-muted)">
-                    {n.createdByStaffName} · {formatDate(n.createdAt)}
-                  </span>
-                  {n.isImportant && <Badge color="warning" variant="light" size="sm">Important</Badge>}
+        {(() => {
+          if (notesLoading) return <div className="py-2 text-center text-sm text-(--color-text-muted)">Loading notes…</div>;
+          if (notes.length === 0) return <div className="py-2 text-center text-sm text-(--color-text-muted)">No notes yet</div>;
+          return (
+            <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto">
+              {notes.map((n) => (
+                <div key={n.id} className="rounded-lg border px-3 py-2"
+                  style={{
+                    borderColor: n.isImportant ? 'color-mix(in oklch, var(--color-status-warning) 30%, var(--color-border-default))' : 'var(--color-border-subtle)',
+                    backgroundColor: n.isImportant ? 'color-mix(in oklch, var(--color-status-warning) 4%, transparent)' : 'transparent',
+                  }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-(--color-text-muted)">
+                      {n.createdByStaffName} · {formatDate(n.createdAt)}
+                    </span>
+                    {n.isImportant && <Badge color="warning" variant="light" size="sm">Important</Badge>}
+                  </div>
+                  <p className="mt-0.5 text-sm text-(--color-text-primary)">{n.note}</p>
                 </div>
-                <p className="mt-0.5 text-sm text-(--color-text-primary)">{n.note}</p>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Visit History */}
@@ -249,85 +249,92 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
           Visit History ({visits.length})
         </h4>
 
-        {loading ? (
-          <div className="py-4 text-center text-sm text-(--color-text-muted)">Loading visits…</div>
-        ) : error ? (
-          <div className="rounded-lg border px-3 py-2 text-sm" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
-            {error}
-          </div>
-        ) : visits.length === 0 ? (
-          <div className="py-4 text-center text-sm text-(--color-text-muted)">No visit history</div>
-        ) : (
-          <div className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border-subtle)' }}>
-            <table className="w-full">
-              <thead>
-                <tr className="border-b" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-overlay)' }}>
-                  {['Date', 'Check-in', 'Check-out', 'Type', 'Room/Locker', 'Total', 'Agreement'].map((h) => (
-                    <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {visits.map((visit) => {
-                  const block = visit.checkinBlocks[0]; // Primary checkin block
-                  if (!block) return null;
-                  const total = visit.checkinBlocks.reduce((sum, b) => sum + (b.paymentTotal ?? 0), 0);
-                  return (
-                    <tr
-                      key={visit.visitId}
-                      className="border-b transition"
-                      style={{ borderColor: 'var(--color-border-subtle)' }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                    >
-                      <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-primary)">
-                        {formatDate(visit.visitStartedAt)}
-                      </td>
-                      <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-secondary)">
-                        {formatTime(block.startsAt)}
-                      </td>
-                      <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-secondary)">
-                        {visit.visitEndedAt ? formatTime(visit.visitEndedAt) : '—'}
-                      </td>
-                      <td className="px-3 py-2 text-sm text-(--color-text-secondary)">
-                        {block.rentalType}
-                      </td>
-                      <td className="px-3 py-2 text-sm font-mono text-(--color-text-secondary)">
-                        {block.resourceNumber ?? '—'}
-                      </td>
-                      <td className="px-3 py-2 text-sm font-bold tabular-nums text-(--color-accent-primary)">
-                        {total > 0 ? `$${total.toFixed(2)}` : '—'}
-                      </td>
-                      <td className="px-3 py-2">
-                        {block.hasPdf ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleDownloadPdf(block.checkinBlockId)}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition hover:opacity-80"
-                            style={{
-                              backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 8%, transparent)',
-                              color: 'var(--color-accent-primary)',
-                              border: '1px solid color-mix(in oklch, var(--color-accent-primary) 20%, transparent)',
-                            }}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                              <polyline points="7 10 12 15 17 10" />
-                              <line x1="12" y1="15" x2="12" y2="3" />
-                            </svg>
-                            PDF
-                          </button>
-                        ) : (
-                          <span className="text-[10px] text-(--color-text-muted)">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {(() => {
+          if (loading) {
+            return <div className="py-4 text-center text-sm text-(--color-text-muted)">Loading visits…</div>;
+          }
+          if (error) {
+            return (
+              <div className="rounded-lg border px-3 py-2 text-sm" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 6%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)', color: 'var(--color-status-error)' }}>
+                {error}
+              </div>
+            );
+          }
+          if (visits.length === 0) {
+            return <div className="py-4 text-center text-sm text-(--color-text-muted)">No visit history</div>;
+          }
+          return (
+            <div className="overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border-subtle)' }}>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-overlay)' }}>
+                    {['Date', 'Check-in', 'Check-out', 'Type', 'Room/Locker', 'Total', 'Agreement'].map((h) => (
+                      <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visits.map((visit) => {
+                    const block = visit.checkinBlocks[0]; // Primary checkin block
+                    if (!block) return null;
+                    const total = visit.checkinBlocks.reduce((sum, b) => sum + (b.paymentTotal ?? 0), 0);
+                    return (
+                      <tr
+                        key={visit.visitId}
+                        className="border-b transition"
+                        style={{ borderColor: 'var(--color-border-subtle)' }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                      >
+                        <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-primary)">
+                          {formatDate(visit.visitStartedAt)}
+                        </td>
+                        <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-secondary)">
+                          {formatTime(block.startsAt)}
+                        </td>
+                        <td className="px-3 py-2 text-sm tabular-nums text-(--color-text-secondary)">
+                          {visit.visitEndedAt ? formatTime(visit.visitEndedAt) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-sm text-(--color-text-secondary)">
+                          {block.rentalType}
+                        </td>
+                        <td className="px-3 py-2 text-sm font-mono text-(--color-text-secondary)">
+                          {block.resourceNumber ?? '—'}
+                        </td>
+                        <td className="px-3 py-2 text-sm font-bold tabular-nums text-(--color-accent-primary)">
+                          {total > 0 ? `$${total.toFixed(2)}` : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          {block.hasPdf ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleDownloadPdf(block.checkinBlockId)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider transition hover:opacity-80"
+                              style={{
+                                backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 8%, transparent)',
+                                color: 'var(--color-accent-primary)',
+                                border: '1px solid color-mix(in oklch, var(--color-accent-primary) 20%, transparent)',
+                              }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                <polyline points="7 10 12 15 17 10" />
+                                <line x1="12" y1="15" x2="12" y2="3" />
+                              </svg>
+                              PDF
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-(--color-text-muted)">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -380,81 +387,88 @@ export function CustomersView() {
         </div>
       )}
 
-      {!query ? (
-        <div className="rounded-xl border p-12 text-center" style={{ borderColor: 'var(--color-border-default)' }}>
-          <p className="text-sm text-(--color-text-muted)">Enter a name or membership number to search</p>
-        </div>
-      ) : loading ? (
-        <ViewSpinner />
-      ) : (
-        <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
-          <table className="w-full">
-            <thead>
-              <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
-                {['Name', 'DOB', 'Membership #', 'Status', 'Last Visit', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {customers.map((c) => {
-                const isExpanded = expandedId === c.id;
-                const membership = formatMembership(c.membershipCardType, c.membershipValidUntil);
-                return (
-                  <tr key={c.id} className="group" style={{ verticalAlign: 'top' }}>
-                    <td colSpan={6} className="p-0">
-                      {/* Summary row */}
-                      <div
-                        className="flex cursor-pointer items-center border-b transition"
-                        style={{ borderColor: 'var(--color-border-subtle)' }}
-                        onClick={() => setExpandedId(isExpanded ? null : c.id)}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                      >
-                        <div className="flex-1 px-4 py-3 text-sm font-semibold text-(--color-accent-primary)">{c.name}</div>
-                        <div className="w-[100px] px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">{c.dob ?? '—'}</div>
-                        <div className="w-[120px] px-4 py-3 text-sm font-mono text-(--color-text-secondary)">{c.membershipNumber ?? '—'}</div>
-                        <div className="w-[120px] px-4 py-3"><Badge color={membership.color} variant="light" size="sm">{membership.label}</Badge></div>
-                        <div className="w-[110px] px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">
-                          {c.lastVisit ? formatDate(c.lastVisit) : '—'}
-                        </div>
-                        <div className="w-[110px] px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            {c.pastDueBalance > 0 && <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); void handleWaive(c.id); }}>Waive</Button>}
-                            <svg
-                              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                              style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
-                            >
-                              <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Expanded detail */}
-                      {isExpanded && (
-                        <div
-                          className="border-b px-4 py-4"
-                          style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-base)' }}
+      {(() => {
+        if (!query) {
+          return (
+            <div className="rounded-xl border p-12 text-center" style={{ borderColor: 'var(--color-border-default)' }}>
+              <p className="text-sm text-(--color-text-muted)">Enter a name or membership number to search</p>
+            </div>
+          );
+        }
+        if (loading) {
+          return <ViewSpinner />;
+        }
+        return (
+          <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+            <table className="w-full">
+              <thead>
+                <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
+                  {['Name', 'DOB', 'Membership #', 'Status', 'Last Visit', 'Actions'].map((h) => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {customers.map((c) => {
+                  const isExpanded = expandedId === c.id;
+                  const membership = formatMembership(c.membershipCardType, c.membershipValidUntil);
+                  return (
+                    <tr key={c.id} className="group" style={{ verticalAlign: 'top' }}>
+                      <td colSpan={6} className="p-0">
+                        {/* Summary row */}
+                        <button
+                          type="button"
+                          className="flex w-full cursor-pointer items-center border-b text-left transition"
+                          style={{ borderColor: 'var(--color-border-subtle)', background: 'none' }}
+                          onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
                         >
-                          <CustomerDetail customer={c} />
-                        </div>
-                      )}
+                          <div className="flex-1 px-4 py-3 text-sm font-semibold text-(--color-accent-primary)">{c.name}</div>
+                          <div className="w-[100px] px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">{c.dob ?? '—'}</div>
+                          <div className="w-[120px] px-4 py-3 text-sm font-mono text-(--color-text-secondary)">{c.membershipNumber ?? '—'}</div>
+                          <div className="w-[120px] px-4 py-3"><Badge color={membership.color} variant="light" size="sm">{membership.label}</Badge></div>
+                          <div className="w-[110px] px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">
+                            {c.lastVisit ? formatDate(c.lastVisit) : '—'}
+                          </div>
+                          <div className="w-[110px] px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              {c.pastDueBalance > 0 && <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); void handleWaive(c.id); }}>Waive</Button>}
+                              <svg
+                                width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                                style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
+                              >
+                                <polyline points="6 9 12 15 18 9" />
+                              </svg>
+                            </div>
+                          </div>
+                        </button>
+
+                        {/* Expanded detail */}
+                        {isExpanded && (
+                          <div
+                            className="border-b px-4 py-4"
+                            style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-base)' }}
+                          >
+                            <CustomerDetail customer={c} />
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {customers.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
+                      No customers found
                     </td>
                   </tr>
-                );
-              })}
-              {customers.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
-                    No customers found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+                )}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
     </div>
   );
 }

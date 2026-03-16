@@ -1,4 +1,4 @@
-import { pgTable, index, foreignKey, uuid, timestamp, check, varchar, date, text, numeric, unique, serial, boolean, integer, bigint, jsonb, uniqueIndex, type AnyPgColumn, inet, time, primaryKey, pgEnum, customType } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, uuid, timestamp, check, varchar, date, text, numeric, unique, serial, boolean, integer, bigint, jsonb, uniqueIndex, inet, time, primaryKey, pgEnum, customType } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
 export const auditAction = pgEnum("audit_action", ['CREATE', 'UPDATE', 'DELETE', 'STATUS_CHANGE', 'ASSIGN', 'RELEASE', 'OVERRIDE', 'CHECK_IN', 'CHECK_OUT', 'UPGRADE_DISCLAIMER', 'STAFF_WEBAUTHN_ENROLLED', 'STAFF_LOGIN_WEBAUTHN', 'STAFF_LOGIN_PIN', 'STAFF_LOGOUT', 'STAFF_WEBAUTHN_REVOKED', 'STAFF_PIN_RESET', 'STAFF_REAUTH_REQUIRED', 'STAFF_CREATED', 'STAFF_UPDATED', 'STAFF_ACTIVATED', 'STAFF_DEACTIVATED', 'REGISTER_SIGN_IN', 'REGISTER_SIGN_OUT', 'REGISTER_FORCE_SIGN_OUT', 'WAITLIST_CREATED', 'WAITLIST_CANCELLED', 'WAITLIST_OFFERED', 'WAITLIST_COMPLETED', 'UPGRADE_STARTED', 'UPGRADE_PAID', 'UPGRADE_COMPLETED', 'FINAL_EXTENSION_STARTED', 'FINAL_EXTENSION_PAID', 'FINAL_EXTENSION_COMPLETED', 'STAFF_REAUTH_PIN', 'STAFF_REAUTH_WEBAUTHN', 'ROOM_STATUS_CHANGE', 'SHIFT_UPDATED', 'TIMECLOCK_ADJUSTED', 'TIMECLOCK_CLOSED', 'DOCUMENT_UPLOADED', 'TIME_OFF_REQUESTED', 'TIME_OFF_APPROVED', 'TIME_OFF_DENIED', 'SHIFT_CREATED', 'SHIFT_CANCELED'])
@@ -813,6 +813,8 @@ export const orders = pgTable("orders", {
 	total: numeric("total", { precision: 10, scale: 2 }).notNull(),
 	currency: varchar({ length: 3 }).default('USD').notNull(),
 	paymentMethod: text("payment_method"),
+	splitCashAmount: numeric("split_cash_amount", { precision: 10, scale: 2 }),
+	splitCreditAmount: numeric("split_credit_amount", { precision: 10, scale: 2 }),
 	squareTransactionId: varchar("square_transaction_id", { length: 255 }),
 	paidAt: timestamp("paid_at", { withTimezone: true, mode: 'date' }),
 	paidByStaffId: uuid("paid_by_staff_id"),
@@ -856,7 +858,7 @@ export const orders = pgTable("orders", {
 			name: "orders_visit_id_fkey"
 		}).onDelete("set null"),
 	// FK: laneSessionId → lane_sessions.id (defined at DB level, omitted to avoid circular TS ref)
-	check("orders_payment_method_check", sql`payment_method IS NULL OR payment_method = ANY (ARRAY['CASH'::text, 'CREDIT'::text])`),
+	check("orders_payment_method_check", sql`payment_method IS NULL OR payment_method = ANY (ARRAY['CASH'::text, 'CREDIT'::text, 'SPLIT'::text])`),
 ]);
 
 export const orderLineItems = pgTable("order_line_items", {

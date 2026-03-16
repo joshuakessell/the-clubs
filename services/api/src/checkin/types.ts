@@ -96,13 +96,15 @@ export interface OrderRow {
   total: number | string;
   status: string;
   quote_json: unknown;
-  payment_method?: string;
-  failure_reason?: string;
-  failure_at?: Date | null;
-  register_number?: number | null;
+  payment_method: string | null;
+  split_cash_amount: number | null;
+  split_credit_amount: number | null;
+  error?: string | null;
   paid_by_staff_id?: string | null;
-  square_transaction_id?: string | null;
+  square_transaction_id: string | null;
   paid_at?: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 
@@ -133,9 +135,4 @@ export const LANE_SESSION_COLS = [
   'created_at', 'updated_at',
 ].join(', ');
 
-export const ORDER_COLS = [
-  'id', 'lane_session_id', 'visit_id', 'subtotal', 'discount', 'tax', 'tip',
-  'total', 'status', 'quote_json', 'payment_method', 'failure_reason', 'failure_at',
-  'register_number', 'paid_by_staff_id', 'square_transaction_id', 'paid_at',
-].join(', ');
-
+export const ORDER_COLS = "id, lane_session_id, subtotal, discount, tax, total, payment_method, split_cash_amount, split_credit_amount, square_transaction_id, paid_at, paid_by_staff_id, status, error, quote_json, created_at, updated_at";

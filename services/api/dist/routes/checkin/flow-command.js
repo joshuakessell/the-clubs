@@ -311,8 +311,18 @@ async function applyFlowPaymentSideEffects(client, params) {
         if (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT') {
             const intentStatusRes = await client.query(`SELECT status FROM orders WHERE id = $1`, [session.order_id]);
             if (intentStatusRes.rows[0]?.status !== 'PAID') {
-                await client.query(`UPDATE orders SET status = 'PAID', payment_method = $1, paid_at = NOW(), updated_at = NOW() WHERE id = $2`, [requestedMethod, session.order_id]);
+                const splitCash = payload?.['splitCashAmount'] ? Number(payload['splitCashAmount']) : null;
+                const splitCredit = payload?.['splitCreditAmount'] ? Number(payload['splitCreditAmount']) : null;
+                await client.query(`UPDATE orders SET status = 'PAID', payment_method = $1, split_cash_amount = $2, split_credit_amount = $3, paid_at = NOW(), updated_at = NOW() WHERE id = $4`, [requestedMethod, splitCash, splitCredit, session.order_id]);
                 await client.query(`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`, [sessionId]);
+                if (session.customer_id && session.past_due_bypassed !== true) {
+                    const pastDueRes = await client.query(`SELECT past_due_balance FROM customers WHERE id = $1 FOR UPDATE`, [session.customer_id]);
+                    const bal = pastDueRes.rows[0]?.past_due_balance;
+                    if (bal && Number(bal) > 0) {
+                        await client.query(`UPDATE customers SET past_due_balance = 0, updated_at = NOW() WHERE id = $1`, [session.customer_id]);
+                        await client.query(`INSERT INTO customer_activity_events (customer_id, type, details_json, occurred_at) VALUES ($1, 'PAST_DUE_PAID', $2, NOW())`, [session.customer_id, JSON.stringify({ amount_paid: Number(bal), order_id: session.order_id })]);
+                    }
+                }
             }
         }
     }

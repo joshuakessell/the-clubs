@@ -26,18 +26,20 @@ async function resolveActiveSession(client, laneId, opts) {
     // If sessionId is given, try explicit lookup first.
     if (opts?.sessionId) {
         const byId = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 AND lane_id = $2${lock} LIMIT 1`, [opts.sessionId, laneId]);
-        if (byId.rows.length > 0)
-            return byId.rows[0];
+        const byIdRow = byId.rows[0];
+        if (byIdRow)
+            return byIdRow;
     }
     // Fallback: most recent active session on the lane.
     const result = await client.query(`SELECT ${types_1.LANE_SESSION_COLS} FROM lane_sessions
      WHERE lane_id = $1 AND status IN (${statuses})
      ORDER BY created_at DESC
      LIMIT 1${lock}`, [laneId]);
-    if (result.rows.length === 0) {
+    const row = result.rows[0];
+    if (!row) {
         throw new HttpError_1.HttpError(404, 'No active session found');
     }
-    return result.rows[0];
+    return row;
 }
 /**
  * Validate and lock a resource (room or locker) for assignment to a lane session.
@@ -55,10 +57,10 @@ async function validateAndLockResource(client, params) {
         : 'id, number, status, assigned_to_customer_id';
     // 1. Lock the resource row.
     const result = await client.query(`SELECT ${selectCols} FROM ${table} WHERE id = $1 AND kind = $2 FOR UPDATE`, [resourceId, resourceType]);
-    if (result.rows.length === 0) {
+    const resource = result.rows[0];
+    if (!resource) {
         throw new HttpError_1.HttpError(404, `${label} not found`);
     }
-    const resource = result.rows[0];
     // 2. Room-specific: must be CLEAN.
     if (resourceType === 'room' && resource.status !== 'CLEAN') {
         throw new HttpError_1.HttpError(400, `${label} ${resource.number} is not available (status: ${resource.status})`);

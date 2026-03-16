@@ -263,7 +263,7 @@ export async function buildFullSessionUpdatedPayload(
     paymentMethod: (paymentIntent?.payment_method as 'CASH' | 'CREDIT' | undefined) || undefined,
     paymentTotal,
     paymentLineItems,
-    paymentFailureReason: paymentIntent?.failure_reason || undefined,
+    paymentFailureReason: paymentIntent?.error || undefined,
     agreementSigned: blockForSession ? !!blockForSession.agreement_signed : false,
     agreementBypassPending: !!session.agreement_bypass_pending,
     agreementSignedMethod: parseAgreementMethod(session.agreement_signed_method),

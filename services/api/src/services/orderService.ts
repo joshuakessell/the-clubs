@@ -47,22 +47,28 @@ function buildReceiptNumber(order: { created_at: Date; id: string }): string {
 export interface CreateOrderInput { customerId?: string | null; registerSessionId?: string | null; metadataJson?: Record<string, unknown> | null; }
 
 export async function createOrder(input: CreateOrderInput, staffId: string) {
-  const inserted = await db
-    .insert(orders)
-    .values({
-      customerId: input.customerId ?? null,
-      registerSessionId: input.registerSessionId ?? null,
-      createdByStaffId: staffId,
-      status: 'OPEN',
-      subtotal: '0',
-      discount: '0',
-      tax: '0',
-      tip: '0',
-      total: '0',
-      currency: 'USD',
-      metadataJson: input.metadataJson ?? null,
-    })
-    .returning();
+  let inserted;
+  try {
+    inserted = await db
+      .insert(orders)
+      .values({
+        customerId: input.customerId ?? null,
+        registerSessionId: input.registerSessionId ?? null,
+        createdByStaffId: staffId,
+        status: 'OPEN',
+        subtotal: '0',
+        discount: '0',
+        tax: '0',
+        tip: '0',
+        total: '0',
+        currency: 'USD',
+        metadataJson: input.metadataJson ?? null,
+      })
+      .returning();
+  } catch (e: any) {
+    console.error('DATABASE INSERT ERROR:', e, { code: e.code, detail: e.detail });
+    throw e;
+  }
 
   const row = inserted[0]!;
   return { orderId: row.id, status: row.status, createdAt: row.createdAt.toISOString(), customerId: row.customerId, registerSessionId: row.registerSessionId };

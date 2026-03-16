@@ -161,13 +161,11 @@ export function MonitorView() {
                 {rooms.map((room) => {
                   const badge = roomBadge(room);
                   return (
-                    <div key={room.resourceId} className="rounded-xl border p-4 transition"
+                    <div key={room.resourceId} className="rounded-xl border p-4 transition hover:![border-color:var(--color-accent-primary)]"
                       style={{
                         backgroundColor: 'var(--color-surface-raised)',
                         borderColor: roomCardBorder(room),
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'var(--color-accent-primary)'; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = roomCardBorder(room); }}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -224,17 +222,16 @@ export function MonitorView() {
               <div className="grid grid-cols-3 gap-3">
                 {kioskSessions.map((ks) => {
                   const elapsed = Math.round((now - new Date(ks.createdAt).getTime()) / 60_000);
-                  const statusColor = ks.status === 'AWAITING_ROOM' ? 'warning'
-                    : ks.status === 'PAYMENT' ? 'primary'
-                    : ks.status === 'AGREEMENT' ? 'primary'
-                    : 'gray';
+                  let statusColor: 'warning' | 'primary' | 'gray' = 'gray';
+                  if (ks.status === 'AWAITING_ROOM') statusColor = 'warning';
+                  else if (ks.status === 'PAYMENT' || ks.status === 'AGREEMENT') statusColor = 'primary';
                   return (
                     <div key={ks.id} className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-(--color-text-primary)">
                           {ks.customerName ?? 'Guest'}
                         </span>
-                        <Badge color={statusColor} variant="light" size="sm">{ks.status.replace(/_/g, ' ')}</Badge>
+                        <Badge color={statusColor} variant="light" size="sm">{ks.status.replaceAll('_', ' ')}</Badge>
                       </div>
                       <div className="mt-2 flex flex-col gap-0.5 text-[10px] text-(--color-text-muted)">
                         {ks.desiredRentalType && <span>Type: {ks.desiredRentalType}</span>}
@@ -299,7 +296,7 @@ export function MonitorView() {
 
 /* ── Stat Card ─────────────────────────────────────────────────── */
 
-function StatCard({ label, value, color }: { label: string; value: string | number; color: string }) {
+function StatCard({ label, value, color }: Readonly<{ label: string; value: string | number; color: string }>) {
   return (
     <div className="rounded-lg border px-4 py-3 border-(--color-border-default)">
       <p className="text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)">{label}</p>

@@ -16,6 +16,23 @@ const drizzle_orm_1 = require("drizzle-orm");
 const auditLog_1 = require("../audit/auditLog");
 const expireWaitlist_1 = require("../waitlist/expireWaitlist");
 const HttpError_1 = require("../errors/HttpError");
+// ── Helpers ──
+function parseValidTiers(desired_tiers, desired_tier) {
+    let validTiers;
+    if (Array.isArray(desired_tiers) && desired_tiers.length > 0) {
+        validTiers = desired_tiers.map(String);
+    }
+    else if (typeof desired_tiers === 'string' && desired_tiers.startsWith('{')) {
+        validTiers = desired_tiers.slice(1, -1).split(',').filter(Boolean);
+    }
+    else {
+        validTiers = [];
+    }
+    if (validTiers.length === 0) {
+        validTiers = [String(desired_tier)];
+    }
+    return validTiers;
+}
 // ── Service Methods ──
 async function listWaitlistEntries(status, fastifyInstance) {
     // Best-effort: expire stale entries first
@@ -67,19 +84,7 @@ async function offerUpgrade(waitlistId, roomId, staffId) {
         const reservationConflict = await tx.execute((0, drizzle_orm_1.sql) `SELECT id FROM inventory_reservations WHERE resource_type = 'room' AND resource_id = ${roomId} AND released_at IS NULL AND (waitlist_id IS NULL OR waitlist_id <> ${waitlistId}) LIMIT 1`);
         if (reservationConflict.rows.length > 0)
             throw new HttpError_1.HttpError(409, `Room ${room.number} is reserved`);
-        let validTiers;
-        if (Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0) {
-            validTiers = waitlist.desired_tiers.map(String);
-        }
-        else if (typeof waitlist.desired_tiers === 'string' && waitlist.desired_tiers.startsWith('{')) {
-            validTiers = waitlist.desired_tiers.slice(1, -1).split(',').filter(Boolean);
-        }
-        else {
-            validTiers = [];
-        }
-        if (validTiers.length === 0) {
-            validTiers = [String(waitlist.desired_tier)];
-        }
+        const validTiers = parseValidTiers(waitlist.desired_tiers, waitlist.desired_tier);
         if (!validTiers.includes(String(room.tier)))
             throw new HttpError_1.HttpError(409, `Resource ${room.number} is ${room.tier}, but waitlist accepts ${validTiers.join(', ')}`);
         const reserved = await tx.execute((0, drizzle_orm_1.sql) `SELECT w.id FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.status = 'OFFERED' AND w.resource_id = ${roomId} AND w.id <> ${waitlistId} AND v.ended_at IS NULL AND cb.ends_at > NOW() LIMIT 1`);

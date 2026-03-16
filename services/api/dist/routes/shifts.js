@@ -29,11 +29,15 @@ async function shiftsRoutes(fastify) {
         }
     });
     fastify.patch('/v1/admin/shifts/:shiftId', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        if (!request.staff)
+            return reply.status(401).send({ error: 'Unauthorized' });
         const body = UpdateShiftSchema.parse(request.body);
         const result = await (0, shiftService_1.updateShift)(request.params.shiftId, body, request.staff.staffId);
         return reply.send({ id: result.id, employeeId: result.employee_id, employeeName: result.employee_name, shiftCode: result.shift_code, scheduledStart: result.starts_at.toISOString(), scheduledEnd: result.ends_at.toISOString(), status: result.status, notes: result.notes });
     });
     fastify.post('/v1/admin/shifts', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        if (!request.staff)
+            return reply.status(401).send({ error: 'Unauthorized' });
         const body = CreateShiftSchema.parse(request.body);
         if (new Date(body.starts_at) >= new Date(body.ends_at))
             return reply.status(400).send({ error: 'Shift start must be before end' });
@@ -41,9 +45,13 @@ async function shiftsRoutes(fastify) {
         if (result.conflict)
             return reply.status(409).send({ error: 'Shift overlaps with existing shift', conflictingShiftIds: result.conflictingShiftIds });
         const s = result.shift;
+        if (!s)
+            return reply.status(500).send({ error: 'Failed to create shift' });
         return reply.status(201).send({ id: s.id, employeeId: s.employee_id, employeeName: s.employee_name, shiftCode: s.shift_code, scheduledStart: s.starts_at.toISOString(), scheduledEnd: s.ends_at.toISOString(), color: s.color, templateId: s.template_id, breakMinutes: s.break_minutes, status: s.status, notes: s.notes });
     });
     fastify.delete('/v1/admin/shifts/:shiftId', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        if (!request.staff)
+            return reply.status(401).send({ error: 'Unauthorized' });
         try {
             const result = await (0, shiftService_1.cancelShift)(request.params.shiftId, request.staff.staffId);
             if (!result)
@@ -56,6 +64,8 @@ async function shiftsRoutes(fastify) {
         }
     });
     fastify.post('/v1/admin/shifts/bulk', { preHandler: [middleware_1.requireAuth, middleware_1.requireAdmin] }, async (request, reply) => {
+        if (!request.staff)
+            return reply.status(401).send({ error: 'Unauthorized' });
         const body = BulkCreateSchema.parse(request.body);
         const result = await (0, shiftService_1.bulkCreateShifts)(body.shifts, request.staff.staffId);
         return reply.status(201).send(result);

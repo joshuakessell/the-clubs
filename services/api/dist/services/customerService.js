@@ -47,6 +47,13 @@ function toDateOnlyString(value) {
         return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : null;
     return null;
 }
+function extractDob(dob) {
+    if (dob instanceof Date)
+        return dob.toISOString().slice(0, 10);
+    if (typeof dob === 'string')
+        return dob.slice(0, 10);
+    return null;
+}
 function toIsoTimestamp(value) {
     if (!value)
         return null;
@@ -80,8 +87,13 @@ function normalizePersonNameForMatch(input) {
         return '';
     const tokens = collapsed.split(' ').filter(Boolean);
     const suffixes = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
-    while (tokens.length > 1 && suffixes.has(tokens.at(-1)))
-        tokens.pop();
+    while (tokens.length > 1) {
+        const last = tokens.at(-1);
+        if (last && suffixes.has(last))
+            tokens.pop();
+        else
+            break;
+    }
     return tokens.join(' ');
 }
 function splitNamePartsForMatch(input) {
@@ -91,7 +103,11 @@ function splitNamePartsForMatch(input) {
     const tokens = normalizedFull.split(' ').filter(Boolean);
     if (tokens.length === 0)
         return null;
-    return { normalizedFull, firstToken: tokens[0], lastToken: tokens.at(-1) };
+    const firstToken = tokens[0];
+    const lastToken = tokens.at(-1);
+    if (!firstToken || !lastToken)
+        return null;
+    return { normalizedFull, firstToken, lastToken };
 }
 function scoreNameSimilarity(input, stored) {
     let score = 0;
@@ -172,7 +188,7 @@ async function listCustomerNotes(customerId, opts) {
         sourceApp: r.source_app, note: r.note, isImportant: r.is_important,
         cursor: buildNotesCursor({ createdAt: r.created_at, id: r.id }),
     }));
-    const nextCursor = notes.length === opts.limit ? notes.at(-1).cursor : null;
+    const nextCursor = notes.length === opts.limit ? notes.at(-1)?.cursor ?? null : null;
     return { notes, nextCursor };
 }
 async function createCustomerNote(customerId, noteText, staff, opts) {
@@ -241,6 +257,23 @@ async function getCustomerProfile(customerId) {
         hasEncryptedLookupMarker: Boolean(row.id_scan_hash),
     };
 }
+async function updateExistingCustomerFromScan(row, idScanHash, idScanValue, idExpirationDate, input, idType, idTypeOther) {
+    const needsScanUpdate = !row.id_scan_hash || !row.id_scan_value || row.id_scan_hash !== idScanHash || row.id_scan_value !== idScanValue;
+    if (needsScanUpdate || input.idNumber || input.state || idType || idTypeOther) {
+        await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE customers SET
+       id_scan_hash = CASE WHEN id_scan_hash IS NULL OR id_scan_hash <> ${idScanHash} THEN ${idScanHash} ELSE id_scan_hash END,
+       id_scan_value = CASE WHEN id_scan_value IS NULL OR id_scan_value <> ${idScanValue} THEN ${idScanValue} ELSE id_scan_value END,
+       id_expiration_date = COALESCE(id_expiration_date, ${idExpirationDate}::date),
+       id_number = CASE WHEN ${input.idNumber || null}::text IS NOT NULL THEN ${input.idNumber || null} ELSE id_number END,
+       id_state = CASE WHEN ${input.state || null}::text IS NOT NULL THEN ${input.state || null} ELSE id_state END,
+       id_type = CASE WHEN ${idType}::text IS NOT NULL THEN ${idType} ELSE id_type END,
+       id_type_other = CASE WHEN ${idType}::text IS NOT NULL THEN ${idTypeOther} ELSE id_type_other END,
+       updated_at = NOW() WHERE id = ${row.id}`);
+    }
+    else if (idExpirationDate) {
+        await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE customers SET id_expiration_date = ${idExpirationDate}::date, updated_at = NOW() WHERE id = ${row.id}`);
+    }
+}
 async function createFromScan(input) {
     const idScanValue = normalizeScanText(input.idScanValue || input.rawScanText || '');
     if (!idScanValue)
@@ -267,26 +300,12 @@ async function createFromScan(input) {
         const row = existing.rows[0];
         if (row.banned_until && row.banned_until > new Date())
             throw new HttpError_1.HttpError(403, 'Customer is banned');
-        const needsScanUpdate = !row.id_scan_hash || !row.id_scan_value || row.id_scan_hash !== idScanHash || row.id_scan_value !== idScanValue;
-        if (needsScanUpdate || input.idNumber || input.state || idType || idTypeOther) {
-            await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE customers SET
-         id_scan_hash = CASE WHEN id_scan_hash IS NULL OR id_scan_hash <> ${idScanHash} THEN ${idScanHash} ELSE id_scan_hash END,
-         id_scan_value = CASE WHEN id_scan_value IS NULL OR id_scan_value <> ${idScanValue} THEN ${idScanValue} ELSE id_scan_value END,
-         id_expiration_date = COALESCE(id_expiration_date, ${idExpirationDate}::date),
-         id_number = CASE WHEN ${input.idNumber || null}::text IS NOT NULL THEN ${input.idNumber || null} ELSE id_number END,
-         id_state = CASE WHEN ${input.state || null}::text IS NOT NULL THEN ${input.state || null} ELSE id_state END,
-         id_type = CASE WHEN ${idType}::text IS NOT NULL THEN ${idType} ELSE id_type END,
-         id_type_other = CASE WHEN ${idType}::text IS NOT NULL THEN ${idTypeOther} ELSE id_type_other END,
-         updated_at = NOW() WHERE id = ${row.id}`);
-        }
-        else if (idExpirationDate) {
-            await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE customers SET id_expiration_date = ${idExpirationDate}::date, updated_at = NOW() WHERE id = ${row.id}`);
-        }
+        await updateExistingCustomerFromScan(row, idScanHash, idScanValue, idExpirationDate, input, idType, idTypeOther);
         return {
             created: false,
             customer: {
                 id: row.id, name: row.name,
-                dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob,
+                dob: extractDob(row.dob),
                 membershipNumber: row.membership_number,
             },
         };
@@ -294,9 +313,11 @@ async function createFromScan(input) {
     const inserted = await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO customers (name, dob, id_expiration_date, id_number, id_state, id_type, id_type_other, id_scan_hash, id_scan_value, created_at, updated_at)
      VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${input.idNumber || null}, ${input.state || null}, ${idType}, ${idTypeOther}, ${idScanHash}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`);
     const row = inserted.rows[0];
+    if (!row)
+        throw new HttpError_1.HttpError(500, 'Failed to insert customer');
     return {
         created: true,
-        customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
+        customer: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
     };
 }
 async function matchIdentity(input) {
@@ -313,7 +334,7 @@ async function matchIdentity(input) {
             const row = byIdNumber.rows[0];
             return {
                 matchCount: 1, matchReason: 'ID_NUMBER',
-                bestMatch: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : row.dob, membershipNumber: row.membership_number },
+                bestMatch: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
             };
         }
     }
@@ -329,7 +350,7 @@ async function matchIdentity(input) {
             return null;
         return {
             id: row.id, name: row.name,
-            dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (row.dob),
+            dob: extractDob(row.dob),
             membershipNumber: row.membership_number, score, createdAt: row.created_at,
         };
     })
@@ -364,7 +385,7 @@ async function createManual(input) {
             const row = byIdNumber.rows[0];
             return {
                 created: false, existing: true, matchReason: 'ID_NUMBER',
-                customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
+                customer: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
             };
         }
     }
@@ -374,14 +395,16 @@ async function createManual(input) {
         const row = byNameDob.rows[0];
         return {
             created: false, existing: true, matchReason: 'NAME_DOB',
-            customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
+            customer: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
         };
     }
     const inserted = await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO customers (name, dob, id_expiration_date, id_type, id_type_other, id_scan_value, id_number, created_at, updated_at)
      VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${idType}, ${idTypeOther}, ${idScanValue}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`);
     const row = inserted.rows[0];
+    if (!row)
+        throw new HttpError_1.HttpError(500, 'Failed to create customer');
     return {
         created: true,
-        customer: { id: row.id, name: row.name, dob: row.dob instanceof Date ? row.dob.toISOString().slice(0, 10) : (typeof row.dob === 'string' ? row.dob.slice(0, 10) : null), membershipNumber: row.membership_number },
+        customer: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
     };
 }

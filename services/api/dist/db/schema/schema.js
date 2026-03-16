@@ -781,6 +781,8 @@ exports.orders = (0, pg_core_1.pgTable)("orders", {
     total: (0, pg_core_1.numeric)("total", { precision: 10, scale: 2 }).notNull(),
     currency: (0, pg_core_1.varchar)({ length: 3 }).default('USD').notNull(),
     paymentMethod: (0, pg_core_1.text)("payment_method"),
+    splitCashAmount: (0, pg_core_1.numeric)("split_cash_amount", { precision: 10, scale: 2 }),
+    splitCreditAmount: (0, pg_core_1.numeric)("split_credit_amount", { precision: 10, scale: 2 }),
     squareTransactionId: (0, pg_core_1.varchar)("square_transaction_id", { length: 255 }),
     paidAt: (0, pg_core_1.timestamp)("paid_at", { withTimezone: true, mode: 'date' }),
     paidByStaffId: (0, pg_core_1.uuid)("paid_by_staff_id"),
@@ -824,7 +826,7 @@ exports.orders = (0, pg_core_1.pgTable)("orders", {
         name: "orders_visit_id_fkey"
     }).onDelete("set null"),
     // FK: laneSessionId → lane_sessions.id (defined at DB level, omitted to avoid circular TS ref)
-    (0, pg_core_1.check)("orders_payment_method_check", (0, drizzle_orm_1.sql) `payment_method IS NULL OR payment_method = ANY (ARRAY['CASH'::text, 'CREDIT'::text])`),
+    (0, pg_core_1.check)("orders_payment_method_check", (0, drizzle_orm_1.sql) `payment_method IS NULL OR payment_method = ANY (ARRAY['CASH'::text, 'CREDIT'::text, 'SPLIT'::text])`),
 ]);
 exports.orderLineItems = (0, pg_core_1.pgTable)("order_line_items", {
     id: (0, pg_core_1.uuid)().defaultRandom().primaryKey().notNull(),

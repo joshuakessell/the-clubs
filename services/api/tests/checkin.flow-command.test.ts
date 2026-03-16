@@ -686,4 +686,56 @@ describe('Check-in Flow Commands', () => {
     expect(updated.rows[0]!.order_id).toBeNull();
     expect(updated.rows[0]!.agreement_bypass_pending).toBe(false);
   });
+
+  it('SET_STEP to finalize PAYMENT clears customer past_due_balance', async () => {
+    if (!dbAvailable) return;
+
+    // Give customer a past due balance
+    const customerIdRes = await query<{
+      customer_id: string;
+    }>(`SELECT customer_id FROM lane_sessions WHERE id = $1`, [sessionId]);
+    const cid = customerIdRes.rows[0]!.customer_id;
+
+    await query(`UPDATE customers SET past_due_balance = 50.00 WHERE id = $1`, [cid]);
+
+    // Stage session at AGREEMENT step with an OPEN order
+    await query(
+      `UPDATE lane_sessions
+       SET flow_step = 'AGREEMENT',
+           flow_version = 1,
+           order_id = '11111111-1111-1111-1111-111111111111'
+       WHERE id = $1`,
+      [sessionId]
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/checkin/lane/${laneId}/flow-command`,
+      headers: { 'x-kiosk-token': TEST_KIOSK_TOKEN },
+      payload: {
+        sessionId,
+        commandId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        actor: 'EMPLOYEE',
+        expectedFlowVersion: 1,
+        type: 'SET_STEP',
+        payload: { step: 'AGREEMENT', paymentMethod: 'CASH' },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const customerAfter = await query<{
+      past_due_balance: string;
+    }>(`SELECT past_due_balance FROM customers WHERE id = $1`, [cid]);
+
+    // past_due_balance should be cleared to 0
+    expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(0);
+
+    // Verify customer activity event was logged
+    const events = await query<{ type: string }>(
+      `SELECT type FROM customer_activity_events WHERE customer_id = $1 AND type = 'PAST_DUE_PAID'`,
+      [cid]
+    );
+    expect(events.rows.length).toBe(1);
+  });
 });

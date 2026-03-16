@@ -18,10 +18,12 @@ const club_analytics_1 = require("./admin/club-analytics");
 const products_1 = require("./admin/products");
 const messages_1 = require("./admin/messages");
 const room_management_1 = require("./admin/room-management");
+const demo_catchup_1 = require("./admin/demo-catchup");
 /**
  * Admin-only routes for operations management and metrics.
  */
 async function adminRoutes(fastify) {
+    (0, demo_catchup_1.registerAdminDemoCatchupRoutes)(fastify);
     (0, metrics_1.registerAdminMetricsRoutes)(fastify);
     (0, activity_log_1.registerAdminActivityLogRoutes)(fastify);
     (0, activity_analytics_1.registerAdminActivityAnalyticsRoutes)(fastify);

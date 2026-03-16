@@ -110,8 +110,8 @@ async function getHourlyHeatmap(weeks) {
     for (let dow = 0; dow < 7; dow++)
         for (let hour = 0; hour < 24; hour++) {
             const key = `${dow}-${hour}`;
-            activityGrid.push({ day: dayNames[dow], hour, count: activityMap.get(key) ?? 0 });
-            revenueGrid.push({ day: dayNames[dow], hour, total: revenueMap.get(key) ?? 0 });
+            activityGrid.push({ day: dayNames[dow] || 'Unknown', hour, count: activityMap.get(key) ?? 0 });
+            revenueGrid.push({ day: dayNames[dow] || 'Unknown', hour, total: revenueMap.get(key) ?? 0 });
         }
     return { weeks: clampedWeeks, activityGrid, revenueGrid };
 }

@@ -30,6 +30,17 @@ function toNumber(value) {
     }
     return undefined;
 }
+// ── Helpers ──
+async function releaseOldResource(tx, oldResourceId) {
+    const kindRes = await tx.execute((0, drizzle_orm_1.sql) `SELECT kind FROM inventory_resources WHERE id = ${oldResourceId}`);
+    const oldKind = kindRes.rows[0]?.kind;
+    if (oldKind === 'locker') {
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = ${oldResourceId}`);
+    }
+    else {
+        await tx.execute((0, drizzle_orm_1.sql) `UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = NOW(), updated_at = NOW() WHERE id = ${oldResourceId}`);
+    }
+}
 function isRecord(value) {
     return typeof value === 'object' && value !== null;
 }
@@ -65,33 +76,33 @@ function extractPaymentLineItems(raw) {
 function getRoomTier(roomNumber) {
     return (0, shared_1.getRoomTierFromNumber)(Number.parseInt(roomNumber, 10));
 }
+const UPGRADE_FEES = {
+    LOCKER: { STANDARD: 8, DOUBLE: 17, SPECIAL: 27 },
+    STANDARD: { DOUBLE: 9, SPECIAL: 19 },
+    DOUBLE: { SPECIAL: 9 },
+};
 function calculateUpgradeFee(fromTier, toTier) {
     const from = fromTier === 'LOCKER' || fromTier === 'GYM_LOCKER' ? 'LOCKER' : fromTier;
-    if (from === 'LOCKER') {
-        if (toTier === 'STANDARD') {
-            return 8;
-        }
-        if (toTier === 'DOUBLE') {
-            return 17;
-        }
-        if (toTier === 'SPECIAL') {
-            return 27;
-        }
-    }
-    else if (from === 'STANDARD') {
-        if (toTier === 'DOUBLE') {
-            return 9;
-        }
-        if (toTier === 'SPECIAL') {
-            return 19;
-        }
-    }
-    else if (from === 'DOUBLE') {
-        if (toTier === 'SPECIAL') {
-            return 9;
-        }
-    }
+    const fee = UPGRADE_FEES[from]?.[toTier];
+    if (fee !== undefined)
+        return fee;
     throw new Error(`Invalid upgrade path: ${from} -> ${toTier}`);
+}
+function parseValidTiers(desired_tiers, desired_tier) {
+    let validTiers;
+    if (Array.isArray(desired_tiers) && desired_tiers.length > 0) {
+        validTiers = desired_tiers.map(String);
+    }
+    else if (typeof desired_tiers === 'string' && desired_tiers.startsWith('{')) {
+        validTiers = desired_tiers.slice(1, -1).split(',').filter(Boolean);
+    }
+    else {
+        validTiers = [];
+    }
+    if (validTiers.length === 0) {
+        validTiers = [String(desired_tier)];
+    }
+    return validTiers;
 }
 // ── Constants ──
 exports.UPGRADE_DISCLAIMER_TEXT = `Upgrade availability and time estimates are not guarantees.
@@ -134,24 +145,14 @@ async function fulfillUpgrade(waitlistId, roomId, staff) {
         if (newRoomResult.rows.length === 0)
             throw new HttpError_1.HttpError(404, 'Resource not found');
         const newRoom = newRoomResult.rows[0];
+        if (!newRoom)
+            throw new HttpError_1.HttpError(404, 'Resource not found');
         if (newRoom.status !== 'CLEAN')
             throw new HttpError_1.HttpError(400, `Resource ${newRoom.number} is not available (status: ${newRoom.status})`);
         if (newRoom.assigned_to_customer_id)
             throw new HttpError_1.HttpError(409, `Resource ${newRoom.number} is already assigned`);
         const newRoomTier = getRoomTier(newRoom.number);
-        let validTiers;
-        if (Array.isArray(waitlist.desired_tiers) && waitlist.desired_tiers.length > 0) {
-            validTiers = waitlist.desired_tiers.map(String);
-        }
-        else if (typeof waitlist.desired_tiers === 'string' && waitlist.desired_tiers.startsWith('{')) {
-            validTiers = waitlist.desired_tiers.slice(1, -1).split(',').filter(Boolean);
-        }
-        else {
-            validTiers = [];
-        }
-        if (validTiers.length === 0) {
-            validTiers = [String(waitlist.desired_tier)];
-        }
+        const validTiers = parseValidTiers(waitlist.desired_tiers, waitlist.desired_tier);
         if (!validTiers.includes(newRoomTier))
             throw new HttpError_1.HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but waitlist accepts ${validTiers.join(', ')}`);
         const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
@@ -214,17 +215,11 @@ async function completeUpgrade(waitlistId, orderId, staff) {
         if (newRoomResult.rows.length === 0)
             throw new HttpError_1.HttpError(404, 'New resource not found');
         const newRoom = newRoomResult.rows[0];
+        if (!newRoom)
+            throw new HttpError_1.HttpError(404, 'New resource not found');
         const oldResourceId = block.resource_id;
         if (oldResourceId) {
-            // Determine old resource kind for correct status
-            const kindRes = await tx.execute((0, drizzle_orm_1.sql) `SELECT kind FROM inventory_resources WHERE id = ${oldResourceId}`);
-            const oldKind = kindRes.rows[0]?.kind;
-            if (oldKind === 'locker') {
-                await tx.execute((0, drizzle_orm_1.sql) `UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW() WHERE id = ${oldResourceId}`);
-            }
-            else {
-                await tx.execute((0, drizzle_orm_1.sql) `UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = NOW(), updated_at = NOW() WHERE id = ${oldResourceId}`);
-            }
+            await releaseOldResource(tx, oldResourceId);
         }
         await tx.execute((0, drizzle_orm_1.sql) `UPDATE inventory_resources SET assigned_to_customer_id = (SELECT customer_id FROM visits WHERE id = ${waitlist.visit_id}), status = 'OCCUPIED', last_status_change = NOW(), updated_at = NOW() WHERE id = ${newRoomId}`);
         const actualNewTier = getRoomTier(newRoom.number);

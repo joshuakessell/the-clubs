@@ -131,22 +131,7 @@ export function ChargesTab() {
           Check-In Ledger
         </h3>
 
-        {/* Past due balance */}
-        {(sp.pastDueBalance ?? 0) > 0 && (
-          <div
-            className="flex items-center justify-between rounded-lg border px-4 py-3"
-            style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-error) 20%, transparent)' }}
-          >
-            <span
-              className="text-xs font-bold uppercase tracking-wider text-(--color-status-error)"
-            >
-              Past Due Balance
-            </span>
-            <span className="text-sm font-bold tabular-nums text-(--color-status-error)">
-              ${((sp.pastDueBalance ?? 0)).toFixed(2)}
-            </span>
-          </div>
-        )}
+
 
         {/* Line items */}
         {lineItems.length > 0 ? (
@@ -156,17 +141,26 @@ export function ChargesTab() {
             <div
               className="divide-y divide-(--color-border-subtle)"
             >
-              {lineItems.map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-4 py-2">
-                  <span className="text-sm" style={{ color: 'var(--color-text-secondary)', fontStyle: item.description.includes('(waitlist)') ? 'italic' : undefined }}>
-                    {item.description}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="text-sm font-semibold tabular-nums text-(--color-text-primary)"
-                    >
-                      ${item.amount.toFixed(2)}
+              {lineItems.map((item, i) => {
+                const isPastDue = item.description === 'Past Due Balance';
+                const textColor = isPastDue ? 'var(--color-status-warning)' : 'var(--color-text-secondary)';
+                const amountColor = isPastDue ? 'var(--color-status-warning)' : 'var(--color-text-primary)';
+                const rowStyles = isPastDue ? {
+                  backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 5%, transparent)',
+                } : {};
+
+                return (
+                  <div key={i} className="flex items-center justify-between px-4 py-2" style={rowStyles}>
+                    <span className="text-sm" style={{ color: textColor, fontStyle: item.description.includes('(waitlist)') ? 'italic' : undefined, fontWeight: isPastDue ? 'bold' : undefined }}>
+                      {item.description}
                     </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-sm font-semibold tabular-nums text-(--color-text-primary)"
+                        style={{ color: amountColor }}
+                      >
+                        ${item.amount.toFixed(2)}
+                      </span>
                     {/* Remove button for membership fee items */}
                     {!isMember && isMembershipItem(item) && item.description === '6-Month Membership' && (
                       <button
@@ -182,9 +176,10 @@ export function ChargesTab() {
                         −
                       </button>
                     )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Total */}

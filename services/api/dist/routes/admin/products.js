@@ -117,7 +117,11 @@ function registerAdminProductRoutes(fastify) {
             const result = await db_1.db.execute((0, drizzle_orm_1.sql) `INSERT INTO products (name, price, sku, category, sort_order)
            VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category ?? 'RETAIL'}, ${body.sortOrder ?? 0})
            RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`);
-            return reply.status(201).send({ product: formatRow(result.rows[0]) });
+            const row = result.rows[0];
+            if (!row) {
+                return reply.status(500).send({ error: 'Failed to create product' });
+            }
+            return reply.status(201).send({ product: formatRow(row) });
         }
         catch (error) {
             request.log.error(error, 'Failed to create product');
@@ -163,10 +167,11 @@ function registerAdminProductRoutes(fastify) {
         try {
             const qClient = toQueryable();
             const result = await qClient.query(`UPDATE products SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`, params);
-            if (result.rows.length === 0) {
+            const row = result.rows[0];
+            if (!row) {
                 return reply.status(404).send({ error: 'Product not found' });
             }
-            return reply.send({ product: formatRow(result.rows[0]) });
+            return reply.send({ product: formatRow(row) });
         }
         catch (error) {
             request.log.error(error, 'Failed to update product');
@@ -178,10 +183,11 @@ function registerAdminProductRoutes(fastify) {
             return reply.status(401).send({ error: 'Unauthorized' });
         try {
             const result = await db_1.db.execute((0, drizzle_orm_1.sql) `UPDATE products SET is_active = FALSE, updated_at = now() WHERE id = ${request.params.id} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`);
-            if (result.rows.length === 0) {
+            const row = result.rows[0];
+            if (!row) {
                 return reply.status(404).send({ error: 'Product not found' });
             }
-            return reply.send({ product: formatRow(result.rows[0]) });
+            return reply.send({ product: formatRow(row) });
         }
         catch (error) {
             request.log.error(error, 'Failed to deactivate product');

@@ -137,11 +137,18 @@ async function sessionDocumentsRoutes(fastify) {
             const signatureHashPrefix = hasSignature && signatureMaterial
                 ? node_crypto_1.default.createHash('sha256').update(signatureMaterial).digest('hex').slice(0, 20)
                 : undefined;
+            let createdAtStr = String(r.created_at);
+            if (r.created_at instanceof Date) {
+                createdAtStr = r.created_at.toISOString();
+            }
+            else if (typeof r.created_at === 'string') {
+                createdAtStr = r.created_at;
+            }
             return {
                 id: r.id,
                 doc_type: 'AGREEMENT_PDF',
                 mime_type: 'application/pdf',
-                created_at: r.created_at instanceof Date ? r.created_at.toISOString() : (typeof r.created_at === 'string' ? r.created_at : String(r.created_at)),
+                created_at: createdAtStr,
                 has_signature: hasSignature,
                 signature_hash_prefix: signatureHashPrefix,
                 has_pdf: Boolean(r.agreement_pdf),
