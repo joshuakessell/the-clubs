@@ -3,17 +3,20 @@
  *
  * Extracted from routes/checkin/membership.ts. Zero HTTP/Fastify concepts.
  */
-import { transaction } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import {
   calculatePriceQuote,
   calculateRenewalQuote,
   type PricingInput,
 } from '../pricing/engine';
-import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from '../checkin/types';
-import { LANE_SESSION_COLS, PAYMENT_INTENT_COLS } from '../checkin/types';
+import { type CustomerRow, type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { calculateAge } from '../checkin/identity';
 import { toDate } from '../checkin/utils';
+import { type DrizzleTx } from '../db';
+
+
 
 // ── Error helper ──
 
@@ -27,39 +30,42 @@ class ServiceError extends Error {
 
 // ── Helpers ──
 
-async function findSession(client: import('pg').PoolClient, laneId: string, sessionId?: string) {
-  const sessionResult = sessionId
-    ? await client.query<LaneSessionRow>(`SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 LIMIT 1`, [sessionId])
-    : await client.query<LaneSessionRow>(
-        `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE lane_id = $1
-         AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-         ORDER BY created_at DESC LIMIT 1`,
-        [laneId]
-      );
+async function findSession(tx: DrizzleTx, laneId: string, sessionId?: string) {
+  let sessionResult;
+  if (sessionId) {
+    sessionResult = await tx.execute<Record<string, unknown>>(
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
+    );
+  } else {
+    sessionResult = await tx.execute<Record<string, unknown>>(
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId}
+       AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+       ORDER BY created_at DESC LIMIT 1`
+    );
+  }
   if (sessionResult.rows.length === 0) throw new ServiceError(404, 'No active session found');
-  return sessionResult.rows[0];
+  return sessionResult.rows[0] as unknown as LaneSessionRow;
 }
 
 // ── Quote recomputation (extracted to reduce cognitive complexity) ──
 
 async function recomputeQuoteIfNeeded(
-  client: import('pg').PoolClient,
+  tx: DrizzleTx,
   session: LaneSessionRow,
   intent: 'PURCHASE' | 'RENEW' | 'NONE',
 ) {
-  if (!session.payment_intent_id || !session.selection_confirmed) return;
+  if (!session.order_id || !session.selection_confirmed) return;
 
-  const intentResult = await client.query<PaymentIntentRow>(
-    `SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]
+  const intentResult = await tx.execute<Record<string, unknown>>(
+    sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${session.order_id} LIMIT 1`
   );
-  const pi = intentResult.rows[0];
-  if (pi?.status !== 'DUE') return;
+  const pi = intentResult.rows[0] as unknown as OrderRow | undefined;
+  if (pi?.status !== 'OPEN') return;
 
-  const customerResult = await client.query<CustomerRow>(
-    `SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`,
-    [session.customer_id]
+  const customerResult = await tx.execute<Record<string, unknown>>(
+    sql`SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = ${session.customer_id}`
   );
-  const customer = customerResult.rows[0];
+  const customer = customerResult.rows[0] as unknown as CustomerRow | undefined;
   const customerAge = customer ? calculateAge(customer.dob) : undefined;
   const membershipCardType = customer?.membership_card_type
     ? (customer.membership_card_type as 'NONE' | 'SIX_MONTH') || undefined
@@ -77,9 +83,10 @@ async function recomputeQuoteIfNeeded(
     includeSixMonthMembershipPurchase: intent !== 'NONE',
   };
   const quote = isRenewal ? calculateRenewalQuote({ ...pricingInput, renewalHours }) : calculatePriceQuote(pricingInput);
+  const quoteJson = JSON.stringify(quote);
 
-  await client.query(`UPDATE payment_intents SET amount = $1, quote_json = $2, updated_at = NOW() WHERE id = $3`, [quote.total, JSON.stringify(quote), pi.id]);
-  await client.query(`UPDATE lane_sessions SET price_quote_json = $1, updated_at = NOW() WHERE id = $2`, [JSON.stringify(quote), session.id]);
+  await tx.execute(sql`UPDATE orders SET subtotal = ${quote.total}, total = ${quote.total}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${pi.id}`);
+  await tx.execute(sql`UPDATE lane_sessions SET price_quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${session.id}`);
 }
 
 // ── Service Methods ──
@@ -89,21 +96,21 @@ export async function setMembershipPurchaseIntent(
   intent: 'PURCHASE' | 'RENEW' | 'NONE',
   sessionId?: string
 ) {
-  return transaction(async (client) => {
-    const session = await findSession(client, laneId, sessionId);
+  return db.transaction(async (tx) => {
+    const session = await findSession(tx, laneId, sessionId);
     const resolvedLaneId = session.lane_id || laneId;
     if (!session.customer_id) throw new ServiceError(400, 'Session has no customer');
 
     const intentValue: 'PURCHASE' | 'RENEW' | null = intent === 'NONE' ? null : intent;
     const requestedAt = intent === 'NONE' ? null : new Date();
 
-    const updatedSession = (await client.query<LaneSessionRow>(
-      `UPDATE lane_sessions SET membership_purchase_intent = $1, membership_purchase_requested_at = $2, updated_at = NOW() WHERE id = $3 RETURNING *`,
-      [intentValue, requestedAt, session.id]
-    )).rows[0];
+    const updatedResult = await tx.execute<Record<string, unknown>>(
+      sql`UPDATE lane_sessions SET membership_purchase_intent = ${intentValue}, membership_purchase_requested_at = ${requestedAt}, updated_at = NOW() WHERE id = ${session.id} RETURNING ${sql.raw(LANE_SESSION_COLS)}`
+    );
+    const updatedSession = updatedResult.rows[0] as unknown as LaneSessionRow;
 
     // If DUE payment intent exists and selection confirmed, recompute quote immediately
-    await recomputeQuoteIfNeeded(client, updatedSession, intent);
+    await recomputeQuoteIfNeeded(tx, updatedSession, intent);
 
     return { sessionId: updatedSession.id, laneId: resolvedLaneId };
   });
@@ -114,12 +121,12 @@ export async function setMembershipChoice(
   choice: 'ONE_TIME' | 'NONE' | 'SIX_MONTH',
   sessionId?: string
 ) {
-  return transaction(async (client) => {
-    const session = await findSession(client, laneId, sessionId);
+  return db.transaction(async (tx) => {
+    const session = await findSession(tx, laneId, sessionId);
     const resolvedLaneId = session.lane_id || laneId;
     const value = choice === 'NONE' ? null : choice;
 
-    await client.query(`UPDATE lane_sessions SET membership_choice = $1, updated_at = NOW() WHERE id = $2`, [value, session.id]);
+    await tx.execute(sql`UPDATE lane_sessions SET membership_choice = ${value}, updated_at = NOW() WHERE id = ${session.id}`);
     return { sessionId: session.id, laneId: resolvedLaneId };
   });
 }
@@ -129,38 +136,37 @@ export async function completeMembershipPurchase(
   membershipNumber: string,
   sessionId?: string
 ) {
-  return transaction(async (client) => {
-    const session = await findSession(client, laneId, sessionId);
+  return db.transaction(async (tx) => {
+    const session = await findSession(tx, laneId, sessionId);
     const resolvedLaneId = session.lane_id || laneId;
     if (!session.customer_id) throw new ServiceError(400, 'Session has no customer');
-    // NOTE: membership_purchase_intent and payment_intent_id may have been
-    // cleared during session reset. For completed sessions, validate via
-    // the payment_intents table directly if the session still has a reference.
-    if (session.payment_intent_id) {
-      const intentResult = await client.query<PaymentIntentRow>(
-        `SELECT ${PAYMENT_INTENT_COLS} FROM payment_intents WHERE id = $1 LIMIT 1`, [session.payment_intent_id]
+
+    if (session.order_id) {
+      const intentResult = await tx.execute<Record<string, unknown>>(
+        sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${session.order_id} LIMIT 1`
       );
-      const pi = intentResult.rows[0];
+      const pi = intentResult.rows[0] as unknown as OrderRow | undefined;
       if (pi && pi.status !== 'PAID') {
         throw new ServiceError(400, 'Payment intent must be PAID before completing membership');
       }
     }
-    // If payment_intent_id was cleared (session reset), the payment was already
-    // confirmed during the check-in flow — proceed with the membership update.
 
-    await client.query(
-      `UPDATE customers SET membership_number = $1, membership_card_type = 'SIX_MONTH', membership_valid_until = (CURRENT_DATE + INTERVAL '6 months')::date, updated_at = NOW() WHERE id = $2`,
-      [membershipNumber.trim(), session.customer_id]
-    );
-    await client.query(
-      `UPDATE lane_sessions SET membership_number = $1, membership_purchase_intent = NULL, membership_purchase_requested_at = NULL, updated_at = NOW() WHERE id = $2`,
-      [membershipNumber.trim(), session.id]
-    );
+    const trimmedNumber = membershipNumber.trim();
+    await tx.execute(sql`
+      UPDATE customers SET membership_number = ${trimmedNumber}, membership_card_type = 'SIX_MONTH',
+      membership_valid_until = (CURRENT_DATE + INTERVAL '6 months')::date, updated_at = NOW()
+      WHERE id = ${session.customer_id}
+    `);
+    await tx.execute(sql`
+      UPDATE lane_sessions SET membership_number = ${trimmedNumber},
+      membership_purchase_intent = NULL, membership_purchase_requested_at = NULL,
+      updated_at = NOW() WHERE id = ${session.id}
+    `);
 
     return { sessionId: session.id, laneId: resolvedLaneId };
   });
 }
 
 export async function buildSessionPayload(sessionId: string) {
-  return transaction((client) => buildFullSessionUpdatedPayload(client, sessionId));
+  return buildFullSessionUpdatedPayload(sessionId);
 }

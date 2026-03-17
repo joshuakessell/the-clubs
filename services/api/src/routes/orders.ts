@@ -9,16 +9,16 @@ const LineItemSchema = z.object({ kind: z.enum(['RETAIL', 'ADDON', 'UPGRADE', 'L
 const AddLineItemsSchema = z.object({ items: z.array(LineItemSchema).min(1) });
 
 export async function orderRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.post('/v1/orders', { schema: { body: CreateOrderSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/orders', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof CreateOrderSchema>;
     return reply.send(await createOrder(body as CreateOrderInput, request.staff.staffId));
   });
 
-  fastify.post<{ Params: { orderId: string } }>('/v1/orders/:orderId/line-items', { schema: { body: AddLineItemsSchema }, preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post<{ Params: { orderId: string } }>('/v1/orders/:orderId/line-items', { preHandler: [requireAuth] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof AddLineItemsSchema>;
-    return reply.send(await addLineItems(request.params.orderId, body.items));
+    return reply.send(await addLineItems(request.params.orderId, body.items.map(i => ({ ...i, unitPrice: i.unitPrice.toString() }))));
   });
 
   fastify.post<{ Params: { orderId: string } }>('/v1/orders/:orderId/mark-paid', { preHandler: [requireAuth] }, async (request, reply) => {

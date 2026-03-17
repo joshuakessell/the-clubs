@@ -75,7 +75,7 @@ export async function dashboardMutate<T = unknown>(
   const res = await fetch(getApiUrl(path), {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: JSON.stringify(body ?? {}),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');

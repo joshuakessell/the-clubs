@@ -1,4 +1,4 @@
-import type { PoolClient, CustomerRow, LaneSessionRow } from '../../checkin/types';
+import { type PoolClient, type CustomerRow, type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
 import {
   computeIdScanIdentityHash,
   computeSha256Hex,
@@ -195,7 +195,7 @@ export async function processScanId(
            renewal_hours = NULL,
            updated_at = NOW()
        WHERE id = $5
-       RETURNING *`,
+       RETURNING ${LANE_SESSION_COLS}`,
       [customerId, customerName, staffId, computedMode, existingSession.rows[0]!.id],
     );
     session = updateResult.rows[0]!;
@@ -204,7 +204,7 @@ export async function processScanId(
       `INSERT INTO lane_sessions
        (lane_id, status, staff_id, customer_id, customer_display_name, checkin_mode, renewal_hours)
        VALUES ($1, 'ACTIVE', $2, $3, $4, $5, NULL)
-       RETURNING *`,
+       RETURNING ${LANE_SESSION_COLS}`,
       [laneId, staffId, customerId, customerName, computedMode],
     );
     session = newSessionResult.rows[0]!;
@@ -319,12 +319,11 @@ async function assertNoActiveVisit(client: PoolClient, customerId: string): Prom
 
   const activeBlock = await client.query<{
     starts_at: Date; ends_at: Date; rental_type: string;
-    room_number: string | null; locker_number: string | null;
+    resource_number: string | null; resource_kind: string | null;
   }>(
-    `SELECT cb.starts_at, cb.ends_at, cb.rental_type, r.number as room_number, l.number as locker_number
+    `SELECT cb.starts_at, cb.ends_at, cb.rental_type, r.number as resource_number, r.kind as resource_kind
      FROM checkin_blocks cb
-     LEFT JOIN rooms r ON cb.room_id = r.id
-     LEFT JOIN lockers l ON cb.locker_id = l.id
+     LEFT JOIN inventory_resources r ON cb.resource_id = r.id
      WHERE cb.visit_id = $1
      ORDER BY cb.ends_at DESC
      LIMIT 1`,
@@ -333,8 +332,8 @@ async function assertNoActiveVisit(client: PoolClient, customerId: string): Prom
 
   const block = activeBlock.rows[0];
   const assignedResourceType: 'room' | 'locker' | null =
-    block?.room_number ? 'room' : block?.locker_number ? 'locker' : null;
-  const assignedResourceNumber = block?.room_number ?? block?.locker_number ?? null;
+    block?.resource_kind === 'locker' ? 'locker' : block?.resource_number ? 'room' : null;
+  const assignedResourceNumber = block?.resource_number ?? null;
 
   const waitlistResult = await client.query<{ id: string; desired_tier: string; backup_tier: string; status: string }>(
     `SELECT id, desired_tier, backup_tier, status FROM waitlist
@@ -350,9 +349,9 @@ async function assertNoActiveVisit(client: PoolClient, customerId: string): Prom
       rentalType: block?.rental_type ?? null,
       assignedResourceType,
       assignedResourceNumber,
-      checkinAt: block?.starts_at ? block.starts_at.toISOString() : null,
-      checkoutAt: block?.ends_at ? block.ends_at.toISOString() : null,
-      overdue: block?.ends_at ? block.ends_at.getTime() < Date.now() : null,
+      checkinAt: block?.starts_at ? new Date(block.starts_at).toISOString() : null,
+      checkoutAt: block?.ends_at ? new Date(block.ends_at).toISOString() : null,
+      overdue: block?.ends_at ? new Date(block.ends_at).getTime() < Date.now() : null,
       waitlist: wl ? { id: wl.id, desiredTier: wl.desired_tier, backupTier: wl.backup_tier, status: wl.status } : null,
   };
   throw err;
@@ -391,7 +390,8 @@ async function fetchCustomerInfoForResponse(
 
   let customerDobMonthDay: string | undefined;
   if (customer.dob) {
-    customerDobMonthDay = `${String(customer.dob.getMonth() + 1).padStart(2, '0')}/${String(customer.dob.getDate()).padStart(2, '0')}`;
+    const dobDate = new Date(customer.dob as unknown as string);
+    customerDobMonthDay = `${String(dobDate.getMonth() + 1).padStart(2, '0')}/${String(dobDate.getDate()).padStart(2, '0')}`;
   }
 
   const membershipCardType = customer.membership_card_type as string | undefined;

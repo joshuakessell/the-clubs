@@ -147,7 +147,7 @@ export function DataTable<T>({
     return (
       <div className="flex flex-col items-center justify-center gap-2 py-12">
         <span className="text-3xl">{emptyIcon}</span>
-        <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-sm font-medium text-(--color-text-muted)">
           {emptyMessage}
         </p>
       </div>

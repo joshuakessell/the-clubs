@@ -9,7 +9,7 @@ import { customerRoutes } from '../src/routes/customers.js';
 import { inventoryRoutes } from '../src/routes/inventory.js';
 import { sessionDocumentsRoutes } from '../src/routes/session-documents.js';
 import { hashPin, generateSessionToken, hashSessionToken } from '../src/auth/utils.js';
-import type { SessionUpdatedPayload, CustomerConfirmedPayload } from '@the-clubs/shared';
+import type { SessionUpdatedPayload } from '@the-clubs/shared';
 import { truncateAllTables } from './testDb.js';
 
 // Augment FastifyInstance with broadcaster
@@ -28,7 +28,6 @@ describe('Check-in Flow', () => {
   let customerId: string;
   let dbAvailable = false;
   let sessionUpdatedEvents: Array<{ lane: string; payload: SessionUpdatedPayload }> = [];
-  let customerConfirmedEvents: Array<{ lane: string; payload: CustomerConfirmedPayload }> = [];
 
   beforeAll(async () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
@@ -36,12 +35,13 @@ describe('Check-in Flow', () => {
     try {
       await initializeDatabase();
       dbAvailable = true;
-    } catch (error) {
+    } catch (dbError: unknown) {
       console.warn('\n⚠️  Database not available. Integration tests will be skipped.');
       console.warn('   To run integration tests:');
       console.warn('   1. Start Docker Desktop');
       console.warn('   2. cd services/api && docker compose up -d');
       console.warn('   3. pnpm db:migrate\n');
+      console.warn('   Cause:', dbError instanceof Error ? dbError.message : dbError);
       // initializeDatabase() creates the pool before attempting to connect; ensure we don't leak it.
       try {
         await closeDatabase();
@@ -52,7 +52,8 @@ describe('Check-in Flow', () => {
     }
 
     app = Fastify({
-      logger: false,
+      logger: { level: 'error' },
+      ajv: { customOptions: { strict: false, allowUnionTypes: true } },
     });
 
     await app.register(cors);
@@ -65,13 +66,7 @@ describe('Check-in Flow', () => {
       sessionUpdatedEvents.push({ lane, payload });
       return originalBroadcastSessionUpdated(payload, lane);
     };
-    // Capture CUSTOMER_CONFIRMED payloads for assertions.
-    const originalBroadcastCustomerConfirmed =
-      broadcaster.broadcastCustomerConfirmed.bind(broadcaster);
-    broadcaster.broadcastCustomerConfirmed = (payload, lane) => {
-      customerConfirmedEvents.push({ lane, payload });
-      return originalBroadcastCustomerConfirmed(payload, lane);
-    };
+
     app.decorate('broadcaster', broadcaster);
 
     // Register check-in routes
@@ -87,7 +82,6 @@ describe('Check-in Flow', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     sessionUpdatedEvents = [];
-    customerConfirmedEvents = [];
 
     // Ensure each test starts from a clean DB state (integration tests share one DB).
     await truncateAllTables((text, params) => query(text, params));
@@ -131,7 +125,7 @@ describe('Check-in Flow', () => {
       `DELETE FROM checkin_blocks WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
+      `DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
       `DELETE FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345')`
@@ -179,18 +173,18 @@ describe('Check-in Flow', () => {
       [customerId]
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id = $1)`,
+      `DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = $1)`,
       [customerId]
     );
     await query(`DELETE FROM visits WHERE customer_id = $1`, [customerId]);
     await query(`DELETE FROM lane_sessions WHERE lane_id = $1 OR lane_id = 'LANE_2'`, [laneId]);
     await query(`DELETE FROM customer_spend_ledger_entries WHERE customer_id = $1`, [customerId]);
-    await query(`DELETE FROM payment_intents`);
+    await query(`DELETE FROM orders`);
     await query(`DELETE FROM staff_sessions WHERE staff_id = $1`, [staffId]);
     await query(`DELETE FROM customers WHERE id = $1 OR membership_number = '12345'`, [customerId]);
     await query(`DELETE FROM cleaning_events WHERE staff_id = $1`, [staffId]);
     await query(`DELETE FROM staff WHERE id = $1`, [staffId]);
-    await query(`DELETE FROM rooms WHERE number IN ('200', '202', '203', '204')`);
+    await query(`DELETE FROM inventory_resources WHERE number IN ('200', '202', '203', '204')`);
   });
 
   afterAll(async () => {
@@ -253,8 +247,8 @@ describe('Check-in Flow', () => {
         try {
           // Setup: create session, lock selection, create payment intent, demo-take-payment, then sign agreement
           const roomResult = await query<{ id: string }>(
-            `INSERT INTO rooms (number, type, status, floor)
-          VALUES ('200', 'STANDARD', 'CLEAN', 2)
+            `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+          VALUES ('room', '200', 'STANDARD', 'CLEAN', 2)
           RETURNING id`
           );
           const roomId = roomResult.rows[0]!.id;
@@ -309,7 +303,7 @@ describe('Check-in Flow', () => {
           const roomPreCheck = await query<{
             status: string;
             assigned_to_customer_id: string | null;
-          }>(`SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`, [roomId]);
+          }>(`SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`, [roomId]);
           expect(roomPreCheck.rows[0]!.status).toBe('CLEAN');
           expect(roomPreCheck.rows[0]!.assigned_to_customer_id).toBeNull();
 
@@ -381,19 +375,19 @@ describe('Check-in Flow', () => {
             (e) => e.payload.sessionId === startData.sessionId
           );
           expect(matchingEvents.length).toBeGreaterThan(0);
-          const lastEvent = matchingEvents[matchingEvents.length - 1]!;
+          const lastEvent = matchingEvents.at(-1)!;
           expect(lastEvent.payload.agreementSigned).toBe(true);
 
           // Verify room status changed to OCCUPIED
           const roomStatusResult = await query<{ status: string }>(
-            `SELECT status FROM rooms WHERE id = $1`,
+            `SELECT status FROM inventory_resources WHERE id = $1`,
             [roomId]
           );
           expect(roomStatusResult.rows[0]!.status).toBe('OCCUPIED');
 
           // Verify room is assigned to the customer
           const roomAssignedResult = await query<{ assigned_to_customer_id: string | null }>(
-            `SELECT assigned_to_customer_id FROM rooms WHERE id = $1`,
+            `SELECT assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
             [roomId]
           );
           expect(roomAssignedResult.rows[0]!.assigned_to_customer_id).toBe(customerId);
@@ -441,8 +435,8 @@ describe('Check-in Flow', () => {
       runIfDbAvailable(async () => {
         // Supply: 2 CLEAN STANDARD rooms
         await query(
-          `INSERT INTO rooms (number, type, status, floor)
-           VALUES ('200', 'STANDARD', 'CLEAN', 1), ('202', 'STANDARD', 'CLEAN', 1)`
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+           VALUES ('room', '200', 'STANDARD', 'CLEAN', 1), ('room', '202', 'STANDARD', 'CLEAN', 1)`
         );
 
         // Demand: 2 ACTIVE STANDARD waitlist entries on an active visit + active block
@@ -522,14 +516,14 @@ describe('Check-in Flow', () => {
       runIfDbAvailable(async () => {
         // Supply: 2 CLEAN STANDARD rooms
         const r1 = await query<{ id: string; number: string }>(
-          `INSERT INTO rooms (number, type, status, floor)
-           VALUES ('200', 'STANDARD', 'CLEAN', 1)
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+           VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
            RETURNING id, number`
         );
         const offeredRoomId = r1.rows[0]!.id;
         await query(
-          `INSERT INTO rooms (number, type, status, floor)
-           VALUES ('202', 'STANDARD', 'CLEAN', 1)`
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+           VALUES ('room', '202', 'STANDARD', 'CLEAN', 1)`
         );
 
         // OFFERED waitlist entry reserves room 101 (valid active visit + active block)
@@ -547,7 +541,7 @@ describe('Check-in Flow', () => {
           [wlVisit.rows[0]!.id]
         );
         await query(
-          `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, room_id)
+          `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, resource_id)
            VALUES ($1, $2, 'STANDARD', 'STANDARD', 'OFFERED', NOW(), $3)`,
           [wlVisit.rows[0]!.id, wlBlock.rows[0]!.id, offeredRoomId]
         );
@@ -600,7 +594,7 @@ describe('Check-in Flow', () => {
 
         const assignedRoom = await query<{ number: string }>(
           `SELECT number
-           FROM rooms
+           FROM inventory_resources
            WHERE assigned_to_customer_id = $1 AND status = 'OCCUPIED'
            ORDER BY number ASC
            LIMIT 1`,
@@ -609,7 +603,7 @@ describe('Check-in Flow', () => {
         expect(assignedRoom.rows[0]!.number).toBe('202');
 
         const offeredRoom = await query<{ status: string; assigned_to_customer_id: string | null }>(
-          `SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`,
+          `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [offeredRoomId]
         );
         expect(offeredRoom.rows[0]!.status).toBe('CLEAN');

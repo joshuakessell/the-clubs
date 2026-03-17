@@ -73,16 +73,16 @@ export function AssignmentStep() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+      <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
         Room Assignment
       </h3>
 
       {/* Assignment details */}
-      <div className="rounded-lg border p-4" style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}>
-        <p className="mb-1 text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+      <div className="rounded-lg border p-4 bg-(--color-surface-overlay) border-(--color-border-subtle)">
+        <p className="mb-1 text-xs font-bold uppercase tracking-wider text-(--color-text-muted)">
           Rental Type
         </p>
-        <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+        <p className="text-sm font-semibold text-(--color-text-primary)">
           {rentalType}
         </p>
       </div>
@@ -90,12 +90,11 @@ export function AssignmentStep() {
       {/* Room picker */}
       {!isLocker ? (
         <div>
-          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-(--color-text-muted)">
             Assign Room Number
           </label>
           <select
-            className="w-full rounded-lg border px-3 py-2.5 text-sm font-semibold"
-            style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
+            className="w-full rounded-lg border px-3 py-2.5 text-sm font-semibold bg-(--color-surface-input) border-(--color-border-default) text-(--color-text-primary)"
             value={selectedRoom}
             onChange={(e) => { setSelectedRoom(e.target.value); setError(null); }}
           >
@@ -109,7 +108,7 @@ export function AssignmentStep() {
         </div>
       ) : (
         <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
-          <p className="text-sm font-semibold" style={{ color: 'var(--color-status-success)' }}>
+          <p className="text-sm font-semibold text-(--color-status-success)">
             Locker will be auto-assigned
           </p>
         </div>

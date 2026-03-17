@@ -1,19 +1,17 @@
 import type { FastifyInstance } from 'fastify';
-import { query, serializableTransaction, transaction } from '../../db';
+import { db, type DrizzleTx } from '../../db';
+import { sql } from 'drizzle-orm';
 import {
-  ResolveKeySchema,
-  CreateCheckoutRequestSchema,
   type ResolveKeyInput,
   type CreateCheckoutRequestInput,
 } from '../../checkout/schemas';
-import { insertClubEvent } from '../../activity/clubEventLog';
+import { insertClubEventDrizzle } from '../../activity/clubEventLog';
 import type {
   CheckinBlockRow,
   CheckoutRequestRow,
   CustomerRow,
   KeyTagRow,
-  LockerRow,
-  RoomRow,
+  ResourceRow,
 } from '../../checkout/types';
 import type {
   CheckoutRequestSummary,
@@ -23,159 +21,176 @@ import type {
 import { calculateLateFee } from '../../checkout/utils';
 import { HttpError } from '../../errors/HttpError';
 
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertClubEvent.
+ */
+function toQueryable(tx: DrizzleTx) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
+
+async function resolveCheckoutKeyLogic(token: string): Promise<ResolvedCheckoutKey> {
+  const tagResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT id, resource_id, tag_code, is_active FROM key_tags WHERE tag_code = ${token} AND is_active = true`
+  );
+  if (tagResult.rows.length === 0) throw new HttpError(404, 'Key tag not found or inactive');
+  const tag = tagResult.rows[0] as unknown as KeyTagRow;
+  if (!tag.resource_id) throw new HttpError(404, 'Key tag is not associated with a resource');
+
+  const blockResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
+            cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote
+     FROM checkin_blocks cb JOIN visits v ON cb.visit_id = v.id
+     WHERE cb.resource_id = ${tag.resource_id} AND v.ended_at IS NULL ORDER BY cb.ends_at DESC LIMIT 1`
+  );
+  if (blockResult.rows.length === 0) throw new HttpError(404, 'No active occupancy found for this key');
+  const block = blockResult.rows[0] as unknown as CheckinBlockRow;
+
+  const visitResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT customer_id FROM visits WHERE id = ${block.visit_id}`
+  );
+  if (visitResult.rows.length === 0) throw new HttpError(404, 'Visit not found');
+  const customerId = (visitResult.rows[0] as unknown as { customer_id: string }).customer_id;
+
+  const customerResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT id, name, membership_number, banned_until FROM customers WHERE id = ${customerId}`
+  );
+  if (customerResult.rows.length === 0) throw new HttpError(404, 'Customer not found');
+  const customer = customerResult.rows[0] as unknown as CustomerRow;
+
+  let resourceNumber: string | undefined;
+  if (block.resource_id) {
+    const resourceResult = await db.execute<Record<string, unknown>>(
+      sql`SELECT id, number, kind, tier FROM inventory_resources WHERE id = ${block.resource_id}`
+    );
+    if (resourceResult.rows.length > 0) {
+      resourceNumber = (resourceResult.rows[0] as unknown as ResourceRow).number;
+    }
+  }
+
+  const now = new Date();
+  const scheduledCheckoutAt = block.ends_at instanceof Date ? block.ends_at : new Date(block.ends_at);
+  const lateMinutes = Math.max(0, Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
+  const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
+
+  return {
+    keyTagId: tag.id,
+    occupancyId: block.id,
+    customerId: customer.id,
+    customerName: customer.name,
+    membershipNumber: customer.membership_number || undefined,
+    rentalType: block.rental_type,
+    resourceId: block.resource_id || undefined,
+    resourceNumber,
+    scheduledCheckoutAt,
+    hasTvRemote: block.has_tv_remote,
+    lateMinutes,
+    lateFeeAmount: feeAmount,
+    banApplied,
+  };
+}
+
+async function createCheckoutRequestLogic(body: CreateCheckoutRequestInput, fastify: FastifyInstance): Promise<string> {
+  const result = await db.transaction(async (tx) => {
+    const blockResult = await tx.execute<Record<string, unknown>>(
+      sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
+            cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote,
+            v.customer_id
+     FROM checkin_blocks cb JOIN visits v ON cb.visit_id = v.id
+     WHERE cb.id = ${body.occupancyId} AND v.ended_at IS NULL`
+    );
+    if (blockResult.rows.length === 0) throw new HttpError(404, 'Active occupancy not found');
+    const block = blockResult.rows[0] as unknown as CheckinBlockRow & { customer_id: string };
+
+    const existingRequest = await tx.execute<Record<string, unknown>>(
+      sql`SELECT id FROM checkout_requests WHERE occupancy_id = ${body.occupancyId} AND status IN ('SUBMITTED', 'CLAIMED')`
+    );
+    if (existingRequest.rows.length > 0) throw new HttpError(409, 'Checkout request already exists for this occupancy');
+
+    const now = new Date();
+    const scheduledCheckoutAt = block.ends_at instanceof Date ? block.ends_at : new Date(block.ends_at);
+    const lateMinutes = Math.max(0, Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
+    const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
+
+    let keyTagId: string | null = null;
+    if (block.resource_id) {
+      const keyResult = await tx.execute<Record<string, unknown>>(sql`SELECT id FROM key_tags WHERE resource_id = ${block.resource_id} AND is_active = true LIMIT 1`);
+      if (keyResult.rows.length > 0) keyTagId = (keyResult.rows[0] as unknown as { id: string }).id;
+    }
+
+    const requestResult = await tx.execute<Record<string, unknown>>(
+      sql`INSERT INTO checkout_requests (
+      occupancy_id, customer_id, key_tag_id, kiosk_device_id, customer_checklist_json, late_minutes, late_fee_amount, ban_applied
+    ) VALUES (${body.occupancyId}, ${block.customer_id}, ${keyTagId}, ${body.kioskDeviceId}, ${JSON.stringify(body.checklist)}, ${lateMinutes}, ${feeAmount}, ${banApplied}) RETURNING id, occupancy_id, customer_id, key_tag_id, kiosk_device_id, created_at, claimed_by_staff_id, claimed_at, claim_expires_at, customer_checklist_json, status, late_minutes, late_fee_amount, ban_applied, items_confirmed, fee_paid, completed_at`
+    );
+    return requestResult.rows[0] as unknown as CheckoutRequestRow;
+  }, { isolationLevel: 'serializable' });
+
+  const blockResult = await db.execute<Record<string, unknown>>(sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at, cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote, v.customer_id FROM checkin_blocks cb JOIN visits v ON cb.visit_id = v.id WHERE cb.id = ${body.occupancyId}`);
+  const block = blockResult.rows[0] as unknown as CheckinBlockRow & { customer_id: string };
+
+  const customerResult = await db.execute<Record<string, unknown>>(sql`SELECT id, name, membership_number FROM customers WHERE id = ${block.customer_id}`);
+  const customer = customerResult.rows[0] as unknown as CustomerRow;
+
+  let resourceNumber: string | undefined;
+  if (block.resource_id) {
+    const resourceResult = await db.execute<Record<string, unknown>>(sql`SELECT number, kind FROM inventory_resources WHERE id = ${block.resource_id}`);
+    if (resourceResult.rows.length > 0) resourceNumber = (resourceResult.rows[0] as unknown as ResourceRow).number;
+  }
+
+  if (fastify.broadcaster) {
+    const summary: CheckoutRequestSummary = {
+      requestId: result.id, customerId: customer.id, customerName: customer.name, membershipNumber: customer.membership_number || undefined,
+      rentalType: block.rental_type, roomNumber: resourceNumber, lockerNumber: undefined, scheduledCheckoutAt: block.ends_at, currentTime: new Date(), lateMinutes: result.late_minutes, lateFeeAmount: result.late_fee_amount, banApplied: result.ban_applied,
+    };
+    fastify.broadcaster.broadcast({ type: 'CHECKOUT_REQUESTED', payload: { request: summary }, timestamp: new Date().toISOString() });
+  }
+
+  await db.transaction(async (tx) => {
+    const resourceLabel = resourceNumber ? ` (${block.rental_type === 'LOCKER' ? 'Locker' : 'Room'} ${resourceNumber})` : '';
+    await insertClubEventDrizzle(tx, {
+      eventType: 'CHECKOUT_REQUESTED', eventDomain: 'CHECKOUT', sourceApp: 'CUSTOMER_KIOSK', customerId: customer.id, customerName: customer.name, visitId: block.visit_id, summary: `Checkout requested — ${customer.name}${resourceLabel}`,
+      metadata: { checkoutRequestId: result.id, occupancyId: body.occupancyId, resourceNumber: resourceNumber ?? null, lateMinutes: result.late_minutes, lateFeeAmount: result.late_fee_amount, banApplied: result.ban_applied },
+      dedupeKey: `CLUB:CHECKOUT_REQUESTED:${result.id}`,
+    });
+  });
+
+  return result.id;
+}
+
 export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
   /**
    * POST /v1/checkout/resolve-key - Resolve a key tag to checkout information
-   *
-   * Public endpoint for checkout kiosk to resolve a scanned key QR code.
-   * Returns customer info, scheduled checkout time, and computed late fees.
    */
-  fastify.post<{ Body: ResolveKeyInput }>('/v1/checkout/resolve-key', { schema: { body: ResolveKeySchema } }, async (request, reply) => {
-    const body = request.body as ResolveKeyInput;
-
+  fastify.post<{ Body: ResolveKeyInput }>('/v1/checkout/resolve-key', {}, async (request, reply) => {
     try {
-      // 1. Find the key tag
-      const tagResult = await query<KeyTagRow>(
-        `SELECT id, room_id, locker_id, tag_code, is_active
-         FROM key_tags
-         WHERE tag_code = $1 AND is_active = true`,
-        [body.token]
-      );
-
-      if (tagResult.rows.length === 0) {
-        return reply.status(404).send({
-          error: 'Key tag not found or inactive',
-        });
-      }
-
-      const tag = tagResult.rows[0]!;
-
-      // 2. Find the active checkin block for this key
-      let blockResult;
-      if (tag.room_id) {
-        blockResult = await query<CheckinBlockRow>(
-          `SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote
-           FROM checkin_blocks cb
-           JOIN visits v ON cb.visit_id = v.id
-           WHERE cb.room_id = $1 AND v.ended_at IS NULL
-           ORDER BY cb.ends_at DESC
-           LIMIT 1`,
-          [tag.room_id]
-        );
-      } else if (tag.locker_id) {
-        blockResult = await query<CheckinBlockRow>(
-          `SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote
-           FROM checkin_blocks cb
-           JOIN visits v ON cb.visit_id = v.id
-           WHERE cb.locker_id = $1 AND v.ended_at IS NULL
-           ORDER BY cb.ends_at DESC
-           LIMIT 1`,
-          [tag.locker_id]
-        );
-      } else {
-        return reply.status(404).send({
-          error: 'Key tag is not associated with a room or locker',
-        });
-      }
-
-      if (blockResult.rows.length === 0) {
-        return reply.status(404).send({
-          error: 'No active occupancy found for this key',
-        });
-      }
-
-      const block = blockResult.rows[0]!;
-
-      // 3. Get customer information
-      const visitResult = await query<{ customer_id: string }>(
-        'SELECT customer_id FROM visits WHERE id = $1',
-        [block.visit_id]
-      );
-
-      if (visitResult.rows.length === 0) {
-        return reply.status(404).send({
-          error: 'Visit not found',
-        });
-      }
-
-      const customerId = visitResult.rows[0]!.customer_id;
-
-      const customerResult = await query<CustomerRow>(
-        'SELECT id, name, membership_number, banned_until FROM customers WHERE id = $1',
-        [customerId]
-      );
-
-      if (customerResult.rows.length === 0) {
-        return reply.status(404).send({
-          error: 'Customer not found',
-        });
-      }
-
-      const customer = customerResult.rows[0]!;
-
-      // 4. Get room/locker details
-      let roomNumber: string | undefined;
-      let lockerNumber: string | undefined;
-
-      if (block.room_id) {
-        const roomResult = await query<RoomRow>(
-          'SELECT id, number, type FROM rooms WHERE id = $1',
-          [block.room_id]
-        );
-        if (roomResult.rows.length > 0) {
-          roomNumber = roomResult.rows[0]!.number;
-        }
-      }
-
-      if (block.locker_id) {
-        const lockerResult = await query<LockerRow>(
-          'SELECT id, number FROM lockers WHERE id = $1',
-          [block.locker_id]
-        );
-        if (lockerResult.rows.length > 0) {
-          lockerNumber = lockerResult.rows[0]!.number;
-        }
-      }
-
-      // 5. Calculate lateness
-      const now = new Date();
-      // Ensure ends_at is a Date object (PostgreSQL returns it as a Date, but be safe)
-      const scheduledCheckoutAt =
-        block.ends_at instanceof Date ? block.ends_at : new Date(block.ends_at);
-      const lateMinutes = Math.max(
-        0,
-        Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60))
-      );
-      const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
-
-      const result: ResolvedCheckoutKey = {
-        keyTagId: tag.id,
-        occupancyId: block.id,
-        customerId: customer.id,
-        customerName: customer.name,
-        membershipNumber: customer.membership_number || undefined,
-        rentalType: block.rental_type,
-        roomId: block.room_id || undefined,
-        roomNumber,
-        lockerId: block.locker_id || undefined,
-        lockerNumber,
-        scheduledCheckoutAt,
-        hasTvRemote: block.has_tv_remote,
-        lateMinutes,
-        lateFeeAmount: feeAmount,
-        banApplied,
-      };
-
+      const result = await resolveCheckoutKeyLogic(request.body.token);
       return reply.send(result);
     } catch (error) {
+      if (error instanceof HttpError) {
+        return reply.status(error.statusCode).send({ error: error.message });
+      }
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
-      fastify.log.error(
-        { error: errorMessage, stack: errorStack },
-        'Failed to resolve checkout key'
-      );
+      fastify.log.error({ error: errorMessage, stack: errorStack }, 'Failed to resolve checkout key');
       return reply.status(500).send({
         error: 'Internal server error',
         details: process.env.NODE_ENV === 'test' ? errorMessage : undefined,
@@ -185,197 +200,18 @@ export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {
 
   /**
    * POST /v1/checkout/request - Create a checkout request
-   *
-   * Public endpoint for checkout kiosk to submit a checkout request.
-   * Triggers CHECKOUT_REQUESTED realtime event.
    */
   fastify.post<{ Body: CreateCheckoutRequestInput }>(
     '/v1/checkout/request',
-    { schema: { body: CreateCheckoutRequestSchema } },
+    {},
     async (request, reply) => {
-      const body = request.body as CreateCheckoutRequestInput;
-
       try {
-        const result = await serializableTransaction(async (client) => {
-          // 1. Verify the block exists and is active
-          const blockResult = await client.query<CheckinBlockRow & { customer_id: string }>(
-            `SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                  cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote,
-                  v.customer_id
-           FROM checkin_blocks cb
-           JOIN visits v ON cb.visit_id = v.id
-           WHERE cb.id = $1 AND v.ended_at IS NULL`,
-            [body.occupancyId]
-          );
-
-          if (blockResult.rows.length === 0) {
-            throw new HttpError(404, 'Active occupancy not found');
-          }
-
-          const block = blockResult.rows[0]!;
-
-          // 2. Check for existing active request
-          const existingRequest = await client.query<CheckoutRequestRow>(
-            `SELECT id FROM checkout_requests
-           WHERE occupancy_id = $1 AND status IN ('SUBMITTED', 'CLAIMED')`,
-            [body.occupancyId]
-          );
-
-          if (existingRequest.rows.length > 0) {
-            throw new HttpError(409, 'Checkout request already exists for this occupancy');
-          }
-
-          // 3. Calculate lateness (same as resolve-key)
-          const now = new Date();
-          const scheduledCheckoutAt = block.ends_at;
-          const lateMinutes = Math.max(
-            0,
-            Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60))
-          );
-          const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
-
-          // 4. Get key tag ID if available
-          let keyTagId: string | null = null;
-          if (block.room_id) {
-            const keyResult = await client.query<{ id: string }>(
-              `SELECT id FROM key_tags WHERE room_id = $1 AND is_active = true LIMIT 1`,
-              [block.room_id]
-            );
-            if (keyResult.rows.length > 0) {
-              keyTagId = keyResult.rows[0]!.id;
-            }
-          } else if (block.locker_id) {
-            const keyResult = await client.query<{ id: string }>(
-              `SELECT id FROM key_tags WHERE locker_id = $1 AND is_active = true LIMIT 1`,
-              [block.locker_id]
-            );
-            if (keyResult.rows.length > 0) {
-              keyTagId = keyResult.rows[0]!.id;
-            }
-          }
-
-          // 5. Create the checkout request
-          const requestResult = await client.query<CheckoutRequestRow>(
-            `INSERT INTO checkout_requests (
-            occupancy_id, customer_id, key_tag_id, kiosk_device_id,
-            customer_checklist_json, late_minutes, late_fee_amount, ban_applied
-          )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-          RETURNING id, occupancy_id, customer_id, key_tag_id, kiosk_device_id,
-                    created_at, claimed_by_staff_id, claimed_at, claim_expires_at,
-                    customer_checklist_json, status, late_minutes, late_fee_amount,
-                    ban_applied, items_confirmed, fee_paid, completed_at`,
-            [
-              body.occupancyId,
-              block.customer_id,
-              keyTagId,
-              body.kioskDeviceId,
-              JSON.stringify(body.checklist),
-              lateMinutes,
-              feeAmount,
-              // "banApplied" here means "ban recommended" (manager approval required).
-              banApplied,
-            ]
-          );
-
-          return requestResult.rows[0]!;
-        });
-
-        // 6. Get customer and room/locker info for realtime event
-        const blockResult = await query<CheckinBlockRow & { customer_id: string }>(
-          `SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
-                cb.rental_type::text as rental_type, cb.room_id, cb.locker_id, cb.session_id, cb.has_tv_remote,
-                v.customer_id
-         FROM checkin_blocks cb
-         JOIN visits v ON cb.visit_id = v.id
-         WHERE cb.id = $1`,
-          [body.occupancyId]
-        );
-        const block = blockResult.rows[0]!;
-
-        const customerResult = await query<CustomerRow>(
-          'SELECT id, name, membership_number FROM customers WHERE id = $1',
-          [block.customer_id]
-        );
-        const customer = customerResult.rows[0]!;
-
-        let roomNumber: string | undefined;
-        let lockerNumber: string | undefined;
-
-        if (block.room_id) {
-          const roomResult = await query<RoomRow>('SELECT number FROM rooms WHERE id = $1', [
-            block.room_id,
-          ]);
-          if (roomResult.rows.length > 0) {
-            roomNumber = roomResult.rows[0]!.number;
-          }
-        }
-
-        if (block.locker_id) {
-          const lockerResult = await query<LockerRow>('SELECT number FROM lockers WHERE id = $1', [
-            block.locker_id,
-          ]);
-          if (lockerResult.rows.length > 0) {
-            lockerNumber = lockerResult.rows[0]!.number;
-          }
-        }
-
-        // 7. Broadcast CHECKOUT_REQUESTED event
-        if (fastify.broadcaster) {
-          const summary: CheckoutRequestSummary = {
-            requestId: result.id,
-            customerId: customer.id,
-            customerName: customer.name,
-            membershipNumber: customer.membership_number || undefined,
-            rentalType: block.rental_type,
-            roomNumber,
-            lockerNumber,
-            scheduledCheckoutAt: block.ends_at,
-            currentTime: new Date(),
-            lateMinutes: result.late_minutes,
-            lateFeeAmount: result.late_fee_amount,
-            banApplied: result.ban_applied,
-          };
-
-          const payload: CheckoutRequestedPayload = {
-            request: summary,
-          };
-
-          fastify.broadcaster.broadcast({
-            type: 'CHECKOUT_REQUESTED',
-            payload,
-            timestamp: new Date().toISOString(),
-          });
-        }
-
-        // Log club event for checkout requested
-        await transaction(async (client) => {
-          const resourceLabel = roomNumber ? ` (Room ${roomNumber})` : lockerNumber ? ` (Locker ${lockerNumber})` : '';
-          await insertClubEvent(client, {
-            eventType: 'CHECKOUT_REQUESTED',
-            eventDomain: 'CHECKOUT',
-            sourceApp: 'CUSTOMER_KIOSK',
-            customerId: customer.id,
-            customerName: customer.name,
-            visitId: block.visit_id,
-            summary: `Checkout requested \u2014 ${customer.name}${resourceLabel}`,
-            metadata: {
-              checkoutRequestId: result.id,
-              occupancyId: body.occupancyId,
-              roomNumber: roomNumber ?? null,
-              lockerNumber: lockerNumber ?? null,
-              lateMinutes: result.late_minutes,
-              lateFeeAmount: result.late_fee_amount,
-              banApplied: result.ban_applied,
-            },
-            dedupeKey: `CLUB:CHECKOUT_REQUESTED:${result.id}`,
-          });
-        });
-
-        return reply.status(201).send({
-          requestId: result.id,
-        });
+        const requestId = await createCheckoutRequestLogic(request.body, fastify);
+        return reply.status(201).send({ requestId });
       } catch (error) {
+        if (error instanceof HttpError) {
+          return reply.status(error.statusCode).send({ error: error.message });
+        }
         if (error && typeof error === 'object' && 'statusCode' in error) {
           const err = error as { statusCode: number; message: string };
           return reply.status(err.statusCode).send({ error: err.message });

@@ -48,7 +48,7 @@ export function KioskMirrorView({ sessionPayload, laneId }: Readonly<KioskMirror
   const lineItems = sessionPayload?.ledgerLineItems ?? sessionPayload?.paymentLineItems ?? [];
   const total = sessionPayload?.ledgerTotal ?? sessionPayload?.paymentTotal;
   const flowStep = sessionPayload?.flowStep;
-  const paymentStatus = sessionPayload?.paymentStatus;
+  const orderStatus = sessionPayload?.orderStatus;
   const customerName = sessionPayload?.customerName ?? 'Customer';
 
   const isMember = (() => {
@@ -57,8 +57,8 @@ export function KioskMirrorView({ sessionPayload, laneId }: Readonly<KioskMirror
     return new Date(validUntil + 'T23:59:59') >= new Date();
   })();
 
-  const showPaymentInstructions = flowStep === 'PAYMENT' && paymentStatus !== 'PAID';
-  const showPaymentReceived = paymentStatus === 'PAID';
+  const showPaymentInstructions = flowStep === 'PAYMENT' && orderStatus !== 'PAID';
+  const showPaymentReceived = orderStatus === 'PAID';
   const showTotal = flowStep === 'PAYMENT' && total != null && total > 0;
   const showWaitlistOverlay = flowStep === 'WAITLIST_DISCLAIMER';
 

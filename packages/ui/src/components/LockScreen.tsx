@@ -21,6 +21,9 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
   const [pinDigits, setPinDigits] = useState<string[]>(['', '', '', '', '', '']);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const submittingRef = useRef(false);
+
+  const [isCatchingUp, setIsCatchingUp] = useState(false);
 
   // Staff picker state (select-only, no search)
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
@@ -109,6 +112,17 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
     el?.scrollIntoView({ block: 'nearest' });
   }, [highlightedIndex]);
 
+  const handleCatchUp = async () => {
+    setIsCatchingUp(true);
+    try {
+      await fetch(getApiUrl('/api/v1/admin/demo-catchup'), { method: 'POST' });
+    } catch {
+      // silently fail
+    } finally {
+      setIsCatchingUp(false);
+    }
+  };
+
   // --- PIN digit handlers ---
   const clearPin = useCallback(() => {
     setPinDigits(['', '', '', '', '', '']);
@@ -177,9 +191,11 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       return;
     }
 
-    // Module-level guard: React StrictMode double-mounts in dev, causing two
-    // concurrent login calls before isLoading state can update synchronously.
+    // Ref-based guard: React state isLoading can't update synchronously between
+    // two submitRef calls in the same tick (e.g. StrictMode double-mount).
+    if (submittingRef.current) return;
     if (isLoading) return;
+    submittingRef.current = true;
     setIsLoading(true);
     setError(null);
 
@@ -191,11 +207,11 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       });
 
       if (!response.ok) {
-        const payload: any = await response.json().catch(() => null);
+        const payload = await response.json().catch(() => null) as Record<string, string> | null;
         throw new Error(payload?.error || payload?.message || 'Login failed');
       }
 
-      const data: any = await response.json();
+      const data = await response.json() as { staffId: string; name: string; role: 'STAFF' | 'ADMIN'; sessionToken: string; mustChangePin?: boolean };
       const session: StaffSession = {
         staffId: data.staffId,
         name: data.name,
@@ -212,6 +228,7 @@ export function LockScreen({ appTitle = 'Operations', onLogin }: LockScreenProps
       setError(err instanceof Error ? err.message : 'Invalid credentials');
       clearPin();
     } finally {
+      submittingRef.current = false;
       setIsLoading(false);
     }
   };
@@ -429,6 +446,28 @@ style = {{
             )}
 </form>
   </div>
+
+  {/* Demo Catch-up Button */}
+  {typeof window !== 'undefined' && window.location.hostname.includes('demo') && (
+    <div className="absolute bottom-6 left-6">
+      <button
+        type="button"
+        onClick={() => void handleCatchUp()}
+        disabled={isCatchingUp}
+        className="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors duration-200"
+        style={{
+          backgroundColor: 'var(--color-surface-raised)',
+          borderColor: 'var(--color-border-subtle)',
+          color: 'var(--color-text-muted)',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text-primary)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-muted)'; }}
+      >
+        {isCatchingUp ? 'Catching up...' : 'Catch-up Demo Data'}
+      </button>
+    </div>
+  )}
+
   </div>
 
 {/* Right: Branding Panel — matches Kiosk idle screen */}
@@ -467,7 +506,7 @@ style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
         Club Dallas
           </h2>
           <p className="mt-4 text-xl" style={{ color: 'var(--color-text-secondary)' }}>
-            Employee Register
+            {appTitle}
           </p>
     </div>
 

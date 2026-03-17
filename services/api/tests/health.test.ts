@@ -6,7 +6,7 @@ describe('Health endpoint', () => {
   let fastify: FastifyInstance;
 
   beforeAll(async () => {
-    fastify = Fastify();
+    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     fastify.decorate('dbHealthy', true);
     await fastify.register(healthRoutes);
     await fastify.ready();

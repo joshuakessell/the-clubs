@@ -1,0 +1,361 @@
+name: Deploy Demo (dev branch)
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:  # Manual trigger
+
+env:
+  NODE_VERSION: "24"
+  AWS_REGION: us-east-1
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  # ── CI: Lint, Typecheck, Test ──────────────────────────────────
+  ci:
+    name: CI Checks
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: club_operations_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d club_operations_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/club_operations_test
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: club_operations_test
+      DB_USER: test
+      DB_PASSWORD: test
+      KIOSK_TOKEN: test-kiosk-token
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm run build
+
+      - name: Lint
+        run: pnpm -r run lint
+        continue-on-error: true
+
+      - name: Typecheck
+        run: pnpm -r run typecheck
+        continue-on-error: true
+
+      - name: Run database migrations
+        run: pnpm --filter @the-clubs/api exec tsx scripts/migrate.ts
+
+      - name: Run tests
+        run: pnpm -r run test
+
+  # ── Build everything ───────────────────────────────────────────
+  build:
+    name: Build
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: demo
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+          VITE_KIOSK_TOKEN: ${{ secrets.VITE_KIOSK_TOKEN }}
+        run: pnpm run build
+
+      - name: Upload SPA artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spa-dist
+          retention-days: 1
+          path: |
+            apps/customer-kiosk/dist/
+            apps/employee-register/dist/
+            apps/office-dashboard/dist/
+
+      - name: Upload API artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-bundle
+          retention-days: 1
+          path: |
+            services/api/src/
+            services/api/migrations/
+            services/api/package.json
+            services/api/tsconfig.json
+            services/api/tsconfig.build.json
+            services/api/Dockerfile
+            packages/shared/src/
+            packages/shared/package.json
+            packages/shared/tsconfig.json
+            packages/ui/package.json
+            apps/customer-kiosk/package.json
+            apps/employee-register/package.json
+            apps/office-dashboard/package.json
+            docker-compose.prod.yml
+            .dockerignore
+            package.json
+            pnpm-lock.yaml
+            pnpm-workspace.yaml
+            tsconfig.base.json
+
+  # ── Deploy SPAs to S3 + CloudFront ─────────────────────────────
+  deploy-spas:
+    name: Deploy SPAs
+    needs: build
+    runs-on: ubuntu-latest
+    environment: demo
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download SPA artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: spa-dist
+          path: apps/
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Employee Register
+        run: |
+          aws s3 sync apps/employee-register/dist/ \
+            s3://${{ vars.S3_EMPLOYEE_REGISTER }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/employee-register/dist/index.html \
+            s3://${{ vars.S3_EMPLOYEE_REGISTER }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_EMPLOYEE_REGISTER }} \
+            --paths "/*"
+
+      - name: Deploy Customer Kiosk
+        run: |
+          aws s3 sync apps/customer-kiosk/dist/ \
+            s3://${{ vars.S3_CUSTOMER_KIOSK }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/customer-kiosk/dist/index.html \
+            s3://${{ vars.S3_CUSTOMER_KIOSK }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_CUSTOMER_KIOSK }} \
+            --paths "/*"
+
+      - name: Deploy Office Dashboard
+        run: |
+          aws s3 sync apps/office-dashboard/dist/ \
+            s3://${{ vars.S3_OFFICE_DASHBOARD }} --delete \
+            --cache-control "public, max-age=31536000, immutable" \
+            --exclude "index.html"
+          aws s3 cp apps/office-dashboard/dist/index.html \
+            s3://${{ vars.S3_OFFICE_DASHBOARD }}/index.html \
+            --cache-control "no-cache, no-store, must-revalidate"
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ vars.CF_OFFICE_DASHBOARD }} \
+            --paths "/*"
+
+  # ── Deploy API to EC2 ──────────────────────────────────────────
+  deploy-api:
+    name: Deploy API
+    needs: build
+    runs-on: ubuntu-latest
+    environment: demo
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            infra/nginx
+            docker-compose.prod.yml
+
+      - name: Download API artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-bundle
+          path: .
+
+      - name: Build Docker image
+        run: |
+          docker build -t the-clubs-api:latest -f services/api/Dockerfile .
+          docker save the-clubs-api:latest | gzip > api-image.tar.gz
+          ls -lh api-image.tar.gz
+
+      - name: Copy to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "api-image.tar.gz,docker-compose.prod.yml,infra/nginx/api-proxy.conf"
+          target: /home/ec2-user/
+
+      - name: Deploy on EC2
+        uses: appleboy/ssh-action@v1
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          KIOSK_TOKEN: ${{ secrets.KIOSK_TOKEN }}
+          ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
+          CLOUDFLARE_CERT_PEM: ${{ secrets.CLOUDFLARE_CERT_PEM }}
+          CLOUDFLARE_CERT_KEY: ${{ secrets.CLOUDFLARE_CERT_KEY }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DB_PASSWORD,KIOSK_TOKEN,ALLOWED_ORIGINS,CLOUDFLARE_CERT_PEM,CLOUDFLARE_CERT_KEY
+          command_timeout: 10m
+          script: |
+            set -e
+
+            # Free disk space before loading new image
+            echo "Cleaning up old Docker artifacts..."
+            docker image prune -af --filter "until=24h" 2>/dev/null || true
+            docker container prune -f 2>/dev/null || true
+            docker builder prune -af 2>/dev/null || true
+
+            # Load pre-built image
+            echo "Loading Docker image..."
+            docker load < /home/ec2-user/api-image.tar.gz
+            rm -f /home/ec2-user/api-image.tar.gz
+
+            # Move compose file into place
+            mkdir -p /home/ec2-user/the-clubs
+            mv /home/ec2-user/docker-compose.prod.yml /home/ec2-user/the-clubs/
+            cd /home/ec2-user/the-clubs
+
+            # Write demo .env
+            ENV_FILE="/home/ec2-user/.env.demo"
+            printf '%s\n' \
+              'DB_NAME=club_operations' \
+              'DB_USER=clubops' \
+              "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}" \
+              'FLOW_COMMANDS=true' \
+              'DEMO_MODE=true' \
+              'SEED_ON_STARTUP=true' \
+              "DB_PASSWORD=${DB_PASSWORD}" \
+              "KIOSK_TOKEN=${KIOSK_TOKEN}" \
+              'HOST_PORT=3001' \
+              > "$ENV_FILE"
+
+            # Clean up legacy containers (one-time migration)
+            docker rm -f club-ops-db club-ops-api 2>/dev/null || true
+
+            # Set up nginx reverse proxy (shared — idempotent)
+            mkdir -p /home/ec2-user/nginx/certs
+            mv /home/ec2-user/infra/nginx/api-proxy.conf /home/ec2-user/nginx/api-proxy.conf
+            rm -rf /home/ec2-user/infra
+
+            # ── Install SSL Certificates ──
+            echo "Setting up SSL Certificates..."
+            if [ -n "$CLOUDFLARE_CERT_PEM" ] && [ -n "$CLOUDFLARE_CERT_KEY" ]; then
+              echo "Using provided Cloudflare Origin CA certificates from GitHub Secrets."
+              echo "$CLOUDFLARE_CERT_PEM" > /home/ec2-user/nginx/certs/origin.pem
+              echo "$CLOUDFLARE_CERT_KEY" > /home/ec2-user/nginx/certs/origin.key
+            else
+              echo "No Cloudflare certs provided. Checking for existing fallback..."
+              if [ ! -f /home/ec2-user/nginx/certs/origin.pem ]; then
+                echo "Generating a self-signed fallback certificate so Nginx can boot..."
+                openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                  -keyout /home/ec2-user/nginx/certs/origin.key \
+                  -out /home/ec2-user/nginx/certs/origin.pem \
+                  -subj "/CN=*.joshuakessell.com"
+              fi
+            fi
+
+            # ── Ensure Nginx Container ──
+            if docker ps -a --format '{{.Names}}' | grep -q '^api-proxy$'; then
+              # Recreate proxy to ensure new port 443 mapping and cert volume mounts are active on upgrades
+              docker rm -f api-proxy 2>/dev/null || true
+            fi
+            
+            docker run -d --name api-proxy \
+              --restart unless-stopped \
+              --add-host host.docker.internal:host-gateway \
+              -p 80:80 \
+              -p 443:443 \
+              -v /home/ec2-user/nginx/api-proxy.conf:/etc/nginx/conf.d/default.conf:ro \
+              -v /home/ec2-user/nginx/certs:/etc/nginx/certs:ro \
+              nginx:alpine
+            echo "✓ nginx reverse proxy started on ports 80 and 443"
+
+            # Start/restart demo stack
+            docker compose -f docker-compose.prod.yml \
+              --project-name "demo" \
+              --env-file "$ENV_FILE" \
+              up -d
+
+            echo "✓ demo containers started on port 3001, waiting for health..."
+
+            # Health check
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+                echo "✓ API is healthy on port 3001!"
+                echo "⏳ Waiting 30s for DB init + seed to complete..."
+                sleep 30
+                echo "── Container logs (last 80 lines) ──"
+                docker compose -f docker-compose.prod.yml \
+                  --project-name "demo" \
+                  logs --tail=80 api
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "⚠ Health check timeout on port 3001"
+            docker compose -f docker-compose.prod.yml \
+              --project-name "demo" \
+              logs --tail=30 api
+            exit 1
+
+  # ── Status report ──────────────────────────────────────────────
+  notify:
+    name: Deployment Status
+    if: always()
+    needs: [deploy-api, deploy-spas]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          API="${{ needs.deploy-api.result }}"
+          SPA="${{ needs.deploy-spas.result }}"
+
+          if [ "$API" = "success" ] && [ "$SPA" = "success" ]; then
+            echo "✓ Demo deployment succeeded!"
+            exit 0
+          else
+            echo "✗ Demo deployment failed! (api=$API, spas=$SPA)"
+            exit 1
+          fi

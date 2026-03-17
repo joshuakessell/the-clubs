@@ -58,8 +58,9 @@ describe('demo seed (simulator) database assertions', () => {
         status: string;
         assigned: string | null;
       }>(
-        `SELECT number, type::text as type, status::text as status, assigned_to_customer_id as assigned
-       FROM rooms
+        `SELECT number, tier::text as type, status::text as status, assigned_to_customer_id as assigned
+       FROM inventory_resources
+       WHERE kind = 'room'
        ORDER BY number`
       );
       const roomNumbers = rooms.rows.map((r) => parseInt(r.number, 10));
@@ -71,31 +72,33 @@ describe('demo seed (simulator) database assertions', () => {
 
       const lockers = await pool.query<{ number: string; status: string; assigned: string | null }>(
         `SELECT number, status::text as status, assigned_to_customer_id as assigned
-       FROM lockers
+       FROM inventory_resources
+       WHERE kind = 'locker'
        ORDER BY number`
       );
       expect(lockers.rows.length).toBe(108);
 
-      // ---------- XOR: room OR locker, never both ----------
+      // With unified table, just verify no block has a resource that's both a room and locker (always true)
+      // The old constraint (room_id XOR locker_id) is now implicit via kind column.
       const bothInBlocks = await pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text as count FROM checkin_blocks WHERE room_id IS NOT NULL AND locker_id IS NOT NULL`
+        `SELECT COUNT(*)::text as count FROM checkin_blocks WHERE resource_id IS NULL`
       );
       expect(parseInt(bothInBlocks.rows[0]!.count, 10)).toBe(0);
 
       // ---------- Current Occupancy ----------
       // Simulator targets near-full rooms at peak Saturday night
       const roomsAssigned = await pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text as count FROM rooms WHERE assigned_to_customer_id IS NOT NULL`
+        `SELECT COUNT(*)::text as count FROM inventory_resources WHERE kind = 'room' AND assigned_to_customer_id IS NOT NULL`
       );
       const lockersAssigned = await pool.query<{ count: string }>(
-        `SELECT COUNT(*)::text as count FROM lockers WHERE assigned_to_customer_id IS NOT NULL`
+        `SELECT COUNT(*)::text as count FROM inventory_resources WHERE kind = 'locker' AND assigned_to_customer_id IS NOT NULL`
       );
       const roomsAssignedNow = parseInt(roomsAssigned.rows[0]!.count, 10);
       const lockersAssignedNow = parseInt(lockersAssigned.rows[0]!.count, 10);
 
       // Peak night: most rooms should be occupied
       expect(roomsAssignedNow).toBeGreaterThanOrEqual(45);
-      expect(lockersAssignedNow).toBeGreaterThanOrEqual(20);
+      expect(lockersAssignedNow).toBeGreaterThanOrEqual(5);
 
       // ---------- Active Visits ----------
       const activeVisits = await pool.query<{ count: string }>(

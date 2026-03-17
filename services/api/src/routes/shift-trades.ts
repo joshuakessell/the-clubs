@@ -13,7 +13,7 @@ export async function shiftTradeRoutes(fastify: FastifyInstance): Promise<void> 
   );
 
   fastify.post<{ Body: z.infer<typeof CreateShiftTradeSchema> }>(
-    '/v1/schedule/shift-trade-requests', { schema: { body: CreateShiftTradeSchema }, preHandler: [requireAuth] },
+    '/v1/schedule/shift-trade-requests', { preHandler: [requireAuth] },
     async (request, reply) => {
       const body = request.body as z.infer<typeof CreateShiftTradeSchema>;
       const id = await createTradeRequest(request.staff!.staffId, request.staff!.role, body.requesterShiftId, body.targetShiftId);
@@ -30,7 +30,7 @@ export async function shiftTradeRoutes(fastify: FastifyInstance): Promise<void> 
   );
 
   fastify.patch<{ Params: { id: string }; Body: z.infer<typeof AdminDecisionSchema> }>(
-    '/v1/admin/shift-trade-requests/:id', { schema: { body: AdminDecisionSchema }, preHandler: [requireAuth, requireAdmin] },
+    '/v1/admin/shift-trade-requests/:id', { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const body = request.body as z.infer<typeof AdminDecisionSchema>;
       const result = await decideTradeRequest(request.params.id, body.status, request.staff!.staffId, request.staff!.role, body.decisionNotes);

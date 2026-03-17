@@ -52,8 +52,7 @@ export function AddNoteModal({ isOpen, onClose, onSubmit }: AddNoteModalProps) {
       >
         {/* Header */}
         <h3
-          className="text-base font-bold"
-          style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+          className="text-base font-bold font-(--font-display) text-(--color-text-primary)"
         >
           Add Note
         </h3>
@@ -88,7 +87,6 @@ export function AddNoteModal({ isOpen, onClose, onSubmit }: AddNoteModalProps) {
             style={{
               borderColor: 'var(--color-border-subtle)',
               color: 'var(--color-text-secondary)',
-              backgroundColor: 'transparent',
             }}
           >
             Cancel

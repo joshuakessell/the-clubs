@@ -5,7 +5,7 @@ import { requireAdmin, requireAuth, requireReauthForAdmin } from '../../auth/mid
 import { searchStaff, createStaffMember, updateStaffMember, resetStaffPin, type CreateStaffInput, type UpdateStaffInput } from '../../services/staffAdminService';
 
 const CreateStaffSchema = z.object({ name: z.string().min(1), role: z.enum(['STAFF', 'ADMIN']), pin: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits'), active: z.boolean().optional().default(true) });
-const UpdateStaffSchema = z.object({ name: z.string().min(1).optional(), role: z.enum(['STAFF', 'ADMIN']).optional(), active: z.boolean().optional() });
+const UpdateStaffSchema = z.object({ name: z.string().min(1).optional(), role: z.enum(['STAFF', 'ADMIN']).optional(), active: z.boolean().optional(), forcePinChange: z.boolean().optional() });
 
 export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
   fastify.get<{ Querystring: { search?: string; role?: string; active?: string } }>('/v1/admin/staff', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
@@ -13,14 +13,14 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
     catch (e) { request.log.error(e, 'Failed to fetch staff list'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
-  fastify.post<{ Body: z.infer<typeof CreateStaffSchema> }>('/v1/admin/staff', { schema: { body: CreateStaffSchema }, preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
+  fastify.post<{ Body: z.infer<typeof CreateStaffSchema> }>('/v1/admin/staff', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body;
     try { return reply.status(201).send(await createStaffMember(body as CreateStaffInput, request.staff.staffId)); }
     catch (e) { request.log.error(e, 'Failed to create staff'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
-  fastify.patch<{ Params: { id: string }; Body: z.infer<typeof UpdateStaffSchema> }>('/v1/admin/staff/:id', { schema: { body: UpdateStaffSchema }, preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
+  fastify.patch<{ Params: { id: string }; Body: z.infer<typeof UpdateStaffSchema> }>('/v1/admin/staff/:id', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body;
     try { return reply.send(await updateStaffMember(request.params.id, body as UpdateStaffInput, request.staff.staffId)); }

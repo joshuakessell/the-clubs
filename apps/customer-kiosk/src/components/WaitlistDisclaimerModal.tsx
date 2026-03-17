@@ -70,12 +70,11 @@ export function WaitlistDisclaimerModal() {
           }}
         >
           <h2
-            className="text-xl font-bold"
-            style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
+            className="text-xl font-bold font-(--font-brand) text-(--color-text-primary)"
           >
             Waitlist Procedures
           </h2>
-          <p className="text-sm mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-sm mt-0.5 text-(--color-text-muted)">
             Please read and acknowledge to continue
           </p>
         </div>
@@ -95,8 +94,7 @@ export function WaitlistDisclaimerModal() {
                 {i + 1}
               </div>
               <p
-                className="text-base leading-snug pt-0.5"
-                style={{ color: 'var(--color-text-secondary)' }}
+                className="text-base leading-snug pt-0.5 text-(--color-text-secondary)"
               >
                 {text}
               </p>

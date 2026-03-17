@@ -2,16 +2,43 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth, optionalAuth } from '../../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { resolveActiveSession, validateAndLockResource, recordResourceSelection } from '../../checkin/sessionHelpers';
-import type { LaneSessionRow } from '../../checkin/types';
 import { getHttpError } from '../../checkin/utils';
 import { computeWaitlistInfo, getRoomTier } from '../../checkin/waitlist';
-import { query, serializableTransaction, transaction } from '../../db';
-import { insertAuditLog } from '../../audit/auditLog';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
+import { insertAuditLogDrizzle } from '../../audit/auditLog';
+import { type DrizzleTx } from '../../db';
 import type {
   AssignmentCreatedPayload,
   AssignmentFailedPayload,
   CustomerConfirmationRequiredPayload,
 } from '@the-clubs/shared';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by session helpers, audit log, and waitlist helpers.
+ */
+function toQueryable(tx: DrizzleTx) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
   /**
@@ -32,18 +59,19 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
       }
 
       try {
-        const result = await transaction(async (client) => {
+        const result = await db.transaction(async (tx) => {
+          const qClient = toQueryable(tx) as any;
           // Validate there's an active session
-          await resolveActiveSession(client, laneId, {
+          await resolveActiveSession(qClient, laneId, {
             statuses: `'ACTIVE', 'AWAITING_ASSIGNMENT'`,
           });
 
-          const { position, estimatedReadyAt } = await computeWaitlistInfo(client, desiredTier);
+          const { position, estimatedReadyAt } = await computeWaitlistInfo(qClient, desiredTier);
 
           let upgradeFee: number | null = null;
           if (currentTier) {
             const { getUpgradeFee } = await import('../../pricing/engine');
-            upgradeFee = getUpgradeFee(currentTier as any, desiredTier as any) || null;
+            upgradeFee = getUpgradeFee(currentTier as import('../../pricing/engine').RentalType, desiredTier as import('../../pricing/engine').RentalType) || null;
           }
 
           return { position, estimatedReadyAt: estimatedReadyAt ? estimatedReadyAt.toISOString() : null, upgradeFee };
@@ -76,14 +104,16 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
       const { resourceType, resourceId } = request.body;
 
       try {
-        const result = await serializableTransaction(async (client) => {
+        const result = await db.transaction(async (tx) => {
+          const qClient = toQueryable(tx) as any;
+
           // Get active session
-          const session = await resolveActiveSession(client, laneId, {
+          const session = await resolveActiveSession(qClient, laneId, {
             statuses: `'ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE'`,
           });
 
           // Validate and lock the resource (room or locker)
-          const { resourceRow } = await validateAndLockResource(client, {
+          const { resourceRow } = await validateAndLockResource(qClient, {
             resourceType,
             resourceId,
             sessionId: session.id,
@@ -99,10 +129,10 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
           }
 
           // Record selection on session
-          await recordResourceSelection(client, { sessionId: session.id, resourceType, resourceId });
+          await recordResourceSelection(qClient, { sessionId: session.id, resourceType, resourceId });
 
           // Audit log
-          await insertAuditLog(client, {
+          await insertAuditLogDrizzle(tx, {
             staffId,
             action: 'ASSIGN',
             entityType: resourceType,
@@ -114,9 +144,9 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
           // Broadcast assignment created
           const assignmentPayload: AssignmentCreatedPayload = {
             sessionId: session.id,
-            ...(resourceType === 'room'
-              ? { roomId: resourceId, roomNumber: resourceRow.number, rentalType: roomTier! }
-              : { lockerId: resourceId, lockerNumber: resourceRow.number, rentalType: 'LOCKER' }),
+            resourceId,
+            resourceNumber: resourceRow.number,
+            rentalType: resourceType === 'locker' ? 'LOCKER' : roomTier!,
           };
           fastify.broadcaster.broadcastAssignmentCreated(assignmentPayload, laneId);
 
@@ -143,12 +173,10 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
               ? { roomNumber: resourceRow.number, needsConfirmation }
               : { lockerNumber: resourceRow.number }),
           };
-        });
+        }, { isolationLevel: 'serializable' });
 
-        // Broadcast full session state
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId),
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
 
         return reply.send(result);
@@ -160,16 +188,14 @@ export function registerCheckinWaitlistRoutes(fastify: FastifyInstance): void {
           // Race condition → broadcast assignment failure
           if (httpErr.statusCode === 409) {
             try {
-              const sessionResult = await query<LaneSessionRow>(
-                `SELECT id FROM lane_sessions WHERE lane_id = $1 AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`,
-                [laneId],
+              const sessionResult = await db.execute<{ id: string }>(
+                sql`SELECT id FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
               );
               if (sessionResult.rows.length > 0) {
                 const failedPayload: AssignmentFailedPayload = {
                   sessionId: sessionResult.rows[0]!.id,
                   reason: httpErr.message ?? 'Resource already assigned',
-                  requestedRoomId: resourceType === 'room' ? resourceId : undefined,
-                  requestedLockerId: resourceType === 'locker' ? resourceId : undefined,
+                  requestedResourceId: resourceId,
                 };
                 fastify.broadcaster.broadcastAssignmentFailed(failedPayload, laneId);
               }

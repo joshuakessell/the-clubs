@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { AGREEMENT_LEGAL_BODY_HTML_BY_LANG } from '@the-clubs/shared';
 
 interface AgreementRow {
@@ -20,8 +21,8 @@ export async function agreementsRoutes(fastify: FastifyInstance): Promise<void> 
    */
   fastify.get('/v1/agreements/active', async (_request, reply) => {
     try {
-      const result = await query<AgreementRow>(
-        `SELECT id, version, title, body_text
+      const result = await db.execute<Record<string, unknown>>(
+        sql`SELECT id, version, title, body_text
          FROM agreements
          WHERE active = true
          ORDER BY created_at DESC
@@ -32,7 +33,7 @@ export async function agreementsRoutes(fastify: FastifyInstance): Promise<void> 
         return reply.status(404).send({ error: 'No active agreement found' });
       }
 
-      const agreement = result.rows[0]!;
+      const agreement = result.rows[0] as unknown as AgreementRow;
       const bodyText =
         agreement.body_text && agreement.body_text.trim().length > 0
           ? agreement.body_text

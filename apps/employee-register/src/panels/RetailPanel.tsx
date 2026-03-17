@@ -59,8 +59,7 @@ function GuestSection({
       {guests.map((g) => (
         <button
           key={`${title}-${g.customerId}`}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors"
-          style={{ color: 'var(--color-text-primary)' }}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors text-(--color-text-primary)"
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
           onClick={() => onSelect(g)}
@@ -73,11 +72,11 @@ function GuestSection({
               {badgeLabel}
             </span>
           ) : (
-            <span className="font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+            <span className="font-bold tabular-nums text-(--color-accent-primary)">
               {g.number}
             </span>
           )}
-          {!badgeLabel && <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
+          {!badgeLabel && <span className="text-(--color-text-muted)">—</span>}
           <span className="truncate">{g.customerName}</span>
         </button>
       ))}
@@ -321,12 +320,12 @@ export function RetailPanel() {
         <div className="flex-[3] min-w-0 overflow-y-auto overflow-x-hidden pr-1">
           {catalogLoading && (
             <div className="flex h-full items-center justify-center">
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Loading products…</p>
+              <p className="text-sm text-(--color-text-muted)">Loading products…</p>
             </div>
           )}
           {!catalogLoading && catalog.length === 0 && (
             <div className="flex h-full items-center justify-center">
-              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No products available. Add products in the Office Dashboard.</p>
+              <p className="text-sm text-(--color-text-muted)">No products available. Add products in the Office Dashboard.</p>
             </div>
           )}
           {!catalogLoading && catalog.length > 0 && categories.map((cat) => {
@@ -334,8 +333,7 @@ export function RetailPanel() {
             return (
               <div key={cat.key} className="mb-4">
                 <h3
-                  className="mb-2 text-[10px] font-bold uppercase tracking-widest"
-                  style={{ color: 'var(--color-text-muted)' }}
+                  className="mb-2 text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)"
                 >
                   {cat.label}
                 </h3>
@@ -363,30 +361,24 @@ export function RetailPanel() {
                           <img
                             src={item.imageUrl}
                             alt={item.name}
-                            className="mb-2 h-16 w-full rounded object-contain"
-                            style={{ backgroundColor: 'var(--color-surface-overlay)' }}
+                            className="mb-2 h-16 w-full rounded object-contain bg-(--color-surface-overlay)"
                           />
                         ) : (
                           <div
-                            className="mb-2 flex h-16 w-full items-center justify-center rounded text-2xl"
-                            style={{ backgroundColor: 'var(--color-surface-overlay)' }}
+                            className="mb-2 flex h-16 w-full items-center justify-center rounded text-2xl bg-(--color-surface-overlay)"
                           >
                             🛍
                           </div>
                         )}
-                        <span className="text-xs font-semibold leading-snug" style={{ color: 'var(--color-text-primary)' }}>
+                        <span className="text-xs font-semibold leading-snug text-(--color-text-primary)">
                           {item.name}
                         </span>
-                        <span className="text-xs tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                        <span className="text-xs tabular-nums text-(--color-accent-primary)">
                           {formatPrice(item.price)}
                         </span>
                         {qty > 0 ? (
                           <span
-                            className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold"
-                            style={{
-                              backgroundColor: 'var(--color-accent-primary)',
-                              color: 'var(--color-text-inverse)',
-                            }}
+                            className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold bg-(--color-accent-primary) text-(--color-text-inverse)"
                           >
                             {qty}
                           </span>
@@ -402,17 +394,12 @@ export function RetailPanel() {
 
         {/* ── Right: Cart & Checkout ──────────────────── */}
         <div
-          className="flex-[2] flex flex-col min-h-0 rounded-lg border"
-          style={{
-            backgroundColor: 'var(--color-surface-overlay)',
-            borderColor: 'var(--color-border-default)',
-          }}
+          className="flex-[2] flex flex-col min-h-0 rounded-lg border bg-(--color-surface-overlay) border-(--color-border-default)"
         >
           {/* Customer lookup */}
-          <div className="border-b p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <div className="border-b p-3 border-(--color-border-subtle)">
             <label
-              className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest"
-              style={{ color: 'var(--color-text-muted)' }}
+              className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-(--color-text-muted)"
               htmlFor="guest-lookup"
             >
               Attribute to Guest{' '}
@@ -429,17 +416,16 @@ export function RetailPanel() {
                   }}
                 >
                   <div>
-                    <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+                    <span className="text-xs font-bold tabular-nums text-(--color-accent-primary)">
                       {selectedGuest.resourceType === 'ROOM' ? 'Room' : 'Locker'} {selectedGuest.number}
                     </span>
-                    <span className="mx-1.5 text-xs" style={{ color: 'var(--color-text-muted)' }}>—</span>
-                    <span className="text-xs font-medium" style={{ color: 'var(--color-text-primary)' }}>
+                    <span className="mx-1.5 text-xs text-(--color-text-muted)">—</span>
+                    <span className="text-xs font-medium text-(--color-text-primary)">
                       {selectedGuest.customerName}
                     </span>
                   </div>
                   <button
-                    className="ml-2 text-xs font-bold"
-                    style={{ color: 'var(--color-text-muted)' }}
+                    className="ml-2 text-xs font-bold text-(--color-text-muted)"
                     onClick={() => { setSelectedGuest(null); setGuestFilter(''); }}
                     aria-label="Clear guest selection"
                   >
@@ -468,11 +454,7 @@ export function RetailPanel() {
               {/* Dropdown */}
               {dropdownOpen && !selectedGuest && (checkingInGuests.length > 0 || roomGuests.length > 0 || lockerGuests.length > 0) ? (
                 <div
-                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg"
-                  style={{
-                    backgroundColor: 'var(--color-surface-raised)',
-                    borderColor: 'var(--color-border-default)',
-                  }}
+                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-lg border shadow-lg bg-(--color-surface-raised) border-(--color-border-default)"
                 >
                   <GuestSection
                     title="Checking In"
@@ -500,12 +482,7 @@ export function RetailPanel() {
               {/* Empty state */}
               {dropdownOpen && !selectedGuest && filteredGuests.length === 0 && !guestsLoading ? (
                 <div
-                  className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border px-3 py-3 text-center text-xs"
-                  style={{
-                    backgroundColor: 'var(--color-surface-raised)',
-                    borderColor: 'var(--color-border-default)',
-                    color: 'var(--color-text-muted)',
-                  }}
+                  className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border px-3 py-3 text-center text-xs bg-(--color-surface-raised) border-(--color-border-default) text-(--color-text-muted)"
                 >
                   {guestFilter ? 'No matching guests' : 'No guests currently checked in'}
                 </div>
@@ -517,7 +494,7 @@ export function RetailPanel() {
           <div className="flex-1 overflow-y-auto p-3" style={{ scrollbarWidth: 'none' }}>
             {cartLines.length === 0 ? (
               <div className="flex h-full items-center justify-center">
-                <p className="text-center text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                <p className="text-center text-xs text-(--color-text-muted)">
                   Tap items to add to cart
                 </p>
               </div>
@@ -526,18 +503,14 @@ export function RetailPanel() {
                 {cartLines.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center gap-2 rounded-md border p-2"
-                    style={{
-                      backgroundColor: 'var(--color-surface-input)',
-                      borderColor: 'var(--color-border-subtle)',
-                    }}
+                    className="flex items-center gap-2 rounded-md border p-2 bg-(--color-surface-input) border-(--color-border-subtle)"
                   >
 
                     <div className="flex-1 min-w-0">
-                      <span className="block text-xs font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                      <span className="block text-xs font-semibold truncate text-(--color-text-primary)">
                         {item.name}
                       </span>
-                      <span className="text-[10px] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                      <span className="text-[10px] tabular-nums text-(--color-text-muted)">
                         {formatPrice(item.price)} each
                       </span>
                     </div>
@@ -557,8 +530,7 @@ export function RetailPanel() {
                         −
                       </button>
                       <span
-                        className="w-5 text-center text-xs font-bold tabular-nums"
-                        style={{ color: 'var(--color-text-primary)' }}
+                        className="w-5 text-center text-xs font-bold tabular-nums text-(--color-text-primary)"
                       >
                         {item.qty}
                       </span>
@@ -577,8 +549,7 @@ export function RetailPanel() {
                     </div>
 
                     <span
-                      className="ml-1 text-xs font-bold tabular-nums"
-                      style={{ color: 'var(--color-text-primary)' }}
+                      className="ml-1 text-xs font-bold tabular-nums text-(--color-text-primary)"
                     >
                       {formatPrice(item.price * item.qty)}
                     </span>
@@ -589,24 +560,24 @@ export function RetailPanel() {
           </div>
 
           {/* Footer */}
-          <div className="border-t p-3" style={{ borderColor: 'var(--color-border-subtle)' }}>
+          <div className="border-t p-3 border-(--color-border-subtle)">
             {/* Status messages */}
             {success ? (
-              <p className="mb-2 text-center text-xs font-medium" style={{ color: 'var(--color-status-success)' }}>
+              <p className="mb-2 text-center text-xs font-medium text-(--color-status-success)">
                 {success}
               </p>
             ) : null}
             {error ? (
-              <p className="mb-2 text-center text-xs font-medium" style={{ color: 'var(--color-status-error)' }}>
+              <p className="mb-2 text-center text-xs font-medium text-(--color-status-error)">
                 {error}
               </p>
             ) : null}
 
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+              <span className="text-xs font-bold uppercase tracking-wider text-(--color-text-muted)">
                 Total ({cartCount} {cartCount === 1 ? 'item' : 'items'})
               </span>
-              <span className="text-base font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+              <span className="text-base font-bold tabular-nums text-(--color-accent-primary)">
                 {formatPrice(cartTotal)}
               </span>
             </div>
@@ -625,8 +596,7 @@ export function RetailPanel() {
 
             {cartLines.length > 0 ? (
               <button
-                className="mt-2 w-full text-center text-xs font-medium transition-colors"
-                style={{ color: 'var(--color-text-muted)' }}
+                className="mt-2 w-full text-center text-xs font-medium transition-colors text-(--color-text-muted)"
                 onClick={clearCart}
               >
                 Clear Cart

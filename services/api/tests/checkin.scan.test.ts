@@ -9,7 +9,7 @@ import { customerRoutes } from '../src/routes/customers.js';
 import { inventoryRoutes } from '../src/routes/inventory.js';
 import { sessionDocumentsRoutes } from '../src/routes/session-documents.js';
 import { hashPin, generateSessionToken, hashSessionToken } from '../src/auth/utils.js';
-import type { SessionUpdatedPayload, CustomerConfirmedPayload } from '@the-clubs/shared';
+
 import { truncateAllTables } from './testDb.js';
 
 // Augment FastifyInstance with broadcaster
@@ -27,8 +27,7 @@ describe('Check-in Flow', () => {
   let laneId: string;
   let customerId: string;
   let dbAvailable = false;
-  let sessionUpdatedEvents: Array<{ lane: string; payload: SessionUpdatedPayload }> = [];
-  let customerConfirmedEvents: Array<{ lane: string; payload: CustomerConfirmedPayload }> = [];
+
 
   beforeAll(async () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
@@ -36,12 +35,13 @@ describe('Check-in Flow', () => {
     try {
       await initializeDatabase();
       dbAvailable = true;
-    } catch (error) {
+    } catch (dbError: unknown) {
       console.warn('\n⚠️  Database not available. Integration tests will be skipped.');
       console.warn('   To run integration tests:');
       console.warn('   1. Start Docker Desktop');
       console.warn('   2. cd services/api && docker compose up -d');
       console.warn('   3. pnpm db:migrate\n');
+      console.warn('   Cause:', dbError instanceof Error ? dbError.message : dbError);
       // initializeDatabase() creates the pool before attempting to connect; ensure we don't leak it.
       try {
         await closeDatabase();
@@ -52,7 +52,8 @@ describe('Check-in Flow', () => {
     }
 
     app = Fastify({
-      logger: false,
+      logger: { level: 'error' },
+      ajv: { customOptions: { strict: false, allowUnionTypes: true } },
     });
 
     await app.register(cors);
@@ -62,16 +63,10 @@ describe('Check-in Flow', () => {
     // Capture SESSION_UPDATED payloads for assertions (without requiring a websocket client)
     const originalBroadcastSessionUpdated = broadcaster.broadcastSessionUpdated.bind(broadcaster);
     broadcaster.broadcastSessionUpdated = (payload, lane) => {
-      sessionUpdatedEvents.push({ lane, payload });
+
       return originalBroadcastSessionUpdated(payload, lane);
     };
-    // Capture CUSTOMER_CONFIRMED payloads for assertions.
-    const originalBroadcastCustomerConfirmed =
-      broadcaster.broadcastCustomerConfirmed.bind(broadcaster);
-    broadcaster.broadcastCustomerConfirmed = (payload, lane) => {
-      customerConfirmedEvents.push({ lane, payload });
-      return originalBroadcastCustomerConfirmed(payload, lane);
-    };
+
     app.decorate('broadcaster', broadcaster);
 
     // Register check-in routes
@@ -86,8 +81,7 @@ describe('Check-in Flow', () => {
 
   beforeEach(async () => {
     if (!dbAvailable) return;
-    sessionUpdatedEvents = [];
-    customerConfirmedEvents = [];
+
 
     // Ensure each test starts from a clean DB state (integration tests share one DB).
     await truncateAllTables((text, params) => query(text, params));
@@ -100,7 +94,7 @@ describe('Check-in Flow', () => {
        RETURNING id`,
       [pinHash]
     );
-    staffId = staffResult.rows[0]!.id;
+    staffId = staffResult.rows[0].id;
     staffToken = generateSessionToken();
 
     // Create staff session in database
@@ -131,7 +125,7 @@ describe('Check-in Flow', () => {
       `DELETE FROM checkin_blocks WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
+      `DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
       `DELETE FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345')`
@@ -147,7 +141,7 @@ describe('Check-in Flow', () => {
        VALUES ('Test Customer', '12345')
        RETURNING id`
     );
-    customerId = customerResult.rows[0]!.id;
+    customerId = customerResult.rows[0].id;
 
     // Ensure an active agreement exists for signing flow
     await query(`UPDATE agreements SET active = false WHERE active = true`);
@@ -179,16 +173,16 @@ describe('Check-in Flow', () => {
       [customerId]
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id = $1)`,
+      `DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = $1)`,
       [customerId]
     );
     await query(`DELETE FROM visits WHERE customer_id = $1`, [customerId]);
     await query(`DELETE FROM lane_sessions WHERE lane_id = $1 OR lane_id = 'LANE_2'`, [laneId]);
-    await query(`DELETE FROM payment_intents`);
+    await query(`DELETE FROM orders`);
     await query(`DELETE FROM staff_sessions WHERE staff_id = $1`, [staffId]);
     await query(`DELETE FROM customers WHERE id = $1 OR membership_number = '12345'`, [customerId]);
     await query(`DELETE FROM staff WHERE id = $1`, [staffId]);
-    await query(`DELETE FROM rooms WHERE number IN ('200', '202', '203', '204')`);
+    await query(`DELETE FROM inventory_resources WHERE number IN ('200', '202', '203', '204')`);
   });
 
   afterAll(async () => {
@@ -371,7 +365,7 @@ describe('Check-in Flow', () => {
          RETURNING id`,
           [laneId]
         );
-        const sessionId = sessionResult.rows[0]!.id;
+        const sessionId = sessionResult.rows[0].id;
 
         const response = await app.inject({
           method: 'POST',
@@ -391,9 +385,9 @@ describe('Check-in Flow', () => {
           [sessionId]
         );
         // Contract: kiosk-ack is UI-only and must not clear customer association.
-        expect(cleared.rows[0]!.customer_display_name).toBe('Done Customer');
-        expect(cleared.rows[0]!.status).not.toBe('COMPLETED');
-        expect(cleared.rows[0]!.kiosk_acknowledged_at).toBeTruthy();
+        expect(cleared.rows[0].customer_display_name).toBe('Done Customer');
+        expect(cleared.rows[0].status).not.toBe('COMPLETED');
+        expect(cleared.rows[0].kiosk_acknowledged_at).toBeTruthy();
       })
     );
   });
@@ -406,10 +400,10 @@ describe('Check-in Flow', () => {
 
         // Seed a customer with id_scan_value only (no hash), so scan matches by value and backfills hash.
         const normalized = raw
-          .replace(/\r\n/g, '\n')
-          .replace(/\r/g, '\n')
+          .replaceAll('\r\n', '\n')
+          .replaceAll('\r', '\n')
           .split('\n')
-          .map((l) => l.replace(/[ \t]+/g, ' ').trimEnd())
+          .map((l) => l.replaceAll(/[ \t]+/g, ' ').trimEnd())
           .join('\n')
           .trim();
         const customerResult = await query<{ id: string }>(
@@ -418,7 +412,7 @@ describe('Check-in Flow', () => {
          RETURNING id`,
           ['JOHN DOE', '1980-01-15', normalized]
         );
-        const customerId = customerResult.rows[0]!.id;
+        const customerId = customerResult.rows[0].id;
 
         const response = await app.inject({
           method: 'POST',
@@ -438,7 +432,7 @@ describe('Check-in Flow', () => {
           `SELECT id_scan_hash FROM customers WHERE id = $1`,
           [customerId]
         );
-        expect(hashRow.rows[0]!.id_scan_hash).toBeTruthy();
+        expect(hashRow.rows[0].id_scan_hash).toBeTruthy();
       })
     );
 
@@ -452,7 +446,7 @@ describe('Check-in Flow', () => {
          RETURNING id`,
           ['JOHN DOE', '1980-01-15']
         );
-        const customerId = customerResult.rows[0]!.id;
+        const customerId = customerResult.rows[0].id;
 
         const raw = '@\nDCSDOE\nDACJOHN\nDBD19800115\nDAQ555555555\nDCITX\n';
         const response = await app.inject({
@@ -472,8 +466,8 @@ describe('Check-in Flow', () => {
           `SELECT id_scan_hash, id_scan_value FROM customers WHERE id = $1`,
           [customerId]
         );
-        expect(row.rows[0]!.id_scan_hash).toBeTruthy();
-        expect(row.rows[0]!.id_scan_value).toBeTruthy();
+        expect(row.rows[0].id_scan_hash).toBeTruthy();
+        expect(row.rows[0].id_scan_value).toBeTruthy();
       })
     );
 
@@ -486,7 +480,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           ['JOHN DOE', '1980-01-15']
         );
-        const customerId = customerResult.rows[0]!.id;
+        const customerId = customerResult.rows[0].id;
 
         // Scanned first name slightly off so exact token match fails, but fuzzy should pass.
         const raw = '@\nDCSDOE\nDACJON\nDBD19800115\nDAQ555555555\nDCITX\n';
@@ -508,8 +502,8 @@ describe('Check-in Flow', () => {
           `SELECT id_scan_hash, id_scan_value FROM customers WHERE id = $1`,
           [customerId]
         );
-        expect(row.rows[0]!.id_scan_hash).toBeTruthy();
-        expect(row.rows[0]!.id_scan_value).toBeTruthy();
+        expect(row.rows[0].id_scan_hash).toBeTruthy();
+        expect(row.rows[0].id_scan_value).toBeTruthy();
       })
     );
 
@@ -528,7 +522,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           ['JONN DOE', '1980-01-15', 'TX222222']
         );
-        const id2 = c2.rows[0]!.id;
+        const id2 = c2.rows[0].id;
 
         const raw = '@\nDCSDOE\nDACJON\nDBD19800115\nDAQTX222222\nDCITX\n';
         const response = await app.inject({
@@ -560,7 +554,7 @@ describe('Check-in Flow', () => {
            VALUES ($1, $2, NOW(), NOW())`,
           ['JONN DOE', '1980-01-15']
         );
-        const selectedId = c1.rows[0]!.id;
+        const selectedId = c1.rows[0].id;
 
         const raw = '@\nDCSDOE\nDACJON\nDBD19800115\nDAQ888888888\nDCITX\n';
         const resolved = await app.inject({
@@ -578,8 +572,8 @@ describe('Check-in Flow', () => {
           `SELECT id_scan_hash, id_scan_value FROM customers WHERE id = $1`,
           [selectedId]
         );
-        expect(row.rows[0]!.id_scan_hash).toBeTruthy();
-        expect(row.rows[0]!.id_scan_value).toBeTruthy();
+        expect(row.rows[0].id_scan_hash).toBeTruthy();
+        expect(row.rows[0].id_scan_value).toBeTruthy();
       })
     );
 
@@ -592,7 +586,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           ['JOHN DOE', '1980-01-16']
         );
-        const customerId = customerResult.rows[0]!.id;
+        const customerId = customerResult.rows[0].id;
 
         const raw = '@\nDCSDOE\nDACJON\nDBD19800115\nDAQ999999999\nDCITX\n';
         const response = await app.inject({
@@ -618,7 +612,7 @@ describe('Check-in Flow', () => {
          RETURNING id`,
           ['Member One', '700001']
         );
-        const customerId = customerResult.rows[0]!.id;
+        const customerId = customerResult.rows[0].id;
 
         const response = await app.inject({
           method: 'POST',
@@ -687,10 +681,10 @@ describe('Check-in Flow', () => {
       runIfDbAvailable(async () => {
         const raw = '@\nDCSDOE\nDACBANNED\nDBD19800115\nDAQBAN123\nDCITX\n';
         const normalized = raw
-          .replace(/\r\n/g, '\n')
-          .replace(/\r/g, '\n')
+          .replaceAll('\r\n', '\n')
+          .replaceAll('\r', '\n')
           .split('\n')
-          .map((l) => l.replace(/[ \t]+/g, ' ').trimEnd())
+          .map((l) => l.replaceAll(/[ \t]+/g, ' ').trimEnd())
           .join('\n')
           .trim();
         const customerResult = await query<{ id: string }>(
@@ -699,7 +693,7 @@ describe('Check-in Flow', () => {
          RETURNING id`,
           ['BANNED DOE', '1980-01-15', normalized]
         );
-        const customerId = customerResult.rows[0]!.id;
+        const customerId = customerResult.rows[0].id;
         const banUntil = new Date();
         banUntil.setDate(banUntil.getDate() + 1);
         await query(`UPDATE customers SET banned_until = $1 WHERE id = $2`, [banUntil, customerId]);
@@ -761,8 +755,8 @@ describe('Check-in Flow', () => {
           `SELECT id_scan_hash, id_scan_value FROM customers WHERE id = $1`,
           [createData.customer.id]
         );
-        expect(row.rows[0]!.id_scan_hash).toBeTruthy();
-        expect(row.rows[0]!.id_scan_value).toBeTruthy();
+        expect(row.rows[0].id_scan_hash).toBeTruthy();
+        expect(row.rows[0].id_scan_value).toBeTruthy();
 
         // Re-scan should match
         const lookup2 = await app.inject({

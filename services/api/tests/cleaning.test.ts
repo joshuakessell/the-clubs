@@ -134,7 +134,7 @@ describe('Cleaning Batch Endpoint', () => {
     }
 
     // Create Fastify instance
-    fastify = Fastify();
+    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
 
     // Create broadcaster that captures events
     broadcastedEvents = [];
@@ -184,11 +184,11 @@ describe('Cleaning Batch Endpoint', () => {
     // Insert test rooms with known statuses
     await pool.query(
       `
-      INSERT INTO rooms (id, number, type, status, floor)
+      INSERT INTO inventory_resources (id, kind, number, tier, status, floor)
       VALUES 
-        ($1, 'TEST-101', 'STANDARD', 'DIRTY', 1),
-        ($2, 'TEST-102', 'STANDARD', 'CLEANING', 1),
-        ($3, 'TEST-103', 'STANDARD', 'CLEAN', 1)
+        ($1, 'room', 'TEST-101', 'STANDARD', 'DIRTY', 1),
+        ($2, 'room', 'TEST-102', 'STANDARD', 'CLEANING', 1),
+        ($3, 'room', 'TEST-103', 'STANDARD', 'CLEAN', 1)
     `,
       [testRoomIds.dirty, testRoomIds.cleaning, testRoomIds.clean]
     );
@@ -232,7 +232,7 @@ describe('Cleaning Batch Endpoint', () => {
         expect(body.rooms[0].newStatus).toBe('CLEAN');
 
         // Verify database state
-        const result = await pool.query('SELECT status FROM rooms WHERE id = $1', [
+        const result = await pool.query('SELECT status FROM inventory_resources WHERE id = $1', [
           testRoomIds.dirty,
         ]);
         expect(result.rows[0].status).toBe('CLEAN');
@@ -264,7 +264,7 @@ describe('Cleaning Batch Endpoint', () => {
       'should handle batch operations with multiple rooms',
       runIfDbAvailable(async () => {
         // First update dirty room to cleaning
-        await pool.query('UPDATE rooms SET status = $1 WHERE id = $2', [
+        await pool.query('UPDATE inventory_resources SET status = $1 WHERE id = $2', [
           'CLEANING',
           testRoomIds.dirty,
         ]);
@@ -309,7 +309,7 @@ describe('Cleaning Batch Endpoint', () => {
         expect(body.rooms[0].requiresOverride).toBe(true);
 
         // Verify room status unchanged
-        const result = await pool.query('SELECT status FROM rooms WHERE id = $1', [
+        const result = await pool.query('SELECT status FROM inventory_resources WHERE id = $1', [
           testRoomIds.dirty,
         ]);
         expect(result.rows[0].status).toBe('DIRTY');
@@ -339,7 +339,7 @@ describe('Cleaning Batch Endpoint', () => {
         expect(body.rooms[0].success).toBe(true);
 
         // Verify database state and override flag
-        const result = await pool.query('SELECT status, override_flag FROM rooms WHERE id = $1', [
+        const result = await pool.query('SELECT status, override_flag FROM inventory_resources WHERE id = $1', [
           testRoomIds.dirty,
         ]);
         expect(result.rows[0].status).toBe('CLEAN');
@@ -386,7 +386,7 @@ describe('Cleaning Batch Endpoint', () => {
         // DIRTY → CLEAN is valid, CLEANING → CLEAN is valid, CLEAN → CLEAN is no-op (valid)
         // So all 3 should succeed. Let's test a genuinely mixed case instead:
         // Set one room to OCCUPIED (which can't go directly to CLEANING)
-        await pool.query('UPDATE rooms SET status = $1 WHERE id = $2', [
+        await pool.query('UPDATE inventory_resources SET status = $1 WHERE id = $2', [
           'OCCUPIED',
           testRoomIds.dirty,
         ]);

@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomUUID } from 'node:crypto';
 import { RoomStatus, RoomType, RentalType, BlockType } from '@the-clubs/shared';
 
 type Lang = 'EN' | 'ES';
@@ -34,8 +34,7 @@ export interface DemoCheckinBlock {
   starts_at: Date;
   ends_at: Date;
   rental_type: RentalType;
-  room_id?: string | null;
-  locker_id?: string | null;
+  resource_id?: string | null;
   has_tv_remote: boolean;
   agreement_signed: boolean;
   waitlist_id?: string | null;
@@ -56,8 +55,7 @@ export interface DemoWaitlistEntry {
   desired_tier: RentalType;
   desired_tiers: RentalType[];
   backup_tier: RentalType;
-  locker_or_room_assigned_initially: string | null;
-  room_id: string | null;
+  resource_id: string | null;
   status: 'ACTIVE' | 'OFFERED' | 'COMPLETED' | 'CANCELLED' | 'EXPIRED';
   created_at: Date;
 }
@@ -290,11 +288,13 @@ function planVisitsForCustomer(
   rooms: DemoRoom[],
   lockers: DemoLocker[],
   activeSlots: number,
-  weekCounts: Map<string, number>
+  weekCounts: Map<string, number>,
+  overdueMinutes = 0,
+  hoursCheckedIn = 0,
 ): DemoVisit[] {
   const visits: DemoVisit[] = [];
   const visitCount = randomInt(2, 6);
-  let cursor = new Date(now.getTime());
+  let cursor = new Date(now);
   cursor.setDate(cursor.getDate() - randomInt(40, 110)); // start roughly 40-110 days back
 
   for (let i = 0; i < visitCount; i++) {
@@ -347,8 +347,7 @@ function planVisitsForCustomer(
         starts_at: blockStart,
         ends_at: blockEnd,
         rental_type: rental,
-        room_id: null,
-        locker_id: null,
+        resource_id: null,
         has_tv_remote:
           rental !== RentalType.LOCKER && rental !== RentalType.GYM_LOCKER
             ? Math.random() < 0.2
@@ -362,7 +361,7 @@ function planVisitsForCustomer(
     const visitId = randomUUID();
     blocks.forEach((b) => (b.visit_id = visitId));
 
-    const visitEndedAt = blocks[blocks.length - 1]!.ends_at;
+    const visitEndedAt = blocks.at(-1)!.ends_at;
     visits.push({
       id: visitId,
       customer_id: customerId,
@@ -381,17 +380,26 @@ function planVisitsForCustomer(
 
   // Inject an active visit if slots remain
   if (activeSlots > 0) {
-    const activeStart = addHours(now, -randomInt(2, 5));
+    // Use deterministic hoursCheckedIn for staggered checkout times
+    const checkedInHours = overdueMinutes ? 6 + overdueMinutes / 60 : (hoursCheckedIn || randomInt(2, 5));
+    const activeStart = addHours(now, -checkedInHours);
+    // If overdueMinutes is set, shift ends_at into the past so the customer appears overdue
+    const blockDurationMs = overdueMinutes
+      ? (now.getTime() - activeStart.getTime()) - overdueMinutes * 60_000
+      : 6 * 60 * 60_000;
+    // Diversify rental types: alternate between rooms and lockers based on stagger position
+    const rentalChoices = [RentalType.STANDARD, RentalType.LOCKER, RentalType.DOUBLE, RentalType.STANDARD, RentalType.LOCKER, RentalType.SPECIAL];
+    const rentalIdx = Math.floor(checkedInHours * 2) % rentalChoices.length;
+    const rental = rentalChoices[rentalIdx] ?? RentalType.STANDARD;
     const activeBlocks = [
       {
         id: randomUUID(),
         visit_id: '', // backfill
         block_type: BlockType.INITIAL,
         starts_at: activeStart,
-        ends_at: addHours(activeStart, 6),
-        rental_type: Math.random() < 0.5 ? RentalType.STANDARD : RentalType.LOCKER,
-        room_id: null,
-        locker_id: null,
+        ends_at: new Date(activeStart.getTime() + blockDurationMs),
+        rental_type: rental,
+        resource_id: null,
         has_tv_remote: false,
         agreement_signed: true,
         waitlist_id: null,
@@ -416,12 +424,12 @@ function planVisitsForCustomer(
       if (block.rental_type === RentalType.LOCKER || block.rental_type === RentalType.GYM_LOCKER) {
         const locker = pickLocker(lockers);
         if (locker) {
-          block.locker_id = locker.id;
+          block.resource_id = locker.id;
         }
       } else {
         const preferredRoom = pickAvailableRoom(rooms, block.rental_type);
         if (preferredRoom) {
-          block.room_id = preferredRoom.id;
+          block.resource_id = preferredRoom.id;
         }
       }
     }
@@ -464,8 +472,7 @@ function createWaitlistEntries(visits: DemoVisit[], now: Date): DemoWaitlistEntr
       desired_tier: scenario.desired,
       desired_tiers: scenario.tiers,
       backup_tier,
-      locker_or_room_assigned_initially: block.room_id || block.locker_id || null,
-      room_id: null,
+      resource_id: null,
       status: 'ACTIVE',
       created_at: new Date(now.getTime() - randomInt(1, 24) * 60 * 60 * 1000),
     });
@@ -486,18 +493,38 @@ export function generateDemoData(options: GenerateOptions): DemoData {
   const activeTarget = Math.min(12, Math.max(6, Math.floor(customerCount * 0.08)));
   let activeRemaining = activeTarget;
 
+  // First two active slots are overdue (30min and 60min respectively)
+  const overdueSchedule = [30, 60];
+  let overdueIdx = 0;
+
+  // Stagger schedule: hours already checked in → determines time remaining until checkout.
+  // With a 6-hour block, hoursCheckedIn=5.5 means 30min left, hoursCheckedIn=0.5 means 5.5h left.
+  const staggerSchedule = [5.5, 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.75, 0.5];
+  let staggerIdx = 0;
+
   for (const customer of customers) {
+    const isOverdueSlot = activeRemaining > 0 && overdueIdx < overdueSchedule.length;
+    const overdueMinutes = isOverdueSlot ? (overdueSchedule[overdueIdx] ?? 0) : 0;
+    const hoursCheckedIn = (!isOverdueSlot && activeRemaining > 0)
+      ? (staggerSchedule[staggerIdx % staggerSchedule.length] ?? 3)
+      : 0;
     const customerVisits = planVisitsForCustomer(
       customer.id,
       now,
       options.rooms,
       options.lockers,
       activeRemaining > 0 ? 1 : 0,
-      weekCounts
+      weekCounts,
+      overdueMinutes,
+      hoursCheckedIn,
     );
     if (activeRemaining > 0) {
       const hasActive = customerVisits.some((v) => v.ended_at === null);
-      if (hasActive) activeRemaining--;
+      if (hasActive) {
+        activeRemaining--;
+        if (isOverdueSlot) overdueIdx++;
+        else staggerIdx++;
+      }
     }
     visits.push(...customerVisits);
   }

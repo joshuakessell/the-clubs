@@ -4,14 +4,13 @@
  * Migrated to Drizzle ORM in Phase 3.
  *
  * Uses domain helpers from Phase 0:
- *   - domain/resourceAssignment.ts (assignRoom, assignLocker)
+ *   - domain/resourceAssignment.ts (assignResource)
  *   - domain/customerGuards.ts (assertNotBanned, assertCustomerExists)
  */
-import { db } from '../db';
-import { visits, customers, checkinBlocks, paymentIntents } from '../db/schema';
-import { eq, sql } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
-import { assignRoom, assignLocker } from '../domain/resourceAssignment';
+import { db, type DrizzleTx } from '../db';
+import { visits, customers, checkinBlocks, orders, orderLineItems } from '../db/schema';
+import { eq, sql, desc } from 'drizzle-orm';
+import { assignResource } from '../domain/resourceAssignment';
 import { assertNotBanned, assertCustomerExists } from '../domain/customerGuards';
 import { HttpError } from '../errors/HttpError';
 import { roundUpToQuarterHour } from '../time/rounding';
@@ -23,7 +22,7 @@ import {
 } from '../visits/utils';
 
 // Drizzle transaction type
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 // ── Types ──
 
@@ -45,18 +44,18 @@ interface CheckinBlockForCalc {
 function formatVisit(visit: {
   id: string;
   customerId: string;
-  startedAt: string;
-  endedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }, overrideUpdatedAt?: Date) {
   return {
     id: visit.id,
     customerId: visit.customerId,
-    startedAt: visit.startedAt,
-    endedAt: visit.endedAt,
-    createdAt: visit.createdAt,
-    updatedAt: overrideUpdatedAt?.toISOString() ?? visit.updatedAt,
+    startedAt: visit.startedAt.toISOString(),
+    endedAt: visit.endedAt?.toISOString() ?? null,
+    createdAt: visit.createdAt.toISOString(),
+    updatedAt: overrideUpdatedAt?.toISOString() ?? visit.updatedAt.toISOString(),
   };
 }
 
@@ -64,29 +63,27 @@ function formatBlock(block: {
   id: string;
   visitId: string;
   blockType: string;
-  startsAt: string;
-  endsAt: string;
+  startsAt: Date;
+  endsAt: Date;
   rentalType: string;
-  roomId: string | null;
-  lockerId: string | null;
+  resourceId: string | null;
   sessionId: string | null;
   agreementSigned: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
 }) {
   return {
     id: block.id,
     visitId: block.visitId,
     blockType: block.blockType,
-    startsAt: block.startsAt,
-    endsAt: block.endsAt,
+    startsAt: block.startsAt.toISOString(),
+    endsAt: block.endsAt.toISOString(),
     rentalType: block.rentalType,
-    roomId: block.roomId,
-    lockerId: block.lockerId,
+    resourceId: block.resourceId,
     sessionId: block.sessionId,
     agreementSigned: block.agreementSigned,
-    createdAt: block.createdAt,
-    updatedAt: block.updatedAt,
+    createdAt: block.createdAt.toISOString(),
+    updatedAt: block.updatedAt.toISOString(),
   };
 }
 
@@ -97,23 +94,20 @@ export type RentalType = 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'LOCKER' | 'GYM_LOC
 export interface CreateVisitInput {
   customerId: string;
   rentalType: RentalType;
-  roomId?: string;
-  lockerId?: string;
+  resourceId?: string;
 }
 
 export interface RenewVisitInput {
   visitId: string;
   rentalType: RentalType;
-  roomId?: string;
-  lockerId?: string;
+  resourceId?: string;
   renewalHours?: 2 | 6;
 }
 
 export interface FinalExtensionInput {
   visitId: string;
   rentalType: RentalType;
-  roomId?: string;
-  lockerId?: string;
+  resourceId?: string;
   staffId: string;
 }
 
@@ -150,13 +144,9 @@ export async function createVisit(input: CreateVisitInput) {
       throw new HttpError(409, 'Member already has an active visit');
     }
 
-    // 3. Handle room/locker assignment using Phase 0 helpers (now Drizzle-native)
-    const assignedRoomId = input.roomId
-      ? await assignRoom(tx, input.roomId, input.customerId)
-      : null;
-
-    const assignedLockerId = input.lockerId
-      ? await assignLocker(tx, input.lockerId, input.customerId)
+    // 3. Handle resource assignment using unified assignResource
+    const assignedResourceId = input.resourceId
+      ? await assignResource(tx, input.resourceId, input.customerId)
       : null;
 
     // 4. Create the visit
@@ -169,7 +159,7 @@ export async function createVisit(input: CreateVisitInput) {
       .insert(visits)
       .values({
         customerId: input.customerId,
-        startedAt: now.toISOString(),
+        startedAt: now,
       })
       .returning();
 
@@ -181,11 +171,10 @@ export async function createVisit(input: CreateVisitInput) {
       .values({
         visitId: visit.id,
         blockType: 'INITIAL',
-        startsAt: now.toISOString(),
-        endsAt: initialBlockEndsAt.toISOString(),
+        startsAt: now,
+        endsAt: initialBlockEndsAt,
         rentalType: input.rentalType,
-        roomId: assignedRoomId,
-        lockerId: assignedLockerId,
+        resourceId: assignedResourceId,
       })
       .returning();
 
@@ -206,16 +195,20 @@ export async function renewVisit(input: RenewVisitInput) {
   return db.transaction(async (tx) => {
     const requestedRenewalHours = input.renewalHours ?? 6;
 
-    // 1. Get the visit and verify it's active (FOR UPDATE)
-    const visitRows = await tx.execute<{
-      id: string;
-      customer_id: string;
-      started_at: string;
-      ended_at: string | null;
-    }>(sql`SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = ${input.visitId} FOR UPDATE`);
+    // 1. Get the visit and verify it's active (FOR UPDATE — native Drizzle lock)
+    const visitRows = await tx
+      .select({
+        id: visits.id,
+        customerId: visits.customerId,
+        startedAt: visits.startedAt,
+        endedAt: visits.endedAt,
+      })
+      .from(visits)
+      .where(eq(visits.id, input.visitId))
+      .for('update');
 
-    const visit = assertCustomerExists(visitRows.rows, 'Visit');
-    if (visit.ended_at) {
+    const visit = assertCustomerExists(visitRows, 'Visit');
+    if (visit.endedAt) {
       throw new HttpError(400, 'Visit has already ended');
     }
 
@@ -228,36 +221,37 @@ export async function renewVisit(input: RenewVisitInput) {
         bannedUntil: customers.bannedUntil,
       })
       .from(customers)
-      .where(eq(customers.id, visit.customer_id));
+      .where(eq(customers.id, visit.customerId));
 
     const customer = assertCustomerExists(customerRows);
-    assertNotBanned({ banned_until: customer.bannedUntil ? new Date(customer.bannedUntil) : null });
+    assertNotBanned({ banned_until: customer.bannedUntil });
 
-    // 3. Get all existing blocks for this visit
-    const blocksResult = await tx.execute<{
-      id: string;
-      visit_id: string;
-      block_type: string;
-      starts_at: string;
-      ends_at: string;
-      rental_type: string;
-      room_id: string | null;
-      locker_id: string | null;
-      session_id: string | null;
-      agreement_signed: boolean;
-    }>(sql`SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id, session_id, agreement_signed
-       FROM checkin_blocks WHERE visit_id = ${visit.id} ORDER BY ends_at DESC`);
+    // 3. Get all existing blocks for this visit (Drizzle returns Date via mode: 'date')
+    const blocks = await tx
+      .select({
+        id: checkinBlocks.id,
+        visitId: checkinBlocks.visitId,
+        blockType: checkinBlocks.blockType,
+        startsAt: checkinBlocks.startsAt,
+        endsAt: checkinBlocks.endsAt,
+        rentalType: checkinBlocks.rentalType,
+        resourceId: checkinBlocks.resourceId,
+        sessionId: checkinBlocks.sessionId,
+        agreementSigned: checkinBlocks.agreementSigned,
+      })
+      .from(checkinBlocks)
+      .where(eq(checkinBlocks.visitId, visit.id))
+      .orderBy(desc(checkinBlocks.endsAt));
 
-    const blocks = blocksResult.rows;
     if (blocks.length === 0) {
       throw new HttpError(400, 'Visit has no blocks');
     }
 
-    // 4. Check renewal hour limit — need Date objects for calculation
+    // 4. Check renewal hour limit — Drizzle returns Date objects natively
     const blocksForCalc: CheckinBlockForCalc[] = blocks.map((b) => ({
-      starts_at: new Date(b.starts_at),
-      ends_at: new Date(b.ends_at),
-      block_type: b.block_type,
+      starts_at: b.startsAt,
+      ends_at: b.endsAt,
+      block_type: b.blockType,
     }));
 
     const totalHoursIfRenewed = calculateTotalHoursWithExtension(blocksForCalc, requestedRenewalHours);
@@ -283,15 +277,9 @@ export async function renewVisit(input: RenewVisitInput) {
     const renewalStartsAt = latestBlockEnd;
     const renewalEndsAt = new Date(renewalStartsAt.getTime() + requestedRenewalHours * 60 * 60 * 1000);
 
-    // 6. Room/locker assignment (renewal allows reassign-to-same)
-    const assignedRoomId = input.roomId
-      ? await assignRoom(tx, input.roomId, visit.customer_id, {
-          allowReassignToSame: true,
-        })
-      : null;
-
-    const assignedLockerId = input.lockerId
-      ? await assignLocker(tx, input.lockerId, visit.customer_id, {
+    // 6. Resource assignment (renewal allows reassign-to-same)
+    const assignedResourceId = input.resourceId
+      ? await assignResource(tx, input.resourceId, visit.customerId, {
           allowReassignToSame: true,
         })
       : null;
@@ -302,11 +290,10 @@ export async function renewVisit(input: RenewVisitInput) {
       .values({
         visitId: visit.id,
         blockType: requestedRenewalHours === 2 ? 'FINAL2H' : 'RENEWAL',
-        startsAt: renewalStartsAt.toISOString(),
-        endsAt: renewalEndsAt.toISOString(),
+        startsAt: renewalStartsAt,
+        endsAt: renewalEndsAt,
         rentalType: input.rentalType,
-        roomId: assignedRoomId,
-        lockerId: assignedLockerId,
+        resourceId: assignedResourceId,
       })
       .returning();
 
@@ -315,10 +302,10 @@ export async function renewVisit(input: RenewVisitInput) {
     return {
       visit: {
         id: visit.id,
-        customerId: visit.customer_id,
-        startedAt: visit.started_at,
-        endedAt: visit.ended_at,
-        createdAt: visit.started_at,
+        customerId: visit.customerId,
+        startedAt: visit.startedAt.toISOString(),
+        endedAt: null,
+        createdAt: visit.startedAt.toISOString(),
         updatedAt: new Date().toISOString(),
       },
       block: formatBlock(block),
@@ -332,33 +319,37 @@ export async function renewVisit(input: RenewVisitInput) {
  */
 export async function createFinalExtension(input: FinalExtensionInput) {
   return db.transaction(async (tx) => {
-    // 1. Get visit and verify it's active (FOR UPDATE)
-    const visitRows = await tx.execute<{
-      id: string;
-      customer_id: string;
-      started_at: string;
-      ended_at: string | null;
-    }>(sql`SELECT id, customer_id, started_at, ended_at FROM visits WHERE id = ${input.visitId} FOR UPDATE`);
+    // 1. Get visit and verify it's active (FOR UPDATE — native Drizzle lock)
+    const visitRows = await tx
+      .select({
+        id: visits.id,
+        customerId: visits.customerId,
+        startedAt: visits.startedAt,
+        endedAt: visits.endedAt,
+      })
+      .from(visits)
+      .where(eq(visits.id, input.visitId))
+      .for('update');
 
-    const visit = assertCustomerExists(visitRows.rows, 'Visit');
-    if (visit.ended_at) {
+    const visit = assertCustomerExists(visitRows, 'Visit');
+    if (visit.endedAt) {
       throw new HttpError(400, 'Visit has already ended');
     }
 
-    // 2. Get all blocks and validate state
-    const blocksResult = await tx.execute<{
-      id: string;
-      visit_id: string;
-      block_type: string;
-      starts_at: string;
-      ends_at: string;
-      rental_type: string;
-      room_id: string | null;
-      locker_id: string | null;
-    }>(sql`SELECT id, visit_id, block_type, starts_at, ends_at, rental_type::text as rental_type, room_id, locker_id
-       FROM checkin_blocks WHERE visit_id = ${visit.id} ORDER BY ends_at DESC`);
-
-    const blocks = blocksResult.rows;
+    // 2. Get all blocks and validate state (Drizzle returns Date via mode: 'date')
+    const blocks = await tx
+      .select({
+        id: checkinBlocks.id,
+        visitId: checkinBlocks.visitId,
+        blockType: checkinBlocks.blockType,
+        startsAt: checkinBlocks.startsAt,
+        endsAt: checkinBlocks.endsAt,
+        rentalType: checkinBlocks.rentalType,
+        resourceId: checkinBlocks.resourceId,
+      })
+      .from(checkinBlocks)
+      .where(eq(checkinBlocks.visitId, visit.id))
+      .orderBy(desc(checkinBlocks.endsAt));
 
     if (blocks.length !== 2) {
       throw new HttpError(
@@ -367,14 +358,15 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       );
     }
 
-    if (blocks.some((b) => b.block_type === 'FINAL2H')) {
+    if (blocks.some((b) => b.blockType === 'FINAL2H')) {
       throw new HttpError(400, 'Final extension has already been applied to this visit');
     }
 
+    // Drizzle returns Date objects natively — no wrapping needed
     const blocksForCalc: CheckinBlockForCalc[] = blocks.map((b) => ({
-      starts_at: new Date(b.starts_at),
-      ends_at: new Date(b.ends_at),
-      block_type: b.block_type,
+      starts_at: b.startsAt,
+      ends_at: b.endsAt,
+      block_type: b.blockType,
     }));
 
     const totalHours = calculateTotalHours(blocksForCalc);
@@ -394,15 +386,9 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       throw new HttpError(400, 'Cannot determine extension start time');
     }
 
-    // 3. Room/locker assignment (reassign-to-same allowed)
-    const assignedRoomId = input.roomId
-      ? await assignRoom(tx, input.roomId, visit.customer_id, {
-          allowReassignToSame: true,
-        })
-      : null;
-
-    const assignedLockerId = input.lockerId
-      ? await assignLocker(tx, input.lockerId, visit.customer_id, {
+    // 3. Resource assignment (reassign-to-same allowed)
+    const assignedResourceId = input.resourceId
+      ? await assignResource(tx, input.resourceId, visit.customerId, {
           allowReassignToSame: true,
         })
       : null;
@@ -416,23 +402,27 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       .values({
         visitId: visit.id,
         blockType: 'FINAL2H',
-        startsAt: extensionStartsAt.toISOString(),
-        endsAt: extensionEndsAt.toISOString(),
+        startsAt: extensionStartsAt,
+        endsAt: extensionEndsAt,
         rentalType: input.rentalType,
-        roomId: assignedRoomId,
-        lockerId: assignedLockerId,
+        resourceId: assignedResourceId,
         agreementSigned: true,
       })
       .returning();
 
     if (!block) throw new HttpError(500, 'Failed to create extension block');
 
-    // 5. Create payment intent for $20 flat fee
-    const [paymentIntent] = await tx
-      .insert(paymentIntents)
+    // 5. Create order for $20 flat fee (replaces paymentIntents)
+    const [order] = await tx
+      .insert(orders)
       .values({
-        amount: '20.00',
-        status: 'DUE',
+        customerId: visit.customerId,
+        visitId: visit.id,
+        status: 'OPEN',
+        subtotal: '20.00',
+        discount: '0',
+        tax: '0',
+        total: '20.00',
         quoteJson: {
           type: 'FINAL_EXTENSION',
           visitId: visit.id,
@@ -443,7 +433,16 @@ export async function createFinalExtension(input: FinalExtensionInput) {
       })
       .returning();
 
-    if (!paymentIntent) throw new HttpError(500, 'Failed to create payment intent');
+    if (!order) throw new HttpError(500, 'Failed to create extension order');
+
+    await tx.insert(orderLineItems).values({
+      orderId: order.id,
+      kind: 'FINAL_EXTENSION',
+      name: 'Final 2-Hour Extension',
+      quantity: 1,
+      unitPrice: '20.00',
+      total: '20.00',
+    });
 
     // 6. Audit log — Drizzle-native, type-safe insert
     await insertAuditLogDrizzle(tx, {
@@ -460,7 +459,7 @@ export async function createFinalExtension(input: FinalExtensionInput) {
         blockType: 'FINAL2H',
         extensionHours: 2,
         newEndsAt: extensionEndsAt.toISOString(),
-        paymentIntentId: paymentIntent.id,
+        orderId: order.id,
         rentalType: input.rentalType,
       },
     });
@@ -468,17 +467,17 @@ export async function createFinalExtension(input: FinalExtensionInput) {
     return {
       visit: {
         id: visit.id,
-        customerId: visit.customer_id,
-        startedAt: visit.started_at,
-        endedAt: visit.ended_at,
-        createdAt: visit.started_at,
+        customerId: visit.customerId,
+        startedAt: visit.startedAt.toISOString(),
+        endedAt: null,
+        createdAt: visit.startedAt.toISOString(),
         updatedAt: new Date().toISOString(),
       },
       block: formatBlock(block),
-      paymentIntentId: paymentIntent.id,
-      amount: typeof paymentIntent.amount === 'string'
-        ? Number.parseFloat(paymentIntent.amount)
-        : Number(paymentIntent.amount),
+      orderId: order.id,
+      amount: typeof order.total === 'string'
+        ? Number.parseFloat(order.total)
+        : Number(order.total),
     };
   }, { isolationLevel: 'serializable' });
 }

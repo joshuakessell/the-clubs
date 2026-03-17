@@ -60,7 +60,7 @@ export function ChangePinScreen() {
       });
 
       if (!response.ok) {
-        const payload: any = await response.json().catch(() => null);
+        const payload = await response.json().catch(() => null) as Record<string, string> | null;
         throw new Error(payload?.error || 'Failed to change PIN');
       }
 

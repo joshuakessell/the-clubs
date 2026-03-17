@@ -2,9 +2,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
-import type { CustomerRow, LaneSessionRow, PaymentIntentRow } from '../../checkin/types';
+import { type CustomerRow, type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import { transaction } from '../../db';
+import { db, type DrizzleTx } from '../../db';
+import { sql } from 'drizzle-orm';
 import { calculatePriceQuote, calculateRenewalQuote, type PricingInput } from '../../pricing/engine';
 import { calculateAge } from '../../checkin/identity';
 import { toDate } from '../../checkin/utils';
@@ -12,6 +13,37 @@ import { toDate } from '../../checkin/utils';
 import { getLaneFeatureFlags } from '../../checkin/laneFeatureFlags';
 import { assertLaneWriteAuthority } from '../../checkin/laneAuthority';
 import { writeOfflineOutboxRecord } from '../../checkin/offlineOutbox';
+import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by getLaneFeatureFlags, assertLaneWriteAuthority, writeOfflineOutboxRecord.
+ */
+function toQueryable(tx: DrizzleTx) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      // Use matchAll to find $N placeholders and their positions
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        // Append the literal text before this placeholder
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        // Parse the placeholder number and map to the correct param
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      // Append any trailing literal text
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 /**
  * Structured error for flow command failures.
@@ -168,7 +200,6 @@ function assertAllowedStepTransition(params: {
   const currentIndex = FLOW_STEP_INDEX[currentStep];
   const nextIndex = FLOW_STEP_INDEX[nextStep];
 
-  // CANCEL does not change steps.
   if (type === 'CANCEL_STEP') {
     if (nextStep !== currentStep) {
       throw new FlowCommandError(400, 'InvalidTransition', 'CANCEL_STEP cannot change step');
@@ -176,7 +207,6 @@ function assertAllowedStepTransition(params: {
     return;
   }
 
-  // BACK_STEP must move to the previous step (or stay at first).
   if (type === 'BACK_STEP') {
     const expected = getPreviousFlowStep(currentStep);
     if (nextStep !== expected) {
@@ -185,11 +215,9 @@ function assertAllowedStepTransition(params: {
     return;
   }
 
-  // SET_STEP: allow no-op, any backward jump, or a forward transition
-  // that's in the ALLOWED_STEP_TRANSITIONS matrix.
-  if (nextStep === currentStep) return;       // no-op
-  if (nextIndex < currentIndex) return;       // backward jump always OK
-  if (ALLOWED_STEP_TRANSITIONS[currentStep].has(nextStep)) return; // matrix allows it
+  if (nextStep === currentStep) return;
+  if (nextIndex < currentIndex) return;
+  if (ALLOWED_STEP_TRANSITIONS[currentStep].has(nextStep)) return;
 
   throw new FlowCommandError(400, 'InvalidTransition', `SET_STEP transition ${currentStep} -> ${nextStep} not allowed`);
 }
@@ -199,7 +227,6 @@ function assertStepIsValidForFlow(params: { currentStep: FlowStep; nextStep: Flo
   const currentIndex = FLOW_STEP_INDEX[currentStep];
   const nextIndex = FLOW_STEP_INDEX[nextStep];
 
-  // Backwards jumps are always valid.
   if (nextIndex < currentIndex) return;
 
   const allowed = ALLOWED_STEP_TRANSITIONS[currentStep];
@@ -241,7 +268,6 @@ function computeFlowUpdate(input: {
       throw new FlowCommandError(400, 'InvalidPayload', 'payload.step is required');
     }
 
-    // When jumping backwards, clear everything after the requested step.
     const currentIndex = FLOW_STEPS.indexOf(currentStep);
     const requestedIndex = FLOW_STEPS.indexOf(requested);
 
@@ -266,7 +292,6 @@ function computeFlowUpdate(input: {
 
     const requestedIndex = FLOW_STEPS.indexOf(nextStep);
 
-    // Back clears LEAVING step AND anything after it (should be same as jumping back)
     const clear = {
       rental: requestedIndex <= FLOW_STEPS.indexOf('RENTAL'),
       waitlistBackup: requestedIndex <= FLOW_STEPS.indexOf('WAITLIST_BACKUP'),
@@ -277,7 +302,6 @@ function computeFlowUpdate(input: {
     return { nextStep, clear };
   }
 
-  // For command-specific step transitions (Propose/Confirm typically advance step)
   const noClear = {
     rental: false,
     waitlistBackup: false,
@@ -286,18 +310,14 @@ function computeFlowUpdate(input: {
   };
 
   if (type === 'PROPOSE_SELECTION' || type === 'CONFIRM_SELECTION') {
-    // Selection stays on current step — employee clicks "Next" to advance.
-    // No clearing for these; they are purely additive.
     return { nextStep: currentStep, clear: noClear };
   }
 
   if (type === 'WAITLIST_UPDATE') {
-    // Purely additive update to draft fields.
     return { nextStep: currentStep, clear: noClear };
   }
 
   if (type === 'CANCEL_STEP') {
-    // CANCEL_STEP clears the step we are currently on, without changing step.
     const clear = {
       rental: currentStep === 'RENTAL',
       waitlistBackup: currentStep === 'WAITLIST_BACKUP',
@@ -308,7 +328,6 @@ function computeFlowUpdate(input: {
     return { nextStep: currentStep, clear };
   }
 
-  // Exhaustive fallback — should be unreachable with current FlowCommandType union.
   return { nextStep: currentStep, clear: noClear };
 }
 
@@ -328,15 +347,9 @@ async function isLanFallbackEnabledForLane(params: {
   const flags = await getLaneFeatureFlags(params.client, params.laneId);
   return flags.lanFallbackEnabled;
 }
-// NOTE: This function is duplicated from realtime-lan.ts (B-8 review finding).
-// A future refactor should extract both into a shared `checkin/laneFeatureFlags.ts` utility.
 
 /**
  * Apply payment-related side effects after a flow command is processed.
- *
- * 1. Auto-create payment intent when entering PAYMENT step (pricing + insert).
- * 2. Mark payment intent as PAID when moving to AGREEMENT step.
- * 3. Record simulated payment failure.
  */
 async function applyFlowPaymentSideEffects(
   client: Parameters<typeof getLaneFeatureFlags>[0],
@@ -349,8 +362,7 @@ async function applyFlowPaymentSideEffects(
 ): Promise<void> {
   const { session, sessionId, type, payload } = params;
 
-  // ── Auto-create payment intent when entering PAYMENT step ──
-  if (session.flow_step === 'PAYMENT' && !session.payment_intent_id) {
+  if (session.flow_step === 'PAYMENT' && !session.order_id) {
     let rentalType = (session.desired_rental_type ?? session.proposed_rental_type ?? 'LOCKER') as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
     if (session.waitlist_desired_type && session.backup_rental_type) {
       rentalType = session.backup_rental_type as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
@@ -377,6 +389,17 @@ async function applyFlowPaymentSideEffects(
     const isRenewal = session.checkin_mode === 'RENEWAL';
     const renewalHours = session.renewal_hours === 2 || session.renewal_hours === 6 ? session.renewal_hours : null;
 
+    const sessionWaitlistType = session.waitlist_desired_type as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER' | undefined;
+    
+    let parsedWaitlistTypesJson: string | undefined;
+    if (session.waitlist_desired_types_json !== null) {
+      if (typeof session.waitlist_desired_types_json === 'string') {
+        parsedWaitlistTypesJson = session.waitlist_desired_types_json;
+      } else {
+        parsedWaitlistTypesJson = JSON.stringify(session.waitlist_desired_types_json);
+      }
+    }
+
     const pricingInput: PricingInput = {
       rentalType,
       customerAge,
@@ -384,51 +407,78 @@ async function applyFlowPaymentSideEffects(
       membershipCardType,
       membershipValidUntil,
       includeSixMonthMembershipPurchase: includeSixMonth,
+      waitlistDesiredType: sessionWaitlistType,
+      waitlistDesiredTypesJson: parsedWaitlistTypesJson,
     };
 
     const quote = isRenewal && renewalHours
       ? calculateRenewalQuote({ ...pricingInput, renewalHours })
       : calculatePriceQuote(pricingInput);
 
-    const intentResult = await client.query<PaymentIntentRow>(
-      `INSERT INTO payment_intents (lane_session_id, amount, status, quote_json) VALUES ($1, $2, 'DUE', $3) RETURNING *`,
+    const intentResult = await client.query<OrderRow>(
+      `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, status, quote_json) VALUES ($1, $2, 0, 0, 0, $2, 'OPEN', $3) RETURNING ${ORDER_COLS}`,
       [sessionId, quote.total, JSON.stringify(quote)],
     );
     const intent = intentResult.rows[0]!;
 
     await client.query(
-      `UPDATE lane_sessions SET payment_intent_id = $1, price_quote_json = $2, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = $3`,
+      `UPDATE lane_sessions SET order_id = $1, price_quote_json = $2, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = $3`,
       [intent.id, JSON.stringify(quote), sessionId],
     );
   }
 
-  // ── Mark payment intent as PAID when moving to AGREEMENT step ──
-  if (session.flow_step === 'AGREEMENT' && session.payment_intent_id && type === 'SET_STEP') {
+  if (session.flow_step === 'AGREEMENT' && session.order_id && type === 'SET_STEP') {
     const requestedMethod = payload?.['paymentMethod'] as string | undefined;
     if (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT') {
       const intentStatusRes = await client.query<{ status: string }>(
-        `SELECT status FROM payment_intents WHERE id = $1`,
-        [session.payment_intent_id],
+        `SELECT status FROM orders WHERE id = $1`,
+        [session.order_id],
       );
       if (intentStatusRes.rows[0]?.status !== 'PAID') {
+        const splitCash = payload?.['splitCashAmount'] ? Number(payload['splitCashAmount']) : null;
+        const splitCredit = payload?.['splitCreditAmount'] ? Number(payload['splitCreditAmount']) : null;
+
         await client.query(
-          `UPDATE payment_intents SET status = 'PAID', payment_method = $1, paid_at = NOW(), updated_at = NOW() WHERE id = $2`,
-          [requestedMethod, session.payment_intent_id],
+          `UPDATE orders SET status = 'PAID', payment_method = $1, split_cash_amount = $2, split_credit_amount = $3, paid_at = NOW(), updated_at = NOW() WHERE id = $4`,
+          [requestedMethod, splitCash, splitCredit, session.order_id],
         );
         await client.query(
           `UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`,
           [sessionId],
         );
+
+        if (session.customer_id && session.past_due_bypassed !== true) {
+          const pastDueRes = await client.query<{ past_due_balance: string | number | null }>(
+            `SELECT past_due_balance FROM customers WHERE id = $1 FOR UPDATE`,
+            [session.customer_id]
+          );
+          
+          const bal = pastDueRes.rows[0]?.past_due_balance;
+          if (bal && Number(bal) > 0) {
+            await client.query(
+              `UPDATE customers SET past_due_balance = 0, updated_at = NOW() WHERE id = $1`,
+              [session.customer_id]
+            );
+            await insertCustomerActivityEvent(client, {
+              customerId: session.customer_id,
+              actionType: 'PAST_DUE_PAID',
+              actionCategory: 'PAYMENT',
+              sourceApp: 'CUSTOMER_KIOSK',
+              actorType: 'SYSTEM',
+              summary: 'Past due balance paid',
+              metadata: { amount_paid: Number(bal), order_id: session.order_id },
+            });
+          }
+        }
       }
     }
   }
 
-  // ── Handle simulated payment failure ──
-  if (session.flow_step === 'PAYMENT' && session.payment_intent_id && type === 'SET_STEP' && payload?.['paymentFailed']) {
+  if (session.flow_step === 'PAYMENT' && session.order_id && type === 'SET_STEP' && payload?.['paymentFailed']) {
     const failureReason = (payload['failureReason'] as string) || 'Payment failed';
     await client.query(
-      `UPDATE payment_intents SET failure_reason = $1, updated_at = NOW() WHERE id = $2`,
-      [failureReason, session.payment_intent_id],
+      `UPDATE orders SET failure_reason = $1, updated_at = NOW() WHERE id = $2`,
+      [failureReason, session.order_id],
     );
   }
 }
@@ -482,38 +532,38 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
       const { sessionId, commandId, actor, expectedFlowVersion, type, payload } = parsed.data;
 
       try {
-        const result = await transaction(async (client) => {
-          if (!(await isFlowCommandsEnabled({ client, laneId }))) {
+        const result = await db.transaction(async (tx) => {
+          const qClient = toQueryable(tx);
+
+          if (!(await isFlowCommandsEnabled({ client: qClient as any, laneId }))) {
             throw new FlowCommandError(404, 'NotFound', 'Not Found');
           }
 
-          const authority = await assertLaneWriteAuthority({ client, laneId });
+          const authority = await assertLaneWriteAuthority({ client: qClient as any, laneId });
           if (!authority.allowed) {
             throw new FlowCommandError(409, 'LaneNotAuthoritative', authority.reason ?? 'Lane write not allowed');
           }
 
-          const lanMode = await isLanFallbackEnabledForLane({ client, laneId });
-          const locked = await client.query<LaneSessionRow>(
-            `SELECT *
+          const lanMode = await isLanFallbackEnabledForLane({ client: qClient as any, laneId });
+          const locked = await tx.execute<Record<string, unknown>>(
+            sql`SELECT ${sql.raw(LANE_SESSION_COLS)}
              FROM lane_sessions
-             WHERE id = $1 AND lane_id = $2
-             FOR UPDATE`,
-            [sessionId, laneId]
+             WHERE id = ${sessionId} AND lane_id = ${laneId}
+             FOR UPDATE`
           );
 
           if (locked.rows.length === 0) {
             throw new FlowCommandError(404, 'NotFound', 'Session not found');
           }
 
-          const session = locked.rows[0]!;
+          const session = locked.rows[0] as unknown as LaneSessionRow;
           const currentVersion = session.flow_version ?? 0;
 
-          const dedupe = await client.query<{ session_id: string; command_id: string }>(
-            `SELECT session_id, command_id
+          const dedupe = await tx.execute<Record<string, unknown>>(
+            sql`SELECT session_id, command_id
              FROM lane_session_commands
-             WHERE session_id = $1 AND command_id = $2
-             LIMIT 1`,
-            [sessionId, commandId]
+             WHERE session_id = ${sessionId} AND command_id = ${commandId}
+             LIMIT 1`
           );
 
           if (dedupe.rows.length > 0) {
@@ -524,14 +574,13 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
             throw new FlowCommandError(409, 'VersionMismatch', `expectedFlowVersion ${expectedFlowVersion} does not match current ${currentVersion}`);
           }
 
-          await client.query(
-            `INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
-             VALUES ($1, $2, $3, $4, $5)`,
-            [sessionId, commandId, actor, type, payload ?? null]
+          await tx.execute(
+            sql`INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
+             VALUES (${sessionId}, ${commandId}, ${actor}, ${type}, ${payload ?? null})`
           );
 
           if (lanMode) {
-            await writeOfflineOutboxRecord(client, {
+            await writeOfflineOutboxRecord(qClient as any, {
               laneId,
               sessionId,
               commandId,
@@ -541,7 +590,6 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
             });
           }
 
-          // Domain-specific command mutations (accumulated).
           let nextStatus = session.status;
           let nextDesiredRentalType = session.desired_rental_type;
           let nextProposedRentalType = session.proposed_rental_type;
@@ -561,7 +609,6 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
               throw new FlowCommandError(400, 'InvalidPayload', 'payload.rentalType is required');
             }
 
-
             if (session.selection_confirmed && session.flow_step !== 'WAITLIST_BACKUP') {
               throw new FlowCommandError(400, 'SelectionLocked', 'Selection is already locked');
             }
@@ -571,7 +618,6 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
           }
 
           if (type === 'CONFIRM_SELECTION') {
-
             if (!session.proposed_rental_type && !nextProposedRentalType) {
               throw new FlowCommandError(400, 'NoProposal', 'No selection proposed yet');
             }
@@ -580,8 +626,6 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
             nextSelectionConfirmedBy = actor === 'CUSTOMER' ? 'CUSTOMER' : 'EMPLOYEE';
             nextSelectionLockedAt = new Date();
 
-            // Promotion rule: confirm sets desired to the proposed one if not already set.
-            // Tests expect desired_rental_type to match proposed upon confirmation.
             if (nextProposedRentalType) {
               nextDesiredRentalType = nextProposedRentalType;
             } else if (session.proposed_rental_type) {
@@ -601,7 +645,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
               return trimmed.length > 0 ? trimmed : null;
             };
 
-            const p = payload as Record<string, any>;
+            const p = payload as Record<string, unknown>;
             const desired = normalizeString(p?.['waitlistDesiredType'] ?? p?.['desiredTier']);
             const backup = normalizeString(p?.['backupRentalType'] ?? p?.['backupTier']);
             const requestedNumber = normalizeString(p?.['waitlistRequestedResourceNumber'] ?? p?.['requestedResourceNumber']);
@@ -628,13 +672,31 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
           const { nextStep, clear } = computeFlowUpdate({ currentStep, type, payload });
           const nextVersion = currentVersion + 1;
 
-          const stringifyIfObject = (val: any) => {
+          let finalDisclaimersAckJson: Record<string, unknown> | null =
+            clear.agreement ? null : (session.disclaimers_ack_json as Record<string, unknown> | null);
+
+          // If backward-clearing, preserve waitlistDisclaimerAck if it exists
+          if (
+            clear.agreement &&
+            typeof session.disclaimers_ack_json === 'object' &&
+            session.disclaimers_ack_json !== null &&
+            (session.disclaimers_ack_json as Record<string, unknown>)['waitlistDisclaimerAck'] === true
+          ) {
+            finalDisclaimersAckJson = { waitlistDisclaimerAck: true };
+          }
+          
+          // If moving forward from WAITLIST_DISCLAIMER, inject the acknowledgment
+          if (type === 'SET_STEP' && currentStep === 'WAITLIST_DISCLAIMER' && nextStep === 'PAYMENT') {
+            finalDisclaimersAckJson = { ...(finalDisclaimersAckJson || {}), waitlistDisclaimerAck: true };
+          }
+
+          const stringifyIfObject = (val: unknown) => {
             if (val === null || val === undefined) return null;
             if (typeof val === 'string') return val;
             return JSON.stringify(val);
           };
 
-          const params = [
+          const updateParams = [
             nextStatus,
             nextStep,
             nextVersion,
@@ -656,9 +718,12 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
             clear.paymentIntent,
             clear.agreement,
             sessionId,
+            stringifyIfObject(finalDisclaimersAckJson),
           ];
 
-          const updatedSession = await client.query<LaneSessionRow>(
+          // This complex UPDATE uses positional params ($1..$21) with many CASE
+          // expressions — best kept as raw SQL via the toQueryable adapter.
+          const updatedSession: { rows: LaneSessionRow[] } = await (qClient as any).query(
             `UPDATE lane_sessions
              SET status = $1::public.lane_session_status,
                  flow_step = $2,
@@ -676,24 +741,20 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
                  backup_rental_type = CASE WHEN $13 THEN NULL ELSE $16::public.rental_type END,
                  waitlist_requested_resource_number = CASE WHEN $13 THEN NULL ELSE $17 END,
                  waitlist_requested_resource_type = CASE WHEN $13 THEN NULL ELSE $18::public.inventory_resource_type END,
-                 payment_intent_id = CASE WHEN $19 THEN NULL ELSE payment_intent_id END,
+                 order_id = CASE WHEN $19 THEN NULL ELSE order_id END,
                  price_quote_json = CASE WHEN $19 THEN NULL ELSE price_quote_json END,
-                 disclaimers_ack_json = CASE WHEN $19 THEN NULL ELSE disclaimers_ack_json END,
+                 disclaimers_ack_json = $22::jsonb,
                  agreement_bypass_pending = CASE WHEN $20 THEN false ELSE agreement_bypass_pending END,
                  updated_at = NOW()
              WHERE id = $21
-             RETURNING *`,
-            params
+             RETURNING ${LANE_SESSION_COLS}`,
+            updateParams
           );
 
           const finalSession = updatedSession.rows[0]!;
-          const finalStep = finalSession.flow_step;
-
-          // Auto-skip logic removed — employee now explicitly navigates
-          // between steps using SET_STEP. CONFIRM_SELECTION stays on RENTAL.
 
           // Apply payment-related side effects (auto-create intent, mark PAID, record failure).
-          await applyFlowPaymentSideEffects(client, {
+          await applyFlowPaymentSideEffects(qClient as any, {
             session: finalSession,
             sessionId,
             type,
@@ -703,9 +764,8 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
           return { applied: true as const, deduped: false as const, session: finalSession };
         });
 
-        const { laneId: sessionLaneId, payload: sessionPayload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, sessionId)
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native
+        const { laneId: sessionLaneId, payload: sessionPayload } = await buildFullSessionUpdatedPayload(sessionId);
         fastify.broadcaster.broadcastSessionUpdated(sessionPayload, sessionLaneId);
 
         return reply.send({

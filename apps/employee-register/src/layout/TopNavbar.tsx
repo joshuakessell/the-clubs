@@ -91,7 +91,7 @@ width = "28"
 height = "28"
   />
   </div>
-  <span className="text-sm font-bold uppercase" style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}>
+  <span className="text-sm font-bold uppercase font-(--font-brand) text-(--color-text-primary)">
     Club Dallas — Register #{laneId.replaceAll(/\D/g, '') || '1'}
 </span>
   </div>
@@ -109,8 +109,8 @@ style = {{
   <SearchIcon />
   < input
 type = "text"
-className = "h-8 flex-1 bg-transparent text-xs outline-none"
-style = {{ color: 'var(--color-text-primary)', outline: 'none' }}
+className = "h-8 flex-1 bg-transparent outline-none"
+style = {{ color: 'var(--color-text-primary)', outline: 'none', fontSize: '14px' }}
 placeholder = "Search customer…"
 aria-label="Search customer"
 autoComplete = "off"
@@ -140,12 +140,7 @@ disabled = { isSubmitting }
       <button
                     key= { s.id }
     type = "button"
-    className = "flex w-full items-center justify-between gap-3 border-b px-4 py-2.5 text-left transition"
-    style = {{ borderColor: 'var(--color-border-subtle)' }
-  }
-                    onMouseEnter = {(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-raised)';
-}}
-onMouseLeave = {(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                    className="flex w-full items-center justify-between gap-3 border-b px-4 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-raised)] bg-transparent"
 onClick = {() => {
   openCustomerAccount(s.id, label, {
     authToken,
@@ -160,10 +155,10 @@ onClick = {() => {
   setSearchFocused(false);
 }}
                   >
-  <span className="text-sm font-semibold" style = {{ color: 'var(--color-text-primary)' }}>
+  <span className="text-sm font-semibold text-(--color-text-primary)">
     { label }
     </span>
-    < span className = "flex flex-wrap gap-3 text-xs" style = {{ color: 'var(--color-text-muted)' }}>
+     < span className = "flex flex-wrap gap-3 text-xs text-(--color-text-muted)">
       { s.dobMonthDay && <span>DOB: { s.dobMonthDay } </span>}
 { s.membershipNumber && <span>#{ s.membershipNumber } </span> }
 </span>
@@ -176,7 +171,7 @@ onClick = {() => {
 
 {/* Session info + sign out */ }
 <div className="ml-auto flex items-center gap-3 shrink-0" >
-  <span className="text-xs" style = {{ color: 'var(--color-text-secondary)' }}>
+  <span className="text-xs text-(--color-text-secondary)">
     { employeeName }
     </span>
     < button
@@ -184,59 +179,52 @@ onClick = { onSignOut }
 className = "rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
 style = {{
   color: 'var(--color-status-error)',
-    border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, transparent)',
-      backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)',
+    border: '1px solid color-mix(in oklch, var(--color-status-error) 25%, transparent)',
+      backgroundColor: 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
             }}
           >
   Sign Out
-    </button>
-    <button
-      onClick={ onSignOut }
-      className="rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-      style={{
-        color: 'var(--color-status-error)',
-        border: '1px solid color-mix(in oklch, var(--color-status-error) 20%, transparent)',
-        backgroundColor: 'color-mix(in oklch, var(--color-status-error) 5%, transparent)',
-      }}
-    >
-      Close Out
     </button>
     </div>
     </div>
 
 {/* ── Tab bar ── */ }
 <nav
-        className="flex items-center gap-0.5 border-b px-4 overflow-x-auto"
-style = {{
-  backgroundColor: 'var(--color-surface-base)',
-    borderColor: 'var(--color-border-default)',
-      height: '42px',
-        minHeight: '42px',
+        className="flex items-center gap-0.5 border-b px-2"
+        style={{
+          backgroundColor: 'var(--color-surface-base)',
+          borderColor: 'var(--color-border-default)',
+          height: '42px',
+          minHeight: '42px',
+          containerType: 'inline-size',
         }}
       >
-{
-  NAV_ITEMS.map((item) => {
-    const isActive = activeTab === item.tab;
-    return (
-      <button
-              key= { item.tab }
-    onClick = {() => onNavigate(item.tab)
-  }
-              className = "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all duration-150 whitespace-nowrap shrink-0"
-              style = {{
-    backgroundColor: isActive ? 'var(--color-accent-glow)' : 'transparent',
-    color: isActive ? '#1a1a2e' : 'var(--color-text-secondary)',
-    border: isActive ? '1px solid var(--color-border-accent)' : '1px solid transparent',
-  }}
-title = {`${item.label} (${item.fKey})`}
+        {NAV_ITEMS.map((item) => {
+          const isActive = activeTab === item.tab;
+          return (
+            <button
+              key={item.tab}
+              onClick={() => onNavigate(item.tab)}
+              className="flex items-center gap-0.5 rounded-md py-1 font-medium transition-all duration-150 whitespace-nowrap"
+              style={{
+                backgroundColor: isActive ? 'var(--color-accent-glow)' : 'transparent',
+                color: isActive ? '#1a1a2e' : 'var(--color-text-secondary)',
+                border: isActive ? '1px solid var(--color-border-accent)' : '1px solid transparent',
+                fontSize: 'clamp(14px, 1.5cqw, 16px)',
+                paddingInline: 'clamp(3px, 0.6cqw, 8px)',
+                flex: '1 1 0',
+                justifyContent: 'center',
+                minWidth: 0,
+              }}
+              title={`${item.label} (${item.fKey})`}
             >
-  <span className="w-4 h-4 shrink-0" > { item.icon } </span>
-    < span > { item.label } </span>
-    < span className = "text-[9px] opacity-40" > { item.fKey } </span>
-      </button>
+              <span className="shrink-0" style={{ width: 'clamp(13px, 1.3cqw, 16px)', height: 'clamp(13px, 1.3cqw, 16px)' }}>{item.icon}</span>
+              <span>{item.label}</span>
+              <span style={{ fontSize: 'clamp(8px, 0.8cqw, 10px)', opacity: 0.4 }}>{item.fKey}</span>
+            </button>
           );
         })}
-</nav>
+      </nav>
   </div>
   );
 }
@@ -255,8 +243,7 @@ function ScanIcon() {
 
 function SearchIcon() {
   return (
-    <svg className= "w-4 h-4 shrink-0" viewBox = "0 0 24 24" fill = "none" stroke = "currentColor" strokeWidth = "2" strokeLinecap = "round" strokeLinejoin = "round" style = {{ color: 'var(--color-text-muted)' }
-} aria-hidden="true" >
+    <svg className= "w-4 h-4 shrink-0 text-(--color-text-muted)" viewBox = "0 0 24 24" fill = "none" stroke = "currentColor" strokeWidth = "2" strokeLinecap = "round" strokeLinejoin = "round" aria-hidden="true" >
   <circle cx="11" cy = "11" r = "8" /> <path d="m21 21-4.35-4.35" />
     </svg>
   );

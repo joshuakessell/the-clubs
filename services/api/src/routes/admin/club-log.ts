@@ -1,22 +1,18 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
-import { query } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { ClubEventDomainSchema, ClubEventTypeSchema } from '@the-clubs/shared';
 
 // ---------------------------------------------------------------------------
 // Query schema — all optional filters
 // ---------------------------------------------------------------------------
 const ClubLogQuerySchema = z.object({
-  // Pagination
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
   cursor: z.string().uuid().optional(),
-
-  // Time range
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
-
-  // Filtering
   domain: ClubEventDomainSchema.optional(),
   eventType: ClubEventTypeSchema.optional(),
   staffId: z.string().uuid().optional(),
@@ -24,16 +20,11 @@ const ClubLogQuerySchema = z.object({
   registerId: z.string().optional(),
   orderId: z.string().uuid().optional(),
   visitId: z.string().uuid().optional(),
-
-  // Full-text (trigram) search
   search: z.string().min(1).max(200).optional(),
 });
 
 type ClubLogQuery = z.infer<typeof ClubLogQuerySchema>;
 
-// ---------------------------------------------------------------------------
-// Row type returned from DB
-// ---------------------------------------------------------------------------
 interface ClubEventDbRow {
   id: string;
   occurred_at: Date;
@@ -53,17 +44,36 @@ interface ClubEventDbRow {
   metadata: Record<string, unknown>;
 }
 
+/**
+ * Adapter: wraps the drizzle `db` instance to act like a query function.
+ * Needed because club-log builds dynamic WHERE clauses with positional params.
+ */
+function toQueryable() {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await db.execute(built);
+      return { rows: result.rows as T[], rowCount: result.rowCount ?? 0 };
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Route registration
 // ---------------------------------------------------------------------------
 export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
-  /**
-   * GET /v1/admin/club-log
-   *
-   * Paginated, filterable log of all club events.
-   * Supports domain/type/staff/customer/register/order/visit filters,
-   * date-range, cursor pagination, and trigram search.
-   */
   fastify.get<{ Querystring: ClubLogQuery }>(
     '/v1/admin/club-log',
     { preHandler: [requireAuth] },
@@ -81,13 +91,11 @@ export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
       const { limit, cursor, from, to, domain, eventType, staffId, customerId, registerId, orderId, visitId, search } = parsed;
 
       try {
-        // Build dynamic WHERE clauses
         const conditions: string[] = [];
         const params: unknown[] = [];
         let paramIdx = 1;
 
         if (cursor) {
-          // Cursor-based pagination: events older than the cursor row
           conditions.push(`ce.occurred_at <= (SELECT occurred_at FROM club_events WHERE id = $${paramIdx}) AND ce.id != $${paramIdx}`);
           params.push(cursor);
           paramIdx++;
@@ -147,10 +155,10 @@ export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-        params.push(limit + 1); // fetch one extra to detect next page
+        params.push(limit + 1);
         const limitParam = `$${paramIdx}`;
 
-        const sql = `
+        const queryText = `
           SELECT ce.id, ce.occurred_at, ce.event_type, ce.event_domain, ce.source_app,
                  ce.register_id, ce.staff_id, ce.staff_name,
                  ce.customer_id, ce.customer_name, ce.visit_id, ce.order_id,
@@ -161,7 +169,8 @@ export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
           LIMIT ${limitParam}
         `;
 
-        const result = await query<ClubEventDbRow>(sql, params);
+        const qClient = toQueryable();
+        const result = await qClient.query<ClubEventDbRow>(queryText, params);
 
         const hasMore = result.rows.length > limit;
         const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
@@ -169,7 +178,7 @@ export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
 
         const events = rows.map((r) => ({
           id: r.id,
-          occurredAt: r.occurred_at.toISOString(),
+          occurredAt: new Date(r.occurred_at).toISOString(),
           eventType: r.event_type,
           eventDomain: r.event_domain,
           sourceApp: r.source_app,

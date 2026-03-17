@@ -51,7 +51,7 @@ describe('Membership purchase/renew integration', () => {
       return;
     }
 
-    fastify = Fastify({ logger: false });
+    fastify = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     fastify.decorate('broadcaster', broadcaster);
     await fastify.register(checkinRoutes);
@@ -124,7 +124,7 @@ describe('Membership purchase/renew integration', () => {
       });
       expect(createRes.statusCode).toBe(200);
       const createBody = createRes.json() as {
-        paymentIntentId: string;
+        orderId: string;
         quote: { total: number; lineItems: Array<{ description: string; amount: number }> };
       };
       expect(
@@ -139,7 +139,7 @@ describe('Membership purchase/renew integration', () => {
       // Mark paid in Square
       const markPaidRes = await fastify.inject({
         method: 'POST',
-        url: `/v1/payments/${createBody.paymentIntentId}/mark-paid`,
+        url: `/v1/payments/${createBody.orderId}/mark-paid`,
         headers: { Authorization: 'Bearer test' },
         payload: {},
       });
@@ -205,11 +205,11 @@ describe('Membership purchase/renew integration', () => {
         headers: { Authorization: 'Bearer test' },
       });
       expect(createRes.statusCode).toBe(200);
-      const createBody = createRes.json() as { paymentIntentId: string };
+      const createBody = createRes.json() as { orderId: string };
 
       const markPaidRes = await fastify.inject({
         method: 'POST',
-        url: `/v1/payments/${createBody.paymentIntentId}/mark-paid`,
+        url: `/v1/payments/${createBody.orderId}/mark-paid`,
         headers: { Authorization: 'Bearer test' },
         payload: {},
       });
@@ -266,11 +266,11 @@ describe('Membership purchase/renew integration', () => {
         headers: { Authorization: 'Bearer test' },
       });
       expect(createRes.statusCode).toBe(200);
-      const createBody = createRes.json() as { paymentIntentId: string };
+      const createBody = createRes.json() as { orderId: string };
 
       const markPaidRes = await fastify.inject({
         method: 'POST',
-        url: `/v1/payments/${createBody.paymentIntentId}/mark-paid`,
+        url: `/v1/payments/${createBody.orderId}/mark-paid`,
         headers: { Authorization: 'Bearer test' },
         payload: {},
       });

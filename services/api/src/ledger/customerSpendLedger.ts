@@ -6,6 +6,12 @@ export type CustomerSpendLedgerSourceApp =
   | 'CUSTOMER_KIOSK'
   | 'SYSTEM';
 
+/** Safely convert a Date or string to ISO string. pg may return timestamps as strings. */
+function toIso(value: Date | string): string {
+  if (typeof value === 'string') return value;
+  return value.toISOString();
+}
+
 export type CustomerSpendLedgerActorType = 'STAFF' | 'CUSTOMER' | 'SYSTEM';
 
 export type InsertCustomerSpendLedgerEntryInput = {
@@ -46,7 +52,7 @@ export async function insertCustomerSpendLedgerEntry(
       [dedupeKey]
     );
     if (existing.rows.length > 0) {
-      return { id: existing.rows[0]!.id, deduped: true };
+      return { id: existing.rows[0].id, deduped: true };
     }
   }
 
@@ -80,8 +86,72 @@ export async function insertCustomerSpendLedgerEntry(
     throw new Error('Failed to insert customer spend ledger entry');
   }
 
-  return { id: inserted.rows[0]!.id, deduped: false };
+  return { id: inserted.rows[0].id, deduped: false };
 }
+
+// ── Drizzle-native insert version ──
+
+
+import { customerSpendLedgerEntries } from '../db/schema';
+import { eq, sql } from 'drizzle-orm';
+import { db, type DrizzleTx } from '../db';
+
+
+
+/**
+ * Drizzle-native version of insertCustomerSpendLedgerEntry.
+ * Accepts a Drizzle transaction instead of pg.PoolClient.
+ *
+ * NOTE: Uses check-then-insert instead of ON CONFLICT, mirroring the raw SQL
+ * version's workaround for CI environments where the dedupe index may not exist yet.
+ */
+export async function insertCustomerSpendLedgerEntryDrizzle(
+  tx: DrizzleTx,
+  input: InsertCustomerSpendLedgerEntryInput
+): Promise<{ id: string; deduped: boolean }> {
+  const occurredAt = input.occurredAt ?? new Date();
+  const currency = input.currency ?? 'USD';
+  const metadata = input.metadata ?? {};
+  const dedupeKey = (input.dedupeKey ?? '').trim() || null;
+
+  if (dedupeKey) {
+    const existing = await tx
+      .select({ id: customerSpendLedgerEntries.id })
+      .from(customerSpendLedgerEntries)
+      .where(eq(customerSpendLedgerEntries.dedupeKey, dedupeKey))
+      .limit(1);
+    if (existing.length > 0) {
+      return { id: existing[0].id, deduped: true };
+    }
+  }
+
+  const result = await tx
+    .insert(customerSpendLedgerEntries)
+    .values({
+      occurredAt,
+      customerId: input.customerId,
+      visitId: input.visitId ?? null,
+      entryType: input.entryType,
+      amount: input.amount,
+      currency,
+      sourceApp: input.sourceApp,
+      actorType: input.actorType,
+      actorStaffId: input.actorStaffId ?? null,
+      actorStaffName: input.actorStaffName ?? null,
+      summary: input.summary,
+      metadata,
+      dedupeKey,
+    })
+    .returning({ id: customerSpendLedgerEntries.id });
+
+  if (result.length === 0) {
+    throw new Error('Failed to insert customer spend ledger entry');
+  }
+
+  return { id: result[0].id, deduped: false };
+}
+
+// ── Drizzle-native read functions ──
 
 export type SpendLedgerVisitGroup = {
   visitId: string | null;
@@ -95,7 +165,6 @@ export type SpendLedgerVisitGroup = {
 };
 
 export async function listCustomerSpendLedgerByVisit(
-  client: pg.PoolClient,
   params: {
     customerId: string;
     from?: Date | null;
@@ -126,17 +195,16 @@ export async function listCustomerSpendLedgerByVisit(
     }
   }
 
-  const rows = await client.query<{
+  const rows = await db.execute<{
     visit_id: string | null;
-    visit_started_at: Date | null;
-    visit_ended_at: Date | null;
-    group_occurred_at: Date;
+    visit_started_at: Date | string | null;
+    visit_ended_at: Date | string | null;
+    group_occurred_at: Date | string;
     gross: string | number;
     refunds: string | number;
     net: string | number;
     entry_count: string | number;
-  }>(
-    `
+  }>(sql`
     WITH base AS (
       SELECT
         e.visit_id,
@@ -146,9 +214,9 @@ export async function listCustomerSpendLedgerByVisit(
         SUM(e.amount) AS net,
         COUNT(*) AS entry_count
       FROM customer_spend_ledger_entries e
-      WHERE e.customer_id = $1
-        AND ($2::timestamptz IS NULL OR e.occurred_at >= $2)
-        AND ($3::timestamptz IS NULL OR e.occurred_at <= $3)
+      WHERE e.customer_id = ${params.customerId}
+        AND (${from}::timestamptz IS NULL OR e.occurred_at >= ${from})
+        AND (${to}::timestamptz IS NULL OR e.occurred_at <= ${to})
       GROUP BY e.visit_id
     )
     SELECT
@@ -163,33 +231,24 @@ export async function listCustomerSpendLedgerByVisit(
     FROM base b
     LEFT JOIN visits v ON v.id = b.visit_id
     WHERE
-      ($4::timestamptz IS NULL OR (
-        b.group_occurred_at < $4
-        OR (b.group_occurred_at = $4 AND COALESCE(b.visit_id::text, '__NULL__') < $5)
+      (${cursorOccurredAt}::timestamptz IS NULL OR (
+        b.group_occurred_at < ${cursorOccurredAt}
+        OR (b.group_occurred_at = ${cursorOccurredAt} AND COALESCE(b.visit_id::text, '__NULL__') < ${cursorVisitKey ?? '__ZZZ__'})
       ))
     ORDER BY b.group_occurred_at DESC, COALESCE(b.visit_id::text, '__NULL__') DESC
-    LIMIT $6
-    `,
-    [
-      params.customerId,
-      from,
-      to,
-      cursorOccurredAt,
-      cursorVisitKey ?? '__ZZZ__',
-      limit,
-    ]
-  );
+    LIMIT ${limit}
+  `);
 
   const groups: SpendLedgerVisitGroup[] = rows.rows.map((r) => {
     const visitKey = r.visit_id ?? '__NULL__';
     const cursorObj = {
-      occurredAt: r.group_occurred_at.toISOString(),
+      occurredAt: toIso(r.group_occurred_at),
       visitKey,
     };
     return {
       visitId: r.visit_id,
-      visitStartedAt: r.visit_started_at ? r.visit_started_at.toISOString() : null,
-      visitEndedAt: r.visit_ended_at ? r.visit_ended_at.toISOString() : null,
+      visitStartedAt: r.visit_started_at ? toIso(r.visit_started_at) : null,
+      visitEndedAt: r.visit_ended_at ? toIso(r.visit_ended_at) : null,
       gross: Number(r.gross) || 0,
       refunds: Number(r.refunds) || 0,
       net: Number(r.net) || 0,
@@ -198,12 +257,11 @@ export async function listCustomerSpendLedgerByVisit(
     };
   });
 
-  const nextCursor = groups.length === limit ? groups[groups.length - 1]!.cursor : null;
+  const nextCursor = groups.length === limit ? groups.at(-1)!.cursor : null;
   return { groups, nextCursor };
 }
 
 export async function listVisitSpendLedgerEntries(
-  client: pg.PoolClient,
   params: { customerId: string; visitId: string | null; limit: number }
 ): Promise<{
   entries: Array<{
@@ -217,32 +275,29 @@ export async function listVisitSpendLedgerEntries(
   }>;
   totals: { gross: number; refunds: number; net: number };
 }> {
-  const rows = await client.query<{
+  const rows = await db.execute<{
     id: string;
-    occurred_at: Date;
+    occurred_at: Date | string;
     entry_type: string;
     amount: string | number;
     currency: string;
     summary: string;
     metadata: unknown;
-  }>(
-    `
+  }>(sql`
     SELECT id, occurred_at, entry_type, amount, currency, summary, metadata
     FROM customer_spend_ledger_entries
-    WHERE customer_id = $1
+    WHERE customer_id = ${params.customerId}
       AND (
-        ($2::uuid IS NULL AND visit_id IS NULL)
-        OR (visit_id = $2)
+        (${params.visitId}::uuid IS NULL AND visit_id IS NULL)
+        OR (visit_id = ${params.visitId})
       )
     ORDER BY occurred_at DESC, id DESC
-    LIMIT $3
-    `,
-    [params.customerId, params.visitId, params.limit]
-  );
+    LIMIT ${params.limit}
+  `);
 
   const entries = rows.rows.map((r) => ({
     id: r.id,
-    occurredAt: r.occurred_at.toISOString(),
+    occurredAt: toIso(r.occurred_at),
     entryType: r.entry_type,
     amount: Number(r.amount) || 0,
     currency: r.currency,
@@ -250,25 +305,22 @@ export async function listVisitSpendLedgerEntries(
     metadata: r.metadata,
   }));
 
-  const totalsRow = await client.query<{
+  const totalsRow = await db.execute<{
     gross: string | number;
     refunds: string | number;
     net: string | number;
-  }>(
-    `
+  }>(sql`
     SELECT
       SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS gross,
       SUM(CASE WHEN amount < 0 THEN -amount ELSE 0 END) AS refunds,
       SUM(amount) AS net
     FROM customer_spend_ledger_entries
-    WHERE customer_id = $1
+    WHERE customer_id = ${params.customerId}
       AND (
-        ($2::uuid IS NULL AND visit_id IS NULL)
-        OR (visit_id = $2)
+        (${params.visitId}::uuid IS NULL AND visit_id IS NULL)
+        OR (visit_id = ${params.visitId})
       )
-    `,
-    [params.customerId, params.visitId]
-  );
+  `);
 
   const t = totalsRow.rows[0];
   return {

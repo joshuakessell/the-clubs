@@ -30,6 +30,18 @@ import { processUpgradeHoldsTick } from './waitlist/upgradeHolds';
 
 loadEnvFromDotEnvIfPresent();
 
+// Fallback defaults for local dev (matching docker-compose.yml: 5433->5432)
+if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+  process.env.DB_HOST = 'localhost';
+  process.env.DB_PORT = '5433';
+  process.env.DB_NAME = 'club_operations';
+  process.env.DB_USER = 'clubops';
+  process.env.DB_PASSWORD = 'club-ops-dev';
+}
+if (!process.env.KIOSK_TOKEN) {
+  process.env.KIOSK_TOKEN = 'dev-kiosk-token';
+}
+
 const PORT = Number.parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const SKIP_DB = process.env.SKIP_DB === 'true';
@@ -70,7 +82,12 @@ async function setupSecurityAndCors(fastify: FastifyInstance) {
     process.exit(1);
   }
 
-  const defaultDevOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+  const defaultDevOrigins = [
+    'http://localhost:5173', 'http://127.0.0.1:5173',
+    'http://localhost:5174', 'http://127.0.0.1:5174',
+    'http://localhost:5175', 'http://127.0.0.1:5175',
+    'http://localhost:5176', 'http://127.0.0.1:5176',
+  ];
   const rawOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
     : null;
@@ -79,7 +96,8 @@ async function setupSecurityAndCors(fastify: FastifyInstance) {
   if (!rawOrigins) {
     allowedOrigins = defaultDevOrigins;
   } else if (rawOrigins.length === 1 && rawOrigins[0] === '*') {
-    allowedOrigins = defaultDevOrigins;
+    // Fastify cors explicitly requires `true` (not `['*']`) to reflect all origins.
+    allowedOrigins = true;
   } else {
     allowedOrigins = rawOrigins;
   }
@@ -193,8 +211,9 @@ function setupPeriodicJobs(fastify: FastifyInstance) {
   const i3 = setInterval(() => {
     void (async () => {
       try {
-        const { query: dbQuery } = await import('./db');
-        const result = await dbQuery(`DELETE FROM idempotency_keys WHERE expires_at < NOW()`);
+        const { db: dbInstance } = await import('./db');
+        const { sql: sqlTag } = await import('drizzle-orm');
+        const result = await dbInstance.execute(sqlTag`DELETE FROM idempotency_keys WHERE expires_at < NOW()`);
         if (result.rowCount && result.rowCount > 0) fastify.log.info(`Cleaned up ${result.rowCount} expired idempotency key(s)`);
       } catch { /* ignore */ }
     })();
@@ -206,8 +225,8 @@ function setupPeriodicJobs(fastify: FastifyInstance) {
     const i4 = setInterval(() => {
       void (async () => {
         try {
-          const { expired, held } = await processUpgradeHoldsTick(fastify);
-          if (expired > 0 || held > 0) fastify.log.info({ expired, held }, 'Processed upgrade holds');
+          const { expired } = await processUpgradeHoldsTick(fastify);
+          if (expired > 0) fastify.log.info({ expired }, 'Processed upgrade hold expirations');
         } catch (error) {
           fastify.log.error(error, 'Error during upgrade hold processing');
         }
@@ -257,17 +276,18 @@ async function registerAllRoutes(fastify: FastifyInstance) {
 
 async function verifyDatabaseHealth(fastify: FastifyInstance) {
   try {
-    const { query: healthQuery } = await import('./db');
-    const healthRes = await healthQuery<{ tbl: string; cnt: string }>(`
-      SELECT 'staff' as tbl, COUNT(*)::text as cnt FROM staff
-      UNION ALL SELECT 'rooms', COUNT(*)::text FROM rooms
-      UNION ALL SELECT 'lockers', COUNT(*)::text FROM lockers
+    const { db: dbInstance } = await import('./db');
+    const { sql: sqlTag } = await import('drizzle-orm');
+    const healthRes = await dbInstance.execute<Record<string, unknown>>(
+      sqlTag`SELECT 'staff' as tbl, COUNT(*)::text as cnt FROM staff
+      UNION ALL SELECT 'rooms', COUNT(*)::text FROM inventory_resources WHERE kind = 'room'
+      UNION ALL SELECT 'lockers', COUNT(*)::text FROM inventory_resources WHERE kind = 'locker'
       UNION ALL SELECT 'customers', COUNT(*)::text FROM customers
       UNION ALL SELECT 'agreements', COUNT(*)::text FROM agreements WHERE active = true
       UNION ALL SELECT 'devices', COUNT(*)::text FROM devices
-      UNION ALL SELECT 'staff_sessions', COUNT(*)::text FROM staff_sessions WHERE revoked_at IS NULL AND expires_at > NOW()
-    `);
-    const counts = Object.fromEntries(healthRes.rows.map(r => [r.tbl, Number.parseInt(r.cnt, 10)]));
+      UNION ALL SELECT 'staff_sessions', COUNT(*)::text FROM staff_sessions WHERE revoked_at IS NULL AND expires_at > NOW()`
+    );
+    const counts = Object.fromEntries((healthRes.rows as unknown as { tbl: string; cnt: string }[]).map(r => [r.tbl, Number.parseInt(r.cnt, 10)]));
     const critical = ['staff', 'rooms', 'lockers', 'agreements', 'devices'];
     const missing = critical.filter(t => (counts[t] ?? 0) === 0);
 
@@ -357,6 +377,12 @@ async function main() {
           options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
         },
       }),
+    },
+    ajv: {
+      customOptions: {
+        strict: false,
+        allowUnionTypes: true,
+      },
     },
   });
 

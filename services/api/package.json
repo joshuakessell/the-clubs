@@ -14,10 +14,10 @@
     "db:migrate": "pnpm exec tsx scripts/wait-for-db.ts && pnpm exec tsx scripts/migrate.ts",
     "db:migrate:status": "pnpm exec tsx scripts/wait-for-db.ts && pnpm exec tsx src/db/migrate-status.ts",
     "seed": "pnpm exec tsx scripts/wait-for-db.ts && pnpm exec tsx src/db/seed.ts",
-    "seed:demo": "DEMO_MODE=true pnpm exec tsx src/db/seed-demo/simulator.ts",
+    "seed:demo": "cross-env DEMO_MODE=true pnpm exec tsx src/db/seed-demo/simulator.ts",
     "seed:all": "pnpm -s run seed && pnpm -s run seed:demo",
     "offline:replay": "pnpm exec tsx scripts/replay-offline-outbox.ts",
-    "test": "TMPDIR=/tmp vitest run",
+    "test": "cross-env TMPDIR=/tmp vitest run",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -33,7 +33,7 @@
     "aamva-parser": "^1.4.1",
     "bcrypt": "^5.1.1",
     "drizzle-orm": "^0.45.1",
-    "fastify": "^5.7.4",
+    "fastify": "^5.8.1",
     "pdf-lib": "^1.17.1",
     "pg": "^8.11.3",
     "pino-pretty": "^10.3.0",

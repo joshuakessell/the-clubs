@@ -2,15 +2,18 @@
  * Report service — read-only business/financial reporting queries.
  *
  * Extracted from routes/admin/reports.ts + routes/admin/metrics.ts. No HTTP/Fastify concepts.
+ *
+ * Migrated to Drizzle ORM — uses db.execute(sql`...`) for complex reporting queries.
  */
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 // ── Cash Totals ──
 
 export async function getCashTotals() {
-  const totals = await query<{ total: string | null }>(`SELECT COALESCE(SUM(amount), 0)::numeric(10,2) as total FROM payment_intents WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day'`);
-  const byMethod = await query<{ payment_method: string | null; total: string | null }>(`SELECT payment_method, COALESCE(SUM(amount), 0)::numeric(10,2) as total FROM payment_intents WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day' GROUP BY payment_method`);
-  const byRegister = await query<{ register_number: number | null; total: string | null }>(`SELECT register_number, COALESCE(SUM(amount), 0)::numeric(10,2) as total FROM payment_intents WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day' GROUP BY register_number ORDER BY register_number NULLS LAST`);
+  const totals = await db.execute<{ total: string | null }>(sql`SELECT COALESCE(SUM(total), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day'`);
+  const byMethod = await db.execute<{ payment_method: string | null; total: string | null }>(sql`SELECT payment_method, COALESCE(SUM(total), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day' GROUP BY payment_method`);
+  const byRegister = await db.execute<{ register_number: number | null; total: string | null }>(sql`SELECT register_number, COALESCE(SUM(total), 0)::numeric(10,2) as total FROM orders WHERE status = 'PAID' AND paid_at >= date_trunc('day', NOW()) AND paid_at < date_trunc('day', NOW()) + INTERVAL '1 day' GROUP BY register_number ORDER BY register_number NULLS LAST`);
 
   const byPaymentMethod: Record<string, number> = {};
   for (const row of byMethod.rows) byPaymentMethod[row.payment_method || 'UNKNOWN'] = Number.parseFloat(String(row.total || 0));
@@ -26,11 +29,11 @@ export async function getCashTotals() {
 // ── Daily Summary ──
 
 export async function getDailySummary(targetDate: string) {
-  const revenue = await query<{ total: string }>(`SELECT COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $1::date + INTERVAL '1 day'`, [targetDate]);
-  const revenueByMethod = await query<{ payment_method: string | null; total: string }>(`SELECT payment_method, COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $1::date + INTERVAL '1 day' GROUP BY payment_method`, [targetDate]);
-  const checkIns = await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_type = 'CHECK_IN' AND created_at >= $1::date AND created_at < $1::date + INTERVAL '1 day'`, [targetDate]);
-  const uniqueCustomers = await query<{ count: number }>(`SELECT COUNT(DISTINCT customer_id)::int AS count FROM customer_activity_events WHERE created_at >= $1::date AND created_at < $1::date + INTERVAL '1 day'`, [targetDate]);
-  const tips = await query<{ total: string }>(`SELECT COALESCE(SUM(tip), 0)::numeric(10,2) AS total FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $1::date + INTERVAL '1 day' AND tip > 0`, [targetDate]);
+  const revenue = await db.execute<{ total: string }>(sql`SELECT COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day'`);
+  const revenueByMethod = await db.execute<{ payment_method: string | null; total: string }>(sql`SELECT payment_method, COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day' GROUP BY payment_method`);
+  const checkIns = await db.execute<{ count: number }>(sql`SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_type = 'CHECK_IN' AND created_at >= ${targetDate}::date AND created_at < ${targetDate}::date + INTERVAL '1 day'`);
+  const uniqueCustomers = await db.execute<{ count: number }>(sql`SELECT COUNT(DISTINCT customer_id)::int AS count FROM customer_activity_events WHERE created_at >= ${targetDate}::date AND created_at < ${targetDate}::date + INTERVAL '1 day'`);
+  const tips = await db.execute<{ total: string }>(sql`SELECT COALESCE(SUM(tip), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day' AND tip > 0`);
 
   const methodBreakdown: Record<string, number> = {};
   for (const row of revenueByMethod.rows) methodBreakdown[row.payment_method || 'UNKNOWN'] = Number.parseFloat(row.total);
@@ -41,18 +44,18 @@ export async function getDailySummary(targetDate: string) {
 
 export async function getRevenueTrend(days: number) {
   const clampedDays = Math.min(Math.max(days, 1), 365);
-  const result = await query<{ day: string; total: string; transaction_count: number }>(`SELECT TO_CHAR(paid_at::date, 'YYYY-MM-DD') AS day, COALESCE(SUM(amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS transaction_count FROM payment_intents WHERE status = 'PAID' AND paid_at >= NOW() - $1::int * INTERVAL '1 day' GROUP BY paid_at::date ORDER BY day`, [clampedDays]);
+  const result = await db.execute<{ day: string; total: string; transaction_count: number }>(sql`SELECT TO_CHAR(paid_at::date, 'YYYY-MM-DD') AS day, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS transaction_count FROM orders WHERE status = 'PAID' AND paid_at >= NOW() - ${clampedDays}::int * INTERVAL '1 day' GROUP BY paid_at::date ORDER BY day`);
   return { days: clampedDays, trend: result.rows.map((r) => ({ date: r.day, revenue: Number.parseFloat(r.total), transactions: r.transaction_count })) };
 }
 
 // ── Staff Productivity ──
 
 export async function getStaffProductivity(from: string, to: string, staffId?: string) {
-  let staffFilter = ''; const params: unknown[] = [from, to];
-  if (staffId) { staffFilter = 'AND s.id = $3'; params.push(staffId); }
+  // Dynamic staff filter — safe string interpolation since it's a fixed SQL fragment
+  const staffFilterClause = staffId ? sql` AND s.id = ${staffId}` : sql``;
 
-  const checkIns = await query<{ staff_id: string; staff_name: string; count: number }>(`SELECT s.id AS staff_id, s.name AS staff_name, COUNT(cae.id)::int AS count FROM staff s LEFT JOIN customer_activity_events cae ON cae.actor_staff_id = s.id AND cae.action_type = 'CHECK_IN' AND cae.created_at >= $1::date AND cae.created_at < $2::date + INTERVAL '1 day' WHERE s.active = true ${staffFilter} GROUP BY s.id, s.name ORDER BY s.name`, params);
-  const revenueResult = await query<{ staff_id: string; total: string; tx_count: number }>(`SELECT s.id AS staff_id, COALESCE(SUM(pi.amount), 0)::numeric(10,2) AS total, COUNT(pi.id)::int AS tx_count FROM staff s LEFT JOIN payment_intents pi ON pi.paid_by_staff_id = s.id AND pi.status = 'PAID' AND pi.paid_at >= $1::date AND pi.paid_at < $2::date + INTERVAL '1 day' WHERE s.active = true ${staffFilter} GROUP BY s.id`, params);
+  const checkIns = await db.execute<{ staff_id: string; staff_name: string; count: number }>(sql`SELECT s.id AS staff_id, s.name AS staff_name, COUNT(cae.id)::int AS count FROM staff s LEFT JOIN customer_activity_events cae ON cae.actor_staff_id = s.id AND cae.action_type = 'CHECK_IN' AND cae.created_at >= ${from}::date AND cae.created_at < ${to}::date + INTERVAL '1 day' WHERE s.active = true ${staffFilterClause} GROUP BY s.id, s.name ORDER BY s.name`);
+  const revenueResult = await db.execute<{ staff_id: string; total: string; tx_count: number }>(sql`SELECT s.id AS staff_id, COALESCE(SUM(pi.total), 0)::numeric(10,2) AS total, COUNT(pi.id)::int AS tx_count FROM staff s LEFT JOIN orders pi ON pi.paid_by_staff_id = s.id AND pi.status = 'PAID' AND pi.paid_at >= ${from}::date AND pi.paid_at < ${to}::date + INTERVAL '1 day' WHERE s.active = true ${staffFilterClause} GROUP BY s.id`);
 
   const revenueMap = new Map(revenueResult.rows.map((r) => [r.staff_id, { total: Number.parseFloat(r.total), txCount: r.tx_count }]));
   return { from, to, staff: checkIns.rows.map((r) => ({ staffId: r.staff_id, staffName: r.staff_name, checkIns: r.count, paymentsProcessed: revenueMap.get(r.staff_id)?.txCount ?? 0, revenueAttributed: revenueMap.get(r.staff_id)?.total ?? 0 })) };
@@ -61,8 +64,8 @@ export async function getStaffProductivity(from: string, to: string, staffId?: s
 // ── Staff Productivity Hourly ──
 
 export async function getStaffProductivityHourly(targetDate: string, staffId: string) {
-  const hourlyCheckIns = await query<{ hour: number; count: number }>(`SELECT EXTRACT(HOUR FROM created_at)::int AS hour, COUNT(*)::int AS count FROM customer_activity_events WHERE actor_staff_id = $1 AND action_type = 'CHECK_IN' AND created_at >= $2::date AND created_at < $2::date + INTERVAL '1 day' GROUP BY hour ORDER BY hour`, [staffId, targetDate]);
-  const hourlyRevenue = await query<{ hour: number; total: string }>(`SELECT EXTRACT(HOUR FROM paid_at)::int AS hour, COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM payment_intents WHERE paid_by_staff_id = $1 AND status = 'PAID' AND paid_at >= $2::date AND paid_at < $2::date + INTERVAL '1 day' GROUP BY hour ORDER BY hour`, [staffId, targetDate]);
+  const hourlyCheckIns = await db.execute<{ hour: number; count: number }>(sql`SELECT EXTRACT(HOUR FROM created_at)::int AS hour, COUNT(*)::int AS count FROM customer_activity_events WHERE actor_staff_id = ${staffId} AND action_type = 'CHECK_IN' AND created_at >= ${targetDate}::date AND created_at < ${targetDate}::date + INTERVAL '1 day' GROUP BY hour ORDER BY hour`);
+  const hourlyRevenue = await db.execute<{ hour: number; total: string }>(sql`SELECT EXTRACT(HOUR FROM paid_at)::int AS hour, COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE paid_by_staff_id = ${staffId} AND status = 'PAID' AND paid_at >= ${targetDate}::date AND paid_at < ${targetDate}::date + INTERVAL '1 day' GROUP BY hour ORDER BY hour`);
 
   const checkInMap = new Map(hourlyCheckIns.rows.map((r) => [r.hour, r.count]));
   const revenueMap = new Map(hourlyRevenue.rows.map((r) => [r.hour, Number.parseFloat(r.total)]));
@@ -72,14 +75,14 @@ export async function getStaffProductivityHourly(targetDate: string, staffId: st
 // ── Operations Summary ──
 
 export async function getOperationsSummary(from: string, to: string) {
-  const revenue = await query<{ total: string; count: number; avg_tx: string }>(`SELECT COALESCE(SUM(amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS count, COALESCE(AVG(amount), 0)::numeric(10,2) AS avg_tx FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $2::date + INTERVAL '1 day'`, [from, to]);
-  const tips = await query<{ total: string }>(`SELECT COALESCE(SUM(tip), 0) AS total FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $2::date + INTERVAL '1 day' AND tip > 0`, [from, to]);
-  const checkIns = await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_category = 'CHECKIN' AND occurred_at >= $1::date AND occurred_at < $2::date + INTERVAL '1 day'`, [from, to]);
-  const checkOuts = await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_category = 'CHECKOUT' AND occurred_at >= $1::date AND occurred_at < $2::date + INTERVAL '1 day'`, [from, to]);
-  const uniqueCustomers = await query<{ count: number }>(`SELECT COUNT(DISTINCT customer_id)::int AS count FROM customer_activity_events WHERE occurred_at >= $1::date AND occurred_at < $2::date + INTERVAL '1 day'`, [from, to]);
-  const labor = await query<{ total_hours: string; employee_count: number }>(`SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(clock_out_at, NOW()) - clock_in_at)) / 3600), 0)::numeric(10,1) AS total_hours, COUNT(DISTINCT employee_id)::int AS employee_count FROM timeclock_sessions WHERE clock_in_at >= $1::date AND clock_in_at < $2::date + INTERVAL '1 day'`, [from, to]);
-  const occupancy = await query<{ total: number; occupied: number }>(`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status = 'OCCUPIED')::int AS occupied FROM rooms`);
-  const overrides = await query<{ count: number }>(`SELECT COUNT(*)::int AS count FROM audit_log WHERE action = 'OVERRIDE' AND created_at >= $1::date AND created_at < $2::date + INTERVAL '1 day'`, [from, to]);
+  const revenue = await db.execute<{ total: string; count: number; avg_tx: string }>(sql`SELECT COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count, COALESCE(AVG(total), 0)::numeric(10,2) AS avg_tx FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day'`);
+  const tips = await db.execute<{ total: string }>(sql`SELECT COALESCE(SUM(tip), 0) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' AND tip > 0`);
+  const checkIns = await db.execute<{ count: number }>(sql`SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_category = 'CHECKIN' AND occurred_at >= ${from}::date AND occurred_at < ${to}::date + INTERVAL '1 day'`);
+  const checkOuts = await db.execute<{ count: number }>(sql`SELECT COUNT(*)::int AS count FROM customer_activity_events WHERE action_category = 'CHECKOUT' AND occurred_at >= ${from}::date AND occurred_at < ${to}::date + INTERVAL '1 day'`);
+  const uniqueCustomers = await db.execute<{ count: number }>(sql`SELECT COUNT(DISTINCT customer_id)::int AS count FROM customer_activity_events WHERE occurred_at >= ${from}::date AND occurred_at < ${to}::date + INTERVAL '1 day'`);
+  const labor = await db.execute<{ total_hours: string; employee_count: number }>(sql`SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(clock_out_at, NOW()) - clock_in_at)) / 3600), 0)::numeric(10,1) AS total_hours, COUNT(DISTINCT employee_id)::int AS employee_count FROM timeclock_sessions WHERE clock_in_at >= ${from}::date AND clock_in_at < ${to}::date + INTERVAL '1 day'`);
+  const occupancy = await db.execute<{ total: number; occupied: number }>(sql`SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status = 'OCCUPIED')::int AS occupied FROM inventory_resources WHERE kind = 'room'`);
+  const overrides = await db.execute<{ count: number }>(sql`SELECT COUNT(*)::int AS count FROM audit_log WHERE action = 'OVERRIDE' AND created_at >= ${from}::date AND created_at < ${to}::date + INTERVAL '1 day'`);
 
   const dayCount = Math.max(1, Math.ceil((new Date(to + 'T23:59:59').getTime() - new Date(from + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24)));
   const totalRevenue = Number.parseFloat(revenue.rows[0]?.total ?? '0');
@@ -100,25 +103,25 @@ export async function getOperationsSummary(from: string, to: string) {
 
 export async function getHourlyHeatmap(weeks: number) {
   const clampedWeeks = Math.min(Math.max(weeks, 1), 52);
-  const activity = await query<{ dow: number; hour: number; count: number }>(`SELECT EXTRACT(DOW FROM occurred_at)::int AS dow, EXTRACT(HOUR FROM occurred_at)::int AS hour, COUNT(*)::int AS count FROM customer_activity_events WHERE occurred_at >= NOW() - $1::int * INTERVAL '1 week' GROUP BY dow, hour ORDER BY dow, hour`, [clampedWeeks]);
-  const revenue = await query<{ dow: number; hour: number; total: string }>(`SELECT EXTRACT(DOW FROM paid_at)::int AS dow, EXTRACT(HOUR FROM paid_at)::int AS hour, COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM payment_intents WHERE status = 'PAID' AND paid_at >= NOW() - $1::int * INTERVAL '1 week' GROUP BY dow, hour ORDER BY dow, hour`, [clampedWeeks]);
+  const activity = await db.execute<{ dow: number; hour: number; count: number }>(sql`SELECT EXTRACT(DOW FROM occurred_at)::int AS dow, EXTRACT(HOUR FROM occurred_at)::int AS hour, COUNT(*)::int AS count FROM customer_activity_events WHERE occurred_at >= NOW() - ${clampedWeeks}::int * INTERVAL '1 week' GROUP BY dow, hour ORDER BY dow, hour`);
+  const revenue = await db.execute<{ dow: number; hour: number; total: string }>(sql`SELECT EXTRACT(DOW FROM paid_at)::int AS dow, EXTRACT(HOUR FROM paid_at)::int AS hour, COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= NOW() - ${clampedWeeks}::int * INTERVAL '1 week' GROUP BY dow, hour ORDER BY dow, hour`);
 
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const activityMap = new Map(activity.rows.map((r) => [`${r.dow}-${r.hour}`, r.count]));
   const revenueMap = new Map(revenue.rows.map((r) => [`${r.dow}-${r.hour}`, Number.parseFloat(r.total)]));
   const activityGrid: { day: string; hour: number; count: number }[] = [];
   const revenueGrid: { day: string; hour: number; total: number }[] = [];
-  for (let dow = 0; dow < 7; dow++) for (let hour = 0; hour < 24; hour++) { const key = `${dow}-${hour}`; activityGrid.push({ day: dayNames[dow]!, hour, count: activityMap.get(key) ?? 0 }); revenueGrid.push({ day: dayNames[dow]!, hour, total: revenueMap.get(key) ?? 0 }); }
+  for (let dow = 0; dow < 7; dow++) for (let hour = 0; hour < 24; hour++) { const key = `${dow}-${hour}`; activityGrid.push({ day: dayNames[dow] || 'Unknown', hour, count: activityMap.get(key) ?? 0 }); revenueGrid.push({ day: dayNames[dow] || 'Unknown', hour, total: revenueMap.get(key) ?? 0 }); }
   return { weeks: clampedWeeks, activityGrid, revenueGrid };
 }
 
 // ── Revenue Breakdown ──
 
 export async function getRevenueBreakdown(from: string, to: string) {
-  const byMethod = await query<{ payment_method: string | null; total: string; count: number }>(`SELECT COALESCE(payment_method, 'UNKNOWN') AS payment_method, COALESCE(SUM(amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $2::date + INTERVAL '1 day' GROUP BY payment_method`, [from, to]);
-  const byDow = await query<{ dow: number; day_name: string; total: string; count: number }>(`SELECT EXTRACT(DOW FROM paid_at)::int AS dow, TO_CHAR(paid_at, 'Dy') AS day_name, COALESCE(SUM(amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $2::date + INTERVAL '1 day' GROUP BY dow, day_name ORDER BY dow`, [from, to]);
-  const byRentalType = await query<{ rental_type: string; total: string; count: number }>(`SELECT cb.rental_type::text AS rental_type, COALESCE(SUM(pi.amount), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM payment_intents pi JOIN lane_sessions ls ON ls.payment_intent_id = pi.id JOIN checkin_blocks cb ON cb.session_id = ls.id WHERE pi.status = 'PAID' AND pi.paid_at >= $1::date AND pi.paid_at < $2::date + INTERVAL '1 day' GROUP BY cb.rental_type`, [from, to]);
-  const tipStats = await query<{ total: string; avg_tip: string; tip_count: number; total_revenue: string }>(`SELECT COALESCE(SUM(tip), 0) AS total, COALESCE(AVG(tip) FILTER (WHERE tip > 0), 0)::numeric(10,0) AS avg_tip, COUNT(*) FILTER (WHERE tip > 0)::int AS tip_count, COALESCE(SUM(amount), 0)::numeric(10,2) AS total_revenue FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $2::date + INTERVAL '1 day'`, [from, to]);
+  const byMethod = await db.execute<{ payment_method: string | null; total: string; count: number }>(sql`SELECT COALESCE(payment_method, 'UNKNOWN') AS payment_method, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY payment_method`);
+  const byDow = await db.execute<{ dow: number; day_name: string; total: string; count: number }>(sql`SELECT EXTRACT(DOW FROM paid_at)::int AS dow, TO_CHAR(paid_at, 'Dy') AS day_name, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY dow, day_name ORDER BY dow`);
+  const byRentalType = await db.execute<{ rental_type: string; total: string; count: number }>(sql`SELECT cb.rental_type::text AS rental_type, COALESCE(SUM(pi.total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders pi JOIN lane_sessions ls ON ls.order_id = pi.id JOIN checkin_blocks cb ON cb.session_id = ls.id WHERE pi.status = 'PAID' AND pi.paid_at >= ${from}::date AND pi.paid_at < ${to}::date + INTERVAL '1 day' GROUP BY cb.rental_type`);
+  const tipStats = await db.execute<{ total: string; avg_tip: string; tip_count: number; total_revenue: string }>(sql`SELECT COALESCE(SUM(tip), 0) AS total, COALESCE(AVG(tip) FILTER (WHERE tip > 0), 0)::numeric(10,0) AS avg_tip, COUNT(*) FILTER (WHERE tip > 0)::int AS tip_count, COALESCE(SUM(total), 0)::numeric(10,2) AS total_revenue FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day'`);
 
   const totalTips = Number.parseInt(tipStats.rows[0]?.total ?? '0', 10);
   const totalRevenueDollars = Number.parseFloat(tipStats.rows[0]?.total_revenue ?? '0');
@@ -134,9 +137,9 @@ export async function getRevenueBreakdown(from: string, to: string) {
 // ── Labor Cost ──
 
 export async function getLaborCost(from: string, to: string, hourlyRate: number) {
-  const scheduled = await query<{ employee_id: string; employee_name: string; scheduled_hours: string; shift_count: number }>(`SELECT s.id AS employee_id, s.name AS employee_name, COALESCE(SUM(EXTRACT(EPOCH FROM (es.ends_at - es.starts_at)) / 3600), 0)::numeric(10,1) AS scheduled_hours, COUNT(es.id)::int AS shift_count FROM staff s LEFT JOIN employee_shifts es ON es.employee_id = s.id AND es.status != 'CANCELED' AND es.starts_at >= $1::date AND es.starts_at < $2::date + INTERVAL '1 day' WHERE s.active = true GROUP BY s.id, s.name ORDER BY s.name`, [from, to]);
-  const actual = await query<{ employee_id: string; actual_hours: string; session_count: number }>(`SELECT employee_id, COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(clock_out_at, NOW()) - clock_in_at)) / 3600), 0)::numeric(10,1) AS actual_hours, COUNT(*)::int AS session_count FROM timeclock_sessions WHERE clock_in_at >= $1::date AND clock_in_at < $2::date + INTERVAL '1 day' GROUP BY employee_id`, [from, to]);
-  const revenueByStaff = await query<{ staff_id: string; total: string }>(`SELECT paid_by_staff_id AS staff_id, COALESCE(SUM(amount), 0)::numeric(10,2) AS total FROM payment_intents WHERE status = 'PAID' AND paid_at >= $1::date AND paid_at < $2::date + INTERVAL '1 day' AND paid_by_staff_id IS NOT NULL GROUP BY paid_by_staff_id`, [from, to]);
+  const scheduled = await db.execute<{ employee_id: string; employee_name: string; scheduled_hours: string; shift_count: number }>(sql`SELECT s.id AS employee_id, s.name AS employee_name, COALESCE(SUM(EXTRACT(EPOCH FROM (es.ends_at - es.starts_at)) / 3600), 0)::numeric(10,1) AS scheduled_hours, COUNT(es.id)::int AS shift_count FROM staff s LEFT JOIN employee_shifts es ON es.employee_id = s.id AND es.status != 'CANCELED' AND es.starts_at >= ${from}::date AND es.starts_at < ${to}::date + INTERVAL '1 day' WHERE s.active = true GROUP BY s.id, s.name ORDER BY s.name`);
+  const actual = await db.execute<{ employee_id: string; actual_hours: string; session_count: number }>(sql`SELECT employee_id, COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(clock_out_at, NOW()) - clock_in_at)) / 3600), 0)::numeric(10,1) AS actual_hours, COUNT(*)::int AS session_count FROM timeclock_sessions WHERE clock_in_at >= ${from}::date AND clock_in_at < ${to}::date + INTERVAL '1 day' GROUP BY employee_id`);
+  const revenueByStaff = await db.execute<{ staff_id: string; total: string }>(sql`SELECT paid_by_staff_id AS staff_id, COALESCE(SUM(total), 0)::numeric(10,2) AS total FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' AND paid_by_staff_id IS NOT NULL GROUP BY paid_by_staff_id`);
 
   const actualMap = new Map(actual.rows.map((r) => [r.employee_id, { hours: Number.parseFloat(r.actual_hours), sessions: r.session_count }]));
   const revenueMap = new Map(revenueByStaff.rows.map((r) => [r.staff_id, Number.parseFloat(r.total)]));
@@ -159,9 +162,9 @@ export async function getLaborCost(from: string, to: string, hourlyRate: number)
 // ── Cleaning Metrics ──
 
 export async function getCleaningMetricsSummary(from: Date, to: Date) {
-  const dirtyTimeResult = await query<{ avg_minutes: string | null; count: string }>(`WITH dirty_to_cleaning AS (SELECT ce.room_id, ce.started_at, GREATEST(COALESCE((SELECT MAX(created_at) FROM audit_log al WHERE al.entity_type = 'room' AND al.entity_id = ce.room_id AND al.new_value::jsonb->>'status' = 'DIRTY' AND al.created_at < ce.started_at AND al.action != 'OVERRIDE'), '1970-01-01'::timestamptz), COALESCE((SELECT MAX(created_at) FROM cleaning_events ce2 WHERE ce2.room_id = ce.room_id AND ce2.to_status = 'DIRTY' AND ce2.created_at < ce.started_at AND ce2.override_flag = false), '1970-01-01'::timestamptz)) as became_dirty_at FROM cleaning_events ce WHERE ce.from_status = 'DIRTY' AND ce.to_status = 'CLEANING' AND ce.override_flag = false AND ce.started_at >= $1 AND ce.started_at <= $2), durations AS (SELECT EXTRACT(EPOCH FROM (started_at - became_dirty_at) / 60) as minutes FROM dirty_to_cleaning WHERE became_dirty_at > '1970-01-01'::timestamptz) SELECT AVG(minutes) as avg_minutes, COUNT(*) as count FROM durations WHERE minutes >= 0.5 AND minutes <= 240 AND minutes IS NOT NULL`, [from, to]);
-  const cleaningDurationResult = await query<{ avg_minutes: string | null; count: string }>(`WITH durations AS (SELECT EXTRACT(EPOCH FROM (completed_at - started_at) / 60) as minutes FROM cleaning_events ce WHERE ce.from_status = 'CLEANING' AND ce.to_status = 'CLEAN' AND ce.override_flag = false AND ce.started_at IS NOT NULL AND ce.completed_at IS NOT NULL AND ce.completed_at >= $1 AND ce.completed_at <= $2) SELECT AVG(minutes) as avg_minutes, COUNT(*) as count FROM durations WHERE minutes >= 0.5 AND minutes <= 240 AND minutes IS NOT NULL`, [from, to]);
-  const totalCleanedResult = await query<{ count: string }>(`SELECT COUNT(*) as count FROM cleaning_events ce WHERE ce.from_status = 'CLEANING' AND ce.to_status = 'CLEAN' AND ce.override_flag = false AND ce.completed_at >= $1 AND ce.completed_at <= $2`, [from, to]);
+  const dirtyTimeResult = await db.execute<{ avg_minutes: string | null; count: string }>(sql`WITH dirty_to_cleaning AS (SELECT ce.resource_id, ce.started_at, GREATEST(COALESCE((SELECT MAX(created_at) FROM audit_log al WHERE al.entity_type = 'room' AND al.entity_id = ce.resource_id AND al.new_value::jsonb->>'status' = 'DIRTY' AND al.created_at < ce.started_at AND al.action != 'OVERRIDE'), '1970-01-01'::timestamptz), COALESCE((SELECT MAX(created_at) FROM cleaning_events ce2 WHERE ce2.resource_id = ce.resource_id AND ce2.to_status = 'DIRTY' AND ce2.created_at < ce.started_at AND ce2.override_flag = false), '1970-01-01'::timestamptz)) as became_dirty_at FROM cleaning_events ce WHERE ce.from_status = 'DIRTY' AND ce.to_status = 'CLEANING' AND ce.override_flag = false AND ce.started_at >= ${from} AND ce.started_at <= ${to}), durations AS (SELECT EXTRACT(EPOCH FROM (started_at - became_dirty_at) / 60) as minutes FROM dirty_to_cleaning WHERE became_dirty_at > '1970-01-01'::timestamptz) SELECT AVG(minutes) as avg_minutes, COUNT(*) as count FROM durations WHERE minutes >= 0.5 AND minutes <= 240 AND minutes IS NOT NULL`);
+  const cleaningDurationResult = await db.execute<{ avg_minutes: string | null; count: string }>(sql`WITH durations AS (SELECT EXTRACT(EPOCH FROM (completed_at - started_at) / 60) as minutes FROM cleaning_events ce WHERE ce.from_status = 'CLEANING' AND ce.to_status = 'CLEAN' AND ce.override_flag = false AND ce.started_at IS NOT NULL AND ce.completed_at IS NOT NULL AND ce.completed_at >= ${from} AND ce.completed_at <= ${to}) SELECT AVG(minutes) as avg_minutes, COUNT(*) as count FROM durations WHERE minutes >= 0.5 AND minutes <= 240 AND minutes IS NOT NULL`);
+  const totalCleanedResult = await db.execute<{ count: string }>(sql`SELECT COUNT(*) as count FROM cleaning_events ce WHERE ce.from_status = 'CLEANING' AND ce.to_status = 'CLEAN' AND ce.override_flag = false AND ce.completed_at >= ${from} AND ce.completed_at <= ${to}`);
 
   return {
     from: from.toISOString(), to: to.toISOString(),
@@ -174,9 +177,9 @@ export async function getCleaningMetricsSummary(from: Date, to: Date) {
 }
 
 export async function getCleaningMetricsByStaff(staffId: string, from: Date, to: Date) {
-  const dirtyTimeResult = await query<{ avg_minutes: string | null; count: string }>(`WITH dirty_to_cleaning AS (SELECT ce.room_id, ce.started_at, GREATEST(COALESCE((SELECT MAX(created_at) FROM audit_log al WHERE al.entity_type = 'room' AND al.entity_id = ce.room_id AND al.new_value::jsonb->>'status' = 'DIRTY' AND al.created_at < ce.started_at AND al.action != 'OVERRIDE'), '1970-01-01'::timestamptz), COALESCE((SELECT MAX(created_at) FROM cleaning_events ce2 WHERE ce2.room_id = ce.room_id AND ce2.to_status = 'DIRTY' AND ce2.created_at < ce.started_at AND ce2.override_flag = false), '1970-01-01'::timestamptz)) as became_dirty_at FROM cleaning_events ce WHERE ce.from_status = 'DIRTY' AND ce.to_status = 'CLEANING' AND ce.override_flag = false AND ce.staff_id = $1 AND ce.started_at >= $2 AND ce.started_at <= $3), durations AS (SELECT EXTRACT(EPOCH FROM (started_at - became_dirty_at) / 60) as minutes FROM dirty_to_cleaning WHERE became_dirty_at > '1970-01-01'::timestamptz) SELECT AVG(minutes) as avg_minutes, COUNT(*) as count FROM durations WHERE minutes >= 0.5 AND minutes <= 240 AND minutes IS NOT NULL`, [staffId, from, to]);
-  const cleaningDurationResult = await query<{ avg_minutes: string | null; count: string }>(`WITH durations AS (SELECT EXTRACT(EPOCH FROM (completed_at - started_at) / 60) as minutes FROM cleaning_events ce WHERE ce.from_status = 'CLEANING' AND ce.to_status = 'CLEAN' AND ce.override_flag = false AND ce.staff_id = $1 AND ce.started_at IS NOT NULL AND ce.completed_at IS NOT NULL AND ce.completed_at >= $2 AND ce.completed_at <= $3) SELECT AVG(minutes) as avg_minutes, COUNT(*) as count FROM durations WHERE minutes >= 0.5 AND minutes <= 240 AND minutes IS NOT NULL`, [staffId, from, to]);
-  const totalCleanedResult = await query<{ count: string }>(`SELECT COUNT(*) as count FROM cleaning_events ce WHERE ce.from_status = 'CLEANING' AND ce.to_status = 'CLEAN' AND ce.override_flag = false AND ce.staff_id = $1 AND ce.completed_at >= $2 AND ce.completed_at <= $3`, [staffId, from, to]);
+  const dirtyTimeResult = await db.execute<{ avg_minutes: string | null; count: string }>(sql`WITH dirty_to_cleaning AS (SELECT ce.resource_id, ce.started_at, GREATEST(COALESCE((SELECT MAX(created_at) FROM audit_log al WHERE al.entity_type = 'room' AND al.entity_id = ce.resource_id AND al.new_value::jsonb->>'status' = 'DIRTY' AND al.created_at < ce.started_at AND al.action != 'OVERRIDE'), '1970-01-01'::timestamptz), COALESCE((SELECT MAX(created_at) FROM cleaning_events ce2 WHERE ce2.resource_id = ce.resource_id AND ce2.to_status = 'DIRTY' AND ce2.created_at < ce.started_at AND ce2.override_flag = false), '1970-01-01'::timestamptz)) as became_dirty_at FROM cleaning_events ce WHERE ce.from_status = 'DIRTY' AND ce.to_status = 'CLEANING' AND ce.override_flag = false AND ce.staff_id = ${staffId} AND ce.started_at >= ${from} AND ce.started_at <= ${to}), durations AS (SELECT EXTRACT(EPOCH FROM (started_at - became_dirty_at) / 60) as minutes FROM dirty_to_cleaning WHERE became_dirty_at > '1970-01-01'::timestamptz) SELECT AVG(minutes) as avg_minutes, COUNT(*) as count FROM durations WHERE minutes >= 0.5 AND minutes <= 240 AND minutes IS NOT NULL`);
+  const cleaningDurationResult = await db.execute<{ avg_minutes: string | null; count: string }>(sql`WITH durations AS (SELECT EXTRACT(EPOCH FROM (completed_at - started_at) / 60) as minutes FROM cleaning_events ce WHERE ce.from_status = 'CLEANING' AND ce.to_status = 'CLEAN' AND ce.override_flag = false AND ce.staff_id = ${staffId} AND ce.started_at IS NOT NULL AND ce.completed_at IS NOT NULL AND ce.completed_at >= ${from} AND ce.completed_at <= ${to}) SELECT AVG(minutes) as avg_minutes, COUNT(*) as count FROM durations WHERE minutes >= 0.5 AND minutes <= 240 AND minutes IS NOT NULL`);
+  const totalCleanedResult = await db.execute<{ count: string }>(sql`SELECT COUNT(*) as count FROM cleaning_events ce WHERE ce.from_status = 'CLEANING' AND ce.to_status = 'CLEAN' AND ce.override_flag = false AND ce.staff_id = ${staffId} AND ce.completed_at >= ${from} AND ce.completed_at <= ${to}`);
 
   return {
     staffId, from: from.toISOString(), to: to.toISOString(),

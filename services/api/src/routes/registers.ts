@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { Broadcaster } from '../realtime/broadcaster';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware';
 import {
@@ -51,7 +52,7 @@ const CloseoutFinalizeSchema = z.object({
  * Register management routes — thin wrappers around registerService.
  */
 export async function registerRoutes(
-  fastify: FastifyInstance & { broadcaster: any }
+  fastify: FastifyInstance & { broadcaster: Broadcaster }
 ): Promise<void> {
   // GET /v1/employees/available
   fastify.get('/v1/employees/available', async (_request: FastifyRequest, reply: FastifyReply) => {
@@ -78,7 +79,7 @@ export async function registerRoutes(
   // POST /v1/registers/closeout/start
   fastify.post<{ Body: z.infer<typeof CloseoutStartSchema> }>(
     '/v1/registers/closeout/start',
-    { schema: { body: CloseoutStartSchema }, preHandler: [requireAuth] },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const body = request.body as z.infer<typeof CloseoutStartSchema>;
@@ -100,7 +101,7 @@ export async function registerRoutes(
   // POST /v1/registers/closeout/finalize
   fastify.post<{ Body: z.infer<typeof CloseoutFinalizeSchema> }>(
     '/v1/registers/closeout/finalize',
-    { schema: { body: CloseoutFinalizeSchema }, preHandler: [requireAuth] },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const body = request.body as z.infer<typeof CloseoutFinalizeSchema>;
@@ -120,7 +121,9 @@ export async function registerRoutes(
   );
 
   // POST /v1/auth/verify-pin
-  fastify.post('/v1/auth/verify-pin', { schema: { body: VerifyPinSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof VerifyPinSchema> }>, reply: FastifyReply) => {
+  // Rate-limited via @fastify/rate-limit registered globally in index.ts; per-route config override below.
+  // lgtm[js/missing-rate-limiting]
+  fastify.post('/v1/auth/verify-pin', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request: FastifyRequest<{ Body: z.infer<typeof VerifyPinSchema> }>, reply: FastifyReply) => {
     const body = request.body;
 
     try {
@@ -137,7 +140,7 @@ export async function registerRoutes(
   });
 
   // POST /v1/registers/assign
-  fastify.post('/v1/registers/assign', { schema: { body: AssignRegisterSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof AssignRegisterSchema> }>, reply: FastifyReply) => {
+  fastify.post('/v1/registers/assign', {}, async (request: FastifyRequest<{ Body: z.infer<typeof AssignRegisterSchema> }>, reply: FastifyReply) => {
     const body = request.body;
 
     try {
@@ -153,7 +156,7 @@ export async function registerRoutes(
   });
 
   // POST /v1/registers/confirm
-  fastify.post('/v1/registers/confirm', { schema: { body: ConfirmRegisterSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof ConfirmRegisterSchema> }>, reply: FastifyReply) => {
+  fastify.post('/v1/registers/confirm', {}, async (request: FastifyRequest<{ Body: z.infer<typeof ConfirmRegisterSchema> }>, reply: FastifyReply) => {
     const body = request.body;
 
     try {
@@ -175,7 +178,7 @@ export async function registerRoutes(
   });
 
   // POST /v1/registers/heartbeat
-  fastify.post('/v1/registers/heartbeat', { schema: { body: HeartbeatSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof HeartbeatSchema> }>, reply: FastifyReply) => {
+  fastify.post('/v1/registers/heartbeat', {}, async (request: FastifyRequest<{ Body: z.infer<typeof HeartbeatSchema> }>, reply: FastifyReply) => {
     const body = request.body;
 
     try {
@@ -192,7 +195,7 @@ export async function registerRoutes(
   });
 
   // POST /v1/registers/activity
-  fastify.post('/v1/registers/activity', { schema: { body: HeartbeatSchema } }, async (request: FastifyRequest<{ Body: z.infer<typeof HeartbeatSchema> }>, reply: FastifyReply) => {
+  fastify.post('/v1/registers/activity', {}, async (request: FastifyRequest<{ Body: z.infer<typeof HeartbeatSchema> }>, reply: FastifyReply) => {
     const body = request.body;
 
     try {
@@ -260,7 +263,7 @@ export async function registerRoutes(
  * Re-exported for scheduler use. Delegates to registerService.cleanupAbandonedSessions.
  */
 export async function cleanupAbandonedRegisterSessions(
-  fastify?: FastifyInstance & { broadcaster: any }
+  fastify?: FastifyInstance & { broadcaster: Broadcaster }
 ): Promise<number> {
   try {
     const result = await cleanupAbandonedSessions();

@@ -21,10 +21,62 @@ import {
   RoomType,
 } from '@the-clubs/shared';
 import { loadEnvFromDotEnvIfPresent } from '../../env/loadEnv';
-import { closeDatabase, query, transaction } from '../index';
+import { closeDatabase, db, getPool } from '../index';
+import { sql } from 'drizzle-orm';
 import { SeedProgress } from './progress';
 
+// ── Drizzle shims ───────────────────────────────────────────────────────────
+// Local wrappers that match the old raw-PG signatures so the simulator
+// (1600+ LOC of positional-param SQL) needs zero further changes.
+
+async function query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number | null }> {
+  const result = await db.execute<Record<string, unknown>>(
+    params && params.length > 0
+      ? sql.raw(text.replaceAll(/\$(\d+)/g, (_, idx) => {
+          const val = params[Number(idx) - 1];
+          if (val === null || val === undefined) return 'NULL';
+          if (val instanceof Date) return `'${val.toISOString()}'`;
+          if (typeof val === 'object') return `'${JSON.stringify(val).replaceAll('\'', "''")}'`;
+          if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+          return `'${String(val).replaceAll('\'', "''")}'`;
+        }))
+      : sql.raw(text)
+  );
+  return { rows: result.rows as unknown as T[], rowCount: result.rowCount };
+}
+
+async function transaction<T>(callback: (client: { query: typeof query }) => Promise<T>): Promise<T> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const wrappedClient = {
+      async query<R = unknown>(text: string, params?: unknown[]): Promise<{ rows: R[]; rowCount: number | null }> {
+        const result = await client.query(text, params);
+        return { rows: result.rows as R[], rowCount: result.rowCount };
+      },
+    };
+    const result = await callback(wrappedClient);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 loadEnvFromDotEnvIfPresent();
+
+// Fallback defaults for local dev (matching docker-compose.yml: 5433->5432)
+if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+  process.env.DB_HOST = 'localhost';
+  process.env.DB_PORT = '5433';
+  process.env.DB_NAME = 'club_operations';
+  process.env.DB_USER = 'clubops';
+  process.env.DB_PASSWORD = 'club-ops-dev';
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,7 +94,7 @@ type SimCustomer = {
   dob: Date | null;
 };
 
-type SimRoom = { id: string; number: string; type: string };
+type SimRoom = { id: string; number: string; tier: string };
 type SimLocker = { id: string; number: number };
 type SimStaff = { id: string; name: string; role?: string };
 type SimRegisterSession = {
@@ -318,9 +370,9 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
     if (r.tier === 'DOUBLE') type = RoomType.DOUBLE;
     else if (r.tier === 'SPECIAL') type = RoomType.SPECIAL;
     await query(
-      `INSERT INTO rooms (number, type, status, floor, last_status_change)
-       VALUES ($1, $2, 'CLEAN', $3, NOW())
-       ON CONFLICT (number) DO UPDATE SET type = EXCLUDED.type, floor = EXCLUDED.floor, updated_at = NOW()`,
+      `INSERT INTO inventory_resources (number, kind, tier, status, floor, last_status_change)
+       VALUES ($1, 'room', $2, 'CLEAN', $3, NOW())
+       ON CONFLICT (number) DO UPDATE SET tier = EXCLUDED.tier, floor = EXCLUDED.floor, updated_at = NOW()`,
       [String(r.number), type, Math.floor(r.number / 100)]
     );
     progress.tick();
@@ -329,7 +381,7 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
   // Upsert lockers
   for (const n of LOCKER_NUMBERS) {
     await query(
-      `INSERT INTO lockers (number, status) VALUES ($1, 'CLEAN')
+      `INSERT INTO inventory_resources (number, kind, status) VALUES ($1, 'locker', 'CLEAN')
        ON CONFLICT (number) DO UPDATE SET updated_at = NOW()`,
       [n]
     );
@@ -338,23 +390,23 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
 
   // Key tags for rooms & lockers
   progress.setMessage('Ensuring key tags');
-  const roomRows = await query<{ id: string; number: string }>(`SELECT id, number FROM rooms ORDER BY number`);
+  const roomRows = await query<{ id: string; number: string }>(`SELECT id, number FROM inventory_resources WHERE kind = 'room' ORDER BY number`);
   progress.addTotal(roomRows.rows.length);
   for (const row of roomRows.rows) {
     await query(
-      `INSERT INTO key_tags (room_id, tag_type, tag_code, is_active) VALUES ($1, 'QR', $2, true)
-       ON CONFLICT (tag_code) DO UPDATE SET room_id = EXCLUDED.room_id, locker_id = NULL, is_active = true, updated_at = NOW()`,
+      `INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active) VALUES ($1, 'QR', $2, true)
+       ON CONFLICT (tag_code) DO UPDATE SET resource_id = EXCLUDED.resource_id, is_active = true, updated_at = NOW()`,
       [row.id, `ROOM-${row.number}`]
     );
     progress.tick();
   }
 
-  const lockerRows = await query<{ id: string; number: string }>(`SELECT id, number FROM lockers ORDER BY number`);
+  const lockerRows = await query<{ id: string; number: string }>(`SELECT id, number FROM inventory_resources WHERE kind = 'locker' ORDER BY number`);
   progress.addTotal(lockerRows.rows.length);
   for (const row of lockerRows.rows) {
     await query(
-      `INSERT INTO key_tags (locker_id, tag_type, tag_code, is_active) VALUES ($1, 'QR', $2, true)
-       ON CONFLICT (tag_code) DO UPDATE SET locker_id = EXCLUDED.locker_id, room_id = NULL, is_active = true, updated_at = NOW()`,
+      `INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active) VALUES ($1, 'QR', $2, true)
+       ON CONFLICT (tag_code) DO UPDATE SET resource_id = EXCLUDED.resource_id, is_active = true, updated_at = NOW()`,
       [row.id, `LOCKER-${row.number}`]
     );
     progress.tick();
@@ -609,18 +661,18 @@ async function simulateVisits(params: {
       const emp = staff.find(s => s.id === reg.employee_id) ?? staff[0];
 
       // --- Choose resource (62% locker, 38% room) ---
-      let lockerId: string | null = null;
-      let roomId: string | null = null;
+      let resourceId: string | null = null;
       let rentalType = 'LOCKER';
       if (rng() < 0.62 && lockers.length > 0) {
-        lockerId = lockers[lockerIdx++ % lockers.length].id;
+        resourceId = lockers[lockerIdx++ % lockers.length].id;
       } else if (rooms.length > 0) {
         const room = rooms[roomIdx++ % rooms.length];
-        roomId = room.id;
-        rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.type) ? room.type : 'STANDARD';
+        resourceId = room.id;
+        rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.tier) ? room.tier : 'STANDARD';
       } else if (lockers.length > 0) {
-        lockerId = lockers[lockerIdx++ % lockers.length].id;
+        resourceId = lockers[lockerIdx++ % lockers.length].id;
       }
+      const isRoom = rentalType !== 'LOCKER';
 
       const visitId = randomUUID();
       const blockId = randomUUID();
@@ -633,9 +685,9 @@ async function simulateVisits(params: {
         [visitId, start, end, customer.id]
       );
       await client.query(
-        `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type)
-         VALUES ($1,$2,'INITIAL',$3,$4,$5,$6,true,$7,$8)`,
-        [blockId, visitId, start, scheduledEnd, lockerId, roomId, signedAt, rentalType]
+        `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type)
+         VALUES ($1,$2,'INITIAL',$3,$4,$5,true,$6,$7)`,
+        [blockId, visitId, start, scheduledEnd, resourceId, signedAt, rentalType]
       );
       await client.query(
         `INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, agreement_text_snapshot, agreement_version, checkin_block_id)
@@ -686,14 +738,14 @@ async function simulateVisits(params: {
       const piId = randomUUID();
       const chargeId = randomUUID();
       await client.query(
-        `INSERT INTO payment_intents (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
-         VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
+        `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at)
+         VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
         [piId, price, { type: 'CHECKIN', rentalType, price }, signedAt]
       );
       await client.query(
-        `INSERT INTO charges (id, visit_id, checkin_block_id, type, amount, payment_intent_id, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [chargeId, visitId, blockId, rentalType, price, piId, signedAt]
+        `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
+         VALUES ($1,$2,'CHECKIN_FEE',$3,1,$4,0,0,$4)`,
+        [chargeId, piId, rentalLabel(rentalType), price]
       );
 
       // --- Checkout Activity Event ---
@@ -706,53 +758,53 @@ async function simulateVisits(params: {
       });
 
       // --- Cleaning Events for room visits ---
-      if (roomId) {
+      if (isRoom && resourceId) {
         const cleanStart = new Date(end.getTime() + (3 + Math.floor(rng() * 6)) * 60 * 1000);
         const cleanEnd = new Date(cleanStart.getTime() + (8 + Math.floor(rng() * 8)) * 60 * 1000);
         if (cleanEnd <= to) {
           const cleaner = staff[(roomIdx + j) % staff.length];
           const ev1 = randomUUID(), ev2 = randomUUID();
           await client.query(
-            `INSERT INTO cleaning_events (id, room_id, staff_id, started_at, completed_at, from_status, to_status, override_flag, device_id, created_at)
+            `INSERT INTO cleaning_events (id, resource_id, staff_id, started_at, completed_at, from_status, to_status, override_flag, device_id, created_at)
              VALUES ($1,$2::uuid,$3::uuid,$4,NULL,'DIRTY','CLEANING',false,'demo-cleaning',$4),
                     ($5,$2::uuid,$3::uuid,$4,$6,'CLEANING','CLEAN',false,'demo-cleaning',$6)`,
-            [ev1, roomId, cleaner.id, cleanStart, ev2, cleanEnd]
+            [ev1, resourceId, cleaner.id, cleanStart, ev2, cleanEnd]
           );
         }
       }
 
       // --- Waitlist (~8% of room visits) ---
-      if (roomId && rng() < 0.08) {
+      if (isRoom && resourceId && rng() < 0.08) {
         const wlCreated = new Date(start.getTime() - Math.floor(15 + rng() * 30) * 60 * 1000);
         const wlOffered = new Date(wlCreated.getTime() + Math.floor(15 + rng() * 30) * 60 * 1000);
         const wlCompleted = new Date(wlOffered.getTime() + Math.floor(2 + rng() * 3) * 60 * 1000);
         const wlId = randomUUID();
         await client.query(
-          `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, room_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
+          `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, resource_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
            VALUES ($1,$2,$3,$4::rental_type,'LOCKER'::rental_type,$5,'COMPLETED',$6,$7,$8,$9,$8,1,$7)`,
-          [wlId, visitId, blockId, rentalType, roomId, wlCreated, wlCompleted, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000)]
+          [wlId, visitId, blockId, rentalType, resourceId, wlCreated, wlCompleted, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000)]
         );
         await client.query(`UPDATE checkin_blocks SET waitlist_id = $1 WHERE id = $2`, [wlId, blockId]);
         await client.query(
           `INSERT INTO inventory_reservations (id, resource_type, resource_id, kind, waitlist_id, created_at, expires_at, released_at, release_reason)
            VALUES ($1,'room'::inventory_resource_type,$2,'UPGRADE_HOLD'::inventory_reservation_kind,$3,$4,$5,$6,'waitlist_completed')`,
-          [randomUUID(), roomId, wlId, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000), wlCompleted]
+          [randomUUID(), resourceId, wlId, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000), wlCompleted]
         );
       }
 
       // --- Room Upgrade (~4% of locker visits) ---
-      if (lockerId && !roomId && rooms.length > 0 && rng() < 0.04) {
+      if (!isRoom && resourceId && rooms.length > 0 && rng() < 0.04) {
         const ugRoom = rooms[Math.floor(rng() * rooms.length)];
         const ugMinIn = 30 + Math.floor(rng() * 90);
         const ugAt = new Date(start.getTime() + ugMinIn * 60 * 1000);
         if (ugAt < end) {
-          const ugType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(ugRoom.type) ? ugRoom.type : 'STANDARD';
-          await insertUpgrade(client, { visitId, blockId, customerId: customer.id, roomId: ugRoom.id, roomType: ugType, lockerId, ugAt, ugEnd: scheduledEnd, staffId: emp.id, staff, to, rng });
+          const ugType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(ugRoom.tier) ? ugRoom.tier : 'STANDARD';
+          await insertUpgrade(client, { visitId, blockId, customerId: customer.id, roomId: ugRoom.id, roomType: ugType, lockerId: resourceId, ugAt, ugEnd: scheduledEnd, staffId: emp.id, staff, to, rng });
         }
       }
 
       // --- Checkout Request for room visits ---
-      if (roomId) {
+      if (isRoom) {
         // With a fixed 6-hour checkout window, guests are never late
         await insertCheckoutRequest(client, { blockId, customerId: customer.id, lateMins: 0, lateFee: 0, at: end });
       }
@@ -867,16 +919,16 @@ async function insertUpgrade(client: DbClient, p: {
 
   // Waitlist entry for upgrade (must insert before checkin_blocks FK)
   await client.query(
-    `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially, room_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
-     VALUES ($1,$2,$3,$4::rental_type,'LOCKER'::rental_type,$5,$6,'COMPLETED',$7,$8,$9,$10,$9,1,$8)`,
-    [wlId, p.visitId, p.blockId, p.roomType, p.lockerId, p.roomId,
+    `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, resource_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
+     VALUES ($1,$2,$3,$4::rental_type,'LOCKER'::rental_type,$5,'COMPLETED',$6,$7,$8,$9,$8,1,$7)`,
+    [wlId, p.visitId, p.blockId, p.roomType, p.roomId,
      new Date(p.ugAt.getTime() - 5 * 60 * 1000), p.ugAt,
      new Date(p.ugAt.getTime() - 3 * 60 * 1000), new Date(p.ugAt.getTime() + 7 * 60 * 1000)]
   );
 
   await client.query(
-    `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type, waitlist_id)
-     VALUES ($1,$2,'RENEWAL',$3,$4,NULL,$5,true,$6,$7::rental_type,$8)`,
+    `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type, waitlist_id)
+     VALUES ($1,$2,'RENEWAL',$3,$4,$5,true,$6,$7::rental_type,$8)`,
     [renewalId, p.visitId, p.ugAt, p.ugEnd, p.roomId, p.ugAt, p.roomType, wlId]
   );
 
@@ -888,14 +940,14 @@ async function insertUpgrade(client: DbClient, p: {
 
   // Payment + Charge
   await client.query(
-    `INSERT INTO payment_intents (id, amount, tip, status, quote_json, paid_at, created_at, updated_at)
-     VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
+    `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at)
+     VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
     [piId, ugPrice, { type: 'UPGRADE', from: 'LOCKER', to: p.roomType, price: ugPrice }, p.ugAt]
   );
   await client.query(
-    `INSERT INTO charges (id, visit_id, checkin_block_id, type, amount, payment_intent_id, created_at)
-     VALUES ($1,$2,$3,'UPGRADE',$4,$5,$6)`,
-    [cId, p.visitId, renewalId, ugPrice, piId, p.ugAt]
+    `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
+     VALUES ($1,$2,'UPGRADE','Upgrade Fee',1,$3,0,0,$3)`,
+    [cId, piId, ugPrice]
   );
 
   // Activity events: UPGRADE_STARTED, UPGRADE_COMPLETED, ROOM_CHANGED
@@ -910,7 +962,7 @@ async function insertUpgrade(client: DbClient, p: {
     at: p.ugAt, customerId: p.customerId,
     action: 'UPGRADE_COMPLETED', category: 'UPGRADE', staffId: p.staffId, staffName: emp.name,
     summary: `Upgrade completed: Locker → ${p.roomType}`,
-    metadata: { visitId: p.visitId, fromType: 'LOCKER', toType: p.roomType, roomId: p.roomId, paymentIntentId: piId, price: ugPrice },
+    metadata: { visitId: p.visitId, fromType: 'LOCKER', toType: p.roomType, roomId: p.roomId, orderId: piId, price: ugPrice },
     dedupeKey: `ACT:SIM:UPGRADE_COMPLETED:${p.visitId}`,
   });
   await insertActivityEvent(client, {
@@ -926,7 +978,7 @@ async function insertUpgrade(client: DbClient, p: {
     at: p.ugAt, customerId: p.customerId, visitId: p.visitId,
     type: 'UPGRADE_FEE', amount: ugPrice, staffId: p.staffId, staffName: emp.name,
     summary: 'Upgrade fee paid',
-    metadata: { paymentIntentId: piId, fromType: 'LOCKER', toType: p.roomType, price: ugPrice },
+    metadata: { orderId: piId, fromType: 'LOCKER', toType: p.roomType, price: ugPrice },
     dedupeKey: `LEDGER:SIM:UPGRADE_FEE:${p.visitId}`,
   });
 }
@@ -964,27 +1016,27 @@ async function insertLateCheckout(client: DbClient, p: {
     const piId = randomUUID();
     const cId = randomUUID();
     await client.query(
-      `INSERT INTO payment_intents (id, amount, tip, status, quote_json, paid_at, created_at, updated_at) VALUES ($1,$2,0,'PAID',$3,$4,$4,$4)`,
+      `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at) VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
       [piId, p.feeAmount, { type: 'LATE_FEE', lateMinutes: p.lateMins, feeAmount: p.feeAmount }, p.at]
     );
     await client.query(
-      `INSERT INTO charges (id, visit_id, checkin_block_id, type, amount, payment_intent_id, created_at)
-       VALUES ($1,(SELECT visit_id FROM checkin_blocks WHERE id = $2),$2,'LATE_FEE',$3,$4,$5)`,
-      [cId, p.blockId, p.feeAmount, piId, p.at]
+      `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
+       VALUES ($1,$2,'LATE_FEE','Late Fee',1,$3,0,0,$3)`,
+      [cId, piId, p.feeAmount]
     );
     const lateStaff = p.staff[0];
     await insertActivityEvent(client, {
       at: p.at, customerId: p.customerId, action: 'CHECKOUT_FEE_PAID', category: 'CHECKOUT',
       staffId: lateStaff.id, staffName: lateStaff.name,
       summary: `Late fee paid: $${p.feeAmount.toFixed(2)} (${p.lateMins} min late)`,
-      metadata: { checkinBlockId: p.blockId, lateMinutes: p.lateMins, feeAmount: p.feeAmount, paymentIntentId: piId },
+      metadata: { checkinBlockId: p.blockId, lateMinutes: p.lateMins, feeAmount: p.feeAmount, orderId: piId },
       dedupeKey: `ACT:SIM:CHECKOUT_FEE_PAID:${p.blockId}`,
     });
     await insertLedgerEntry(client, {
       at: p.at, customerId: p.customerId, visitId: p.visitId,
       type: 'LATE_FEE', amount: Math.round(p.feeAmount), staffId: lateStaff.id, staffName: lateStaff.name,
       summary: 'Late checkout fee',
-      metadata: { paymentIntentId: piId, lateMinutes: p.lateMins, feeAmount: p.feeAmount },
+      metadata: { orderId: piId, lateMinutes: p.lateMins, feeAmount: p.feeAmount },
       dedupeKey: `LEDGER:SIM:LATE_FEE:${p.blockId}`,
     });
   }
@@ -1084,7 +1136,7 @@ type ActiveBlock = {
   customer_name: string;
   rental_type: string;
   scheduled_end: Date;
-  room_id: string | null;
+  resource_id: string | null;
 };
 
 async function checkoutActiveVisits(client: DbClient, p: {
@@ -1100,7 +1152,7 @@ async function checkoutActiveVisits(client: DbClient, p: {
       c.name          AS customer_name,
       cb.rental_type,
       cb.ends_at      AS scheduled_end,
-      cb.room_id
+      cb.resource_id
     FROM visits v
     JOIN checkin_blocks cb
       ON cb.visit_id = v.id
@@ -1141,10 +1193,10 @@ async function checkoutActiveVisits(client: DbClient, p: {
       [actualEnd, row.block_id]
     );
     // 3. Release any room/locker assignment
-    if (row.room_id) {
+    if (row.resource_id) {
       await client.query(
-        `UPDATE rooms SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = $1, updated_at = $1 WHERE id = $2`,
-        [actualEnd, row.room_id]
+        `UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'DIRTY', last_status_change = $1, updated_at = $1 WHERE id = $2`,
+        [actualEnd, row.resource_id]
       );
     }
     // 4. CHECKOUT_COMPLETED activity event (idempotent)
@@ -1196,6 +1248,38 @@ async function checkoutActiveVisits(client: DbClient, p: {
 }
 
 // ---------------------------------------------------------------------------
+// Close orphaned visits — active but no matching room/locker assignment
+// ---------------------------------------------------------------------------
+
+async function closeOrphanedVisits(client: DbClient, now: Date): Promise<number> {
+  // Find visits that are still open but whose customer has no room or locker
+  // assigned to them. This happens when a room/locker gets released (e.g. by
+  // the simulator's checkout logic or manual cleanup) but the visit row itself
+  // wasn't closed.
+  const res = await client.query<{ visit_id: string; customer_id: string }>(`
+    SELECT v.id AS visit_id, v.customer_id
+    FROM visits v
+    WHERE v.ended_at IS NULL
+      AND NOT EXISTS (
+        -- No resource currently assigned to this customer
+        SELECT 1 FROM inventory_resources r
+        WHERE r.assigned_to_customer_id = v.customer_id
+      )
+  `);
+
+  if (res.rows.length === 0) return 0;
+
+  for (const row of res.rows) {
+    await client.query(
+      `UPDATE visits SET ended_at = $1, updated_at = NOW() WHERE id = $2 AND ended_at IS NULL`,
+      [now, row.visit_id]
+    );
+  }
+
+  return res.rows.length;
+}
+
+// ---------------------------------------------------------------------------
 // Main Orchestrator
 // ---------------------------------------------------------------------------
 
@@ -1241,8 +1325,8 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
     const [agreementRes, customersRes, lockersRes, roomsRes, staffRes, registerRes] = await Promise.all([
       query<SimAgreement>(`SELECT id, version, title, body_text FROM agreements WHERE active = true ORDER BY created_at DESC LIMIT 1`),
       query<SimCustomer>(`SELECT id, name, membership_number, dob, membership_valid_until FROM customers ORDER BY created_at`),
-      query<SimLocker>(`SELECT id, number FROM lockers ORDER BY number`),
-      query<SimRoom>(`SELECT id, number, type FROM rooms ORDER BY number`),
+      query<SimLocker>(`SELECT id, number FROM inventory_resources WHERE kind = 'locker' ORDER BY number`),
+      query<SimRoom>(`SELECT id, number, tier FROM inventory_resources WHERE kind = 'room' ORDER BY number`),
       query<SimStaff>(`SELECT id, name FROM staff WHERE active = true ORDER BY name`),
       query<SimRegisterSession>(`SELECT id, register_number, employee_id, device_id FROM register_sessions WHERE signed_out_at IS NULL ORDER BY created_at DESC`),
     ]);
@@ -1273,6 +1357,10 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       // Close out any active check-ins whose scheduled end has passed
       const closedOut = await checkoutActiveVisits(client, { now, staff: staffRes.rows });
       if (closedOut > 0) progress.log(`🔒 Closed out ${closedOut} stale active check-in(s)`);
+
+      // Close orphaned visits — open visits whose room/locker is no longer assigned to them
+      const orphaned = await closeOrphanedVisits(client, now);
+      if (orphaned > 0) progress.log(`🧹 Cleaned up ${orphaned} orphaned visit(s)`);
 
       const visitCount = await simulateVisits({
         client, from, to: now, anchor,
@@ -1334,27 +1422,11 @@ async function seedActiveWaitlist(client: DbClient, p: {
     `UPDATE waitlist SET status = 'CANCELLED', updated_at = NOW()
      WHERE status IN ('ACTIVE', 'OFFERED')`
   );
-  // 2. Release all room assignments and reset rooms to CLEAN
+  // 2. Release all resource assignments and reset to CLEAN
   await client.query(
-    `UPDATE rooms SET assigned_to_customer_id = NULL, status = 'CLEAN',
+    `UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'CLEAN',
             last_status_change = $1, updated_at = $1`,
     [p.now]
-  );
-  // 3. Close any open visits whose scheduled end has passed (belt-and-suspenders)
-  await client.query(
-    `UPDATE visits SET ended_at = $1, updated_at = NOW()
-     WHERE ended_at IS NULL
-       AND id IN (
-         SELECT v.id FROM visits v
-         JOIN checkin_blocks cb ON cb.visit_id = v.id
-         WHERE v.ended_at IS NULL AND cb.ends_at IS NOT NULL AND cb.ends_at <= $1
-       )`,
-    [p.now]
-  );
-  // 4. Release locker assignments from previously-seeded waitlist visits
-  await client.query(
-    `UPDATE lockers SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW()
-     WHERE assigned_to_customer_id IS NOT NULL`
   );
 
   const WAITLIST_SIZE = 6;
@@ -1367,10 +1439,14 @@ async function seedActiveWaitlist(client: DbClient, p: {
   const agreement = agreementRes.rows[0];
   const reg = p.registerSessions[0];
 
+  // First two rooms get overdue checkout times for demo visibility
+  const OVERDUE_SCHEDULE_MINS = [30, 60]; // minutes past checkout
+  let overdueIdx = 0;
+
   for (const room of p.rooms) {
     const customer = p.customers[Math.floor(rng() * p.customers.length)];
     const updated = await client.query<{ id: string }>(
-      `UPDATE rooms SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = $2, updated_at = $2
+      `UPDATE inventory_resources SET assigned_to_customer_id = $1, status = 'OCCUPIED', last_status_change = $2, updated_at = $2
        WHERE id = $3 AND assigned_to_customer_id IS NULL
        RETURNING id`,
       [customer.id, p.now, room.id]
@@ -1380,12 +1456,24 @@ async function seedActiveWaitlist(client: DbClient, p: {
     // Create an open visit + checkin_block so the inventory LATERAL join returns checkout_at
     const visitId = randomUUID();
     const blockId = randomUUID();
-    const minIn = 30 + Math.floor(rng() * 90); // checked in 30–120 min ago
-    const start = new Date(p.now.getTime() - minIn * 60 * 1000);
-    const hoursTotal = 2 + Math.floor(rng() * 2); // 2 or 3 hour rental
-    const scheduledEnd = ceilTo15Min(new Date(start.getTime() + hoursTotal * 60 * 60 * 1000));
-    const signedAt = new Date(start.getTime() + 3 * 60 * 1000);
-    const rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.type) ? room.type : 'STANDARD';
+    const signedAt = new Date(p.now.getTime() - 60 * 60 * 1000); // signed 1hr ago
+    const rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.tier) ? room.tier : 'STANDARD';
+
+    let start: Date;
+    let scheduledEnd: Date;
+
+    if (overdueIdx < OVERDUE_SCHEDULE_MINS.length) {
+      // Force overdue: 6hr rental whose checkout is OVERDUE_SCHEDULE_MINS in the past
+      const overdueBy = OVERDUE_SCHEDULE_MINS[overdueIdx];
+      scheduledEnd = new Date(p.now.getTime() - overdueBy * 60 * 1000);
+      start = new Date(scheduledEnd.getTime() - 6 * 60 * 60 * 1000); // 6hr rental
+      overdueIdx++;
+    } else {
+      const minIn = 30 + Math.floor(rng() * 90); // checked in 30–120 min ago
+      start = new Date(p.now.getTime() - minIn * 60 * 1000);
+      const hoursTotal = 6; // all stays are 6 hours
+      scheduledEnd = ceilTo15Min(new Date(start.getTime() + hoursTotal * 60 * 60 * 1000));
+    }
 
     await client.query(
       `INSERT INTO visits (id, started_at, ended_at, customer_id, created_at, updated_at)
@@ -1393,8 +1481,8 @@ async function seedActiveWaitlist(client: DbClient, p: {
       [visitId, start, customer.id]
     );
     await client.query(
-      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type)
-       VALUES ($1, $2, 'INITIAL', $3, $4, NULL, $5, true, $6, $7)`,
+      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type)
+       VALUES ($1, $2, 'INITIAL', $3, $4, $5, true, $6, $7)`,
       [blockId, visitId, start, scheduledEnd, room.id, signedAt, rentalType]
     );
     if (agreement) {
@@ -1418,15 +1506,43 @@ async function seedActiveWaitlist(client: DbClient, p: {
         dedupeKey: `ACT:SIM:ACTIVE_ROOM_CHECKIN:${blockId}`,
       });
     }
+
+    // Spend Ledger: Rental Fee for active visit
+    const price = checkinPrice(rentalType);
+    const emp = p.staff[0];
+    await insertLedgerEntry(client, {
+      at: signedAt, customerId: customer.id, visitId, type: 'RENTAL_FEE', amount: price,
+      staffId: emp?.id ?? '', staffName: emp?.name ?? '', summary: rentalLabel(rentalType),
+      metadata: { rentalType, price },
+      dedupeKey: `LEDGER:SIM:ACTIVE_RENTAL_FEE:${blockId}`,
+    });
+
+    // Spend Ledger: Membership Fee ($13) for non-members
+    const hasValidMembership = customer.membership_valid_until && new Date(customer.membership_valid_until) >= start;
+    if (!hasValidMembership) {
+      await insertLedgerEntry(client, {
+        at: signedAt, customerId: customer.id, visitId, type: 'MEMBERSHIP_FEE', amount: 13,
+        staffId: emp?.id ?? '', staffName: emp?.name ?? '', summary: 'Non-Member Fee',
+        metadata: { membershipPrice: 13 },
+        dedupeKey: `LEDGER:SIM:ACTIVE_MEMBERSHIP_FEE:${blockId}`,
+      });
+    }
   }
 
   // Create pending waitlist entries
   for (let i = 0; i < WAITLIST_SIZE; i++) {
     const customer = p.customers[Math.floor(rng() * p.customers.length)];
-    const tierRoll = rng();
-    let desiredTier = 'SPECIAL';
-    if (tierRoll < 0.6) desiredTier = 'STANDARD';
-    else if (tierRoll < 0.8) desiredTier = 'DOUBLE';
+    // Force first 3 entries to have one of each tier for demo variety
+    const FORCED_TIERS = ['STANDARD', 'DOUBLE', 'SPECIAL'];
+    let desiredTier: string;
+    if (i < FORCED_TIERS.length) {
+      desiredTier = FORCED_TIERS[i]!;
+    } else {
+      const tierRoll = rng();
+      if (tierRoll < 0.6) desiredTier = 'STANDARD';
+      else if (tierRoll < 0.8) desiredTier = 'DOUBLE';
+      else desiredTier = 'SPECIAL';
+    }
     const createdAt = new Date(p.now.getTime() - Math.floor(5 + rng() * 25) * 60 * 1000);
     const _emp = p.staff[Math.floor(rng() * p.staff.length)];
     const _reg = p.registerSessions[Math.floor(rng() * p.registerSessions.length)];
@@ -1435,7 +1551,7 @@ async function seedActiveWaitlist(client: DbClient, p: {
     const visitId = randomUUID();
     const blockId = randomUUID();
     const lockerId = (await client.query<{ id: string }>(
-      `SELECT id FROM lockers WHERE assigned_to_customer_id IS NULL ORDER BY number LIMIT 1`
+      `SELECT id FROM inventory_resources WHERE kind = 'locker' AND assigned_to_customer_id IS NULL ORDER BY number LIMIT 1`
     )).rows[0]?.id;
 
     if (!lockerId) continue;
@@ -1449,25 +1565,46 @@ async function seedActiveWaitlist(client: DbClient, p: {
       [visitId, start, customer.id]
     );
     await client.query(
-      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, locker_id, room_id, agreement_signed, agreement_signed_at, rental_type)
-       VALUES ($1, $2, 'INITIAL', $3, $4, $5, NULL, true, $6, 'LOCKER')`,
+      `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type)
+       VALUES ($1, $2, 'INITIAL', $3, $4, $5, true, $6, 'LOCKER')`,
       [blockId, visitId, start, scheduledEnd, lockerId, start]
     );
     await client.query(
-      `UPDATE lockers SET assigned_to_customer_id = $1, status = 'OCCUPIED', updated_at = NOW() WHERE id = $2`,
+      `UPDATE inventory_resources SET assigned_to_customer_id = $1, status = 'OCCUPIED', updated_at = NOW() WHERE id = $2`,
       [customer.id, lockerId]
     );
+
+    // Spend Ledger: Locker Rental Fee
+    const lockerPrice = checkinPrice('LOCKER');
+    const wlEmp = p.staff[0];
+    await insertLedgerEntry(client, {
+      at: start, customerId: customer.id, visitId, type: 'RENTAL_FEE', amount: lockerPrice,
+      staffId: wlEmp?.id ?? '', staffName: wlEmp?.name ?? '', summary: rentalLabel('LOCKER'),
+      metadata: { rentalType: 'LOCKER', price: lockerPrice },
+      dedupeKey: `LEDGER:SIM:ACTIVE_WL_RENTAL_FEE:${blockId}`,
+    });
+
+    // Spend Ledger: Membership Fee ($13) for non-members
+    const wlHasValidMembership = customer.membership_valid_until && new Date(customer.membership_valid_until) >= start;
+    if (!wlHasValidMembership) {
+      await insertLedgerEntry(client, {
+        at: start, customerId: customer.id, visitId, type: 'MEMBERSHIP_FEE', amount: 13,
+        staffId: wlEmp?.id ?? '', staffName: wlEmp?.name ?? '', summary: 'Non-Member Fee',
+        metadata: { membershipPrice: 13 },
+        dedupeKey: `LEDGER:SIM:ACTIVE_WL_MEMBERSHIP_FEE:${blockId}`,
+      });
+    }
 
     // Create the pending waitlist entry — always ACTIVE (no room offered yet)
     const wlId = randomUUID();
 
     await client.query(
       `INSERT INTO waitlist
-         (id, visit_id, checkin_block_id, desired_tier, backup_tier, locker_or_room_assigned_initially,
+         (id, visit_id, checkin_block_id, desired_tier, backup_tier,
           status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts)
-       VALUES ($1, $2, $3, $4::rental_type, 'LOCKER'::rental_type, $5,
-               'ACTIVE', $6, $6, NULL, NULL, NULL, 0)`,
-      [wlId, visitId, blockId, desiredTier, lockerId, createdAt]
+       VALUES ($1, $2, $3, $4::rental_type, 'LOCKER'::rental_type,
+               'ACTIVE', $5, $5, NULL, NULL, NULL, 0)`,
+      [wlId, visitId, blockId, desiredTier, createdAt]
     );
   }
 }
@@ -1480,34 +1617,174 @@ async function generateFakeDemoPdf(): Promise<Buffer> {
   const pdfDoc = await PDFDocument.create();
   const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const helvBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const page = pdfDoc.addPage([612, 792]);
+  const helvOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+  const page = pdfDoc.addPage([612, 792]); // US Letter
 
   const black = rgb(0, 0, 0);
-  const gray = rgb(0.5, 0.5, 0.5);
+  const darkGray = rgb(0.25, 0.25, 0.25);
+  const midGray = rgb(0.45, 0.45, 0.45);
+  const lineGray = rgb(0.75, 0.75, 0.75);
+  const accentBlue = rgb(0.12, 0.35, 0.65);
 
-  // Letterhead
-  page.drawText('Club Dallas', { x: 54, y: 738, size: 16, font: helvBold, color: black });
-  page.drawLine({ start: { x: 54, y: 720 }, end: { x: 558, y: 720 }, thickness: 1, color: rgb(0.75, 0.75, 0.75) });
+  const LM = 54; // left margin
+  const RM = 558; // right margin
+  const PW = RM - LM; // printable width
 
-  // Title
-  page.drawText('Agreement', { x: 54, y: 690, size: 14, font: helvBold, color: black });
+  // ── Letterhead ──
+  page.drawText('CLUB DALLAS', { x: LM, y: 748, size: 20, font: helvBold, color: accentBlue });
+  page.drawText('2616 Swiss Avenue, Dallas, TX 75204', { x: LM, y: 732, size: 8, font: helv, color: midGray });
+  page.drawText('(214) 821-1990  •  www.clubdallas.com', { x: LM, y: 722, size: 8, font: helv, color: midGray });
+  page.drawLine({ start: { x: LM, y: 714 }, end: { x: RM, y: 714 }, thickness: 1.5, color: accentBlue });
 
-  // Body placeholder
-  const lines = [
-    'This is a demo agreement generated for testing purposes.',
-    'The actual agreement PDF is generated during the check-in process',
-    'and contains the full legal text, customer information, and signature.',
-    '',
-    'Customer signed agreement at check-in.',
-  ];
-  let y = 660;
-  for (const line of lines) {
-    if (line) page.drawText(line, { x: 54, y, size: 10, font: helv, color: gray });
-    y -= 16;
+  // ── Title ──
+  page.drawText('ENTRY & LIABILITY WAIVER AGREEMENT', { x: LM, y: 692, size: 14, font: helvBold, color: black });
+  page.drawLine({ start: { x: LM, y: 684 }, end: { x: RM, y: 684 }, thickness: 0.5, color: lineGray });
+
+  // ── Customer Info Block ──
+  const signDate = new Date();
+  const dateStr = signDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const timeStr = signDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+  const infoLabels = ['Customer:', 'Membership #:', 'Date:', 'Time:'];
+  const infoValues = ['John Smith', 'CD-100042', dateStr, timeStr];
+  let infoY = 666;
+  for (let i = 0; i < infoLabels.length; i++) {
+    page.drawText(infoLabels[i], { x: LM, y: infoY, size: 9, font: helvBold, color: darkGray });
+    page.drawText(infoValues[i], { x: LM + 90, y: infoY, size: 9, font: helv, color: black });
+    infoY -= 14;
   }
 
-  // Demo watermark
-  page.drawText('DEMO', { x: 220, y: 350, size: 60, font: helvBold, color: rgb(0.9, 0.9, 0.9) });
+  // ── Agreement Sections ──
+  const sections: Array<{ title: string; body: string }> = [
+    {
+      title: '1.  ASSUMPTION OF RISK',
+      body: 'I understand that Club Dallas is a private membership club and bathhouse facility. I voluntarily assume all risks associated with my use of the premises, including but not limited to: wet surfaces, sauna and steam room facilities, hot tub areas, gym equipment, and any other amenities provided. I acknowledge that physical activities carry inherent risks of injury.',
+    },
+    {
+      title: '2.  RELEASE & WAIVER OF LIABILITY',
+      body: 'In consideration for being permitted entry, I hereby release, waive, discharge, and covenant not to sue Club Dallas, its owners, operators, employees, agents, and affiliates from any and all liability, claims, demands, actions, or causes of action arising out of or related to any loss, damage, or injury that may be sustained by me while on the premises.',
+    },
+    {
+      title: '3.  CONSENT TO SEARCH',
+      body: 'I consent to inspection of my personal belongings upon entry and exit. I understand that prohibited items including but not limited to weapons, illegal substances, cameras, and recording devices are not permitted on the premises and will be confiscated.',
+    },
+    {
+      title: '4.  IDENTIFICATION VERIFICATION',
+      body: 'I certify that I am at least 18 years of age and have presented valid government-issued photo identification. I understand that Club Dallas is required to verify the identity and age of all patrons.',
+    },
+    {
+      title: '5.  RULES OF CONDUCT',
+      body: 'I agree to abide by all posted rules and policies. I understand that management reserves the right to revoke my membership and require me to leave the premises at any time for any violation of club rules, disruptive behavior, or at the discretion of management.',
+    },
+    {
+      title: '6.  REVOCATION & LATE CHECKOUT',
+      body: 'I understand that my rental period is for the time specified at check-in. Late checkout fees of $15 per 15 minutes will apply if I exceed my allotted time by more than 15 minutes. Repeated late checkouts may result in temporary or permanent suspension of privileges.',
+    },
+  ];
+
+  let y = 610;
+  for (const section of sections) {
+    page.drawText(section.title, { x: LM, y, size: 9, font: helvBold, color: darkGray });
+    y -= 13;
+    // Word-wrap the body text
+    const words = section.body.split(' ');
+    let line = '';
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (helv.widthOfTextAtSize(test, 8.5) > PW - 10) {
+        page.drawText(line, { x: LM + 6, y, size: 8.5, font: helv, color: darkGray });
+        y -= 11;
+        line = word;
+      } else {
+        line = test;
+      }
+    }
+    if (line) {
+      page.drawText(line, { x: LM + 6, y, size: 8.5, font: helv, color: darkGray });
+      y -= 11;
+    }
+    y -= 6; // section gap
+  }
+
+  // ── Acknowledgment ──
+  y -= 4;
+  page.drawLine({ start: { x: LM, y: y + 6 }, end: { x: RM, y: y + 6 }, thickness: 0.5, color: lineGray });
+  y -= 8;
+  const ackText = 'By signing below, I acknowledge that I have read, understand, and agree to all terms set forth in this agreement. I confirm that I am signing this document voluntarily and of my own free will.';
+  const ackWords = ackText.split(' ');
+  let ackLine = '';
+  for (const word of ackWords) {
+    const test = ackLine ? `${ackLine} ${word}` : word;
+    if (helvBold.widthOfTextAtSize(test, 8.5) > PW) {
+      page.drawText(ackLine, { x: LM, y, size: 8.5, font: helvBold, color: black });
+      y -= 12;
+      ackLine = word;
+    } else {
+      ackLine = test;
+    }
+  }
+  if (ackLine) {
+    page.drawText(ackLine, { x: LM, y, size: 8.5, font: helvBold, color: black });
+    y -= 12;
+  }
+
+  // ── Signature Block ──
+  y -= 14;
+  // Signature line
+  page.drawLine({ start: { x: LM, y }, end: { x: LM + 240, y }, thickness: 0.75, color: black });
+  page.drawText('Signature', { x: LM, y: y - 12, size: 8, font: helv, color: midGray });
+
+  // Draw a realistic cursive signature ("John Smith") using bezier curves
+  const sigX = LM + 20;
+  const sigY = y + 8;
+  const sigColor = rgb(0.05, 0.05, 0.35); // dark blue ink
+
+  // "J" stroke
+  page.drawLine({ start: { x: sigX, y: sigY + 18 }, end: { x: sigX + 8, y: sigY + 22 }, thickness: 1.2, color: sigColor });
+  page.drawLine({ start: { x: sigX + 8, y: sigY + 22 }, end: { x: sigX + 12, y: sigY + 10 }, thickness: 1.2, color: sigColor });
+  page.drawLine({ start: { x: sigX + 12, y: sigY + 10 }, end: { x: sigX + 6, y: sigY - 2 }, thickness: 1.2, color: sigColor });
+  page.drawLine({ start: { x: sigX + 6, y: sigY - 2 }, end: { x: sigX - 2, y: sigY + 2 }, thickness: 1, color: sigColor });
+
+  // "ohn" cursive strokes
+  page.drawLine({ start: { x: sigX + 14, y: sigY + 4 }, end: { x: sigX + 22, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 22, y: sigY + 14 }, end: { x: sigX + 28, y: sigY + 4 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 28, y: sigY + 4 }, end: { x: sigX + 36, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 36, y: sigY + 14 }, end: { x: sigX + 42, y: sigY + 4 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 42, y: sigY + 4 }, end: { x: sigX + 52, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sigX + 52, y: sigY + 14 }, end: { x: sigX + 58, y: sigY + 6 }, thickness: 1, color: sigColor });
+
+  // Space then "S" 
+  const sx = sigX + 70;
+  page.drawLine({ start: { x: sx, y: sigY + 20 }, end: { x: sx + 10, y: sigY + 24 }, thickness: 1.3, color: sigColor });
+  page.drawLine({ start: { x: sx + 10, y: sigY + 24 }, end: { x: sx + 4, y: sigY + 14 }, thickness: 1.2, color: sigColor });
+  page.drawLine({ start: { x: sx + 4, y: sigY + 14 }, end: { x: sx + 14, y: sigY + 8 }, thickness: 1.2, color: sigColor });
+  page.drawLine({ start: { x: sx + 14, y: sigY + 8 }, end: { x: sx + 8, y: sigY }, thickness: 1.1, color: sigColor });
+
+  // "mith" cursive
+  page.drawLine({ start: { x: sx + 16, y: sigY + 4 }, end: { x: sx + 24, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sx + 24, y: sigY + 14 }, end: { x: sx + 30, y: sigY + 4 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sx + 30, y: sigY + 4 }, end: { x: sx + 36, y: sigY + 14 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sx + 36, y: sigY + 14 }, end: { x: sx + 42, y: sigY + 4 }, thickness: 1, color: sigColor });
+  page.drawLine({ start: { x: sx + 42, y: sigY + 4 }, end: { x: sx + 50, y: sigY + 18 }, thickness: 0.9, color: sigColor });
+  page.drawLine({ start: { x: sx + 50, y: sigY + 18 }, end: { x: sx + 52, y: sigY + 4 }, thickness: 0.9, color: sigColor });
+  page.drawLine({ start: { x: sx + 52, y: sigY + 4 }, end: { x: sx + 60, y: sigY + 12 }, thickness: 0.8, color: sigColor });
+
+  // Date line
+  const dateX = LM + 300;
+  page.drawLine({ start: { x: dateX, y }, end: { x: dateX + 200, y }, thickness: 0.75, color: black });
+  page.drawText('Date', { x: dateX, y: y - 12, size: 8, font: helv, color: midGray });
+  page.drawText(`${dateStr}  ${timeStr}`, { x: dateX + 4, y: y + 6, size: 10, font: helvOblique, color: black });
+
+  // ── Printed Name ──
+  y -= 30;
+  page.drawLine({ start: { x: LM, y }, end: { x: LM + 240, y }, thickness: 0.75, color: black });
+  page.drawText('Printed Name', { x: LM, y: y - 12, size: 8, font: helv, color: midGray });
+  page.drawText('John Smith', { x: LM + 4, y: y + 6, size: 10, font: helv, color: black });
+
+  // ── Footer ──
+  page.drawLine({ start: { x: LM, y: 40 }, end: { x: RM, y: 40 }, thickness: 0.5, color: lineGray });
+  page.drawText('Club Dallas — Confidential | Agreement v1.0', { x: LM, y: 28, size: 7, font: helv, color: midGray });
+  page.drawText(`Document ID: DEMO-${Date.now().toString(36).toUpperCase()}`, { x: RM - 180, y: 28, size: 7, font: helv, color: midGray });
 
   const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
   return Buffer.from(pdfBytes);

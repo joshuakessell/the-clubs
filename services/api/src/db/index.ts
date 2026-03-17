@@ -59,7 +59,7 @@ function parseDatabaseUrl(urlString: string): {
     const host = url.hostname || undefined;
     const port = url.port ? Number.parseInt(url.port, 10) : undefined;
     const databaseFromPath = url.pathname.replaceAll(/^\/+/, '');
-    const database = databaseFromPath ? databaseFromPath : undefined;
+    const database = databaseFromPath || undefined;
     const user = url.username || undefined;
     const password = url.password || undefined;
 
@@ -120,9 +120,18 @@ export function loadDatabaseConfig(): pg.PoolConfig {
     typeof process.env.DB_HOST === 'string' && process.env.DB_HOST.trim().length > 0;
 
   if (!hasExplicitHost) {
-    throw new Error(
-      'Database is not configured. Set DATABASE_URL or DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD.'
-    );
+    // Fall back to local docker-compose configuration for seamless local testing
+    return {
+      host: 'localhost',
+      port: Number.parseInt(process.env.DB_PORT || '5433', 10),
+      database: process.env.DB_NAME || 'club_operations',
+      user: process.env.DB_USER || 'clubops',
+      password: process.env.DB_PASSWORD || 'club-ops-dev',
+      ssl,
+      max: Number.parseInt(process.env.DB_POOL_MAX || '20', 10),
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis,
+    };
   }
 
   return {
@@ -130,7 +139,7 @@ export function loadDatabaseConfig(): pg.PoolConfig {
     port: Number.parseInt(process.env.DB_PORT || '5432', 10),
     database: process.env.DB_NAME || 'club_operations',
     user: process.env.DB_USER || 'clubops',
-    password: process.env.DB_PASSWORD || 'clubops_dev',
+    password: process.env.DB_PASSWORD || 'club-ops-dev',
     ssl,
     max: Number.parseInt(process.env.DB_POOL_MAX || '20', 10),
     idleTimeoutMillis: 30000,
@@ -187,74 +196,39 @@ export async function closeDatabase(): Promise<void> {
   }
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Application and seed code should prefer Drizzle ORM:
+//   import { db } from '../db';
+//   import { sql } from 'drizzle-orm';
+//   await db.execute(sql`...`);
+//   await db.transaction(async (tx) => { ... });
+//
+// The `query` helper below is retained for integration tests and ad-hoc
+// scripts that need raw parameterised SQL without Drizzle ceremony.
+// ──────────────────────────────────────────────────────────────────────────────
+
 /**
- * Execute a query with automatic client acquisition and release.
+ * Convenience wrapper around `pool.query` for raw parameterised SQL.
+ * Prefer Drizzle ORM (`db`) for application code.
  */
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
-  params?: unknown[]
+  params?: unknown[],
 ): Promise<pg.QueryResult<T>> {
-  const dbPool = getPool();
-  const start = Date.now();
-  const result = await dbPool.query<T>(text, params);
-  const duration = Date.now() - start;
-
-  if (process.env.DB_LOG_QUERIES === 'true') {
-    if (process.env.NODE_ENV === 'production') {
-      // In production, only log duration and row count to avoid leaking schema details
-      console.log('Executed query', { duration, rows: result.rowCount });
-    } else {
-      console.log('Executed query', { text, duration, rows: result.rowCount });
-    }
-  }
-
-  return result;
-}
-
-/**
- * Execute a transaction with automatic commit/rollback.
- */
-export async function transaction<T>(callback: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-  const dbPool = getPool();
-  const client = await dbPool.connect();
-
-  try {
-    await client.query('BEGIN');
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-/**
- * Execute a serializable transaction for critical operations like bookings.
- * This provides the highest isolation level to prevent race conditions.
- */
-export async function serializableTransaction<T>(
-  callback: (client: pg.PoolClient) => Promise<T>
-): Promise<T> {
-  const dbPool = getPool();
-  const client = await dbPool.connect();
-
-  try {
-    await client.query('BEGIN ISOLATION LEVEL SERIALIZABLE');
-    const result = await callback(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  return getPool().query<T>(text, params);
 }
 
 export { pg };
+
+/**
+ * Shared Drizzle transaction type.
+ * Use this instead of `PgTransaction<any, any, any>` for type-safe transaction parameters.
+ *
+ * Usage:
+ *   import { type DrizzleTx } from '../db';
+ *   async function doStuff(tx: DrizzleTx) { ... }
+ */
+export type DrizzleTx = Parameters<Parameters<ReturnType<typeof drizzle<typeof schema>>['transaction']>[0]>[0];
 
 /**
  * Drizzle ORM client wrapping the shared pg.Pool.
@@ -270,18 +244,16 @@ export { pg };
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 export function getDb() {
-  if (!_db) {
-    _db = drizzle(getPool(), { 
-      schema, 
-      logger: {
-        logQuery(query: string, params: unknown[]) {
-          if (process.env.DB_LOG_QUERIES !== 'false') {
-             console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
-          }
+  _db ??= drizzle(getPool(), { 
+    schema, 
+    logger: {
+      logQuery(query: string, params: unknown[]) {
+        if (process.env.DB_LOG_QUERIES === 'true') {
+          console.log(`[drizzle] ${query} -- params: ${JSON.stringify(params)}`);
         }
       }
-    });
-  }
+    }
+  });
   return _db;
 }
 

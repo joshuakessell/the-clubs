@@ -49,12 +49,15 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
    * Creates a session and returns session token.
    */
   fastify.post('/v1/auth/login-pin', {
-    schema: { body: LoginPinSchema },
     config: {
       rateLimit: { max: 10, timeWindow: '1 minute' },
     },
   }, async (request, reply) => {
-    const body = request.body as LoginPinInput;
+    const parseResult = LoginPinSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.status(400).send({ error: 'Validation failed', details: parseResult.error.errors });
+    }
+    const body = parseResult.data;
 
     try {
       const isDemoMode = process.env.DEMO_MODE === 'true';
@@ -125,8 +128,10 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/v1/auth/change-pin',
     {
-      schema: { body: ChangePinSchema },
       preHandler: [requireAuth],
+      config: {
+        rateLimit: { max: 10, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -165,6 +170,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/logout',
     {
       preHandler: [requireAuth],
+      config: {
+        rateLimit: { max: 10, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       const authHeader = request.headers.authorization;
@@ -199,6 +207,9 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/me',
     {
       preHandler: [requireAuth],
+      config: {
+        rateLimit: { max: 200, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -230,8 +241,10 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
   }>(
     '/v1/auth/reauth-pin',
     {
-      schema: { body: ReauthPinSchema },
       preHandler: [requireAuth],
+      config: {
+        rateLimit: { max: 10, timeWindow: '1 minute' },
+      },
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -285,6 +298,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/reauth/webauthn/options',
     {
       preHandler: [requireAuth],
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (request, reply) => {
       if (!request.staff) {
@@ -322,6 +336,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     '/v1/auth/reauth/webauthn/verify',
     {
       preHandler: [requireAuth],
+      config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
     },
     async (request, reply) => {
       if (!request.staff) {

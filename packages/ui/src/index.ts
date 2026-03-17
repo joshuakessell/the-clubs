@@ -13,6 +13,7 @@ export { Badge } from './components/Badge';
 export { Button } from './components/Button';
 export { Alert } from './components/Alert';
 export { Spinner } from './components/Spinner';
+export { ValidatingScreen } from './components/ValidatingScreen';
 
 // WebAuthn
 export {

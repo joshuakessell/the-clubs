@@ -1,5 +1,6 @@
 import type { FastifyRequest, FastifyReply } from 'fastify';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { hashSessionToken } from './utils';
 
 /**
@@ -35,24 +36,23 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
   const tokenHash = hashSessionToken(token);
 
   try {
-    const sessionResult = await query<{
+    const sessionResult = await db.execute<{
       staff_id: string;
       id: string;
       name: string;
       role: string;
     }>(
-      `SELECT 
+      sql`SELECT 
         ss.staff_id,
         ss.id,
         s.name,
         s.role
       FROM staff_sessions ss
       JOIN staff s ON s.id = ss.staff_id
-      WHERE ss.session_token = $1 
+      WHERE ss.session_token = ${tokenHash} 
         AND ss.revoked_at IS NULL
         AND ss.expires_at > NOW()
-        AND s.active = true`,
-      [tokenHash]
+        AND s.active = true`
     );
 
     if (sessionResult.rows.length === 0) {
@@ -74,12 +74,11 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
 
     // Sliding window: extend session expiry on each authenticated request.
     // Only fires if less than 23h remain (throttles to ~1 write/hour max).
-    query(
-      `UPDATE staff_sessions
+    db.execute(
+      sql`UPDATE staff_sessions
        SET expires_at = NOW() + INTERVAL '24 hours'
-       WHERE session_token = $1
-         AND expires_at - NOW() < INTERVAL '23 hours'`,
-      [tokenHash]
+       WHERE session_token = ${tokenHash}
+         AND expires_at - NOW() < INTERVAL '23 hours'`
     ).catch(() => {}); // fire-and-forget, non-blocking
 
     return true;
@@ -160,13 +159,12 @@ export async function requireReauth(request: FastifyRequest, reply: FastifyReply
   const tokenHash = hashSessionToken(token);
 
   try {
-    const sessionResult = await query<{ reauth_ok_until: Date | null }>(
-      `SELECT reauth_ok_until
+    const sessionResult = await db.execute<{ reauth_ok_until: Date | null }>(
+      sql`SELECT reauth_ok_until
        FROM staff_sessions
-       WHERE session_token = $1
+       WHERE session_token = ${tokenHash}
          AND revoked_at IS NULL
-         AND expires_at > NOW()`,
-      [tokenHash]
+         AND expires_at > NOW()`
     );
 
     if (sessionResult.rows.length === 0) {

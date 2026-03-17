@@ -13,14 +13,16 @@ function makeSession(overrides: Partial<CashDrawerSessionRow> = {}): CashDrawerS
   };
 }
 
+type MockRow = Record<string, number | string | null>;
+
 function makeMockClient(
-  events: Record<string, number | string | null> = {},
-  tender: Record<string, number | string | null> = {},
-  refunds: Record<string, number | string | null> = {},
+  events: MockRow = {},
+  tender: MockRow = {},
+  refunds: MockRow = {},
 ): Queryable {
   let callCount = 0;
   return {
-    async query() {
+    async query<T>(_queryText: string, _params?: unknown[]): Promise<{ rows: T[] }> {
       callCount++;
       if (callCount === 1) {
         return {
@@ -31,7 +33,7 @@ function makeMockClient(
             adjustment: events.adjustment ?? 0,
             no_sale_count: events.no_sale_count ?? 0,
           }],
-        };
+        } as { rows: T[] };
       }
       if (callCount === 2) {
         return {
@@ -45,7 +47,7 @@ function makeMockClient(
             net_total: tender.net_total ?? 0,
             order_count: tender.order_count ?? 0,
           }],
-        };
+        } as { rows: T[] };
       }
       // callCount === 3: refunds
       return {
@@ -57,7 +59,7 @@ function makeMockClient(
           void_count: refunds.void_count ?? 0,
           void_total: refunds.void_total ?? 0,
         }],
-      };
+      } as { rows: T[] };
     },
   };
 }

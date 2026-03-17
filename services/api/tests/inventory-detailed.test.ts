@@ -43,7 +43,7 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
 
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     await app.register(inventoryRoutes);
     await app.ready();
   });
@@ -65,8 +65,8 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
     const customerId = cust.rows[0]!.id;
 
     const locker = await pool.query<{ id: string }>(
-      `INSERT INTO lockers (number, status, assigned_to_customer_id)
-       VALUES ('040', 'OCCUPIED', $1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, assigned_to_customer_id)
+       VALUES ('locker', '040', 'LOCKER', 'OCCUPIED', $1)
        RETURNING id`,
       [customerId]
     );
@@ -82,7 +82,7 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
 
     // Overdue scheduled checkout (ended 1 hour ago) on the active visit.
     const block = await pool.query<{ id: string; starts_at: Date; ends_at: Date }>(
-      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, locker_id)
+      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
        VALUES (
          $1,
          'INITIAL',

@@ -1,9 +1,19 @@
-import { query, initializeDatabase, closeDatabase } from './index';
+import { initializeDatabase, closeDatabase, db } from './index';
+import { sql } from 'drizzle-orm';
 import { RoomStatus, RoomType, AGREEMENT_LEGAL_BODY_HTML_BY_LANG, LOCKER_NUMBERS, ROOMS } from '@the-clubs/shared';
 import { hashQrToken, hashPin } from '../auth/utils';
 import { loadEnvFromDotEnvIfPresent } from '../env/loadEnv';
 
 loadEnvFromDotEnvIfPresent();
+
+// Fallback defaults for local dev (matching docker-compose.yml: 5433->5432)
+if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+  process.env.DB_HOST = 'localhost';
+  process.env.DB_PORT = '5433';
+  process.env.DB_NAME = 'club_operations';
+  process.env.DB_USER = 'clubops';
+  process.env.DB_PASSWORD = 'club-ops-dev';
+}
 
 interface RoomSeed {
   number: string;
@@ -55,44 +65,43 @@ async function seed() {
 
     // Enforce facility inventory contract (delete any invalid legacy rooms)
     const desiredRoomNumbers = seedRooms.map((r) => r.number);
-    const deletedRooms = await query<{ count: string }>(
-      `WITH del AS (
-         DELETE FROM rooms
-         WHERE NOT (number = ANY($1::text[]))
+    const roomArrayLiteral = `ARRAY[${desiredRoomNumbers.map((n) => `'${n}'`).join(',')}]::text[]`;
+    const deletedRooms = await db.execute<Record<string, unknown>>(
+      sql`WITH del AS (
+         DELETE FROM inventory_resources
+         WHERE kind = 'room'
+           AND NOT (number = ANY(${sql.raw(roomArrayLiteral)}))
          RETURNING 1
        )
-       SELECT COUNT(*)::text as count FROM del`,
-      [desiredRoomNumbers]
+       SELECT COUNT(*)::text as count FROM del`
     );
-    if (Number.parseInt(deletedRooms.rows[0]?.count || '0', 10) > 0) {
+    const deletedRoomCount = Number.parseInt((deletedRooms.rows[0] as any)?.count || '0', 10);
+    if (deletedRoomCount > 0) {
       console.log(
-        `🧹 Removed ${deletedRooms.rows[0]?.count ?? '0'} invalid legacy room(s) from inventory`
+        `🧹 Removed ${deletedRoomCount} invalid legacy room(s) from inventory`
       );
     }
 
     for (const roomSeed of seedRooms) {
-      const roomResult = await query<{ id: string }>(
-        `INSERT INTO rooms (number, type, status, floor, last_status_change)
-         VALUES ($1, $2, $3, $4, NOW())
+      const roomResult = await db.execute<Record<string, unknown>>(
+        sql`INSERT INTO inventory_resources (number, kind, tier, status, floor, last_status_change)
+         VALUES (${roomSeed.number}, 'room', ${roomSeed.type}, ${RoomStatus.CLEAN}, ${roomSeed.floor}, NOW())
          ON CONFLICT (number) DO UPDATE
-           SET type = EXCLUDED.type,
+           SET tier = EXCLUDED.tier,
                floor = EXCLUDED.floor,
                updated_at = NOW()
-         RETURNING id`,
-        [roomSeed.number, roomSeed.type, RoomStatus.CLEAN, roomSeed.floor]
+         RETURNING id`
       );
 
-      const roomId = roomResult.rows[0]?.id ?? '';
+      const roomId = (roomResult.rows[0] as any)?.id ?? '';
 
-      await query(
-        `INSERT INTO key_tags (room_id, tag_type, tag_code, is_active)
-         VALUES ($1, 'QR', $2, true)
+      await db.execute(
+        sql`INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active)
+         VALUES (${roomId}, 'QR', ${roomSeed.tagCode}, true)
          ON CONFLICT (tag_code) DO UPDATE
-           SET room_id = EXCLUDED.room_id,
-               locker_id = NULL,
+           SET resource_id = EXCLUDED.resource_id,
                is_active = true,
-               updated_at = NOW()`,
-        [roomId, roomSeed.tagCode]
+               updated_at = NOW()`
       );
     }
 
@@ -100,42 +109,41 @@ async function seed() {
 
     // Enforce facility inventory contract (delete any invalid legacy lockers)
     const desiredLockerNumbers = seedLockers.map((l) => l.number);
-    const deletedLockers = await query<{ count: string }>(
-      `WITH del AS (
-         DELETE FROM lockers
-         WHERE NOT (number = ANY($1::text[]))
+    const lockerArrayLiteral = `ARRAY[${desiredLockerNumbers.map((n) => `'${n}'`).join(',')}]::text[]`;
+    const deletedLockers = await db.execute<Record<string, unknown>>(
+      sql`WITH del AS (
+         DELETE FROM inventory_resources
+         WHERE kind = 'locker'
+           AND NOT (number = ANY(${sql.raw(lockerArrayLiteral)}))
          RETURNING 1
        )
-       SELECT COUNT(*)::text as count FROM del`,
-      [desiredLockerNumbers]
+       SELECT COUNT(*)::text as count FROM del`
     );
-    if (Number.parseInt(deletedLockers.rows[0]?.count || '0', 10) > 0) {
+    const deletedLockerCount = Number.parseInt((deletedLockers.rows[0] as any)?.count || '0', 10);
+    if (deletedLockerCount > 0) {
       console.log(
-        `🧹 Removed ${deletedLockers.rows[0]?.count ?? '0'} invalid legacy locker(s) from inventory`
+        `🧹 Removed ${deletedLockerCount} invalid legacy locker(s) from inventory`
       );
     }
 
     for (const lockerSeed of seedLockers) {
-      const lockerResult = await query<{ id: string }>(
-        `INSERT INTO lockers (number, status)
-         VALUES ($1, $2)
+      const lockerResult = await db.execute<Record<string, unknown>>(
+        sql`INSERT INTO inventory_resources (number, kind, status)
+         VALUES (${lockerSeed.number}, 'locker', ${RoomStatus.CLEAN})
          ON CONFLICT (number) DO UPDATE
            SET updated_at = NOW()
-         RETURNING id`,
-        [lockerSeed.number, RoomStatus.CLEAN]
+         RETURNING id`
       );
 
-      const lockerId = lockerResult.rows[0]?.id ?? '';
+      const lockerId = (lockerResult.rows[0] as any)?.id ?? '';
 
-      await query(
-        `INSERT INTO key_tags (locker_id, tag_type, tag_code, is_active)
-         VALUES ($1, 'QR', $2, true)
+      await db.execute(
+        sql`INSERT INTO key_tags (resource_id, tag_type, tag_code, is_active)
+         VALUES (${lockerId}, 'QR', ${lockerSeed.tagCode}, true)
          ON CONFLICT (tag_code) DO UPDATE
-           SET locker_id = EXCLUDED.locker_id,
-               room_id = NULL,
+           SET resource_id = EXCLUDED.resource_id,
                is_active = true,
-               updated_at = NOW()`,
-        [lockerId, lockerSeed.tagCode]
+               updated_at = NOW()`
       );
     }
 
@@ -171,9 +179,11 @@ async function seed() {
     ];
 
     // Check if staff already exist
-    const existingStaff = await query<{ count: string }>('SELECT COUNT(*) as count FROM staff');
+    const existingStaff = await db.execute<Record<string, unknown>>(
+      sql`SELECT COUNT(*) as count FROM staff`
+    );
 
-    if (Number.parseInt(existingStaff.rows[0]?.count || '0', 10) > 0) {
+    if (Number.parseInt((existingStaff.rows[0] as any)?.count || '0', 10) > 0) {
       console.log('⚠️  Staff users already exist. Updating existing staff to match seed data...');
 
       // Update existing staff if they match old names or create new ones
@@ -182,30 +192,29 @@ async function seed() {
         const pinHash = await hashPin(staff.pin);
 
         // Check if staff with this name or matching old names exists
-        const existing = await query<{ id: string; name: string }>(
-          `SELECT id, name FROM staff 
-           WHERE name = $1 
-           OR (name = 'John Staff' AND $1 = 'John Erikson')
-           OR (name = 'Jane Admin' AND $1 = 'Cruz Martinez')
-           LIMIT 1`,
-          [staff.name]
+        const existing = await db.execute<Record<string, unknown>>(
+          sql`SELECT id, name FROM staff 
+           WHERE name = ${staff.name} 
+           OR (name = 'John Staff' AND ${staff.name} = 'John Erikson')
+           OR (name = 'Jane Admin' AND ${staff.name} = 'Cruz Martinez')
+           LIMIT 1`
         );
 
         if (existing.rows.length > 0) {
+          const existingId = (existing.rows[0] as any)?.id ?? '';
+          const existingName = (existing.rows[0] as any)?.name ?? 'Unknown';
           // Update existing staff
-          await query(
-            `UPDATE staff 
-             SET name = $1, role = $2, qr_token_hash = $3, pin_hash = $4, active = true
-             WHERE id = $5`,
-            [staff.name, staff.role, qrTokenHash, pinHash, existing.rows[0]?.id ?? '']
+          await db.execute(
+            sql`UPDATE staff 
+             SET name = ${staff.name}, role = ${staff.role}, qr_token_hash = ${qrTokenHash}, pin_hash = ${pinHash}, active = true
+             WHERE id = ${existingId}`
           );
-          console.log(`✓ Updated staff: ${existing.rows[0]?.name ?? 'Unknown'} → ${staff.name} (${staff.role})`);
+          console.log(`✓ Updated staff: ${existingName} → ${staff.name} (${staff.role})`);
         } else {
           // Create new staff if doesn't exist
-          await query(
-            `INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
-             VALUES ($1, $2, $3, $4, true)`,
-            [staff.name, staff.role, qrTokenHash, pinHash]
+          await db.execute(
+            sql`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
+             VALUES (${staff.name}, ${staff.role}, ${qrTokenHash}, ${pinHash}, true)`
           );
           console.log(`✓ Seeded staff: ${staff.name} (${staff.role})`);
         }
@@ -218,10 +227,9 @@ async function seed() {
         const qrTokenHash = hashQrToken(staff.qrToken);
         const pinHash = await hashPin(staff.pin);
 
-        await query(
-          `INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
-           VALUES ($1, $2, $3, $4, true)`,
-          [staff.name, staff.role, qrTokenHash, pinHash]
+        await db.execute(
+          sql`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
+           VALUES (${staff.name}, ${staff.role}, ${qrTokenHash}, ${pinHash}, true)`
         );
 
         console.log(`✓ Seeded staff: ${staff.name} (${staff.role})`);
@@ -247,24 +255,21 @@ async function seed() {
     ];
 
     for (const device of seedDevices) {
-      const existing = await query<{ count: string }>(
-        'SELECT COUNT(*) as count FROM devices WHERE device_id = $1',
-        [device.deviceId]
+      const existing = await db.execute<Record<string, unknown>>(
+        sql`SELECT COUNT(*) as count FROM devices WHERE device_id = ${device.deviceId}`
       );
 
-      if (Number.parseInt(existing.rows[0]?.count || '0', 10) === 0) {
-        await query(
-          `INSERT INTO devices (device_id, display_name, enabled)
-           VALUES ($1, $2, true)`,
-          [device.deviceId, device.displayName]
+      if (Number.parseInt((existing.rows[0] as any)?.count || '0', 10) === 0) {
+        await db.execute(
+          sql`INSERT INTO devices (device_id, display_name, enabled)
+           VALUES (${device.deviceId}, ${device.displayName}, true)`
         );
         console.log(`✓ Seeded device: ${device.displayName} (${device.deviceId})`);
       } else {
         // Update existing device to ensure it's enabled
-        await query(`UPDATE devices SET enabled = true, display_name = $1 WHERE device_id = $2`, [
-          device.displayName,
-          device.deviceId,
-        ]);
+        await db.execute(
+          sql`UPDATE devices SET enabled = true, display_name = ${device.displayName} WHERE device_id = ${device.deviceId}`
+        );
         console.log(`✓ Updated device: ${device.displayName} (${device.deviceId})`);
       }
     }
@@ -274,33 +279,33 @@ async function seed() {
     // Seed active agreement
     console.log('\nSeeding active agreement...');
 
-    const existingAgreement = await query<{ count: string }>(
-      'SELECT COUNT(*) as count FROM agreements WHERE active = true'
+    const existingAgreement = await db.execute<Record<string, unknown>>(
+      sql`SELECT COUNT(*) as count FROM agreements WHERE active = true`
     );
 
     const agreementBodyText = AGREEMENT_LEGAL_BODY_HTML_BY_LANG.EN;
 
-    if (Number.parseInt(existingAgreement.rows[0]?.count || '0', 10) > 0) {
+    if (Number.parseInt((existingAgreement.rows[0] as any)?.count || '0', 10) > 0) {
       // Update existing active agreement if body_text is empty
-      const activeAgreement = await query<{ body_text: string }>(
-        'SELECT body_text FROM agreements WHERE active = true LIMIT 1'
+      const activeAgreement = await db.execute<Record<string, unknown>>(
+        sql`SELECT body_text FROM agreements WHERE active = true LIMIT 1`
       );
+      const bodyText = (activeAgreement.rows[0] as any)?.body_text;
       if (
         activeAgreement.rows.length > 0 &&
-        (!activeAgreement.rows[0]?.body_text || activeAgreement.rows[0].body_text.trim() === '')
+        (!bodyText || bodyText.trim() === '')
       ) {
-        await query(`UPDATE agreements SET body_text = $1 WHERE active = true`, [
-          agreementBodyText,
-        ]);
+        await db.execute(
+          sql`UPDATE agreements SET body_text = ${agreementBodyText} WHERE active = true`
+        );
         console.log('✓ Updated active agreement with real content');
       } else {
         console.log('⚠️  Active agreement already exists with content. Skipping agreement seed.');
       }
     } else {
-      await query(
-        `INSERT INTO agreements (version, title, body_text, active)
-         VALUES ($1, $2, $3, true)`,
-        ['demo-v1', 'Club Dallas Entry & Liability Waiver (Demo)', agreementBodyText]
+      await db.execute(
+        sql`INSERT INTO agreements (version, title, body_text, active)
+         VALUES (${'demo-v1'}, ${'Club Dallas Entry & Liability Waiver (Demo)'}, ${agreementBodyText}, true)`
       );
       console.log('✓ Seeded active agreement: demo-v1');
       console.log('✅ Agreement seeded successfully');
@@ -322,17 +327,16 @@ async function seed() {
     ];
 
     for (const product of retailProducts) {
-      await query(
-        `INSERT INTO products (sku, name, price, category, sort_order, image_url, is_active)
-         VALUES ($1, $2, $3, 'RETAIL', $4, $5, true)
+      await db.execute(
+        sql`INSERT INTO products (sku, name, price, category, sort_order, image_url, is_active)
+         VALUES (${product.sku}, ${product.name}, ${product.price}, 'RETAIL', ${product.sortOrder}, ${product.imageUrl}, true)
          ON CONFLICT (sku) DO UPDATE SET
            name       = EXCLUDED.name,
            price      = EXCLUDED.price,
            sort_order = EXCLUDED.sort_order,
            image_url  = EXCLUDED.image_url,
            is_active  = true,
-           updated_at = NOW()`,
-        [product.sku, product.name, product.price, product.sortOrder, product.imageUrl]
+           updated_at = NOW()`
       );
     }
     console.log(`✅ Retail products seeded (${retailProducts.length} items)`);

@@ -41,8 +41,8 @@ export function CompleteScreen() {
         </div>
 
         <h1
-          className="text-3xl font-extrabold"
-          style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+          style={{ fontFamily: 'var(--font-display)' }}
+          className="text-3xl font-extrabold text-(--color-text-primary)"
         >
           {customerName
             ? t('complete.allSetWithName', { name: customerName })
@@ -51,8 +51,7 @@ export function CompleteScreen() {
 
         {/* Assignment card — large room number + checkout time */}
         <div
-          className="w-full rounded-2xl border p-6"
-          style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
+          className="w-full rounded-2xl border p-6 bg-(--color-surface-raised) border-(--color-border-default)"
         >
           <div className="flex items-center justify-between">
             <div>
@@ -60,8 +59,8 @@ export function CompleteScreen() {
                 {isLocker ? t('complete.yourLocker') : t('complete.yourRoom')}
               </p>
               <p
-                className="mt-1 text-5xl font-extrabold tabular-nums"
-                style={{ fontFamily: 'var(--font-display)', color: 'var(--color-accent-primary)' }}
+                style={{ fontFamily: 'var(--font-display)' }}
+                className="mt-1 text-5xl font-extrabold tabular-nums text-(--color-accent-primary)"
               >
                 {assignedResourceNumber ?? '—'}
               </p>
@@ -70,7 +69,7 @@ export function CompleteScreen() {
               <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
                 {t('complete.checkoutBy')}
               </p>
-              <p className="mt-1 text-2xl font-bold" style={{ color: 'var(--color-text-primary)' }}>
+              <p className="mt-1 text-2xl font-bold text-(--color-text-primary)">
                 {checkoutTimeDisplay}
               </p>
               <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
@@ -81,7 +80,7 @@ export function CompleteScreen() {
         </div>
 
         {/* Static status message */}
-        <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+        <p className="text-sm text-(--color-text-muted)">
           Please enjoy your visit!
         </p>
       </div>

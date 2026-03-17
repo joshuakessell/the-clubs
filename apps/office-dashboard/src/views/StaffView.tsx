@@ -9,6 +9,7 @@ interface StaffMember {
   role: 'STAFF' | 'ADMIN';
   active: boolean;
   lastLogin: string | null;
+  forcePinChange: boolean;
 }
 
 export function StaffView() {
@@ -21,6 +22,11 @@ export function StaffView() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<'STAFF' | 'ADMIN'>('STAFF');
+
+  /* ── Edit state ── */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editRole, setEditRole] = useState<'STAFF' | 'ADMIN'>('STAFF');
 
   /* ── Toast state ── */
   const [toast, setToast] = useState<string | null>(null);
@@ -57,6 +63,28 @@ export function StaffView() {
     } catch { /* ignore */ }
   }, [refetch]);
 
+  const handleForcePinChange = useCallback(async (id: string, current: boolean) => {
+    try {
+      await dashboardMutate(`/api/v1/admin/staff/${id}`, 'PATCH', { forcePinChange: !current });
+      refetch();
+    } catch { /* ignore */ }
+  }, [refetch]);
+
+  const startEdit = (s: StaffMember) => {
+    setEditingId(s.id);
+    setEditName(s.name);
+    setEditRole(s.role);
+  };
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingId || !editName) return;
+    try {
+      await dashboardMutate(`/api/v1/admin/staff/${editingId}`, 'PATCH', { name: editName, role: editRole });
+      setEditingId(null);
+      refetch();
+    } catch { /* ignore */ }
+  }, [editingId, editName, editRole, refetch]);
+
   return (
     <div className="flex flex-col gap-6">
       {/* Toast notification */}
@@ -73,7 +101,7 @@ export function StaffView() {
             boxShadow: '0 0 60px rgba(0,0,0,0.3)',
           }}
         >
-          <div className="mb-2 text-base font-bold" style={{ color: 'var(--color-accent-primary)' }}>
+          <div className="mb-2 text-base font-bold text-(--color-accent-primary)">
             PIN Reset
           </div>
           {toast}
@@ -85,8 +113,8 @@ export function StaffView() {
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>Staff Management</h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{staff.length} staff members</p>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Staff Management</h2>
+            <p className="text-sm text-(--color-text-muted)">{staff.length} staff members</p>
           </div>
           <Button size="sm" onClick={() => setShowCreate(!showCreate)}>+ Add Staff</Button>
         </div>
@@ -122,7 +150,7 @@ export function StaffView() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
                 {['Name', 'Role', 'Status', 'Last Login', 'Actions'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>{h}</th>
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -131,23 +159,62 @@ export function StaffView() {
                 <tr key={s.id} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.name}</td>
-                  <td className="px-4 py-3"><Badge color={s.role === 'ADMIN' ? 'primary' : 'gray'} variant="light" size="sm">{s.role}</Badge></td>
-                  <td className="px-4 py-3"><Badge color={s.active ? 'success' : 'error'} variant="light" size="sm">{s.active ? 'Active' : 'Inactive'}</Badge></td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                  <td className="px-4 py-3">
+                    {editingId === s.id ? (
+                      <input className="w-full rounded border px-2 py-1 text-sm"
+                        style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-accent-primary)', color: 'var(--color-text-primary)' }}
+                        value={editName} onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); if (e.key === 'Escape') setEditingId(null); }} />
+                    ) : (
+                      <span className="text-sm font-semibold text-(--color-text-primary)">{s.name}</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {editingId === s.id ? (
+                      <select className="rounded border px-2 py-1 text-sm"
+                        style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-accent-primary)', color: 'var(--color-text-primary)' }}
+                        value={editRole} onChange={(e) => setEditRole(e.target.value as 'STAFF' | 'ADMIN')}>
+                        <option value="STAFF">STAFF</option>
+                        <option value="ADMIN">ADMIN</option>
+                      </select>
+                    ) : (
+                      <Badge color={s.role === 'ADMIN' ? 'primary' : 'gray'} variant="light" size="sm">{s.role}</Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      <Badge color={s.active ? 'success' : 'error'} variant="light" size="sm">{s.active ? 'Active' : 'Inactive'}</Badge>
+                      {s.forcePinChange && <Badge color="warning" variant="light" size="sm">PIN Change Required</Badge>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">
                     {s.lastLogin ? new Date(s.lastLogin).toLocaleString() : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => handlePinReset(s.id)}>Reset PIN</Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleToggle(s.id, s.active)}>{s.active ? 'Disable' : 'Enable'}</Button>
+                      {editingId === s.id ? (
+                        <>
+                          <Button size="sm" variant="primary" onClick={() => void handleSaveEdit()}>Save</Button>
+                          <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => startEdit(s)}>Edit</Button>
+                          <Button size="sm" variant="outline" onClick={() => handlePinReset(s.id)}>Reset PIN</Button>
+                          <Button size="sm" variant={s.forcePinChange ? 'primary' : 'outline'}
+                            onClick={() => handleForcePinChange(s.id, s.forcePinChange)}>
+                            {s.forcePinChange ? '✓ Clear PIN Flag' : 'Force PIN Change'}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleToggle(s.id, s.active)}>{s.active ? 'Disable' : 'Enable'}</Button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
               {staff.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
                     No staff members
                   </td>
                 </tr>
@@ -156,6 +223,49 @@ export function StaffView() {
           </table>
         </div>
       )}
+
+      {/* RBAC Audit — Role Permissions Reference */}
+      <div className="rounded-xl border p-6"
+        style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">
+          🔑 Role Permissions
+        </h3>
+        <div className="mt-3 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border-default)' }}>
+          <table className="w-full">
+            <thead>
+              <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-overlay)' }}>
+                <th className="px-4 py-2 text-left text-xs font-semibold uppercase text-(--color-text-muted)">Permission</th>
+                <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-(--color-text-muted)">Admin</th>
+                <th className="px-4 py-2 text-center text-xs font-semibold uppercase text-(--color-text-muted)">Staff</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ['Dashboard & Analytics', true, false],
+                ['Manage Staff', true, false],
+                ['Room & Locker Management', true, false],
+                ['Manage Devices', true, false],
+                ['Manage Products', true, false],
+                ['View Reports & Z-Report', true, false],
+                ['Manage Schedule & Shifts', true, false],
+                ['Approve Time-Off Requests', true, false],
+                ['Customer CRM & Notes', true, false],
+                ['Check-in / Check-out', true, true],
+                ['Cash Register Operations', true, true],
+                ['View Own Schedule', true, true],
+                ['Request Time Off', true, true],
+                ['Timeclock (Clock In/Out)', true, true],
+              ].map(([perm, admin, staff]) => (
+                <tr key={String(perm)} className="border-b" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                  <td className="px-4 py-2 text-xs font-medium text-(--color-text-primary)">{String(perm)}</td>
+                  <td className="px-4 py-2 text-center text-xs">{admin ? '✅' : '—'}</td>
+                  <td className="px-4 py-2 text-center text-xs">{staff ? '✅' : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

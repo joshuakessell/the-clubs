@@ -1,8 +1,36 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { query, transaction } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../auth/middleware';
-import { insertAuditLog } from '../audit/auditLog';
+import { insertAuditLogDrizzle } from '../audit/auditLog';
+import { type DrizzleTx } from '../db';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by insertAuditLog.
+ */
+function toQueryable(tx: DrizzleTx | typeof db) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1], 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 const IsoDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -20,7 +48,7 @@ type TimeOffRow = {
   id: string;
   employee_id: string;
   employee_name: string;
-  day: string | Date; // pg may return DATE as string or Date depending on driver settings
+  day: string | Date;
   reason: string | null;
   status: 'PENDING' | 'APPROVED' | 'DENIED';
   decided_by: string | null;
@@ -30,24 +58,44 @@ type TimeOffRow = {
   updated_at: Date;
 };
 
+function formatTimeOffRow(r: TimeOffRow) {
+  let decidedAtStr: string | null = null;
+  if (r.decided_at) {
+    decidedAtStr = typeof r.decided_at === 'string' ? r.decided_at : r.decided_at.toISOString();
+  }
+
+  const createdDate = r.created_at ?? new Date();
+  const updatedDate = r.updated_at ?? new Date();
+
+  return {
+    id: r.id,
+    employeeId: r.employee_id,
+    employeeName: r.employee_name,
+    day: typeof r.day === 'string' ? r.day : r.day.toISOString().slice(0, 10),
+    reason: r.reason,
+    status: r.status,
+    decidedBy: r.decided_by,
+    decidedAt: decidedAtStr,
+    decisionNotes: r.decision_notes,
+    createdAt: typeof createdDate === 'string' ? createdDate : createdDate.toISOString(),
+    updatedAt: typeof updatedDate === 'string' ? updatedDate : updatedDate.toISOString(),
+  };
+}
+
 export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * Employee/self (and admin) endpoints
-   */
   fastify.get<{
     Querystring: { from?: string; to?: string };
   }>(
     '/v1/schedule/time-off-requests',
-    {
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       const from = request.query.from ? IsoDaySchema.parse(request.query.from) : undefined;
       const to = request.query.to ? IsoDaySchema.parse(request.query.to) : undefined;
 
+      // Dynamic SQL with Drizzle — use toQueryable adapter for parameterized queries
       const params: unknown[] = [];
       let i = 0;
-      let sql = `
+      let sqlText = `
       SELECT
         r.*,
         s.name as employee_name
@@ -55,36 +103,25 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
       JOIN staff s ON s.id = r.employee_id
       WHERE r.employee_id = $1
     `;
-      params.push(request.staff!.staffId);
+      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
+      params.push(request.staff.staffId);
       i = 1;
 
       if (from) {
         i++;
-        sql += ` AND r.day >= $${i}`;
+        sqlText += ` AND r.day >= $${i}`;
         params.push(from);
       }
       if (to) {
         i++;
-        sql += ` AND r.day <= $${i}`;
+        sqlText += ` AND r.day <= $${i}`;
         params.push(to);
       }
-      sql += ` ORDER BY r.day ASC`;
+      sqlText += ` ORDER BY r.day ASC`;
 
-      const rows = await query<TimeOffRow>(sql, params);
+      const rows = await toQueryable(db).query<TimeOffRow>(sqlText, params);
       return reply.send({
-        requests: rows.rows.map((r) => ({
-          id: r.id,
-          employeeId: r.employee_id,
-          employeeName: r.employee_name,
-          day: typeof r.day === 'string' ? r.day : r.day.toISOString().slice(0, 10),
-          reason: r.reason,
-          status: r.status,
-          decidedBy: r.decided_by,
-          decidedAt: r.decided_at ? r.decided_at.toISOString() : null,
-          decisionNotes: r.decision_notes,
-          createdAt: r.created_at.toISOString(),
-          updatedAt: r.updated_at.toISOString(),
-        })),
+        requests: rows.rows.map(formatTimeOffRow),
       });
     }
   );
@@ -93,38 +130,37 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
     Body: z.infer<typeof CreateTimeOffRequestSchema>;
   }>(
     '/v1/schedule/time-off-requests',
-    {
-      schema: { body: CreateTimeOffRequestSchema },
-      preHandler: [requireAuth],
-    },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
-      const body = request.body as z.infer<typeof CreateTimeOffRequestSchema>;
+      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
+      const body = request.body;
 
       try {
-        const inserted = await transaction(async (client) => {
-          const res = await client.query<Pick<TimeOffRow, 'id'>>(
-            `INSERT INTO time_off_requests (employee_id, day, reason)
-           VALUES ($1, $2, $3)
-           RETURNING id`,
-            [request.staff!.staffId, body.day, body.reason ?? null]
+        const inserted = await db.transaction(async (tx) => {
+          const res = await tx.execute<Pick<TimeOffRow, 'id'>>(
+            sql`INSERT INTO time_off_requests (employee_id, day, reason)
+           VALUES (${request.staff!.staffId}, ${body.day}, ${body.reason ?? null})
+           RETURNING id`
           );
 
-          await insertAuditLog(client, {
+          const row = res.rows[0];
+          if (!row) throw new Error('Failed to insert time off request');
+
+          await insertAuditLogDrizzle(tx, {
             staffId: request.staff!.staffId,
             userId: request.staff!.staffId,
             userRole: request.staff!.role,
             action: 'TIME_OFF_REQUESTED',
             entityType: 'time_off_request',
-            entityId: res.rows[0]!.id,
+            entityId: row.id,
             newValue: { day: body.day, reason: body.reason ?? null },
           });
 
-          return res.rows[0]!.id;
+          return row.id;
         });
 
         return reply.status(201).send({ id: inserted });
       } catch (err: unknown) {
-        // Unique violation: one per employee per day
         const dbErr = err as { code?: string };
         if (dbErr?.code === '23505') {
           return reply
@@ -137,16 +173,11 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  /**
-   * Admin endpoints (management approval)
-   */
   fastify.get<{
     Querystring: { status?: string; from?: string; to?: string };
   }>(
     '/v1/admin/time-off-requests',
-    {
-      preHandler: [requireAuth, requireAdmin],
-    },
+    { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
       const status = request.query.status
         ? z.enum(['PENDING', 'APPROVED', 'DENIED']).parse(request.query.status)
@@ -156,7 +187,7 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
 
       const params: unknown[] = [];
       let i = 0;
-      let sql = `
+      let sqlText = `
       SELECT
         r.*,
         s.name as employee_name
@@ -167,36 +198,24 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
 
       if (status) {
         i++;
-        sql += ` AND r.status = $${i}`;
+        sqlText += ` AND r.status = $${i}`;
         params.push(status);
       }
       if (from) {
         i++;
-        sql += ` AND r.day >= $${i}`;
+        sqlText += ` AND r.day >= $${i}`;
         params.push(from);
       }
       if (to) {
         i++;
-        sql += ` AND r.day <= $${i}`;
+        sqlText += ` AND r.day <= $${i}`;
         params.push(to);
       }
-      sql += ` ORDER BY r.day ASC, s.name ASC`;
+      sqlText += ` ORDER BY r.day ASC, s.name ASC`;
 
-      const rows = await query<TimeOffRow>(sql, params);
+      const rows = await toQueryable(db).query<TimeOffRow>(sqlText, params);
       return reply.send({
-        requests: rows.rows.map((r) => ({
-          id: r.id,
-          employeeId: r.employee_id,
-          employeeName: r.employee_name,
-          day: typeof r.day === 'string' ? r.day : r.day.toISOString().slice(0, 10),
-          reason: r.reason,
-          status: r.status,
-          decidedBy: r.decided_by,
-          decidedAt: r.decided_at ? r.decided_at.toISOString() : null,
-          decisionNotes: r.decision_notes,
-          createdAt: r.created_at.toISOString(),
-          updatedAt: r.updated_at.toISOString(),
-        })),
+        requests: rows.rows.map(formatTimeOffRow),
       });
     }
   );
@@ -206,38 +225,36 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
     Body: z.infer<typeof AdminDecisionSchema>;
   }>(
     '/v1/admin/time-off-requests/:requestId',
-    {
-      schema: { body: AdminDecisionSchema },
-      preHandler: [requireAuth, requireAdmin],
-    },
+    { preHandler: [requireAuth, requireAdmin] },
     async (request, reply) => {
+      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const { requestId } = request.params;
-      const body = request.body as z.infer<typeof AdminDecisionSchema>;
+      const body = request.body;
 
       try {
-        const updated = await transaction(async (client) => {
-          const current = await client.query<
+        const updated = await db.transaction(async (tx) => {
+          const current = await tx.execute<
             Pick<TimeOffRow, 'status' | 'employee_id' | 'day' | 'reason'>
-          >(`SELECT status, employee_id, day, reason FROM time_off_requests WHERE id = $1`, [
-            requestId,
-          ]);
-          if (current.rows.length === 0) {
+          >(
+            sql`SELECT status, employee_id, day, reason FROM time_off_requests WHERE id = ${requestId}`
+          );
+          const currentRow = current.rows[0];
+          if (!currentRow) {
             return null;
           }
 
-          await client.query(
-            `UPDATE time_off_requests
-           SET status = $1,
-               decided_by = $2,
+          await tx.execute(
+            sql`UPDATE time_off_requests
+           SET status = ${body.status},
+               decided_by = ${request.staff!.staffId},
                decided_at = NOW(),
-               decision_notes = $3,
+               decision_notes = ${body.decisionNotes ?? null},
                updated_at = NOW()
-           WHERE id = $4`,
-            [body.status, request.staff!.staffId, body.decisionNotes ?? null, requestId]
+           WHERE id = ${requestId}`
           );
 
           const action = body.status === 'APPROVED' ? 'TIME_OFF_APPROVED' : 'TIME_OFF_DENIED';
-          await insertAuditLog(client, {
+          await insertAuditLogDrizzle(tx, {
             staffId: request.staff!.staffId,
             userId: request.staff!.staffId,
             userRole: request.staff!.role,
@@ -247,7 +264,7 @@ export async function timeoffRoutes(fastify: FastifyInstance): Promise<void> {
             newValue: { status: body.status, decisionNotes: body.decisionNotes ?? null },
           });
 
-          return current.rows[0]!;
+          return currentRow;
         });
 
         if (!updated) {

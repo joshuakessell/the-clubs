@@ -1,5 +1,6 @@
 import { getRoomTierFromNumber } from '@the-clubs/shared';
-import type pg from 'pg';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 type RoomTier = 'SPECIAL' | 'DOUBLE' | 'STANDARD';
 
@@ -11,11 +12,6 @@ export type InventoryAvailableResponse = {
   total: number; // rooms.SPECIAL + rooms.DOUBLE + rooms.STANDARD
 };
 
-export type QueryFn = <T extends pg.QueryResultRow = pg.QueryResultRow>(
-  text: string,
-  params?: unknown[]
-) => Promise<{ rows: T[] }>;
-
 function getRoomTier(roomNumber: string): RoomTier {
   const num = Number.parseInt(roomNumber, 10);
   return getRoomTierFromNumber(num);
@@ -25,26 +21,21 @@ function getRoomTier(roomNumber: string): RoomTier {
  * Canonical implementation used by both:
  * - GET /v1/inventory/available
  * - INVENTORY_UPDATED broadcaster helpers
+ *
+ * Queries the unified `inventory_resources` table (rooms + lockers).
  */
-export async function computeInventoryAvailable(
-  queryFn: QueryFn
-): Promise<InventoryAvailableResponse> {
-  const result = await queryFn<{
-    number: string;
-    status: string;
-    assigned_to_customer_id: string | null;
-  }>(
-    `SELECT number, status, assigned_to_customer_id
-     FROM rooms
-     WHERE status = 'CLEAN'
-       AND assigned_to_customer_id IS NULL
-       AND type != 'LOCKER'
-       -- Exclude resources "selected" by an active lane session (reservation semantics).
+export async function computeInventoryAvailable(): Promise<InventoryAvailableResponse> {
+  const result = await db.execute<Record<string, unknown>>(
+    sql`SELECT r.number, r.status, r.assigned_to_customer_id
+     FROM inventory_resources r
+     WHERE r.kind = 'room'
+       AND r.status = 'CLEAN'
+       AND r.assigned_to_customer_id IS NULL
        AND NOT EXISTS (
          SELECT 1
          FROM lane_sessions ls
          WHERE ls.assigned_resource_type = 'room'
-           AND ls.assigned_resource_id = rooms.id
+           AND ls.assigned_resource_id = r.id
            AND ls.status = ANY (
              ARRAY[
                'ACTIVE'::public.lane_session_status,
@@ -57,17 +48,17 @@ export async function computeInventoryAvailable(
        )`
   );
 
-  const lockerResult = await queryFn<{ count: string }>(
-    `SELECT COUNT(*) as count
-     FROM lockers
-     WHERE status = 'CLEAN'
-       AND assigned_to_customer_id IS NULL
-       -- Exclude resources "selected" by an active lane session (reservation semantics).
+  const lockerResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT COUNT(*) as count
+     FROM inventory_resources r
+     WHERE r.kind = 'locker'
+       AND r.status = 'CLEAN'
+       AND r.assigned_to_customer_id IS NULL
        AND NOT EXISTS (
          SELECT 1
          FROM lane_sessions ls
          WHERE ls.assigned_resource_type = 'locker'
-           AND ls.assigned_resource_id = lockers.id
+           AND ls.assigned_resource_id = r.id
            AND ls.status = ANY (
              ARRAY[
                'ACTIVE'::public.lane_session_status,
@@ -86,15 +77,15 @@ export async function computeInventoryAvailable(
     STANDARD: 0,
   };
 
-  for (const row of result.rows) {
+  for (const row of result.rows as unknown as { number: string; status: string; assigned_to_customer_id: string | null }[]) {
     const tier = getRoomTier(row.number);
     rawRooms[tier]++;
   }
 
-  const lockers = Number.parseInt(lockerResult.rows[0]?.count ?? '0', 10);
+  const lockers = Number.parseInt((lockerResult.rows[0] as any)?.count ?? '0', 10);
 
-  const waitlistDemandRows = await queryFn<{ tier: string; count: string }>(
-    `SELECT w.desired_tier::text as tier, COUNT(*) as count
+  const waitlistDemandResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT w.desired_tier::text as tier, COUNT(*) as count
      FROM waitlist w
      JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
      JOIN visits v ON v.id = w.visit_id
@@ -110,7 +101,7 @@ export async function computeInventoryAvailable(
     STANDARD: 0,
   };
 
-  for (const row of waitlistDemandRows.rows) {
+  for (const row of waitlistDemandResult.rows as unknown as { tier: string; count: string }[]) {
     const tier = row.tier as RoomTier;
     if (tier === 'SPECIAL' || tier === 'DOUBLE' || tier === 'STANDARD') {
       waitlistDemand[tier] = Number.parseInt(row.count, 10);

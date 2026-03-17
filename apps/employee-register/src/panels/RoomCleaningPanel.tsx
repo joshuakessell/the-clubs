@@ -32,8 +32,7 @@ const COLUMNS: DataTableColumn<Room>[] = [
     width: '120px',
     render: (r) => (
       <span
-        className="text-sm font-bold"
-        style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+        className="text-sm font-bold font-(--font-display) text-(--color-text-primary)"
       >
         {r.number}
       </span>
@@ -43,7 +42,7 @@ const COLUMNS: DataTableColumn<Room>[] = [
     key: 'type',
     header: 'Type',
     render: (r) => (
-      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="text-xs text-(--color-text-secondary)">
         {TYPE_LABEL[r.type ?? ''] ?? r.type ?? '—'}
       </span>
     ),
@@ -52,7 +51,7 @@ const COLUMNS: DataTableColumn<Room>[] = [
     key: 'floor',
     header: 'Floor',
     render: (r) => (
-      <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+      <span className="text-xs text-(--color-text-secondary)">
         {r.floor == null ? '—' : `Floor ${r.floor}`}
       </span>
     ),
@@ -197,7 +196,7 @@ export function RoomCleaningPanel() {
         loading ? null : (
           <div className="flex flex-col items-center justify-center gap-2 py-12">
             <span className="text-3xl">✨</span>
-            <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm font-medium text-(--color-text-muted)">
               All rooms are clean
             </p>
           </div>
@@ -231,7 +230,7 @@ export function RoomCleaningPanel() {
               transition: 'background-color 0.2s ease, border-color 0.2s ease',
             }}
           >
-            <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+            <span className="text-xs font-medium text-(--color-text-secondary)">
               {statusLabel}
             </span>
             <Button

@@ -7,6 +7,15 @@ import { loadEnvFromDotEnvIfPresent } from '../src/env/loadEnv';
 
 loadEnvFromDotEnvIfPresent();
 
+// Fallback defaults for local dev (matching docker-compose.yml: 5433->5432)
+if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
+  process.env.DB_HOST = 'localhost';
+  process.env.DB_PORT = '5433';
+  process.env.DB_NAME = 'club_operations';
+  process.env.DB_USER = 'clubops';
+  process.env.DB_PASSWORD = 'club-ops-dev';
+}
+
 const MIGRATIONS_TABLE = 'schema_migrations';
 const MIGRATIONS_SCHEMA = 'public';
 // Assumption: scripts run from the API package root (services/api).

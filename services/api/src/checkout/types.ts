@@ -1,7 +1,6 @@
 export interface KeyTagRow {
   id: string;
-  room_id: string | null;
-  locker_id: string | null;
+  resource_id: string | null;
   tag_code: string;
   is_active: boolean;
 }
@@ -13,8 +12,7 @@ export interface CheckinBlockRow {
   starts_at: Date;
   ends_at: Date;
   rental_type: string;
-  room_id: string | null;
-  locker_id: string | null;
+  resource_id: string | null;
   session_id: string | null;
   has_tv_remote: boolean;
 }
@@ -26,15 +24,11 @@ export interface CustomerRow {
   banned_until: Date | null;
 }
 
-export interface RoomRow {
+export interface ResourceRow {
   id: string;
   number: string;
-  type: string;
-}
-
-export interface LockerRow {
-  id: string;
-  number: string;
+  kind: string;
+  tier?: string;
 }
 
 export interface CheckoutRequestRow {
@@ -83,10 +77,9 @@ export interface ManualResolveRow {
   customer_name: string;
   checkin_at: Date;
   scheduled_checkout_at: Date;
-  room_id: string | null;
-  room_number: string | null;
-  locker_id: string | null;
-  locker_number: string | null;
+  resource_id: string | null;
+  resource_number: string | null;
+  resource_kind: string | null;
   session_id: string | null;
 }
 

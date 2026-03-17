@@ -35,25 +35,23 @@ export function PanelHeader({
 
   return (
     <div
-      className={`border-b ${spaceClass} ${alignClass} ${className ?? ''}`}
-      style={{ borderColor: 'var(--color-border-default)' }}
+      className={`border-b ${spaceClass} ${alignClass} ${className ?? ''} border-(--color-border-default)`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className={isInline ? 'flex items-center gap-2' : ''}>
           <h2
-            className="text-lg font-semibold"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+            className="text-lg font-semibold font-(--font-display) text-(--color-text-primary)"
           >
             {title}
           </h2>
           {isInline && subtitle ? (
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p>
+            <p className="text-sm text-(--color-text-muted)">{subtitle}</p>
           ) : null}
         </div>
         {action ? <div>{action}</div> : null}
       </div>
       {!isInline && subtitle ? (
-        <p className="mt-1 text-sm" style={{ color: 'var(--color-text-muted)' }}>{subtitle}</p>
+        <p className="mt-1 text-sm text-(--color-text-muted)">{subtitle}</p>
       ) : null}
     </div>
   );

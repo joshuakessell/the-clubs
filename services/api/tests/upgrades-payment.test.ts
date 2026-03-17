@@ -88,7 +88,7 @@ describe('Upgrade payment flow attaches charges', () => {
     await truncateAllTables(pool.query.bind(pool));
     events = [];
 
-    app = Fastify({ logger: true });
+    app = Fastify({ logger: true, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     const originalBroadcast = broadcaster.broadcast.bind(broadcaster);
     broadcaster.broadcast = (evt: any) => {
@@ -127,7 +127,7 @@ describe('Upgrade payment flow attaches charges', () => {
     );
     const laneSession = await pool.query<{ id: string }>(
       `INSERT INTO lane_sessions (lane_id, status, price_quote_json)
-       VALUES ('1', 'COMPLETED', $1)
+       VALUES ('lane-1', 'COMPLETED', $1)
        RETURNING id`,
       [
         JSON.stringify({
@@ -141,8 +141,8 @@ describe('Upgrade payment flow attaches charges', () => {
     );
 
     const originalIntent = await pool.query<{ id: string }>(
-      `INSERT INTO payment_intents (lane_session_id, amount, status, quote_json)
-       VALUES ($1, 20, 'PAID', $2)
+      `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, currency, status, quote_json)
+       VALUES ($1, 20, 0, 0, 0, 20, 'USD', 'PAID', $2)
        RETURNING id`,
       [
         laneSession.rows[0]!.id,
@@ -150,14 +150,14 @@ describe('Upgrade payment flow attaches charges', () => {
       ]
     );
 
-    await pool.query(`UPDATE lane_sessions SET payment_intent_id = $1 WHERE id = $2`, [
+    await pool.query(`UPDATE lane_sessions SET order_id = $1 WHERE id = $2`, [
       originalIntent.rows[0]!.id,
       laneSession.rows[0]!.id,
     ]);
 
     const room = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('200', 'STANDARD', 'CLEAN', 1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
        RETURNING id`
     );
 
@@ -169,7 +169,7 @@ describe('Upgrade payment flow attaches charges', () => {
     );
 
     const waitlist = await pool.query<{ id: string }>(
-      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, room_id, offered_at)
+      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, resource_id, offered_at)
        VALUES ($1, $2, 'STANDARD', 'LOCKER', 'OFFERED', $3, NOW())
        RETURNING id`,
       [visit.rows[0]!.id, block.rows[0]!.id, room.rows[0]!.id]
@@ -180,7 +180,7 @@ describe('Upgrade payment flow attaches charges', () => {
       url: '/v1/upgrades/fulfill',
       payload: {
         waitlistId: waitlist.rows[0]!.id,
-        roomId: room.rows[0]!.id,
+        resourceId: room.rows[0]!.id,
         acknowledgedDisclaimer: true,
       },
     });
@@ -190,7 +190,7 @@ describe('Upgrade payment flow attaches charges', () => {
     }
     expect(fulfillRes.statusCode).toBe(200);
     const fulfillJson = fulfillRes.json() as {
-      paymentIntentId: string;
+      orderId: string;
       upgradeFee: number;
       originalCharges: Array<{ description: string; amount: number }>;
       originalTotal: number | null;
@@ -200,8 +200,8 @@ describe('Upgrade payment flow attaches charges', () => {
     expect(fulfillJson.originalTotal).toBe(20);
 
     // Mark upgrade intent paid and complete
-    await pool.query(`UPDATE payment_intents SET status = 'PAID' WHERE id = $1`, [
-      fulfillJson.paymentIntentId,
+    await pool.query(`UPDATE orders SET status = 'PAID' WHERE id = $1`, [
+      fulfillJson.orderId,
     ]);
 
     const completeRes = await app.inject({
@@ -209,17 +209,17 @@ describe('Upgrade payment flow attaches charges', () => {
       url: '/v1/upgrades/complete',
       payload: {
         waitlistId: waitlist.rows[0]!.id,
-        paymentIntentId: fulfillJson.paymentIntentId,
+        orderId: fulfillJson.orderId,
       },
     });
 
     expect(completeRes.statusCode).toBe(200);
 
-    const charge = await pool.query<{ type: string; amount: string; payment_intent_id: string }>(
-      `SELECT type, amount, payment_intent_id FROM charges WHERE payment_intent_id = $1`,
-      [fulfillJson.paymentIntentId]
+    const charge = await pool.query<{ kind: string; total: string; order_id: string }>(
+      `SELECT kind, total, order_id FROM order_line_items WHERE order_id = $1`,
+      [fulfillJson.orderId]
     );
-    expect(charge.rows[0]?.type).toBe('UPGRADE_FEE');
-    expect(parseFloat(charge.rows[0]?.amount || '0')).toBeCloseTo(fulfillJson.upgradeFee);
+    expect(charge.rows[0]?.kind).toBe('UPGRADE');
+    expect(parseFloat(charge.rows[0]?.total || '0')).toBeCloseTo(fulfillJson.upgradeFee);
   });
 });

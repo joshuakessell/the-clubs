@@ -34,7 +34,7 @@ export async function computeWaitlistInfo(
     `SELECT cb.ends_at, r.number as room_number
      FROM checkin_blocks cb
      JOIN visits v ON v.id = cb.visit_id
-     JOIN rooms r ON r.id = cb.room_id
+     JOIN inventory_resources r ON r.id = cb.resource_id
      WHERE cb.ends_at > NOW()
        AND v.ended_at IS NULL
      ORDER BY cb.ends_at ASC`,

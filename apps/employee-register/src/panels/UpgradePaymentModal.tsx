@@ -14,7 +14,7 @@ interface UpgradePaymentModalProps {
   originalCharges: Array<{ description: string; amount: number }>;
   originalTotal: number | null;
   upgradeFee: number | null;
-  paymentStatus: 'DUE' | 'PAID' | null;
+  orderStatus: 'OPEN' | 'PAID' | null;
   isSubmitting: boolean;
   canComplete: boolean;
   onPayCredit: () => void;
@@ -30,7 +30,7 @@ export function UpgradePaymentModal({
   originalCharges,
   originalTotal,
   upgradeFee,
-  paymentStatus,
+  orderStatus,
   isSubmitting,
   canComplete,
   onPayCredit,
@@ -43,29 +43,21 @@ export function UpgradePaymentModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="flex flex-col gap-5 rounded-xl border p-6 shadow-2xl"
-        style={{
-          backgroundColor: 'var(--color-surface-raised)',
-          borderColor: 'var(--color-border-default)',
-          maxWidth: '520px',
-          width: '100%',
-        }}
+        className="flex flex-col gap-5 rounded-xl border p-6 shadow-2xl bg-(--color-surface-raised) border-(--color-border-default) max-w-[520px] w-full"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div>
           <h3
-            className="text-lg font-bold"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+            className="text-lg font-bold font-(--font-display) text-(--color-text-primary)"
           >
             Upgrade Payment
           </h3>
-          <p className="mt-1 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+          <p className="mt-1 text-sm text-(--color-text-secondary)">
             {customerLabel}
             {newRoomNumber && <> — Room {newRoomNumber}</>}
           </p>
@@ -73,10 +65,9 @@ export function UpgradePaymentModal({
 
         {/* Already Paid section */}
         <div
-          className="rounded-lg border p-3"
-          style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-subtle)' }}
+          className="rounded-lg border p-3 bg-(--color-surface-input) border-(--color-border-subtle)"
         >
-          <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="text-xs font-bold uppercase tracking-wider mb-2 text-(--color-text-muted)">
             Already Paid
           </div>
           {originalCharges.length > 0 ? (
@@ -84,8 +75,7 @@ export function UpgradePaymentModal({
               {originalCharges.map((item, idx) => (
                 <div
                   key={`${item.description}-${idx}`}
-                  className="flex justify-between text-sm"
-                  style={{ color: 'var(--color-text-muted)' }}
+                  className="flex justify-between text-sm text-(--color-text-muted)"
                 >
                   <span>{item.description}</span>
                   <span>${item.amount.toFixed(2)}</span>
@@ -93,8 +83,7 @@ export function UpgradePaymentModal({
               ))}
               {originalTotal !== null && (
                 <div
-                  className="flex justify-between text-sm font-semibold mt-1 pt-1 border-t"
-                  style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border-subtle)' }}
+                  className="flex justify-between text-sm font-semibold mt-1 pt-1 border-t text-(--color-text-secondary) border-(--color-border-subtle)"
                 >
                   <span>Original total</span>
                   <span>${originalTotal.toFixed(2)}</span>
@@ -102,7 +91,7 @@ export function UpgradePaymentModal({
               )}
             </>
           ) : (
-            <div className="text-sm italic" style={{ color: 'var(--color-text-muted)' }}>
+            <div className="text-sm italic text-(--color-text-muted)">
               All prior charges are settled.
             </div>
           )}
@@ -110,13 +99,12 @@ export function UpgradePaymentModal({
 
         {/* New Charge section */}
         <div
-          className="rounded-lg border p-3"
-          style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-subtle)' }}
+          className="rounded-lg border p-3 bg-(--color-surface-input) border-(--color-border-subtle)"
         >
-          <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-text-muted)' }}>
+          <div className="text-xs font-bold uppercase tracking-wider mb-2 text-(--color-text-muted)">
             New Charge
           </div>
-          <div className="flex justify-between text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+          <div className="flex justify-between text-sm font-semibold text-(--color-text-primary)">
             <span>Upgrade Fee</span>
             <span>${upgradeFee !== null && Number.isFinite(upgradeFee) ? upgradeFee.toFixed(2) : '—'}</span>
           </div>
@@ -124,20 +112,16 @@ export function UpgradePaymentModal({
 
         {/* Total Due */}
         <div
-          className="flex items-center justify-between rounded-lg border p-3"
-          style={{
-            backgroundColor: 'var(--color-surface-overlay)',
-            borderColor: 'var(--color-border-accent)',
-          }}
+          className="flex items-center justify-between rounded-lg border p-3 bg-(--color-surface-overlay) border-(--color-border-accent)"
         >
-          <span className="text-sm font-bold" style={{ color: 'var(--color-text-primary)' }}>Total Due</span>
-          <span className="text-lg font-extrabold" style={{ color: 'var(--color-status-warning)' }}>
+          <span className="text-sm font-bold text-(--color-text-primary)">Total Due</span>
+          <span className="text-lg font-extrabold text-(--color-status-warning)">
             ${totalDue.toFixed(2)}
           </span>
         </div>
 
         {/* Payment buttons */}
-        {paymentStatus !== 'PAID' && (
+        {orderStatus !== 'PAID' && (
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={onPayCredit}
@@ -162,9 +146,9 @@ export function UpgradePaymentModal({
         <div className="flex items-center justify-between">
           <span
             className="text-sm font-bold"
-            style={{ color: paymentStatus === 'PAID' ? 'var(--color-status-success)' : 'var(--color-status-warning)' }}
+            style={{ color: orderStatus === 'PAID' ? 'var(--color-status-success)' : 'var(--color-status-warning)' }}
           >
-            {paymentStatus === 'PAID' ? '✓ Payment Received' : '⏳ Payment Due'}
+            {orderStatus === 'PAID' ? '✓ Payment Received' : '⏳ Payment Due'}
           </span>
           <button
             onClick={onComplete}
@@ -184,8 +168,7 @@ export function UpgradePaymentModal({
         {/* Close */}
         <button
           onClick={onClose}
-          className="text-xs text-center"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="text-xs text-center text-(--color-text-muted)"
         >
           Cancel
         </button>

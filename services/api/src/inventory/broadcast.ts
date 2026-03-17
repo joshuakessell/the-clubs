@@ -1,21 +1,24 @@
 import type { Broadcaster } from '../realtime/broadcaster';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { computeInventoryAvailable } from './available';
 
 /**
  * Helper to broadcast current inventory state.
+ * Queries the unified `inventory_resources` table instead of old rooms/lockers.
  */
 export async function broadcastInventoryUpdate(broadcaster: Broadcaster): Promise<void> {
-  const result = await query<{ status: string; room_type: string; count: string }>(
-    `SELECT status, type as room_type, COUNT(*) as count
-     FROM rooms
-     WHERE type != 'LOCKER'
-     GROUP BY status, type`
+  const result = await db.execute<{ status: string; room_type: string; count: string }>(
+    sql`SELECT status, tier as room_type, COUNT(*) as count
+     FROM inventory_resources
+     WHERE kind = 'room'
+     GROUP BY status, tier`
   );
 
-  const lockerResult = await query<{ status: string; count: string }>(
-    `SELECT status, COUNT(*) as count
-     FROM lockers
+  const lockerResult = await db.execute<{ status: string; count: string }>(
+    sql`SELECT status, COUNT(*) as count
+     FROM inventory_resources
+     WHERE kind = 'locker'
      GROUP BY status`
   );
 
@@ -54,7 +57,7 @@ export async function broadcastInventoryUpdate(broadcaster: Broadcaster): Promis
 
   let available: Awaited<ReturnType<typeof computeInventoryAvailable>> | undefined;
   try {
-    available = await computeInventoryAvailable(query);
+    available = await computeInventoryAvailable();
   } catch {
     available = undefined;
   }

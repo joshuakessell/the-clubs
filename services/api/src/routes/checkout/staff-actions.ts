@@ -61,7 +61,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Params: { requestId: string }; Body: MarkFeePaidInput }>(
     '/v1/checkout/:requestId/mark-fee-paid',
-    { schema: { body: MarkFeePaidSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -76,7 +76,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
         if (fastify.broadcaster) {
           const payload: CheckoutUpdatedPayload = {
             requestId: result.requestId,
-            itemsConfirmed: (result as any).itemsConfirmed ?? false,
+            itemsConfirmed: result.itemsConfirmed ?? false,
             feePaid: result.feePaid,
           };
           fastify.broadcaster.broadcast({
@@ -157,9 +157,9 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
         if (fastify.broadcaster) {
           await broadcastInventoryUpdate(fastify.broadcaster);
 
-          if (result.roomId) {
+          if (result.resourceId) {
             fastify.broadcaster.broadcastRoomStatusChanged({
-              roomId: result.roomId,
+              roomId: result.resourceId,
               previousStatus: RoomStatus.CLEAN,
               newStatus: RoomStatus.DIRTY,
               changedBy: request.staff.staffId,

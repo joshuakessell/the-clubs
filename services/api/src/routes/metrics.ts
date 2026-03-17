@@ -1,19 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { requireAuth } from '../auth/middleware';
 
 /**
  * Metrics routes for upgrades and waitlist analytics.
  */
 export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * GET /v1/metrics/upgrades - Get upgrade metrics
-   *
-   * Returns:
-   * - Count of upgrades per day
-   * - Average time on waitlist until upgrade
-   * - Upgrades by tier
-   */
   fastify.get<{
     Querystring: { startDate?: string; endDate?: string };
   }>(
@@ -29,57 +22,43 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
       const { startDate, endDate } = request.query;
       const start = startDate
         ? new Date(startDate)
-        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Default: last 30 days
+        : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
       const end = endDate ? new Date(endDate) : new Date();
 
       try {
-        // Count upgrades per day
-        const dailyCountResult = await query<{
-          date: string;
-          count: string;
-        }>(
-          `SELECT 
+        const dailyCountResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT 
            DATE(completed_at) as date,
            COUNT(*)::int as count
          FROM waitlist
          WHERE status = 'COMPLETED'
-           AND completed_at >= $1
-           AND completed_at <= $2
+           AND completed_at >= ${start}
+           AND completed_at <= ${end}
          GROUP BY DATE(completed_at)
-         ORDER BY date ASC`,
-          [start, end]
+         ORDER BY date ASC`
         );
 
-        // Average time on waitlist until upgrade
-        const avgTimeResult = await query<{
-          avg_minutes: string;
-        }>(
-          `SELECT 
+        const avgTimeResult = await db.execute<{ avg_minutes: string | null }>(
+          sql`SELECT 
            AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 60)::numeric(10, 2) as avg_minutes
          FROM waitlist
          WHERE status = 'COMPLETED'
-           AND completed_at >= $1
-           AND completed_at <= $2
+           AND completed_at >= ${start}
+           AND completed_at <= ${end}
            AND completed_at IS NOT NULL
-           AND created_at IS NOT NULL`,
-          [start, end]
+           AND created_at IS NOT NULL`
         );
 
-        // Upgrades by tier
-        const tierCountResult = await query<{
-          desired_tier: string;
-          count: string;
-        }>(
-          `SELECT 
+        const tierCountResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT 
            desired_tier,
            COUNT(*)::int as count
          FROM waitlist
          WHERE status = 'COMPLETED'
-           AND completed_at >= $1
-           AND completed_at <= $2
+           AND completed_at >= ${start}
+           AND completed_at <= ${end}
          GROUP BY desired_tier
-         ORDER BY desired_tier`,
-          [start, end]
+         ORDER BY desired_tier`
         );
 
         return reply.send({
@@ -87,14 +66,14 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
             start: start.toISOString(),
             end: end.toISOString(),
           },
-          dailyCounts: dailyCountResult.rows.map((row) => ({
+          dailyCounts: (dailyCountResult.rows as unknown as { date: string; count: string }[]).map((row) => ({
             date: row.date,
             count: Number.parseInt(row.count, 10),
           })),
           averageWaitlistTimeMinutes: avgTimeResult.rows[0]?.avg_minutes
             ? Number.parseFloat(avgTimeResult.rows[0].avg_minutes)
             : 0,
-          upgradesByTier: tierCountResult.rows.map((row) => ({
+          upgradesByTier: (tierCountResult.rows as unknown as { desired_tier: string; count: string }[]).map((row) => ({
             tier: row.desired_tier,
             count: Number.parseInt(row.count, 10),
           })),
@@ -109,14 +88,6 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
     }
   );
 
-  /**
-   * GET /v1/metrics/waitlist - Get waitlist metrics
-   *
-   * Returns:
-   * - Active waitlist count
-   * - Offered waitlist count
-   * - Average wait time for active entries
-   */
   fastify.get(
     '/v1/metrics/waitlist',
     {
@@ -128,21 +99,16 @@ export async function metricsRoutes(fastify: FastifyInstance): Promise<void> {
       }
 
       try {
-        // Active waitlist count
-        const activeCountResult = await query<{
-          count: string;
-        }>(`SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'ACTIVE'`);
+        const activeCountResult = await db.execute<{ count: string }>(
+          sql`SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'ACTIVE'`
+        );
 
-        // Offered waitlist count
-        const offeredCountResult = await query<{
-          count: string;
-        }>(`SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'OFFERED'`);
+        const offeredCountResult = await db.execute<{ count: string }>(
+          sql`SELECT COUNT(*)::int as count FROM waitlist WHERE status = 'OFFERED'`
+        );
 
-        // Average wait time for active entries (in minutes)
-        const avgWaitResult = await query<{
-          avg_minutes: string;
-        }>(
-          `SELECT 
+        const avgWaitResult = await db.execute<{ avg_minutes: string | null }>(
+          sql`SELECT 
            AVG(EXTRACT(EPOCH FROM (NOW() - created_at)) / 60)::numeric(10, 2) as avg_minutes
          FROM waitlist
          WHERE status = 'ACTIVE'`

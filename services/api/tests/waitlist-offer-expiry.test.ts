@@ -82,7 +82,7 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
   beforeEach(async () => {
     if (!dbAvailable) return;
     await truncateAllTables(pool.query.bind(pool));
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     app.decorate('broadcaster', broadcaster);
     await app.register(waitlistRoutes);
@@ -101,8 +101,8 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
   it('sets offer_expires_at and creates/updates inventory_reservations; re-offer extends to >= now+10m', async () => {
     if (!dbAvailable) return;
     const room = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('200', 'STANDARD', 'CLEAN', 1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
        RETURNING id`
     );
     const customer = await pool.query<{ id: string }>(
@@ -130,7 +130,7 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
     const first = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${waitlist.rows[0]!.id}/offer`,
-      payload: { roomId: room.rows[0]!.id },
+      payload: { resourceId: room.rows[0]!.id },
     });
     expect(first.statusCode).toBe(200);
 
@@ -159,7 +159,7 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
     const second = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${waitlist.rows[0]!.id}/offer`,
-      payload: { roomId: room.rows[0]!.id },
+      payload: { resourceId: room.rows[0]!.id },
     });
     expect(second.statusCode).toBe(200);
 

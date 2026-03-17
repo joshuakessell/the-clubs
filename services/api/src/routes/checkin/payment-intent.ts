@@ -3,8 +3,8 @@ import { requireAuth } from '../../auth/middleware';
 import { idempotencyKey } from '../../middleware/idempotency';
 import { getHttpError } from '../../checkin/utils';
 import {
-  createPaymentIntent,
-  markPaymentPaid,
+  createCheckoutOrder,
+  markOrderPaid,
   getSessionPayload,
 } from '../../services/paymentService';
 
@@ -17,10 +17,10 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
       try {
-        const result = await createPaymentIntent(request.params.laneId);
+        const result = await createCheckoutOrder(request.params.laneId);
         const { payload } = await getSessionPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
-        return reply.send({ paymentIntentId: result.paymentIntentId, amount: result.amount, quote: result.quote });
+        return reply.send({ orderId: result.orderId, amount: result.amount, quote: result.quote });
       } catch (error: unknown) {
         request.log.error(error, 'Failed to create payment intent');
         const httpErr = getHttpError(error);
@@ -38,8 +38,8 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
     try {
-      const result = await markPaymentPaid({
-        paymentIntentId: request.params.id,
+      const result = await markOrderPaid({
+        orderId: request.params.id,
         staffId: request.staff.staffId,
         ...request.body,
       });

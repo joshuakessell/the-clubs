@@ -64,11 +64,11 @@ export function IdleScreen() {
   const lineItems = sessionPayload?.ledgerLineItems ?? sessionPayload?.paymentLineItems ?? [];
   const total = sessionPayload?.ledgerTotal ?? sessionPayload?.paymentTotal;
   const flowStep = sessionPayload?.flowStep;
-  const paymentStatus = sessionPayload?.paymentStatus;
+  const orderStatus = sessionPayload?.orderStatus;
   const paymentFailureReason = sessionPayload?.paymentFailureReason;
 
-  const showPaymentInstructions = flowStep === 'PAYMENT' && paymentStatus !== 'PAID';
-  const showPaymentReceived = paymentStatus === 'PAID';
+  const showPaymentInstructions = flowStep === 'PAYMENT' && orderStatus !== 'PAID';
+  const showPaymentReceived = orderStatus === 'PAID';
   const showTotal = isCheckinActive && flowStep === 'PAYMENT' && total != null && total > 0;
 
   const isMember = (() => {
@@ -103,12 +103,12 @@ export function IdleScreen() {
 
             <div>
               <h1
-                className="text-3xl font-extrabold tracking-tight uppercase"
-                style={{ fontFamily: 'var(--font-brand)', color: 'var(--color-text-primary)' }}
+                style={{ fontFamily: 'var(--font-brand)' }}
+                className="text-3xl font-extrabold tracking-tight uppercase text-(--color-text-primary)"
               >
                 {t('brand.clubName')}
               </h1>
-              <p className="mt-4 text-xl" style={{ color: 'var(--color-text-secondary)' }}>
+              <p className="mt-4 text-xl text-(--color-text-secondary)">
                 Customer Kiosk
               </p>
             </div>
@@ -175,7 +175,7 @@ export function IdleScreen() {
                   showPaymentReceived={showPaymentReceived}
                   isMember={isMember}
                   customerName={customerName}
-                  paymentStatus={paymentStatus}
+                  orderStatus={orderStatus}
                   paymentFailureReason={paymentFailureReason}
                 />
               </div>
@@ -235,14 +235,6 @@ export function IdleScreen() {
         <WaitlistDisclaimerModal />
       </div>
 
-      <style>{`
-        @media (prefers-reduced-motion: no-preference) {
-          @keyframes fadeSlideIn {
-            from { opacity: 0; transform: translateY(12px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-        }
-      `}</style>
     </ScreenShell>
   );
 }

@@ -19,7 +19,7 @@ describe('Auth enforcement (unauthenticated mutations)', () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
     delete process.env.APPSYNC_EVENTS_HTTP_ENDPOINT;
 
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
 
     // Add Zod-aware validator compiler so Zod schemas in route `schema.body` work
     app.setValidatorCompiler(({ schema }: any) => {

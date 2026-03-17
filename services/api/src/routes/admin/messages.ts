@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { query } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { requireAuth } from '../../auth/middleware';
 
 interface MessageDbRow {
@@ -12,23 +13,18 @@ interface MessageDbRow {
 }
 
 export function registerAdminMessageRoutes(fastify: FastifyInstance): void {
-    /**
-     * GET /v1/admin/messages
-     *
-     * Returns all messages ordered by most recent first.
-     */
     fastify.get(
         '/v1/admin/messages',
         { preHandler: [requireAuth] },
         async (request, reply) => {
             try {
-                const result = await query<MessageDbRow>(
-                    `SELECT id, sender, subject, body, read, created_at
+                const result = await db.execute<Record<string, unknown>>(
+                    sql`SELECT id, sender, subject, body, read, created_at
            FROM messages
            ORDER BY created_at DESC`,
                 );
 
-                const messages = result.rows.map((r) => ({
+                const messages = (result.rows as unknown as MessageDbRow[]).map((r) => ({
                     id: r.id,
                     from: r.sender,
                     subject: r.subject,
@@ -45,20 +41,14 @@ export function registerAdminMessageRoutes(fastify: FastifyInstance): void {
         },
     );
 
-    /**
-     * PATCH /v1/admin/messages/:id/read
-     *
-     * Marks a single message as read.
-     */
     fastify.patch<{ Params: { id: string } }>(
         '/v1/admin/messages/:id/read',
         { preHandler: [requireAuth] },
         async (request, reply) => {
             const { id } = request.params;
             try {
-                const result = await query(
-                    `UPDATE messages SET read = true WHERE id = $1 RETURNING id`,
-                    [id],
+                const result = await db.execute(
+                    sql`UPDATE messages SET read = true WHERE id = ${id} RETURNING id`,
                 );
 
                 if (result.rowCount === 0) {

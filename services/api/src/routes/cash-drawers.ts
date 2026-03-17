@@ -16,19 +16,19 @@ const CashDrawerEventSchema = z.object({
 const CashDrawerCloseSchema = z.object({ countedCash: z.number().int().nonnegative(), notes: z.string().optional().nullable() });
 
 export async function cashDrawerRoutes(fastify: FastifyInstance): Promise<void> {
-  fastify.post('/v1/cash-drawers/open', { schema: { body: CashDrawerOpenSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/cash-drawers/open', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof CashDrawerOpenSchema>;
     return reply.send(await openDrawerSession(body as OpenDrawerInput, request.staff.staffId));
   });
 
-  fastify.post<{ Params: { sessionId: string } }>('/v1/cash-drawers/:sessionId/events', { schema: { body: CashDrawerEventSchema }, preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post<{ Params: { sessionId: string } }>('/v1/cash-drawers/:sessionId/events', { preHandler: [requireAuth] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof CashDrawerEventSchema>;
     return reply.send(await recordDrawerEvent(request.params.sessionId, body as RecordEventInput, request.staff.staffId));
   });
 
-  fastify.post<{ Params: { sessionId: string } }>('/v1/cash-drawers/:sessionId/close', { schema: { body: CashDrawerCloseSchema }, preHandler: [requireAuth] }, async (request, reply) => {
+  fastify.post<{ Params: { sessionId: string } }>('/v1/cash-drawers/:sessionId/close', { preHandler: [requireAuth] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof CashDrawerCloseSchema>;
     return reply.send(await closeDrawerSession(request.params.sessionId, body as CloseDrawerInput, request.staff.staffId));

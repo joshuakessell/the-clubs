@@ -8,6 +8,8 @@
  * Uses domain helpers from Phase 0:
  *   - domain/customerEnrichment.ts (enrichCustomerIdentity)
  *   - checkin/helpers.ts (maybeAttachScanIdentifiers)
+ *
+ * Migrated to Drizzle ORM — uses db.transaction() + tx.execute(sql).
  */
 import {
   computeIdScanIdentityHash,
@@ -26,13 +28,39 @@ import {
 import { maybeAttachScanIdentifiers } from '../../checkin/helpers';
 import { toDate } from '../../checkin/utils';
 import { enrichCustomerIdentity } from '../../domain/customerEnrichment';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
+import { type DrizzleTx } from '../../db';
+
+
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the Queryable/PoolClient interface
+ * expected by external helpers (maybeAttachScanIdentifiers, enrichCustomerIdentity).
+ */
+function toQueryable(tx: DrizzleTx) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await (tx as any).execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 // ── Types ──
-
-type Queryable = {
-  query<T>(text: string, params?: unknown[]): Promise<{ rows: T[] }>;
-};
 
 interface CustomerIdentityRow {
   id: string;
@@ -141,14 +169,14 @@ function formatCustomer(row: CustomerIdentityRow) {
   return {
     id: row.id,
     name: row.name,
-    dob: row.dob ? row.dob.toISOString().slice(0, 10) : null,
+    dob: row.dob ? new Date(row.dob).toISOString().slice(0, 10) : null,
     membershipNumber: row.membership_number,
   };
 }
 
 /** Attach scan identifiers + enrich identity fields in a single call. */
 async function attachAndEnrich(
-  client: Queryable,
+  tx: DrizzleTx,
   matched: CustomerIdentityRow,
   idScanHash: string,
   idScanValue: string,
@@ -162,7 +190,7 @@ async function attachAndEnrich(
   }
 ): Promise<void> {
   await maybeAttachScanIdentifiers({
-    client: client as any,
+    client: toQueryable(tx) as any,
     customerId: matched.id,
     existingIdScanHash: matched.id_scan_hash,
     existingIdScanValue: matched.id_scan_value,
@@ -170,7 +198,7 @@ async function attachAndEnrich(
     idScanValue,
   });
 
-  await enrichCustomerIdentity(client, matched.id, {
+  await enrichCustomerIdentity(toQueryable(tx), matched.id, {
     idExpirationDate: extracted.idExpirationDate,
     idNumber: extracted.idNumber,
     idState: extracted.jurisdiction || extracted.issuer || null,
@@ -221,18 +249,18 @@ export async function processCheckinScan(
     };
   }
 
-  return transaction(async (client) => {
+  return db.transaction(async (tx) => {
     if (isAamva) {
-      return processAamvaScan(client, normalized, input.selectedCustomerId);
+      return processAamvaScan(tx, normalized, input.selectedCustomerId);
     }
-    return processNonIdScan(client, normalized);
+    return processNonIdScan(tx, normalized);
   });
 }
 
 // ── AAMVA (State ID) Processing ──
 
 async function processAamvaScan(
-  client: Queryable,
+  tx: DrizzleTx,
   normalized: string,
   selectedCustomerId?: string
 ): Promise<ScanResult> {
@@ -260,26 +288,26 @@ async function processAamvaScan(
   // ── 0) Employee-choice resolution ──
   if (selectedCustomerId) {
     return resolveSelectedCustomer(
-      client, selectedCustomerId, extracted, idScanHash, idScanValue, idScanIssue
+      tx, selectedCustomerId, extracted, idScanHash, idScanValue, idScanIssue
     );
   }
 
   // ── 1) Match by id_scan_hash or id_scan_value ──
-  const byHashOrValue = await client.query<CustomerIdentityRow>(
-    `SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
+  const byHashOrValue = await tx.execute<Record<string, unknown>>(
+    sql`SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
      FROM customers
-     WHERE id_scan_hash = $1 OR id_scan_value = $2
-     LIMIT 2`,
-    [idScanHash, idScanValue]
+     WHERE id_scan_hash = ${idScanHash} OR id_scan_value = ${idScanValue}
+     LIMIT 2`
   );
+  const hashRows = byHashOrValue.rows as unknown as CustomerIdentityRow[];
 
-  if (byHashOrValue.rows.length > 0) {
+  if (hashRows.length > 0) {
     const matched =
-      byHashOrValue.rows.find((r) => r.id_scan_hash === idScanHash) ??
-      byHashOrValue.rows[0]!;
+      hashRows.find((r) => r.id_scan_hash === idScanHash) ??
+      hashRows[0]!;
 
     checkBanned(matched);
-    await attachAndEnrich(client, matched, idScanHash, idScanValue, extracted);
+    await attachAndEnrich(tx, matched, idScanHash, idScanValue, extracted);
 
     if (idScanIssue) return makeIdScanIssueError(idScanIssue);
 
@@ -296,22 +324,22 @@ async function processAamvaScan(
 
   // ── 1b) Fallback match by stored idNumber/hash ──
   if (scannedIdNumber || idNumberHash) {
-    const byIdNumber = await client.query<CustomerIdentityRow>(
-      `SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
+    const byIdNumber = await tx.execute<Record<string, unknown>>(
+      sql`SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
        FROM customers
-       WHERE id_scan_value = $1 OR id_scan_hash = $2
-       LIMIT 2`,
-      [scannedIdNumber, idNumberHash]
+       WHERE id_scan_value = ${scannedIdNumber} OR id_scan_hash = ${idNumberHash}
+       LIMIT 2`
     );
+    const idRows = byIdNumber.rows as unknown as CustomerIdentityRow[];
 
-    if (byIdNumber.rows.length > 0) {
+    if (idRows.length > 0) {
       const matched = idNumberHash
-        ? (byIdNumber.rows.find((r) => r.id_scan_hash === idNumberHash) ??
-          byIdNumber.rows[0]!)
-        : byIdNumber.rows[0]!;
+        ? (idRows.find((r) => r.id_scan_hash === idNumberHash) ??
+          idRows[0]!)
+        : idRows[0]!;
 
       checkBanned(matched);
-      await attachAndEnrich(client, matched, idScanHash, idScanValue, extracted);
+      await attachAndEnrich(tx, matched, idScanHash, idScanValue, extracted);
 
       if (idScanIssue) return makeIdScanIssueError(idScanIssue);
 
@@ -332,20 +360,20 @@ async function processAamvaScan(
     const dobStr = extracted.dob;
     if (/^\d{4}-\d{2}-\d{2}$/.test(dobStr)) {
       // 2a) Exact token match
-      const byNameDob = await client.query<CustomerIdentityRow>(
-        `SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
+      const byNameDob = await tx.execute<Record<string, unknown>>(
+        sql`SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
          FROM customers
-         WHERE dob = $1::date
-           AND lower(split_part(name, ' ', 1)) = lower($2)
-           AND lower(regexp_replace(name, '^.*\\s', '')) = lower($3)
-         LIMIT 2`,
-        [dobStr, extracted.firstName, extracted.lastName]
+         WHERE dob = ${dobStr}::date
+           AND lower(split_part(name, ' ', 1)) = lower(${extracted.firstName})
+           AND lower(regexp_replace(name, ${sql.raw("'^.*\\\\s'")} , '')) = lower(${extracted.lastName})
+         LIMIT 2`
       );
+      const nameRows = byNameDob.rows as unknown as CustomerIdentityRow[];
 
-      if (byNameDob.rows.length > 0) {
-        const matched = byNameDob.rows[0]!;
+      if (nameRows.length > 0) {
+        const matched = nameRows[0]!;
         checkBanned(matched);
-        await attachAndEnrich(client, matched, idScanHash, idScanValue, extracted);
+        await attachAndEnrich(tx, matched, idScanHash, idScanValue, extracted);
 
         if (idScanIssue) return makeIdScanIssueError(idScanIssue);
 
@@ -362,7 +390,7 @@ async function processAamvaScan(
 
       // 2b) Fuzzy match: exact DOB filter in SQL, deterministic similarity in app code
       const fuzzyResult = await fuzzyMatchByDob(
-        client, dobStr, extracted, scannedIdNumberNormalized, idNumberHash,
+        tx, dobStr, extracted, scannedIdNumberNormalized, idNumberHash,
         idScanHash, idScanValue, idScanIssue
       );
       if (fuzzyResult) return fuzzyResult;
@@ -391,19 +419,18 @@ async function processAamvaScan(
 // ── Employee-choice resolution (selected customer) ──
 
 async function resolveSelectedCustomer(
-  client: Queryable,
+  tx: DrizzleTx,
   selectedCustomerId: string,
   extracted: ReturnType<typeof extractAamvaIdentity>,
   idScanHash: string,
   idScanValue: string,
   idScanIssue: IdScanIssue | undefined,
 ): Promise<ScanResult> {
-  const selected = await client.query<CustomerIdentityRow>(
-    `SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
+  const selected = await tx.execute<Record<string, unknown>>(
+    sql`SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
      FROM customers
-     WHERE id = $1
-     LIMIT 1`,
-    [selectedCustomerId]
+     WHERE id = ${selectedCustomerId}
+     LIMIT 1`
   );
 
   if (selected.rows.length === 0) {
@@ -412,7 +439,7 @@ async function resolveSelectedCustomer(
       error: { code: 'INVALID_SELECTION', message: 'Selected customer does not match this scan' },
     };
   }
-  const chosen = selected.rows[0]!;
+  const chosen = selected.rows[0] as unknown as CustomerIdentityRow;
 
   // Require identity fields for selection
   if (!extracted.dob || !extracted.firstName || !extracted.lastName) {
@@ -423,7 +450,7 @@ async function resolveSelectedCustomer(
   }
 
   // DOB must match
-  const chosenDob = chosen.dob ? chosen.dob.toISOString().slice(0, 10) : null;
+  const chosenDob = chosen.dob ? new Date(chosen.dob).toISOString().slice(0, 10) : null;
   if (chosenDob !== extracted.dob) {
     return {
       result: 'ERROR',
@@ -460,7 +487,7 @@ async function resolveSelectedCustomer(
 
   // Attach scan identifiers
   await maybeAttachScanIdentifiers({
-    client: client as any,
+    client: toQueryable(tx) as any,
     customerId: chosen.id,
     existingIdScanHash: chosen.id_scan_hash,
     existingIdScanValue: chosen.id_scan_value,
@@ -469,39 +496,42 @@ async function resolveSelectedCustomer(
   });
 
   // Employee-resolution uses a more targeted enrichment (preserves existing DOB)
-  const identityUpdates: string[] = [];
-  const identityValues: Array<string | null> = [];
+  // Dynamic SQL: build SET clause conditionally
+  const setClauses: string[] = [];
+  const values: unknown[] = [];
+  let paramIdx = 1;
   if (extracted.dob && !chosen.dob) {
-    identityUpdates.push(`dob = $${identityValues.length + 1}::date`);
-    identityValues.push(extracted.dob);
+    setClauses.push(`dob = $${paramIdx}::date`);
+    values.push(extracted.dob);
+    paramIdx++;
   }
   if (extracted.idExpirationDate) {
-    identityUpdates.push(`id_expiration_date = $${identityValues.length + 1}::date`);
-    identityValues.push(extracted.idExpirationDate);
+    setClauses.push(`id_expiration_date = $${paramIdx}::date`);
+    values.push(extracted.idExpirationDate);
+    paramIdx++;
   }
   if (extracted.idNumber) {
-    identityUpdates.push(`id_number = $${identityValues.length + 1}`);
-    identityValues.push(extracted.idNumber);
+    setClauses.push(`id_number = $${paramIdx}`);
+    values.push(extracted.idNumber);
+    paramIdx++;
   }
   if (extracted.jurisdiction || extracted.issuer) {
-    identityUpdates.push(`id_state = $${identityValues.length + 1}`);
-    identityValues.push(extracted.jurisdiction || extracted.issuer || '');
+    setClauses.push(`id_state = $${paramIdx}`);
+    values.push(extracted.jurisdiction || extracted.issuer || '');
+    paramIdx++;
   }
   if (extracted.idType) {
-    identityUpdates.push(`id_type = $${identityValues.length + 1}`);
-    identityValues.push(extracted.idType);
-    identityUpdates.push(`id_type_other = $${identityValues.length + 1}`);
-    identityValues.push(extracted.idTypeOther ?? null);
+    setClauses.push(`id_type = $${paramIdx}`);
+    values.push(extracted.idType);
+    paramIdx++;
+    setClauses.push(`id_type_other = $${paramIdx}`);
+    values.push(extracted.idTypeOther ?? null);
+    paramIdx++;
   }
-  if (identityUpdates.length > 0) {
-    identityValues.push(chosen.id);
-    await client.query(
-      `UPDATE customers
-       SET ${identityUpdates.join(', ')},
-           updated_at = NOW()
-       WHERE id = $${identityValues.length}`,
-      identityValues
-    );
+  if (setClauses.length > 0) {
+    values.push(chosen.id);
+    const queryText = `UPDATE customers SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $${paramIdx}`;
+    await toQueryable(tx).query(queryText, values);
   }
 
   if (idScanIssue) return makeIdScanIssueError(idScanIssue);
@@ -520,7 +550,7 @@ async function resolveSelectedCustomer(
 // ── Fuzzy matching by DOB ──
 
 async function fuzzyMatchByDob(
-  client: Queryable,
+  tx: DrizzleTx,
   dobStr: string,
   extracted: ReturnType<typeof extractAamvaIdentity>,
   scannedIdNumberNormalized: string | null,
@@ -534,15 +564,15 @@ async function fuzzyMatchByDob(
   );
   if (!scannedParts) return null;
 
-  const candidatesByDob = await client.query<CustomerIdentityCandidateRow>(
-    `SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value, created_at
+  const candidatesByDob = await tx.execute<Record<string, unknown>>(
+    sql`SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value, created_at
      FROM customers
-     WHERE dob = $1::date
-     LIMIT 200`,
-    [dobStr]
+     WHERE dob = ${dobStr}::date
+     LIMIT 200`
   );
+  const candidateRows = candidatesByDob.rows as unknown as CustomerIdentityCandidateRow[];
 
-  const scored = candidatesByDob.rows
+  const scored = candidateRows
     .map((row) => {
       const storedParts = splitNamePartsForMatch(row.name);
       if (!storedParts) return null;
@@ -579,13 +609,13 @@ async function fuzzyMatchByDob(
     .sort(
       (a, b) =>
         b.matchScore - a.matchScore ||
-        a.row.created_at.getTime() - b.row.created_at.getTime()
+        new Date(a.row.created_at).getTime() - new Date(b.row.created_at).getTime()
     );
 
   if (scored.length === 1) {
     const matched = scored[0]!.row;
     checkBanned(matched);
-    await attachAndEnrich(client, matched, idScanHash, idScanValue, extracted);
+    await attachAndEnrich(tx, matched, idScanHash, idScanValue, extracted);
 
     if (idScanIssue) return makeIdScanIssueError(idScanIssue);
 
@@ -610,7 +640,7 @@ async function fuzzyMatchByDob(
       candidates: scored.slice(0, 10).map((s) => ({
         id: s.row.id,
         name: s.row.name,
-        dob: s.row.dob ? s.row.dob.toISOString().slice(0, 10) : null,
+        dob: s.row.dob ? new Date(s.row.dob).toISOString().slice(0, 10) : null,
         membershipNumber: s.row.membership_number,
         matchScore: s.matchScore,
       })),
@@ -623,22 +653,22 @@ async function fuzzyMatchByDob(
 // ── Non-ID scan processing ──
 
 async function processNonIdScan(
-  client: Queryable,
+  tx: DrizzleTx,
   normalized: string
 ): Promise<ScanResult> {
   // Try membership number
   const membershipCandidate = parseMembershipNumber(normalized) || normalized;
 
-  const byMembership = await client.query<CustomerIdentityRow>(
-    `SELECT id, name, dob, membership_number, banned_until, id_scan_hash, id_scan_value
+  const byMembership = await tx.execute<Record<string, unknown>>(
+    sql`SELECT id, name, dob, membership_number, banned_until, id_scan_hash, id_scan_value
      FROM customers
-     WHERE membership_number = $1
-     LIMIT 1`,
-    [membershipCandidate]
+     WHERE membership_number = ${membershipCandidate}
+     LIMIT 1`
   );
+  const membershipRows = byMembership.rows as unknown as CustomerIdentityRow[];
 
-  if (byMembership.rows.length > 0) {
-    const matched = byMembership.rows[0]!;
+  if (membershipRows.length > 0) {
+    const matched = membershipRows[0]!;
     checkBanned(matched);
     return {
       result: 'MATCHED',
@@ -655,16 +685,16 @@ async function processNonIdScan(
     /^[A-Z0-9]{5,20}$/i.test(trimmedInput) && !/^\d{11,}$/.test(trimmedInput);
 
   if (isLikelyPassport) {
-    const byPassport = await client.query<CustomerIdentityRow>(
-      `SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
+    const byPassport = await tx.execute<Record<string, unknown>>(
+      sql`SELECT id, name, dob, id_expiration_date, membership_number, banned_until, id_scan_hash, id_scan_value
        FROM customers
-       WHERE UPPER(id_number) = UPPER($1)
-       LIMIT 1`,
-      [trimmedInput]
+       WHERE UPPER(id_number) = UPPER(${trimmedInput})
+       LIMIT 1`
     );
+    const passportRows = byPassport.rows as unknown as CustomerIdentityRow[];
 
-    if (byPassport.rows.length > 0) {
-      const matched = byPassport.rows[0]!;
+    if (passportRows.length > 0) {
+      const matched = passportRows[0]!;
       checkBanned(matched);
       return {
         result: 'MATCHED',

@@ -133,6 +133,19 @@ export function ScheduleView() {
   const [tradeSelectedShiftId, setTradeSelectedShiftId] = useState<string>('');
   const [tradeSubmitting, setTradeSubmitting] = useState(false);
 
+  // Shift templates (localStorage)
+  const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
+  // Drag-and-drop state
+  const [dragShiftId, setDragShiftId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ day: string; code: string } | null>(null);
+
+  // Employee bank state (admin only)
+  const [selectedBankEmployee, setSelectedBankEmployee] = useState<string>('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [trashHover, setTrashHover] = useState(false);
+
   // ─── Computed dates ───
   const weekStart = useMemo(() => {
     const base = getMonday(new Date());
@@ -227,13 +240,19 @@ export function ScheduleView() {
   }, [weekStart]);
 
   // ─── Admin Handlers ───
-  const refetchAll = useCallback(() => {
-    refetchShifts();
-    if (isAdmin) {
-      refetchSummary();
+  const refetchAll = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchShifts(),
+        isAdmin ? refetchSummary() : Promise.resolve(),
+        refetchTimeoff(),
+        refetchTrades(),
+      ]);
+    } finally {
+      // Brief visual feedback so the user sees it did something
+      setTimeout(() => setRefreshing(false), 400);
     }
-    refetchTimeoff();
-    refetchTrades();
   }, [refetchShifts, refetchSummary, refetchTimeoff, refetchTrades, isAdmin]);
 
   const handleCancelShift = useCallback(async (shiftId: string) => {
@@ -360,6 +379,99 @@ export function ScheduleView() {
     } catch { /* ignore */ }
   }, [refetchTrades, refetchAll]);
 
+  // ─── Shift Template Handlers (localStorage) ───
+  const TEMPLATE_STORAGE_KEY = 'schedule-templates';
+
+  const getSavedTemplates = useCallback((): { name: string; shifts: { dayOfWeek: number; shiftCode: string; employeeId: string }[] }[] => {
+    try { return JSON.parse(localStorage.getItem(TEMPLATE_STORAGE_KEY) ?? '[]'); }
+    catch { return []; }
+  }, []);
+
+  const handleSaveTemplate = useCallback(() => {
+    if (!templateName.trim()) return;
+    const pattern = shifts
+      .filter(s => s.status !== 'CANCELED')
+      .map(s => ({
+        dayOfWeek: new Date(s.scheduledStart).getDay(),
+        shiftCode: s.shiftCode,
+        employeeId: s.employeeId,
+      }));
+    const templates = getSavedTemplates();
+    templates.push({ name: templateName.trim(), shifts: pattern });
+    localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+    setTemplateName('');
+    setShowTemplateMenu(false);
+  }, [templateName, shifts, getSavedTemplates]);
+
+  const handleLoadTemplate = useCallback(async (templateIndex: number) => {
+    const templates = getSavedTemplates();
+    const tpl = templates[templateIndex];
+    if (!tpl) return;
+    // Map dayOfWeek + shiftCode to actual dates for this week
+    const bulkShifts = tpl.shifts.map(s => {
+      // getDay() → 0=Sun, 1=Mon...
+      // weekDays[0] is Monday
+      const targetDayIndex = s.dayOfWeek === 0 ? 6 : s.dayOfWeek - 1;
+      const targetDay = weekDays[targetDayIndex];
+      if (!targetDay) return null;
+      const startHour = SHIFT_START_HOUR[s.shiftCode] ?? 16;
+      const d = new Date(targetDay + 'T00:00:00');
+      const startsAt = new Date(d);
+      startsAt.setHours(startHour, 0, 0, 0);
+      const endsAt = new Date(d);
+      if (s.shiftCode === 'C') {
+        endsAt.setDate(endsAt.getDate() + 1);
+        endsAt.setHours(0, 0, 0, 0);
+      } else {
+        endsAt.setHours(startHour + 8, 0, 0, 0);
+      }
+      return {
+        employee_id: s.employeeId,
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt.toISOString(),
+        shift_code: s.shiftCode,
+      };
+    }).filter(Boolean);
+    if (bulkShifts.length === 0) return;
+    try {
+      await dashboardMutate('/api/v1/admin/shifts/bulk', 'POST', { shifts: bulkShifts });
+      setShowTemplateMenu(false);
+      setTimeout(refetchAll, 300);
+    } catch { /* ignore */ }
+  }, [getSavedTemplates, weekDays, refetchAll]);
+
+  const handleDeleteTemplate = useCallback((index: number) => {
+    const templates = getSavedTemplates();
+    templates.splice(index, 1);
+    localStorage.setItem(TEMPLATE_STORAGE_KEY, JSON.stringify(templates));
+    setShowTemplateMenu(s => s); // re-render
+  }, [getSavedTemplates]);
+
+  // ─── Drag-and-Drop Handlers ───
+  const handleDragDrop = useCallback(async (shiftId: string, targetDay: string, targetCode: string) => {
+    const shift = shifts.find(s => s.id === shiftId);
+    if (!shift) return;
+    const startHour = SHIFT_START_HOUR[targetCode] ?? 16;
+    const d = new Date(targetDay + 'T00:00:00');
+    const startsAt = new Date(d);
+    startsAt.setHours(startHour, 0, 0, 0);
+    const endsAt = new Date(d);
+    if (targetCode === 'C') {
+      endsAt.setDate(endsAt.getDate() + 1);
+      endsAt.setHours(0, 0, 0, 0);
+    } else {
+      endsAt.setHours(startHour + 8, 0, 0, 0);
+    }
+    try {
+      await dashboardMutate(`/api/v1/admin/shifts/${shiftId}`, 'PATCH', {
+        starts_at: startsAt.toISOString(),
+        ends_at: endsAt.toISOString(),
+        shift_code: targetCode,
+      });
+      refetchAll();
+    } catch { /* ignore */ }
+  }, [shifts, refetchAll]);
+
   const todayStr = formatDate(new Date());
 
   // ─── Render ───
@@ -369,10 +481,10 @@ export function ScheduleView() {
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+            <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">
               {isAdmin ? 'Schedule Management' : 'My Schedule'}
             </h2>
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-sm text-(--color-text-muted)">
               Week of {new Date(weekStartStr + 'T00:00:00').toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
             </p>
           </div>
@@ -404,7 +516,7 @@ export function ScheduleView() {
             ))}
           </div>
         ) : (
-          <p className="mt-3 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="mt-3 text-xs text-(--color-text-muted)">
             Click your name on a scheduled day to request time off.
           </p>
         )}
@@ -415,20 +527,126 @@ export function ScheduleView() {
         <>
           {/* Actions bar — admin only */}
           {isAdmin && (
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="outline" onClick={handleCopyWeek}>Copy to Next Week</Button>
-              <Button size="sm" variant="outline" onClick={refetchAll}>↻ Refresh</Button>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="outline" onClick={handleCopyWeek}>Copy to Next Week</Button>
+                <Button size="sm" variant="outline" onClick={() => globalThis.print()}>🖨️ Print Schedule</Button>
+                <Button size="sm" variant="outline" onClick={() => setShowTemplateMenu(!showTemplateMenu)}>📋 Templates</Button>
+                <Button size="sm" variant="outline" onClick={() => void refetchAll()} disabled={refreshing}>
+                  {refreshing ? '↻ Refreshing…' : '↻ Refresh'}
+                </Button>
+              </div>
+
+              {/* ── Employee Bank ── */}
+              <div className="flex items-center gap-3 rounded-lg border p-3" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
+                <label className="text-xs font-semibold text-(--color-text-muted) whitespace-nowrap">Employee Bank:</label>
+                <select
+                  className="rounded-lg border px-3 py-1.5 text-sm outline-none"
+                  style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)', minWidth: '180px' }}
+                  value={selectedBankEmployee}
+                  onChange={(e) => setSelectedBankEmployee(e.target.value)}
+                  aria-label="Select employee to schedule"
+                >
+                  <option value="">— Select employee —</option>
+                  {staffList.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+
+                {/* Draggable employee chip */}
+                {selectedBankEmployee && (() => {
+                  const emp = staffList.find(s => s.id === selectedBankEmployee);
+                  const empSummary = summaryByEmployeeId.get(selectedBankEmployee);
+                  if (!emp) return null;
+                  return (
+                    <div
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', `new:${emp.id}`);
+                        e.dataTransfer.effectAllowed = 'copy';
+                      }}
+                      className="flex items-center gap-2 rounded-lg border px-3 py-2 cursor-grab active:cursor-grabbing select-none transition hover:shadow-md"
+                      style={{
+                        backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 12%, transparent)',
+                        borderColor: 'var(--color-accent-primary)',
+                        color: 'var(--color-text-primary)',
+                      }}
+                    >
+                      <span className="text-sm font-bold">👤 {emp.name}</span>
+                      <span className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>
+                        {empSummary ? `${empSummary.netHours.toFixed(1)}h / ${empSummary.shiftCount} shifts` : '0h / 0 shifts'}
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {/* Trash can drop zone */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setTrashHover(true);
+                  }}
+                  onDragLeave={() => setTrashHover(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setTrashHover(false);
+                    const payload = e.dataTransfer.getData('text/plain');
+                    // Only delete existing shifts (not bank drags)
+                    if (payload && !payload.startsWith('new:')) {
+                      void handleCancelShift(payload);
+                    }
+                  }}
+                  className="ml-auto flex items-center justify-center rounded-lg border-2 border-dashed p-2 transition"
+                  style={{
+                    borderColor: trashHover ? 'var(--color-status-error)' : 'var(--color-border-subtle)',
+                    backgroundColor: trashHover ? 'color-mix(in oklch, var(--color-status-error) 12%, transparent)' : 'transparent',
+                    minWidth: '44px',
+                    minHeight: '44px',
+                  }}
+                  title="Drop here to remove from schedule"
+                >
+                  <span style={{ fontSize: '20px', opacity: trashHover ? 1 : 0.5 }}>🗑️</span>
+                </div>
+              </div>
+              {showTemplateMenu && (
+                <div className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="rounded-lg border px-3 py-1.5 text-sm outline-none"
+                      style={{ backgroundColor: 'var(--color-surface-input)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)', flex: 1 }}
+                      placeholder="Template name…" aria-label="Template name"
+                      value={templateName} onChange={(e) => setTemplateName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTemplate(); }}
+                    />
+                    <Button size="sm" variant="primary" onClick={handleSaveTemplate} disabled={!templateName.trim()}>Save Current Week</Button>
+                  </div>
+                  {getSavedTemplates().length > 0 && (
+                    <div className="mt-3 flex flex-col gap-1">
+                      <span className="text-xs font-semibold uppercase text-(--color-text-muted)">Saved Templates</span>
+                      {getSavedTemplates().map((tpl, idx) => (
+                        <div key={tpl.name} className="flex items-center justify-between rounded-md border px-3 py-2" style={{ borderColor: 'var(--color-border-subtle)' }}>
+                          <span className="text-sm font-medium text-(--color-text-primary)">{tpl.name} ({tpl.shifts.length} shifts)</span>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => void handleLoadTemplate(idx)}>Load</Button>
+                            <Button size="sm" variant="ghost" onClick={() => handleDeleteTemplate(idx)} style={{ color: 'var(--color-status-error)' }}>✕</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
           {shiftsLoading && shifts.length === 0 ? (
             <ViewSpinner />
           ) : (
-            <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+            <div className="overflow-x-auto rounded-xl border border-(--color-border-default)">
               <table className="w-full" style={{ minWidth: '800px' }}>
                 <thead>
                   <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
-                    <th className="w-28 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
+                    <th className="w-28 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wider text-(--color-text-muted)">
                       Shift
                     </th>
                     {weekDays.map((day, idx) => {
@@ -461,10 +679,29 @@ export function ScheduleView() {
                             <div
                               className="flex min-h-[56px] flex-col gap-1 rounded-lg p-2 transition"
                               style={{
-                                backgroundColor: dayShifts.length > 0 ? SHIFT_COLORS[code] : 'transparent',
-                                border: `1px dashed ${dayShifts.length > 0 ? SHIFT_ACCENTS[code]! + '40' : 'var(--color-border-subtle)'}`,
+                                backgroundColor: dropTarget?.day === day && dropTarget?.code === code
+                                  ? 'color-mix(in oklch, var(--color-accent-primary) 12%, transparent)'
+                                  : dayShifts.length > 0 ? SHIFT_COLORS[code] : 'transparent',
+                                border: dropTarget?.day === day && dropTarget?.code === code
+                                  ? '2px solid var(--color-accent-primary)'
+                                  : `1px dashed ${dayShifts.length > 0 ? SHIFT_ACCENTS[code]! + '40' : 'var(--color-border-subtle)'}`,
                                 cursor: isAdmin || dayShifts.some(s => s.employeeId === myStaffId) ? 'pointer' : 'default',
                               }}
+                              onDragOver={isAdmin ? (e) => { e.preventDefault(); setDropTarget({ day, code }); } : undefined}
+                              onDragLeave={isAdmin ? () => setDropTarget(null) : undefined}
+                              onDrop={isAdmin ? (e) => {
+                                e.preventDefault();
+                                setDropTarget(null);
+                                const payload = e.dataTransfer.getData('text/plain');
+                                if (payload?.startsWith('new:')) {
+                                  // Dragged from employee bank — create new shift
+                                  const employeeId = payload.slice(4);
+                                  if (employeeId) void handleAssignShift(employeeId, day, code);
+                                } else if (payload) {
+                                  // Dragged existing shift — move it
+                                  void handleDragDrop(payload, day, code);
+                                }
+                              } : undefined}
                               onClick={() => {
                                 if (isAdmin) {
                                   // Admin: open assign/edit modals
@@ -486,7 +723,11 @@ export function ScheduleView() {
 
                                 return (
                                   <div key={s.id}
-                                    className={`flex flex-col gap-0.5${isAdmin ? '' : ' cursor-pointer rounded px-1 -mx-1 hover:bg-white/10'}`}
+                                    draggable={isAdmin}
+                                    onDragStart={isAdmin ? (e) => { e.dataTransfer.setData('text/plain', s.id); e.dataTransfer.effectAllowed = 'move'; setDragShiftId(s.id); } : undefined}
+                                    onDragEnd={isAdmin ? () => { setDragShiftId(null); setDropTarget(null); } : undefined}
+                                    className={`flex flex-col gap-0.5${isAdmin ? ' cursor-grab active:cursor-grabbing' : ' cursor-pointer rounded px-1 -mx-1 hover:bg-white/10'}`}
+                                    style={{ opacity: dragShiftId === s.id ? 0.4 : 1 }}
                                     onClick={isAdmin ? undefined : (e) => {
                                       e.stopPropagation();
                                       if (isMe) {
@@ -513,7 +754,7 @@ export function ScheduleView() {
                                         {s.employeeName.split(' ')[0]}
                                       </span>
                                       {s.status === 'UPDATED' && (
-                                        <span className="text-[9px]" style={{ color: 'var(--color-status-warning)' }}>✎</span>
+                                        <span className="text-[9px] text-(--color-status-warning)">✎</span>
                                       )}
                                     </div>
                                     {/* Show time-off request badge below name */}
@@ -540,10 +781,10 @@ export function ScheduleView() {
                                 );
                               })}
                               {dayShifts.length === 0 && isAdmin && (
-                                <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>+ Assign</span>
+                                <span className="text-[10px] text-(--color-text-muted)">+ Assign</span>
                               )}
                               {dayShifts.length === 0 && !isAdmin && (
-                                <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>—</span>
+                                <span className="text-[10px] text-(--color-text-muted)">—</span>
                               )}
                             </div>
                           </td>
@@ -560,10 +801,10 @@ export function ScheduleView() {
           {isAdmin && selectedDay && (
             <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+                <h3 className="text-base font-bold text-(--color-text-primary) font-(--font-display)">
                   {DAYS_FULL[new Date(selectedDay + 'T00:00:00').getDay()]}, {formatShortDate(selectedDay)}
                 </h3>
-                <button type="button" className="text-sm" style={{ color: 'var(--color-text-muted)' }} onClick={() => setSelectedDay(null)}>✕ Close</button>
+                <button type="button" className="text-sm text-(--color-text-muted)" onClick={() => setSelectedDay(null)}>✕ Close</button>
               </div>
 
               <div className="flex flex-col gap-3">
@@ -573,29 +814,27 @@ export function ScheduleView() {
                     <div key={code} className="rounded-lg border p-4" style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: SHIFT_COLORS[code] }}>
                       <div className="mb-2 flex items-center justify-between">
                         <span className="text-xs font-bold" style={{ color: SHIFT_ACCENTS[code] }}>{SHIFT_LABELS[code]}</span>
-                        <button type="button" className="text-[10px] font-semibold" style={{ color: 'var(--color-accent-primary)' }}
+                        <button type="button" className="text-[10px] font-semibold text-(--color-accent-primary)"
                           onClick={() => setAssignModal({ day: selectedDay, code })}>
                           + Add Employee
                         </button>
                       </div>
                       {dayShifts.length === 0 ? (
-                        <p className="text-xs italic" style={{ color: 'var(--color-text-muted)' }}>No one assigned</p>
+                        <p className="text-xs italic text-(--color-text-muted)">No one assigned</p>
                       ) : (
                         dayShifts.map((s) => (
                           <div key={s.id} className="mb-1 flex items-center justify-between rounded-md px-3 py-2" style={{ backgroundColor: 'var(--color-surface-base)' }}>
                             <div>
-                              <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.employeeName}</span>
-                              {s.notes && <span className="ml-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>— {s.notes}</span>}
+                              <span className="text-sm font-semibold text-(--color-text-primary)">{s.employeeName}</span>
+                              {s.notes && <span className="ml-2 text-xs text-(--color-text-muted)">— {s.notes}</span>}
                             </div>
                             <div className="flex items-center gap-2">
                               <Badge color={shiftStatusColor(s.status)} variant="light" size="sm">
                                 {s.status}
                               </Badge>
-                              <button type="button" className="text-xs font-semibold"
-                                style={{ color: 'var(--color-accent-primary)' }}
+                              <button type="button" className="text-xs font-semibold text-(--color-accent-primary)"
                                 onClick={() => setEditingShift(s)}>Edit</button>
-                              <button type="button" className="text-xs font-semibold"
-                                style={{ color: 'var(--color-status-error)' }}
+                              <button type="button" className="text-xs font-semibold text-(--color-status-error)"
                                 onClick={() => handleCancelShift(s.id)}>Remove</button>
                             </div>
                           </div>
@@ -614,8 +853,8 @@ export function ScheduleView() {
       {!isAdmin && activeTab === 'grid' && (
         <div className="rounded-xl border p-4" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>My Hours This Week</span>
-            <span className="text-lg font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>
+            <span className="text-sm font-semibold text-(--color-text-primary)">My Hours This Week</span>
+            <span className="text-lg font-bold tabular-nums text-(--color-accent-primary)">
               {myShifts.reduce((sum, s) => {
                 const start = new Date(s.scheduledStart).getTime();
                 const end = new Date(s.scheduledEnd).getTime();
@@ -623,7 +862,7 @@ export function ScheduleView() {
               }, 0).toFixed(1)}h
             </span>
           </div>
-          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="mt-1 text-xs text-(--color-text-muted)">
             {myShifts.length} shift{myShifts.length === 1 ? '' : 's'} scheduled
           </p>
         </div>
@@ -631,7 +870,7 @@ export function ScheduleView() {
 
       {/* ── Summary Tab (Admin only) ── */}
       {isAdmin && activeTab === 'summary' && (
-        <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+        <div className="overflow-hidden rounded-xl border border-(--color-border-default)">
           <table className="w-full">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--color-border-default)', backgroundColor: 'var(--color-surface-raised)' }}>
@@ -645,10 +884,10 @@ export function ScheduleView() {
                 <tr key={s.employeeId} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{s.employeeName}</td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{s.shiftCount}</td>
-                  <td className="px-4 py-3 text-sm font-bold tabular-nums" style={{ color: 'var(--color-accent-primary)' }}>{s.totalHours.toFixed(1)}h</td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{s.netHours.toFixed(1)}h</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">{s.employeeName}</td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-secondary)">{s.shiftCount}</td>
+                  <td className="px-4 py-3 text-sm font-bold tabular-nums text-(--color-accent-primary)">{s.totalHours.toFixed(1)}h</td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-secondary)">{s.netHours.toFixed(1)}h</td>
                   <td className="px-4 py-3">
                     <Badge color={s.overtimeFlag ? 'warning' : 'success'} variant="light" size="sm">
                       {s.overtimeFlag ? 'Overtime' : 'Normal'}
@@ -685,9 +924,9 @@ export function ScheduleView() {
                 <tr key={r.id} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{r.employeeName}</td>
-                  <td className="px-4 py-3 text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>{formatShortDate(r.day)}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>{r.reason || '—'}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">{r.employeeName}</td>
+                  <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-secondary)">{formatShortDate(r.day)}</td>
+                  <td className="px-4 py-3 text-sm text-(--color-text-muted)">{r.reason || '—'}</td>
                   <td className="px-4 py-3">
                     <Badge
                       color={statusBadgeColor(r.status)}
@@ -715,7 +954,7 @@ export function ScheduleView() {
         </div>
 
         {/* ── Shift Trades section within Time Off tab ── */}
-        <h3 className="mt-6 mb-3 text-sm font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+        <h3 className="mt-6 mb-3 text-sm font-bold text-(--color-text-primary) font-(--font-display)">
           🔄 Shift Trade Requests
         </h3>
         <div className="overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
@@ -732,8 +971,8 @@ export function ScheduleView() {
                 <tr key={t.id} className="border-b transition" style={{ borderColor: 'var(--color-border-subtle)' }}
                   onMouseEnter={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
                   onMouseLeave={(ev) => { (ev.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{t.requesterName}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>{t.targetName}'s shift</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-(--color-text-primary)">{t.requesterName}</td>
+                  <td className="px-4 py-3 text-sm text-(--color-text-secondary)">{t.targetName}'s shift</td>
                   <td className="px-4 py-3">
                     <Badge
                       color={statusBadgeColor(t.status)}
@@ -751,7 +990,7 @@ export function ScheduleView() {
               ))}
               {tradeRequests.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>
+                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-(--color-text-muted)">
                     No shift trade requests
                   </td>
                 </tr>
@@ -772,7 +1011,7 @@ export function ScheduleView() {
             <h3 className="mb-1 text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
               Assign Employee
             </h3>
-            <p className="mb-4 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="mb-4 text-xs text-(--color-text-muted)">
               {SHIFT_LABELS[assignModal.code]} — {formatShortDate(assignModal.day)}
             </p>
             <div className="flex flex-col gap-2">
@@ -786,13 +1025,13 @@ export function ScheduleView() {
                   }}
                   onClick={() => handleAssignShift(s.id, assignModal.day, assignModal.code)}>
                   <span>{s.name}</span>
-                  <span className="text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>
+                  <span className="text-xs font-normal text-(--color-text-muted)">
                     {summaryByEmployeeId.get(s.id)?.netHours.toFixed(0) ?? '0'}h this week
                   </span>
                 </button>
               ))}
               {staffList.length === 0 && (
-                <p className="py-4 text-center text-sm" style={{ color: 'var(--color-text-muted)' }}>No active staff</p>
+                <p className="py-4 text-center text-sm text-(--color-text-muted)">No active staff</p>
               )}
             </div>
             <button type="button" className="mt-4 w-full rounded-lg border px-4 py-2 text-sm font-semibold transition"
@@ -819,7 +1058,7 @@ export function ScheduleView() {
               {DAYS_FULL[new Date(dayOffModal.day + 'T00:00:00').getDay()]}, {formatShortDate(dayOffModal.day)}
             </p>
             <div className="mb-4">
-              <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Reason (optional)</label>
+              <label className="mb-1 block text-xs font-semibold text-(--color-text-muted)">Reason (optional)</label>
               <textarea
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
@@ -858,7 +1097,7 @@ export function ScheduleView() {
               Trade with {tradeModal.targetShift.employeeName}
             </p>
             <div className="mb-4 rounded-lg p-4" style={{ backgroundColor: 'var(--color-surface-base)' }}>
-              <label className="mb-2 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Select your shift to trade:</label>
+              <label className="mb-2 block text-xs font-semibold text-(--color-text-muted)">Select your shift to trade:</label>
               <select
                 className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
                 style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
@@ -877,7 +1116,7 @@ export function ScheduleView() {
                 })}
               </select>
               {tradeSelectedShiftId && (
-                <p className="mt-3 text-sm" style={{ color: 'var(--color-text-primary)' }}>
+                <p className="mt-3 text-sm text-(--color-text-primary)">
                   <strong>For:</strong> {tradeModal.targetShift.employeeName}'s {SHIFT_LABELS[tradeModal.targetShift.shiftCode]} on {DAYS_FULL[new Date(tradeModal.day + 'T00:00:00').getDay()]}
                 </p>
               )}
@@ -931,14 +1170,14 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
       <div className="w-full max-w-md rounded-xl border p-6"
         style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
         onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-base font-bold" style={{ color: 'var(--color-text-primary)', fontFamily: 'var(--font-display)' }}>
+        <h3 className="mb-4 text-base font-bold text-(--color-text-primary) font-(--font-display)">
           Edit Shift
         </h3>
 
         <div className="flex flex-col gap-4">
           {/* Employee */}
           <div>
-            <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Employee</label>
+            <label className="mb-1 block text-xs font-semibold text-(--color-text-muted)">Employee</label>
             <select className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}>
@@ -948,7 +1187,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
 
           {/* Shift code */}
           <div>
-            <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Shift</label>
+            <label className="mb-1 block text-xs font-semibold text-(--color-text-muted)">Shift</label>
             <select className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={shiftCode} onChange={(e) => setShiftCode(e.target.value as 'A' | 'B' | 'C')}>
@@ -960,7 +1199,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
 
           {/* Notes */}
           <div>
-            <label className="mb-1 block text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }}>Notes</label>
+            <label className="mb-1 block text-xs font-semibold text-(--color-text-muted)">Notes</label>
             <input className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent-primary)]"
               style={{ backgroundColor: 'var(--color-surface-base)', borderColor: 'var(--color-border-default)', color: 'var(--color-text-primary)' }}
               value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes..." />
@@ -968,7 +1207,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
 
           {/* Info */}
           <div className="rounded-lg p-3" style={{ backgroundColor: 'var(--color-surface-base)' }}>
-            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="text-xs text-(--color-text-muted)">
               <span className="font-semibold">Status:</span> {shift.status} &nbsp;|&nbsp;
               <span className="font-semibold">Date:</span> {new Date(shift.scheduledStart).toLocaleDateString()}
             </p>
@@ -976,7 +1215,7 @@ function EditShiftModal({ shift, onSave, onCancel, onDelete, staffList }: Readon
         </div>
 
         <div className="mt-5 flex items-center justify-between">
-          <button type="button" className="text-xs font-semibold" style={{ color: 'var(--color-status-error)' }}
+          <button type="button" className="text-xs font-semibold text-(--color-status-error)"
             onClick={() => onDelete(shift.id)}>Delete Shift</button>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={onCancel}>Cancel</Button>

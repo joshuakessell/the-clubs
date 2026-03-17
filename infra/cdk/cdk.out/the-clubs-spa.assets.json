@@ -1,0 +1,21 @@
+{
+  "version": "52.0.0",
+  "files": {
+    "d794a1a0b6d39d9fcf0b991c7b620aa34f7e62bb6bb51783aeb44740b25ec489": {
+      "displayName": "the-clubs-spa Template",
+      "source": {
+        "path": "the-clubs-spa.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "146469921099-us-east-1-9cebf657": {
+          "bucketName": "cdk-hnb659fds-assets-146469921099-us-east-1",
+          "objectKey": "d794a1a0b6d39d9fcf0b991c7b620aa34f7e62bb6bb51783aeb44740b25ec489.json",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::146469921099:role/cdk-hnb659fds-file-publishing-role-146469921099-us-east-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

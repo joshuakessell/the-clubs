@@ -76,13 +76,13 @@ export function BackupSelectionStep() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+      <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
         Backup Selection
       </h3>
 
       {/* Info banner */}
       <div className="rounded-lg border p-3" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-warning) 20%, transparent)' }}>
-        <p className="text-xs font-medium" style={{ color: 'var(--color-status-warning)' }}>
+        <p className="text-xs font-medium text-(--color-status-warning)">
           {desiredType ? `${desiredType} is unavailable.` : 'Selected room is unavailable.'} Choose a backup rental for the customer while they wait.
         </p>
       </div>
@@ -142,11 +142,7 @@ export function BackupSelectionStep() {
         <button
           disabled={loading}
           onClick={() => { handleSendDisclaimer(); }}
-          className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
-          style={{
-            backgroundColor: 'var(--color-accent-primary)',
-            color: 'var(--color-text-inverse)',
-          }}
+           className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-bold transition-colors bg-(--color-accent-primary) text-(--color-text-inverse)"
         >
           {loading ? 'Processing…' : 'Send Disclaimer & Continue →'}
         </button>
@@ -156,8 +152,7 @@ export function BackupSelectionStep() {
       <button
         disabled={loading}
         onClick={() => { handleBack(); }}
-        className="self-start text-xs font-semibold"
-        style={{ color: 'var(--color-text-muted)' }}
+        className="self-start text-xs font-semibold text-(--color-text-muted)"
       >
         ← Back to Rental Selection
       </button>

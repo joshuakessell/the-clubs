@@ -14,8 +14,7 @@ export interface CheckinBlockRow {
   starts_at: Date;
   ends_at: Date;
   rental_type: string;
-  room_id: string | null;
-  locker_id: string | null;
+  resource_id: string | null;
   session_id: string | null;
   agreement_signed: boolean;
   created_at: Date;

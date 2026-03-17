@@ -60,7 +60,7 @@ describe('SessionUpdatedPayloadSchema', () => {
       flowStep: 'PAYMENT',
       flowVersion: 3,
       flowLastActor: 'EMPLOYEE',
-      paymentStatus: 'DUE',
+      orderStatus: 'OPEN',
       pastDueBalance: 500,
       customerPrimaryLanguage: 'ES',
       allowedRentals: ['STANDARD', 'DOUBLE'],
@@ -130,7 +130,7 @@ describe('UpgradeHoldAvailablePayloadSchema', () => {
       waitlistId: 'wl-001',
       customerName: 'John',
       desiredTier: 'DOUBLE',
-      roomId: 'room-1',
+      resourceId: 'room-1',
       roomNumber: '201',
       expiresAt: '2026-01-01T00:00:00Z',
     });
@@ -154,7 +154,7 @@ describe('UpgradeOfferExpiredPayloadSchema', () => {
       waitlistId: 'wl-001',
       customerName: 'John',
       desiredTier: 'SPECIAL',
-      roomId: 'room-2',
+      resourceId: 'room-2',
       roomNumber: '301',
     });
     expect(result.success).toBe(true);
@@ -247,7 +247,7 @@ describe('safeParseRealtimeEvent', () => {
   it('parses ASSIGNMENT_CREATED event', () => {
     const result = safeParseRealtimeEvent({
       type: 'ASSIGNMENT_CREATED',
-      payload: { sessionId: 's1', rentalType: 'STANDARD', roomId: 'r1', roomNumber: '105' },
+      payload: { sessionId: 's1', rentalType: 'STANDARD', resourceId: 'r1', resourceNumber: '105' },
       timestamp: '2026-01-01T00:00:00Z',
     });
     expect(result).not.toBeNull();

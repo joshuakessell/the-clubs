@@ -8,6 +8,7 @@ import {
   listManualCandidates,
   resolveManualCheckout,
   completeManualCheckout,
+  checkRenewalEligibility,
 } from '../../services/checkoutService';
 
 export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
@@ -30,6 +31,26 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
     }
   );
 
+  /**
+   * GET /v1/checkout/renewal-eligibility?occupancyId=<uuid>
+   */
+  fastify.get<{ Querystring: { occupancyId: string } }>(
+    '/v1/checkout/renewal-eligibility',
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
+      const { occupancyId } = request.query;
+      if (!occupancyId) return reply.status(400).send({ error: 'occupancyId is required' });
+      try {
+        const result = await checkRenewalEligibility(occupancyId);
+        return reply.send(result);
+      } catch (error) {
+        fastify.log.error(error, 'Failed to check renewal eligibility');
+        return reply.status(500).send({ error: 'Internal server error' });
+      }
+    }
+  );
+
   const ManualResolveSchema = z
     .object({
       number: z.string().min(1).optional(),
@@ -44,7 +65,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof ManualResolveSchema> }>(
     '/v1/checkout/manual-resolve',
-    { schema: { body: ManualResolveSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -72,7 +93,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
    */
   fastify.post<{ Body: z.infer<typeof ManualCompleteSchema> }>(
     '/v1/checkout/manual-complete',
-    { schema: { body: ManualCompleteSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const staffId = request.staff.staffId;
@@ -91,9 +112,9 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
         if (fastify.broadcaster && !result.alreadyCheckedOut) {
           await broadcastInventoryUpdate(fastify.broadcaster);
 
-          if (result.roomId) {
+          if (result.resourceId) {
             fastify.broadcaster.broadcastRoomStatusChanged({
-              roomId: result.roomId,
+              roomId: result.resourceId,
               previousStatus: RoomStatus.CLEAN,
               newStatus: RoomStatus.DIRTY,
               changedBy: staffId,

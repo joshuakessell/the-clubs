@@ -38,7 +38,7 @@ vi.mock('../src/auth/middleware.js', async () => {
   return {
     requireAuth: async (request: any, reply: any) => {
       const authHeader = request.headers.authorization || request.headers.Authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader?.startsWith('Bearer ')) {
         // For tests without auth header, use a real staff row (uuid) to satisfy FK constraints.
         const staff = await ensureDefaultStaff();
         request.staff = { staffId: staff.staffId, name: staff.name, role: staff.role };
@@ -67,7 +67,7 @@ vi.mock('../src/auth/middleware.js', async () => {
           };
           return;
         }
-      } catch (error) {
+      } catch {
         // Fall through to default
       }
 
@@ -122,7 +122,7 @@ describe('Checkout Flow', () => {
     } else {
       config = {
         host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
+        port: Number.parseInt(process.env.DB_PORT || '5432', 10),
         database: process.env.DB_NAME || 'club_operations',
         user: process.env.DB_USER || 'clubops',
         password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -151,21 +151,21 @@ describe('Checkout Flow', () => {
     testCustomerId = customerResult.rows[0]!.id;
 
     const roomResult = await pool.query(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('200', 'STANDARD', 'CLEAN', 1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
        RETURNING id`
     );
     testRoomId = roomResult.rows[0]!.id;
 
     const lockerResult = await pool.query(
-      `INSERT INTO lockers (number, status)
-       VALUES ('L01', 'CLEAN')
+      `INSERT INTO inventory_resources (kind, number, tier, status)
+       VALUES ('locker', 'L01', 'LOCKER', 'CLEAN')
        RETURNING id`
     );
     testLockerId = lockerResult.rows[0]!.id;
 
     const keyTagResult = await pool.query(
-      `INSERT INTO key_tags (room_id, tag_code, tag_type, is_active)
+      `INSERT INTO key_tags (resource_id, tag_code, tag_type, is_active)
        VALUES ($1, 'TEST-KEY-001', 'QR', true)
        RETURNING id`,
       [testRoomId]
@@ -198,14 +198,14 @@ describe('Checkout Flow', () => {
     testVisitId = visitResult.rows[0]!.id;
 
     const blockResult = await pool.query(
-      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id, has_tv_remote)
+      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, has_tv_remote)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '1 hour', 'STANDARD', $2, true)
        RETURNING id`,
       [testVisitId, testRoomId]
     );
     testBlockId = blockResult.rows[0]!.id;
 
-    await pool.query(`UPDATE rooms SET assigned_to_customer_id = $1 WHERE id = $2`, [
+    await pool.query(`UPDATE inventory_resources SET assigned_to_customer_id = $1 WHERE id = $2`, [
       testCustomerId,
       testRoomId,
     ]);
@@ -220,8 +220,8 @@ describe('Checkout Flow', () => {
       await pool.query('DELETE FROM checkin_blocks WHERE visit_id = $1', [testVisitId]);
       await pool.query('DELETE FROM visits WHERE id = $1', [testVisitId]);
       await pool.query('DELETE FROM key_tags WHERE id = $1', [testKeyTagId]);
-      await pool.query('DELETE FROM rooms WHERE id = $1', [testRoomId]);
-      await pool.query('DELETE FROM lockers WHERE id = $1', [testLockerId]);
+      await pool.query('DELETE FROM inventory_resources WHERE id = $1', [testRoomId]);
+      await pool.query('DELETE FROM inventory_resources WHERE id = $1', [testLockerId]);
       await pool.query('DELETE FROM staff_sessions WHERE staff_id = $1', [testStaffId]);
       await pool.query('DELETE FROM staff WHERE id = $1', [testStaffId]);
       await pool.query('DELETE FROM customers WHERE id = $1', [testCustomerId]);
@@ -240,7 +240,7 @@ describe('Checkout Flow', () => {
     // Ensure visit is active for each test
     await pool.query('UPDATE visits SET ended_at = NULL WHERE id = $1', [testVisitId]);
 
-    fastify = Fastify();
+    fastify = Fastify({ logger: { level: 'error' }, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     broadcastEvents = [];
     const originalBroadcast = broadcaster.broadcast.bind(broadcaster);
@@ -295,7 +295,7 @@ describe('Checkout Flow', () => {
 
     it('should calculate $15 fee for 30-59 minutes late', async () => {
       if (!dbAvailable) return;
-      const blockResult = await pool.query(
+      await pool.query(
         `UPDATE checkin_blocks SET ends_at = NOW() - INTERVAL '45 minutes' WHERE id = $1 RETURNING id`,
         [testBlockId]
       );
@@ -391,7 +391,7 @@ describe('Checkout Flow', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -438,7 +438,7 @@ describe('Checkout Flow', () => {
       expect(requestResult.rows.length).toBe(1);
       expect(requestResult.rows[0]!.late_minutes).toBeGreaterThanOrEqual(30);
       // late_fee_amount is DECIMAL in DB, returned as string, so parse it
-      expect(parseFloat(requestResult.rows[0]!.late_fee_amount as string)).toBe(15);
+      expect(Number.parseFloat(requestResult.rows[0]!.late_fee_amount as string)).toBe(15);
 
       // Clean up
       await pool.query('DELETE FROM checkout_requests WHERE id = $1', [data.requestId]);
@@ -511,7 +511,7 @@ describe('Checkout Flow', () => {
       expect(data.completed).toBe(true);
 
       // Verify room status was updated
-      const roomResult = await pool.query('SELECT status FROM rooms WHERE id = $1', [testRoomId]);
+      const roomResult = await pool.query('SELECT status FROM inventory_resources WHERE id = $1', [testRoomId]);
       expect(roomResult.rows[0]!.status).toBe(RoomStatus.DIRTY);
 
       // Verify visit was ended
@@ -572,7 +572,7 @@ describe('Checkout Flow', () => {
       );
       await pool.query('DELETE FROM waitlist WHERE id = ANY($1::uuid[])', [waitlistIds]);
       await pool.query(
-        'UPDATE rooms SET status = $1, assigned_to_customer_id = NULL WHERE id = $2',
+        'UPDATE inventory_resources SET status = $1, assigned_to_customer_id = NULL WHERE id = $2',
         [RoomStatus.CLEAN, testRoomId]
       );
       await pool.query('UPDATE visits SET ended_at = NULL WHERE id = $1', [testVisitId]);
@@ -637,7 +637,7 @@ describe('Checkout Flow', () => {
       await pool.query(`UPDATE customers SET past_due_balance = 0 WHERE id = $1`, [
         testCustomerId,
       ]);
-      await pool.query(`DELETE FROM charges WHERE visit_id = $1`, [testVisitId]);
+      await pool.query(`DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = (SELECT customer_id FROM visits WHERE id = $1))`, [testVisitId]);
 
       // Create a checkout request that already has a late fee assessed + paid
       const requestResult = await pool.query(
@@ -665,20 +665,25 @@ describe('Checkout Flow', () => {
         `SELECT past_due_balance FROM customers WHERE id = $1`,
         [testCustomerId]
       );
-      expect(parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
+      expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
 
       const chargesRes = await pool.query<{
-        type: string;
+        entry_type: string;
         amount: string;
-        checkin_block_id: string;
-      }>(`SELECT type, amount, checkin_block_id FROM charges WHERE visit_id = $1`, [testVisitId]);
+        checkout_request_id: string;
+      }>(
+        `SELECT entry_type, amount, metadata->>'checkoutRequestId' as checkout_request_id 
+         FROM customer_spend_ledger_entries 
+         WHERE visit_id = $1`,
+        [testVisitId]
+      );
       expect(
-        chargesRes.rows.some((r) => r.type === 'LATE_FEE' && r.checkin_block_id === testBlockId)
+        chargesRes.rows.some((r) => r.entry_type === 'LATE_FEE' && r.checkout_request_id === requestId)
       ).toBe(true);
 
       // Clean up
       await pool.query('DELETE FROM checkout_requests WHERE id = $1', [requestId]);
-      await pool.query('DELETE FROM charges WHERE visit_id = $1', [testVisitId]);
+      await pool.query('DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = (SELECT customer_id FROM visits WHERE id = $1))', [testVisitId]);
       await pool.query(`UPDATE customers SET past_due_balance = 0 WHERE id = $1`, [
         testCustomerId,
       ]);

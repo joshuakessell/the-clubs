@@ -253,7 +253,6 @@ export function ScanPanel() {
           ref={hiddenInputRef}
           type="text"
           className="sr-only"
-          style={{ position: 'absolute', left: '-9999px', opacity: 0 }}
           aria-label="Scanner input"
           autoComplete="off"
           autoCorrect="off"
@@ -265,13 +264,13 @@ export function ScanPanel() {
 
         {/* Error message */}
         {scanError && (
-          <p className="mt-2 text-center text-xs font-medium" style={{ color: 'var(--color-status-error)' }} role="alert">
+          <p className="mt-2 text-center text-xs font-medium text-(--color-status-error)" role="alert">
             {scanError}
           </p>
         )}
 
         {/* Status text */}
-        <p className="mt-3 text-center text-xs font-semibold" style={{ color: 'var(--color-text-muted)' }} aria-live="polite">
+        <p className="mt-3 text-center text-xs font-semibold text-(--color-text-muted)" aria-live="polite">
         {(() => {
             if (!scanReady) return `Scanner paused: ${scanBlockedReason || 'Unavailable'}`;
             return scanCaptureSubmitting ? 'Processing scan…' : 'Scanner ready';
@@ -291,18 +290,14 @@ export function ScanPanel() {
           aria-label="Processing scan"
         >
           <div
-            className="flex flex-col items-center gap-4 rounded-xl border p-8"
-            style={{
-              backgroundColor: 'var(--color-surface-raised)',
-              borderColor: 'var(--color-border-default)',
-            }}
+            className="flex flex-col items-center gap-4 rounded-xl border p-8 bg-(--color-surface-raised) border-(--color-border-default)"
           >
             <Spinner size="md" />
-            <span className="text-base font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            <span className="text-base font-semibold text-(--color-text-primary)">
               {isReceiving ? 'Receiving scan data…' : 'Processing scan…'}
             </span>
             {isReceiving && (
-              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              <span className="text-xs text-(--color-text-muted)">
                 Please wait while the scanner finishes
               </span>
             )}
@@ -322,18 +317,14 @@ export function ScanPanel() {
           onKeyDown={(e) => { if (e.key === 'Escape') handleNoneOfThese(); }}
         >
           <div
-            className="w-full max-w-md rounded-xl border p-6 shadow-2xl"
-            style={{
-              backgroundColor: 'var(--color-surface-raised)',
-              borderColor: 'var(--color-border-default)',
-            }}
+            className="w-full max-w-md rounded-xl border p-6 shadow-2xl bg-(--color-surface-raised) border-(--color-border-default)"
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
           >
-            <h3 className="text-lg font-bold" style={{ color: 'var(--color-text-primary)' }}>
+            <h3 className="text-lg font-bold text-(--color-text-primary)">
               Multiple Matches Found
             </h3>
-            <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            <p className="mt-1 text-xs text-(--color-text-muted)">
               Select the correct customer, or choose &quot;None of these&quot; to create a new profile.
             </p>
 
@@ -341,29 +332,25 @@ export function ScanPanel() {
               {candidates.map((c) => (
                 <button
                   key={c.id}
-                  className="flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors hover:border-[var(--color-accent-primary)] hover:bg-[var(--color-accent-glow)]"
-                  style={{
-                    backgroundColor: 'var(--color-surface-input)',
-                    borderColor: 'var(--color-border-default)',
-                  }}
+                  className="flex items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors hover:border-[var(--color-accent-primary)] hover:bg-[var(--color-accent-glow)] bg-(--color-surface-input) border-(--color-border-default)"
                   onClick={() => handleSelectCandidate(c)}
                 >
                   <div>
-                    <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+                    <span className="text-sm font-semibold text-(--color-text-primary)">
                       {c.name}
                     </span>
                     {c.dob && (
-                      <span className="ml-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      <span className="ml-2 text-xs text-(--color-text-muted)">
                         DOB: {c.dob}
                       </span>
                     )}
                     {c.membershipNumber && (
-                      <span className="ml-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      <span className="ml-2 text-xs text-(--color-text-muted)">
                         #{c.membershipNumber}
                       </span>
                     )}
                   </div>
-                  <span className="text-xs font-bold" style={{ color: 'var(--color-accent-primary)' }}>
+                  <span className="text-xs font-bold text-(--color-accent-primary)">
                     Select →
                   </span>
                 </button>
@@ -371,12 +358,7 @@ export function ScanPanel() {
             </div>
 
             <button
-              className="mt-4 w-full rounded-lg border px-4 py-3 text-center text-sm font-semibold transition-colors hover:border-[var(--color-status-warning)]"
-              style={{
-                backgroundColor: 'var(--color-surface-overlay)',
-                borderColor: 'var(--color-border-default)',
-                color: 'var(--color-text-secondary)',
-              }}
+              className="mt-4 w-full rounded-lg border px-4 py-3 text-center text-sm font-semibold transition-colors hover:border-[var(--color-status-warning)] bg-(--color-surface-overlay) border-(--color-border-default) text-(--color-text-secondary)"
               onClick={handleNoneOfThese}
             >
               None of these — Create New Profile

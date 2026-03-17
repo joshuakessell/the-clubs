@@ -117,10 +117,10 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
 
   // POST /v1/customers/:customerId/notes
   fastify.post<{ Params: { customerId: string }; Body: z.infer<typeof CreateCustomerNoteSchema> }>(
-    '/v1/customers/:customerId/notes', { schema: { body: CreateCustomerNoteSchema }, preHandler: [requireAuth, idempotencyKey] },
+    '/v1/customers/:customerId/notes', { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      const parsed = request.body as z.infer<typeof CreateCustomerNoteSchema>;
+      const parsed = request.body;
 
       try {
         const result = await createCustomerNote(
@@ -150,14 +150,14 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
         if (!customer) return reply.status(404).send({ error: 'Customer not found' });
         return reply.send({ customer });
       } catch (error) {
-        fastify.log.error(error, 'Failed to fetch customer profile');
+        fastify.log.error({ err: error, customerId: request.params.id }, 'Failed to fetch customer profile');
         return reply.status(500).send({ error: 'Internal server error' });
       }
     }
   );
 
   // POST /v1/customers/create-from-scan
-  fastify.post('/v1/customers/create-from-scan', { schema: { body: CreateFromScanSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/create-from-scan', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof CreateFromScanSchema>;
 
@@ -175,7 +175,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/customers/match-identity
-  fastify.post('/v1/customers/match-identity', { schema: { body: MatchIdentitySchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/match-identity', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof MatchIdentitySchema>;
 
@@ -193,7 +193,7 @@ export async function customerRoutes(fastify: FastifyInstance): Promise<void> {
   });
 
   // POST /v1/customers/create-manual
-  fastify.post('/v1/customers/create-manual', { schema: { body: CreateManualSchema }, preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
+  fastify.post('/v1/customers/create-manual', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const body = request.body as z.infer<typeof CreateManualSchema>;
 

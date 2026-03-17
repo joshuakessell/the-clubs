@@ -1,118 +1,73 @@
 /**
- * Resource assignment helpers — room/locker assignment within Drizzle transactions.
+ * Resource assignment helpers — inventory resource assignment within Drizzle transactions.
  *
  * Performs SELECT ... FOR UPDATE → validate → UPDATE.
- * Replaces the duplicated assignment logic previously in visits.ts (3 copies each).
+ * Unified handler for both rooms and lockers via the `inventory_resources` table.
  *
- * Migrated to Drizzle ORM in Phase 3.
+ * Migrated to unified inventory_resources in Phase 3.
  */
 import { HttpError } from '../errors/HttpError';
-import { rooms, lockers } from '../db/schema';
+import { inventoryResources } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
-import type { PgTransaction } from 'drizzle-orm/pg-core';
+import { type DrizzleTx } from '../db';
 
 // Drizzle transaction type — flexible enough to accept any tx from db.transaction()
-type DrizzleTx = PgTransaction<any, any, any>;
+
 
 /**
- * Assign a room to a customer within a Drizzle transaction.
+ * Assign an inventory resource (room or locker) to a customer within a Drizzle transaction.
  *
  * @param tx - Drizzle transaction scope
- * @param roomId - Room UUID to assign
+ * @param resourceId - Resource UUID to assign
  * @param customerId - Customer UUID to assign to
  * @param opts.allowReassignToSame - If true, skip if already assigned to this customer (renewal flow)
- * @returns The assigned room ID
+ * @returns The assigned resource ID
  */
-export async function assignRoom(
+export async function assignResource(
   tx: DrizzleTx,
-  roomId: string,
+  resourceId: string,
   customerId: string,
   opts?: { allowReassignToSame?: boolean }
 ): Promise<string> {
-  // SELECT ... FOR UPDATE requires raw SQL — Drizzle builder doesn't support locking clauses
-  const result = await tx.execute<{
-    id: string;
-    number: string;
-    status: string;
-    assigned_to_customer_id: string | null;
-  }>(sql`SELECT id, number, status, assigned_to_customer_id
-     FROM rooms
-     WHERE id = ${roomId}
-     FOR UPDATE`);
+  // SELECT ... FOR UPDATE — native Drizzle locking
+  const rows = await tx
+    .select({
+      id: inventoryResources.id,
+      number: inventoryResources.number,
+      kind: inventoryResources.kind,
+      status: inventoryResources.status,
+      assignedToCustomerId: inventoryResources.assignedToCustomerId,
+    })
+    .from(inventoryResources)
+    .where(eq(inventoryResources.id, resourceId))
+    .for('update');
 
-  if (result.rows.length === 0) {
-    throw new HttpError(404, 'Room not found');
+  if (rows.length === 0) {
+    throw new HttpError(404, 'Resource not found');
   }
 
-  const room = result.rows[0]!;
+  const resource = rows[0]!;
+  const label = resource.kind === 'room' ? `Room ${resource.number}` : `Locker ${resource.number}`;
 
-  if (room.status !== 'CLEAN') {
-    throw new HttpError(400, `Room ${room.number} is not available (status: ${room.status})`);
+  // Rooms must be CLEAN to assign; lockers only check assignment
+  if (resource.kind === 'room' && resource.status !== 'CLEAN') {
+    throw new HttpError(400, `${label} is not available (status: ${resource.status})`);
   }
 
-  if (room.assigned_to_customer_id) {
-    if (opts?.allowReassignToSame && room.assigned_to_customer_id === customerId) {
-      return roomId;
+  if (resource.assignedToCustomerId) {
+    if (opts?.allowReassignToSame && resource.assignedToCustomerId === customerId) {
+      return resourceId;
     }
-    throw new HttpError(409, `Room ${room.number} is already assigned`);
+    throw new HttpError(409, `${label} is already assigned`);
   }
 
   await tx
-    .update(rooms)
+    .update(inventoryResources)
     .set({
       assignedToCustomerId: customerId,
       updatedAt: sql`NOW()`,
     })
-    .where(eq(rooms.id, roomId));
+    .where(eq(inventoryResources.id, resourceId));
 
-  return roomId;
-}
-
-/**
- * Assign a locker to a customer within a Drizzle transaction.
- *
- * @param tx - Drizzle transaction scope
- * @param lockerId - Locker UUID to assign
- * @param customerId - Customer UUID to assign to
- * @param opts.allowReassignToSame - If true, skip if already assigned to this customer (renewal flow)
- * @returns The assigned locker ID
- */
-export async function assignLocker(
-  tx: DrizzleTx,
-  lockerId: string,
-  customerId: string,
-  opts?: { allowReassignToSame?: boolean }
-): Promise<string> {
-  const result = await tx.execute<{
-    id: string;
-    number: string;
-    status: string;
-    assigned_to_customer_id: string | null;
-  }>(sql`SELECT id, number, status, assigned_to_customer_id
-     FROM lockers
-     WHERE id = ${lockerId}
-     FOR UPDATE`);
-
-  if (result.rows.length === 0) {
-    throw new HttpError(404, 'Locker not found');
-  }
-
-  const locker = result.rows[0]!;
-
-  if (locker.assigned_to_customer_id) {
-    if (opts?.allowReassignToSame && locker.assigned_to_customer_id === customerId) {
-      return lockerId;
-    }
-    throw new HttpError(409, `Locker ${locker.number} is already assigned`);
-  }
-
-  await tx
-    .update(lockers)
-    .set({
-      assignedToCustomerId: customerId,
-      updatedAt: sql`NOW()`,
-    })
-    .where(eq(lockers.id, lockerId));
-
-  return lockerId;
+  return resourceId;
 }

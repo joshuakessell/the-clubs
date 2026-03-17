@@ -1,0 +1,18 @@
+# CodeQL configuration
+# All routes are rate-limited globally via @fastify/rate-limit (registered in index.ts)
+# with per-route config overrides. CodeQL's static analysis cannot trace Fastify's
+# plugin registration system, causing false positives for js/missing-rate-limiting.
+
+name: "The Clubs CodeQL Config"
+
+queries:
+  - uses: security-extended
+
+query-filters:
+  - exclude:
+      id: js/missing-rate-limiting
+
+paths-ignore:
+  - '**/coverage/**'
+  - '**/node_modules/**'
+  - '**/dist/**'

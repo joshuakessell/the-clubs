@@ -1,12 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import { requireAuth } from '../auth/middleware';
 import { RoomStatus } from '@the-clubs/shared';
 
-/**
- * Schema for resolving a single key tag to room information.
- */
 const ResolveKeySchema = z.object({
   token: z.string().min(1),
 });
@@ -15,84 +13,73 @@ type ResolveKeyInput = z.infer<typeof ResolveKeySchema>;
 
 interface KeyTagRow {
   id: string;
-  room_id: string;
+  resource_id: string;
   tag_code: string;
   tag_type: string;
   is_active: boolean;
 }
 
-interface RoomRow {
+interface ResourceRow {
   id: string;
   number: string;
-  type: string;
+  kind: string;
+  tier: string;
   status: string;
   floor: number;
   override_flag: boolean;
 }
 
-/**
- * Key tag resolution routes for cleaning station workflow.
- * Supports batch scanning of QR/NFC tags.
- */
 export async function keysRoutes(fastify: FastifyInstance): Promise<void> {
-  /**
-   * POST /v1/keys/resolve - Resolve a single scan token to room information
-   *
-   * Used by cleaning stations to resolve individual QR/NFC tags.
-   * Returns room information for a single token.
-   */
   fastify.post<{ Body: ResolveKeyInput }>(
     '/v1/keys/resolve',
     {
-      schema: { body: ResolveKeySchema },
       preHandler: [requireAuth],
     },
     async (request, reply) => {
-      const body = request.body as ResolveKeyInput;
+      let body: ResolveKeyInput;
+      try {
+        body = ResolveKeySchema.parse(request.body);
+      } catch {
+        return reply.status(400).send({ error: 'Invalid request body' });
+      }
 
       try {
-        // Find matching key tag
-        const tagResult = await query<KeyTagRow>(
-          `SELECT id, room_id, tag_code, tag_type, is_active
+        const tagResult = await db.execute<KeyTagRow & Record<string, unknown>>(
+          sql`SELECT id, resource_id, tag_code, tag_type, is_active
          FROM key_tags
-         WHERE tag_code = $1 AND is_active = true`,
-          [body.token]
+         WHERE tag_code = ${body.token} AND is_active = true`
         );
 
-        if (tagResult.rows.length === 0) {
+        const tag = tagResult.rows[0];
+        if (!tag) {
           return reply.status(404).send({
             error: 'Key tag not found or inactive',
             token: body.token,
           });
         }
 
-        const tag = tagResult.rows[0]!;
-
-        // Fetch room details
-        const roomResult = await query<RoomRow>(
-          `SELECT id, number, type, status, floor, override_flag
-         FROM rooms
-         WHERE id = $1`,
-          [tag.room_id]
+        const resourceResult = await db.execute<ResourceRow & Record<string, unknown>>(
+          sql`SELECT id, number, kind, tier, status, floor, override_flag
+         FROM inventory_resources
+         WHERE id = ${tag.resource_id}`
         );
 
-        if (roomResult.rows.length === 0) {
+        const resource = resourceResult.rows[0];
+        if (!resource) {
           return reply.status(404).send({
-            error: 'Room not found',
+            error: 'Resource not found',
             token: body.token,
           });
         }
 
-        const room = roomResult.rows[0]!;
-
-        // Return single room info with all queried fields
         return reply.send({
-          roomId: room.id,
-          roomNumber: room.number,
-          roomType: room.type,
-          status: room.status as RoomStatus,
-          floor: room.floor,
-          overrideFlag: room.override_flag,
+          resourceId: resource.id,
+          resourceNumber: resource.number,
+          resourceKind: resource.kind,
+          resourceTier: resource.tier,
+          status: resource.status as RoomStatus,
+          floor: resource.floor,
+          overrideFlag: resource.override_flag,
           tagCode: tag.tag_code,
           tagType: tag.tag_type,
         });

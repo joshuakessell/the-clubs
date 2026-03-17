@@ -36,12 +36,13 @@ describe('Check-in Flow', () => {
     try {
       await initializeDatabase();
       dbAvailable = true;
-    } catch (error) {
+    } catch (dbError: unknown) {
       console.warn('\n⚠️  Database not available. Integration tests will be skipped.');
       console.warn('   To run integration tests:');
       console.warn('   1. Start Docker Desktop');
       console.warn('   2. cd services/api && docker compose up -d');
       console.warn('   3. pnpm db:migrate\n');
+      console.warn('   Cause:', dbError instanceof Error ? dbError.message : dbError);
       // initializeDatabase() creates the pool before attempting to connect; ensure we don't leak it.
       try {
         await closeDatabase();
@@ -52,7 +53,8 @@ describe('Check-in Flow', () => {
     }
 
     app = Fastify({
-      logger: false,
+      logger: { level: 'error' },
+      ajv: { customOptions: { strict: false, allowUnionTypes: true } },
     });
 
     await app.register(cors);
@@ -131,7 +133,7 @@ describe('Check-in Flow', () => {
       `DELETE FROM checkin_blocks WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
+      `DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345'))`
     );
     await query(
       `DELETE FROM visits WHERE customer_id IN (SELECT id FROM customers WHERE membership_number = '12345')`
@@ -179,16 +181,16 @@ describe('Check-in Flow', () => {
       [customerId]
     );
     await query(
-      `DELETE FROM charges WHERE visit_id IN (SELECT id FROM visits WHERE customer_id = $1)`,
+      `DELETE FROM order_line_items WHERE order_id IN (SELECT id FROM orders WHERE customer_id = $1)`,
       [customerId]
     );
     await query(`DELETE FROM visits WHERE customer_id = $1`, [customerId]);
     await query(`DELETE FROM lane_sessions WHERE lane_id = $1 OR lane_id = 'LANE_2'`, [laneId]);
-    await query(`DELETE FROM payment_intents`);
+    await query(`DELETE FROM orders`);
     await query(`DELETE FROM staff_sessions WHERE staff_id = $1`, [staffId]);
     await query(`DELETE FROM customers WHERE id = $1 OR membership_number = '12345'`, [customerId]);
     await query(`DELETE FROM staff WHERE id = $1`, [staffId]);
-    await query(`DELETE FROM rooms WHERE number IN ('200', '202', '203', '204')`);
+    await query(`DELETE FROM inventory_resources WHERE number IN ('200', '202', '203', '204')`);
   });
 
   afterAll(async () => {
@@ -298,8 +300,8 @@ describe('Check-in Flow', () => {
       runIfDbAvailable(async () => {
         // Create a clean room and assign it to the customer to simulate a pending cross-type assignment.
         const roomResult = await query<{ id: string }>(
-          `INSERT INTO rooms (number, type, status, floor, assigned_to_customer_id)
-           VALUES ('204', 'STANDARD', 'CLEAN', 1, $1)
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor, assigned_to_customer_id)
+           VALUES ('room', '204', 'STANDARD', 'CLEAN', 1, $1)
            RETURNING id`,
           [customerId]
         );
@@ -346,7 +348,7 @@ describe('Check-in Flow', () => {
 
         // Resource should be unassigned using the canonical DB column name assigned_to_customer_id.
         const roomAfter = await query<{ assigned_to_customer_id: string | null }>(
-          `SELECT assigned_to_customer_id FROM rooms WHERE id = $1`,
+          `SELECT assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [roomId]
         );
         expect(roomAfter.rows[0]!.assigned_to_customer_id).toBeNull();
@@ -367,8 +369,8 @@ describe('Check-in Flow', () => {
       runIfDbAvailable(async () => {
         // Create a SPECIAL room and assign it to the customer to simulate a pending cross-type assignment.
         const roomResult = await query<{ id: string }>(
-          `INSERT INTO rooms (number, type, status, floor, assigned_to_customer_id)
-           VALUES ('201', 'SPECIAL', 'CLEAN', 1, $1)
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor, assigned_to_customer_id)
+           VALUES ('room', '201', 'SPECIAL', 'CLEAN', 1, $1)
            RETURNING id`,
           [customerId]
         );
@@ -415,7 +417,7 @@ describe('Check-in Flow', () => {
 
         // Should broadcast CUSTOMER_CONFIRMED with tier+number (not UUID).
         expect(customerConfirmedEvents.length).toBeGreaterThanOrEqual(1);
-        const last = customerConfirmedEvents[customerConfirmedEvents.length - 1]!;
+        const last = customerConfirmedEvents.at(-1)!;
         expect(last.lane).toBe(laneId);
         expect(last.payload.sessionId).toBe(startJson.sessionId);
         expect(last.payload.confirmedType).toBe('SPECIAL');
@@ -440,7 +442,7 @@ describe('Check-in Flow', () => {
             membershipScanValue: '12345',
           },
         });
-        const startData = JSON.parse(startResponse.body);
+        JSON.parse(startResponse.body);
 
         // Select rental
         const response = await app.inject({
@@ -502,8 +504,8 @@ describe('Check-in Flow', () => {
       runIfDbAvailable(async () => {
         // Create a clean room
         const roomResult = await query<{ id: string; number: string }>(
-          `INSERT INTO rooms (number, type, status, floor)
-         VALUES ('200', 'STANDARD', 'CLEAN', 1)
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+         VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
          RETURNING id, number`
         );
         const roomId = roomResult.rows[0]!.id;
@@ -556,7 +558,7 @@ describe('Check-in Flow', () => {
 
         // Verify room is NOT yet assigned/occupied (that happens after agreement signing)
         const roomCheck = await query<{ assigned_to_customer_id: string | null; status: string }>(
-          `SELECT assigned_to_customer_id, status FROM rooms WHERE id = $1`,
+          `SELECT assigned_to_customer_id, status FROM inventory_resources WHERE id = $1`,
           [roomId]
         );
         expect(roomCheck.rows[0]!.assigned_to_customer_id).toBeNull();
@@ -585,16 +587,16 @@ describe('Check-in Flow', () => {
       'should require and then apply differential payment for higher-tier room switch',
       runIfDbAvailable(async () => {
         const currentRoomResult = await query<{ id: string }>(
-          `INSERT INTO rooms (number, type, status, floor, assigned_to_customer_id)
-           VALUES ('200', 'STANDARD', 'OCCUPIED', 1, $1)
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor, assigned_to_customer_id)
+           VALUES ('room', '200', 'STANDARD', 'OCCUPIED', 1, $1)
            RETURNING id`,
           [customerId]
         );
         const currentRoomId = currentRoomResult.rows[0]!.id;
 
         const targetRoomResult = await query<{ id: string }>(
-          `INSERT INTO rooms (number, type, status, floor)
-           VALUES ('201', 'SPECIAL', 'CLEAN', 1)
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+           VALUES ('room', '201', 'SPECIAL', 'CLEAN', 1)
            RETURNING id`
         );
         const targetRoomId = targetRoomResult.rows[0]!.id;
@@ -608,7 +610,7 @@ describe('Check-in Flow', () => {
         const visitId = visitResult.rows[0]!.id;
 
         const blockResult = await query<{ id: string }>(
-          `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id)
+          `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
            VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '5 hours', 'STANDARD', $2)
            RETURNING id`,
           [visitId, currentRoomId]
@@ -654,45 +656,44 @@ describe('Check-in Flow', () => {
         expect(paidBody.newRentalType).toBe('SPECIAL');
 
         const oldRoomCheck = await query<{ status: string; assigned_to_customer_id: string | null }>(
-          `SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`,
+          `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [currentRoomId]
         );
         expect(oldRoomCheck.rows[0]!.status).toBe('DIRTY');
         expect(oldRoomCheck.rows[0]!.assigned_to_customer_id).toBeNull();
 
         const newRoomCheck = await query<{ status: string; assigned_to_customer_id: string | null }>(
-          `SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`,
+          `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [targetRoomId]
         );
         expect(newRoomCheck.rows[0]!.status).toBe('OCCUPIED');
         expect(newRoomCheck.rows[0]!.assigned_to_customer_id).toBe(customerId);
 
         const blockCheck = await query<{
-          room_id: string | null;
-          locker_id: string | null;
+          resource_id: string | null;
           rental_type: string;
-        }>(`SELECT room_id, locker_id, rental_type::text FROM checkin_blocks WHERE id = $1`, [blockId]);
-        expect(blockCheck.rows[0]!.room_id).toBe(targetRoomId);
-        expect(blockCheck.rows[0]!.locker_id).toBeNull();
+        }>(`SELECT resource_id, rental_type::text FROM checkin_blocks WHERE id = $1`, [blockId]);
+        expect(blockCheck.rows[0]!.resource_id).toBe(targetRoomId);
         expect(blockCheck.rows[0]!.rental_type).toBe('SPECIAL');
 
         const chargeCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM charges
-           WHERE visit_id = $1 AND checkin_block_id = $2 AND type = 'UPGRADE_FEE'`,
-          [visitId, blockId]
+           FROM order_line_items oli
+           JOIN orders o ON o.id = oli.order_id
+           WHERE o.quote_json->>'checkinBlockId' = $1 AND oli.kind = 'UPGRADE'`,
+          [blockId]
         );
-        expect(parseInt(chargeCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(chargeCheck.rows[0]!.count, 10)).toBe(1);
 
         const paidIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM payment_intents
+           FROM orders
            WHERE status = 'PAID'
              AND quote_json->>'type' = 'SWITCH_UPCHARGE'
              AND quote_json->>'checkinBlockId' = $1`,
           [blockId]
         );
-        expect(parseInt(paidIntentCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(paidIntentCheck.rows[0]!.count, 10)).toBe(1);
       })
     );
 
@@ -700,16 +701,16 @@ describe('Check-in Flow', () => {
       'should reject switch when credit is declined and keep current assignment',
       runIfDbAvailable(async () => {
         const currentRoomResult = await query<{ id: string }>(
-          `INSERT INTO rooms (number, type, status, floor, assigned_to_customer_id)
-           VALUES ('202', 'STANDARD', 'OCCUPIED', 1, $1)
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor, assigned_to_customer_id)
+           VALUES ('room', '202', 'STANDARD', 'OCCUPIED', 1, $1)
            RETURNING id`,
           [customerId]
         );
         const currentRoomId = currentRoomResult.rows[0]!.id;
 
         const targetRoomResult = await query<{ id: string }>(
-          `INSERT INTO rooms (number, type, status, floor)
-           VALUES ('201', 'SPECIAL', 'CLEAN', 1)
+          `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+           VALUES ('room', '201', 'SPECIAL', 'CLEAN', 1)
            RETURNING id`
         );
         const targetRoomId = targetRoomResult.rows[0]!.id;
@@ -723,7 +724,7 @@ describe('Check-in Flow', () => {
         const visitId = visitResult.rows[0]!.id;
 
         const blockResult = await query<{ id: string }>(
-          `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id)
+          `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
            VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '5 hours', 'STANDARD', $2)
            RETURNING id`,
           [visitId, currentRoomId]
@@ -750,43 +751,44 @@ describe('Check-in Flow', () => {
         expect(declineBody.error).toBe('Card declined at register');
 
         const oldRoomCheck = await query<{ status: string; assigned_to_customer_id: string | null }>(
-          `SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`,
+          `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [currentRoomId]
         );
         expect(oldRoomCheck.rows[0]!.status).toBe('OCCUPIED');
         expect(oldRoomCheck.rows[0]!.assigned_to_customer_id).toBe(customerId);
 
         const newRoomCheck = await query<{ status: string; assigned_to_customer_id: string | null }>(
-          `SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`,
+          `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [targetRoomId]
         );
         expect(newRoomCheck.rows[0]!.status).toBe('CLEAN');
         expect(newRoomCheck.rows[0]!.assigned_to_customer_id).toBeNull();
 
-        const blockCheck = await query<{ room_id: string | null; rental_type: string }>(
-          `SELECT room_id, rental_type::text FROM checkin_blocks WHERE id = $1`,
+        const blockCheck = await query<{ resource_id: string | null; rental_type: string }>(
+          `SELECT resource_id, rental_type::text FROM checkin_blocks WHERE id = $1`,
           [blockId]
         );
-        expect(blockCheck.rows[0]!.room_id).toBe(currentRoomId);
+        expect(blockCheck.rows[0]!.resource_id).toBe(currentRoomId);
         expect(blockCheck.rows[0]!.rental_type).toBe('STANDARD');
 
         const chargeCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM charges
-           WHERE visit_id = $1 AND checkin_block_id = $2 AND type = 'UPGRADE_FEE'`,
-          [visitId, blockId]
+           FROM order_line_items oli
+           JOIN orders o ON o.id = oli.order_id
+           WHERE o.quote_json->>'checkinBlockId' = $1 AND oli.kind = 'UPGRADE'`,
+          [blockId]
         );
-        expect(parseInt(chargeCheck.rows[0]!.count, 10)).toBe(0);
+        expect(Number.parseInt(chargeCheck.rows[0]!.count, 10)).toBe(0);
 
         const cancelledIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
-           FROM payment_intents
-           WHERE status = 'CANCELLED'
+           FROM orders
+           WHERE status = 'CANCELED'
              AND quote_json->>'type' = 'SWITCH_UPCHARGE'
              AND quote_json->>'checkinBlockId' = $1`,
           [blockId]
         );
-        expect(parseInt(cancelledIntentCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(cancelledIntentCheck.rows[0]!.count, 10)).toBe(1);
       })
     );
   });
@@ -832,9 +834,9 @@ describe('Check-in Flow', () => {
 
         expect(response1.statusCode).toBe(200);
         const data1 = JSON.parse(response1.body);
-        expect(data1.paymentIntentId).toBeDefined();
+        expect(data1.orderId).toBeDefined();
         // Amount might be returned as string from database, convert to number
-        const amount = typeof data1.amount === 'string' ? parseFloat(data1.amount) : data1.amount;
+        const amount = typeof data1.amount === 'string' ? Number.parseFloat(data1.amount) : data1.amount;
         expect(amount).toBeGreaterThan(0);
         expect(data1.quote).toBeDefined();
         expect(data1.quote.total).toBe(amount);
@@ -852,10 +854,10 @@ describe('Check-in Flow', () => {
           [laneId]
         );
         const dueCount = await query<{ count: string }>(
-          `SELECT COUNT(*)::text as count FROM payment_intents WHERE lane_session_id = $1 AND status = 'DUE'`,
+          `SELECT COUNT(*)::text as count FROM orders WHERE lane_session_id = $1 AND status = 'OPEN'`,
           [laneSession.rows[0]!.id]
         );
-        expect(parseInt(dueCount.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(dueCount.rows[0]!.count, 10)).toBe(1);
       })
     );
 
@@ -907,8 +909,8 @@ describe('Check-in Flow', () => {
           expect(last!.customerName).toBe('Test Customer');
           expect(last!.customerPrimaryLanguage).toBe('ES');
           expect(last!.customerDobMonthDay).toBe('01/15');
-          expect(last!.paymentIntentId).toBeTruthy();
-          expect(last!.paymentStatus).toBe('DUE');
+          expect(last!.orderId).toBeTruthy();
+          expect(last!.orderStatus).toBe('OPEN');
           expect(typeof last!.paymentTotal).toBe('number');
 
           expect(typeof last!.flowVersion).toBe('number');
@@ -942,11 +944,12 @@ describe('Check-in Flow', () => {
         });
 
         const intentResult = await query<{ id: string }>(
-          `INSERT INTO payment_intents (lane_session_id, amount, status, quote_json)
+          `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, currency, status, quote_json)
          VALUES (
            (SELECT id FROM lane_sessions WHERE lane_id = $1 ORDER BY created_at DESC LIMIT 1),
-           50.00,
-           'DUE',
+           50.00, 0, 0, 0, 50.00,
+           'USD',
+           'OPEN',
            '{"total": 50, "lineItems": []}'
          )
          RETURNING id`,
@@ -969,7 +972,7 @@ describe('Check-in Flow', () => {
 
         // Verify in database
         const checkResult = await query<{ status: string }>(
-          `SELECT status FROM payment_intents WHERE id = $1`,
+          `SELECT status FROM orders WHERE id = $1`,
           [intentId]
         );
         expect(checkResult.rows[0]!.status).toBe('PAID');

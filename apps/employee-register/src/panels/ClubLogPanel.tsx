@@ -7,11 +7,7 @@ import { DataTable, type DataTableColumn } from '../components/DataTable';
 
 const DOMAIN_OPTIONS = ['', 'HR', 'SALES', 'CHECKIN', 'CHECKOUT', 'INVENTORY', 'ADMIN'];
 
-const inputStyle: React.CSSProperties = {
-  backgroundColor: 'var(--color-surface-input)',
-  borderColor: 'var(--color-border-default)',
-  color: 'var(--color-text-primary)',
-};
+const INPUT_CLASSES = 'bg-(--color-surface-input) border-(--color-border-default) text-(--color-text-primary)';
 
 /* ── Helpers ────────────────────────────────────────── */
 
@@ -87,7 +83,7 @@ export function ClubLogPanel() {
       header: 'Time',
       width: '160px',
       render: (it) => (
-        <span className="tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="tabular-nums text-(--color-text-secondary)">
           {new Date(it.occurredAt).toLocaleString()}
         </span>
       ),
@@ -101,14 +97,14 @@ export function ClubLogPanel() {
       key: 'type',
       header: 'Type',
       render: (it) => (
-        <span style={{ color: 'var(--color-text-secondary)' }}>{humanizeEventType(it.eventType)}</span>
+        <span className="text-(--color-text-secondary)">{humanizeEventType(it.eventType)}</span>
       ),
     },
     {
       key: 'staff',
       header: 'Staff',
       render: (it) => (
-        <span style={{ color: 'var(--color-text-secondary)' }}>{it.staffName ?? '—'}</span>
+        <span className="text-(--color-text-secondary)">{it.staffName ?? '—'}</span>
       ),
     },
     {
@@ -118,14 +114,13 @@ export function ClubLogPanel() {
         it.customerId && it.customerName ? (
           <button
             type="button"
-            className="text-sm font-bold hover:underline"
-            style={{ color: 'var(--color-accent-primary)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+            className="text-sm font-bold hover:underline text-(--color-accent-primary) bg-transparent border-none p-0 cursor-pointer"
             onClick={() => openCustomerAccount(it.customerId!, it.customerName!, { autoStart: false, authToken: token })}
           >
             {it.customerName}
           </button>
         ) : (
-          <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+          <span className="text-(--color-text-muted)">—</span>
         )
       ),
     },
@@ -136,7 +131,7 @@ export function ClubLogPanel() {
       align: 'right',
       numeric: true,
       render: (it) => (
-        <span className="font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+        <span className="font-semibold text-(--color-text-primary)">
           {it.amount == null ? '' : formatCurrency(it.amount)}
         </span>
       ),
@@ -145,7 +140,7 @@ export function ClubLogPanel() {
       key: 'summary',
       header: 'Summary',
       render: (it) => (
-        <span className="block max-w-[420px] truncate" style={{ color: 'var(--color-text-secondary)' }}>
+        <span className="block max-w-[420px] truncate text-(--color-text-secondary)">
           {it.summary ?? ''}
         </span>
       ),
@@ -154,25 +149,22 @@ export function ClubLogPanel() {
 
   return (
     <div
-      className="flex h-full flex-col gap-4 rounded-xl border p-5"
-      style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}
+      className="flex h-full flex-col gap-4 rounded-xl border p-5 bg-(--color-surface-raised) border-(--color-border-default)"
     >
       {/* Filter bar */}
       <div
-        className="rounded-lg border p-4"
-        style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border-subtle)' }}
+        className="rounded-lg border p-4 bg-(--color-surface-overlay) border-(--color-border-subtle)"
       >
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[220px] flex-1">
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }} htmlFor="club-log-search">
+            <label className="mb-1.5 block text-sm font-medium text-(--color-text-secondary)" htmlFor="club-log-search">
               Search
             </label>
             <input
               id="club-log-search"
               name="search"
               autoComplete="off"
-              className="h-11 w-full rounded-lg border px-4 text-sm"
-              style={inputStyle}
+              className={`h-11 w-full rounded-lg border px-4 text-sm ${INPUT_CLASSES}`}
               value={q}
               placeholder="customer name, order id, visit id…"
               onChange={(e) => setQ(e.target.value)}
@@ -180,14 +172,13 @@ export function ClubLogPanel() {
           </div>
 
           <div className="w-[160px]">
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }} htmlFor="club-log-domain">
+            <label className="mb-1.5 block text-sm font-medium text-(--color-text-secondary)" htmlFor="club-log-domain">
               Domain
             </label>
             <select
               id="club-log-domain"
               name="domain"
-              className="h-11 w-full appearance-none rounded-lg border px-4 text-sm"
-              style={inputStyle}
+              className={`h-11 w-full appearance-none rounded-lg border px-4 text-sm ${INPUT_CLASSES}`}
               value={domain}
               onChange={(e) => setDomain(e.target.value)}
             >
@@ -198,14 +189,13 @@ export function ClubLogPanel() {
           </div>
 
           <div className="w-[200px]">
-            <label className="mb-1.5 block text-sm font-medium" style={{ color: 'var(--color-text-secondary)' }} htmlFor="club-log-type">
+            <label className="mb-1.5 block text-sm font-medium text-(--color-text-secondary)" htmlFor="club-log-type">
               Event Type
             </label>
             <select
               id="club-log-type"
               name="eventType"
-              className="h-11 w-full appearance-none rounded-lg border px-4 text-sm"
-              style={inputStyle}
+              className={`h-11 w-full appearance-none rounded-lg border px-4 text-sm ${INPUT_CLASSES}`}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             >
@@ -242,7 +232,7 @@ export function ClubLogPanel() {
       </div>
 
       {/* Data table */}
-      <div className="flex-1 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--color-border-default)' }}>
+      <div className="flex-1 overflow-hidden rounded-xl border border-(--color-border-default)">
         <div className="h-full overflow-auto">
           <DataTable
             columns={columns}
@@ -260,7 +250,7 @@ export function ClubLogPanel() {
                 {loading ? 'Loading…' : 'Load more'}
               </Button>
             ) : (
-              <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+              <span className="text-sm text-(--color-text-muted)">
                 {loading ? 'Loading…' : 'End of stream'}
               </span>
             )}

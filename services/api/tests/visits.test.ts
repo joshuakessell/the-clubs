@@ -56,7 +56,7 @@ describe('Visit and Renewal Flows', () => {
       return;
     }
 
-    fastify = Fastify();
+    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     fastify.decorate('broadcaster', broadcaster);
 
@@ -93,9 +93,9 @@ describe('Visit and Renewal Flows', () => {
 
     // Insert test room with ON CONFLICT handling (handle number conflicts)
     await pool.query(
-      `INSERT INTO rooms (id, number, type, status, floor)
-       VALUES ($1, '200', 'STANDARD', 'CLEAN', 1)
-       ON CONFLICT (number) DO UPDATE SET id = EXCLUDED.id, type = EXCLUDED.type, status = EXCLUDED.status, floor = EXCLUDED.floor`,
+      `INSERT INTO inventory_resources (id, kind, number, tier, status, floor)
+       VALUES ($1, 'room', '200', 'STANDARD', 'CLEAN', 1)
+       ON CONFLICT (number) DO UPDATE SET id = EXCLUDED.id, tier = EXCLUDED.tier, status = EXCLUDED.status, floor = EXCLUDED.floor`,
       [testRoomId]
     );
   });
@@ -142,7 +142,7 @@ describe('Visit and Renewal Flows', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -174,7 +174,7 @@ describe('Visit and Renewal Flows', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -197,7 +197,7 @@ describe('Visit and Renewal Flows', () => {
         url: `/v1/visits/${visitId}/renew`,
         payload: {
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -232,7 +232,7 @@ describe('Visit and Renewal Flows', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 
@@ -247,7 +247,7 @@ describe('Visit and Renewal Flows', () => {
         url: `/v1/visits/${visitId}/renew`,
         payload: {
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
           renewalHours: 6,
         },
       });
@@ -262,7 +262,7 @@ describe('Visit and Renewal Flows', () => {
         url: `/v1/visits/${visitId}/renew`,
         payload: {
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
           renewalHours: 2,
         },
       });
@@ -282,7 +282,7 @@ describe('Visit and Renewal Flows', () => {
         url: `/v1/visits/${visitId}/renew`,
         payload: {
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
           renewalHours: 2,
         },
       });
@@ -303,7 +303,7 @@ describe('Visit and Renewal Flows', () => {
         payload: {
           customerId: testCustomerId,
           rentalType: 'STANDARD',
-          roomId: testRoomId,
+          resourceId: testRoomId,
         },
       });
 

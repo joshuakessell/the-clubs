@@ -52,11 +52,15 @@ export function useSessionGuard() {
 
     // Heartbeat: ping /auth/me every 90 seconds so a server restart is detected
     // quickly and the user is sent back to the lock screen automatically.
-    // Also fires immediately on mount to catch stale tokens right away.
     useEffect(() => {
         if (!session) return;
         const HEARTBEAT_MS = 90 * 1_000; // 90 seconds
-        void validateSession({ silent: true }); // fire immediately (silent to avoid UI flash)
+        // Skip the immediate fire when the token just changed (fresh login).
+        // The first effect already handles deferred validation for new tokens.
+        // Only fire immediately for re-mounts with an unchanged stored token.
+        if (prevTokenRef.current === session.sessionToken) {
+            void validateSession({ silent: true });
+        }
         const id = setInterval(() => void validateSession({ silent: true }), HEARTBEAT_MS);
         return () => clearInterval(id);
     }, [session?.sessionToken]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -66,18 +70,25 @@ export function useSessionGuard() {
         if (patchedRef.current) return;
         patchedRef.current = true;
 
-        const originalFetch = window.fetch;
+        const originalFetch = globalThis.fetch;
         let confirmationInFlight = false;
 
-        window.fetch = async function patchedFetch(
+        globalThis.fetch = async function patchedFetch(
             input: RequestInfo | URL,
             init?: RequestInit,
         ): Promise<Response> {
-            const response = await originalFetch.call(window, input, init);
+            const response = await originalFetch.call(globalThis, input, init);
 
             // Only intercept 401s on API calls (not third-party requests)
             if (response.status === 401) {
-                const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+                let url: string;
+                if (typeof input === 'string') {
+                    url = input;
+                } else if (input instanceof URL) {
+                    url = input.href;
+                } else {
+                    url = input.url;
+                }
                 const isApiCall = url.includes('/api/') || url.includes('/v1/');
                 const isExcluded = url.includes('/auth/login')
                     || url.includes('/auth/me')
@@ -91,7 +102,7 @@ export function useSessionGuard() {
                         // This prevents race conditions and transient 401s from
                         // kicking the user back to the lock screen.
                         try {
-                            const meRes = await originalFetch.call(window, getApiUrl('/api/v1/auth/me'), {
+                            const meRes = await originalFetch.call(globalThis, getApiUrl('/api/v1/auth/me'), {
                                 headers: { Authorization: `Bearer ${currentSession.sessionToken}` },
                             });
                             if (meRes.status === 401) {
@@ -114,7 +125,7 @@ export function useSessionGuard() {
         };
 
         return () => {
-            window.fetch = originalFetch;
+            globalThis.fetch = originalFetch;
             patchedRef.current = false;
         };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps

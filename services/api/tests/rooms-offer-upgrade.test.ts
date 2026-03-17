@@ -86,7 +86,7 @@ describe('Offer Upgrade API flow', () => {
     await truncateAllTables(pool.query.bind(pool));
     events = [];
 
-    app = Fastify({ logger: false });
+    app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     const originalBroadcast = broadcaster.broadcast.bind(broadcaster);
     broadcaster.broadcast = (evt: any) => {
@@ -112,13 +112,13 @@ describe('Offer Upgrade API flow', () => {
     if (!dbAvailable) return;
     // Two DOUBLE rooms
     const r216 = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('216', 'DOUBLE', 'CLEAN', 2)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '216', 'DOUBLE', 'CLEAN', 2)
        RETURNING id`
     );
     const r218 = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('218', 'DOUBLE', 'CLEAN', 2)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '218', 'DOUBLE', 'CLEAN', 2)
        RETURNING id`
     );
 
@@ -140,7 +140,7 @@ describe('Offer Upgrade API flow', () => {
 
     // Reserve room 216 with OFFERED waitlist entry
     await pool.query(
-      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, room_id)
+      `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, resource_id)
        VALUES ($1, $2, 'DOUBLE', 'STANDARD', 'OFFERED', NOW(), $3)`,
       [visit.rows[0]!.id, block.rows[0]!.id, r216.rows[0]!.id]
     );
@@ -158,13 +158,13 @@ describe('Offer Upgrade API flow', () => {
     if (!dbAvailable) return;
     // Two DOUBLE rooms
     const r216 = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('216', 'DOUBLE', 'CLEAN', 2)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '216', 'DOUBLE', 'CLEAN', 2)
        RETURNING id`
     );
     const r218 = await pool.query<{ id: string }>(
-      `INSERT INTO rooms (number, type, status, floor)
-       VALUES ('218', 'DOUBLE', 'CLEAN', 2)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor)
+       VALUES ('room', '218', 'DOUBLE', 'CLEAN', 2)
        RETURNING id`
     );
 
@@ -201,7 +201,7 @@ describe('Offer Upgrade API flow', () => {
     const offer1 = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${w1.rows[0]!.id}/offer`,
-      payload: { roomId: r218.rows[0]!.id },
+      payload: { resourceId: r218.rows[0]!.id },
     });
     expect(offer1.statusCode).toBe(200);
     const offerBody = JSON.parse(offer1.body);
@@ -217,7 +217,7 @@ describe('Offer Upgrade API flow', () => {
     const offer2 = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${w2.rows[0]!.id}/offer`,
-      payload: { roomId: r218.rows[0]!.id },
+      payload: { resourceId: r218.rows[0]!.id },
     });
     expect(offer2.statusCode).toBe(409);
 
@@ -225,7 +225,7 @@ describe('Offer Upgrade API flow', () => {
     const offer3 = await app.inject({
       method: 'POST',
       url: `/v1/waitlist/${w2.rows[0]!.id}/offer`,
-      payload: { roomId: r216.rows[0]!.id },
+      payload: { resourceId: r216.rows[0]!.id },
     });
     expect(offer3.statusCode).toBe(200);
     const offer3Body = JSON.parse(offer3.body);

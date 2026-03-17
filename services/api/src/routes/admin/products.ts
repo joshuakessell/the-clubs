@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
 import { idempotencyKey } from '../../middleware/idempotency';
-import { query } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -61,8 +62,31 @@ function formatRow(r: ProductRow) {
     category: r.category,
     isActive: r.is_active,
     sortOrder: toNumber(r.sort_order),
-    createdAt: r.created_at.toISOString(),
-    updatedAt: r.updated_at.toISOString(),
+    createdAt: new Date(r.created_at).toISOString(),
+    updatedAt: new Date(r.updated_at).toISOString(),
+  };
+}
+
+// Adapter for dynamic SQL
+function toQueryable() {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1], 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await db.execute(built);
+      return { rows: result.rows as T[], rowCount: result.rowCount ?? 0 };
+    },
   };
 }
 
@@ -70,9 +94,6 @@ function formatRow(r: ProductRow) {
 // Route registration
 // ---------------------------------------------------------------------------
 export function registerAdminProductRoutes(fastify: FastifyInstance): void {
-  /**
-   * GET /v1/admin/products
-   */
   fastify.get<{ Querystring: z.input<typeof ListQuerySchema> }>(
     '/v1/admin/products',
     { preHandler: [requireAuth] },
@@ -105,8 +126,9 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
       try {
-        const result = await query<ProductRow>(
-          `SELECT * FROM products ${where} ORDER BY sort_order ASC, name ASC`,
+        const qClient = toQueryable();
+        const result = await qClient.query<ProductRow>(
+          `SELECT id, sku, name, price, category, is_active, sort_order, created_at, updated_at FROM products ${where} ORDER BY sort_order ASC, name ASC`,
           params
         );
         return reply.send({ products: result.rows.map(formatRow) });
@@ -117,25 +139,25 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * POST /v1/admin/products
-   */
   fastify.post(
     '/v1/admin/products',
-    { schema: { body: CreateProductSchema }, preHandler: [requireAuth, idempotencyKey] },
+    { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
       const body = request.body as z.infer<typeof CreateProductSchema>;
 
       try {
-        const result = await query<ProductRow>(
-          `INSERT INTO products (name, price, sku, category, sort_order)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING *`,
-          [body.name, body.price, body.sku ?? null, body.category, body.sortOrder]
+        const result = await db.execute<ProductRow>(
+          sql`INSERT INTO products (name, price, sku, category, sort_order)
+           VALUES (${body.name}, ${body.price}, ${body.sku ?? null}, ${body.category ?? 'RETAIL'}, ${body.sortOrder ?? 0})
+           RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`
         );
-        return reply.status(201).send({ product: formatRow(result.rows[0]!) });
+        const row = result.rows[0];
+        if (!row) {
+          return reply.status(500).send({ error: 'Failed to create product' });
+        }
+        return reply.status(201).send({ product: formatRow(row) });
       } catch (error) {
         request.log.error(error, 'Failed to create product');
         return reply.status(500).send({ error: 'Internal server error' });
@@ -143,12 +165,9 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * PATCH /v1/admin/products/:id
-   */
   fastify.patch<{ Params: { id: string } }>(
     '/v1/admin/products/:id',
-    { schema: { body: UpdateProductSchema }, preHandler: [requireAuth] },
+    { preHandler: [requireAuth] },
     async (request, reply) => {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
@@ -191,14 +210,16 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       params.push(request.params.id);
 
       try {
-        const result = await query<ProductRow>(
-          `UPDATE products SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+        const qClient = toQueryable();
+        const result = await qClient.query<ProductRow>(
+          `UPDATE products SET ${sets.join(', ')} WHERE id = $${idx} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`,
           params
         );
-        if (result.rows.length === 0) {
+        const row = result.rows[0];
+        if (!row) {
           return reply.status(404).send({ error: 'Product not found' });
         }
-        return reply.send({ product: formatRow(result.rows[0]!) });
+        return reply.send({ product: formatRow(row) });
       } catch (error) {
         request.log.error(error, 'Failed to update product');
         return reply.status(500).send({ error: 'Internal server error' });
@@ -206,9 +227,6 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
     }
   );
 
-  /**
-   * DELETE /v1/admin/products/:id — soft delete
-   */
   fastify.delete<{ Params: { id: string } }>(
     '/v1/admin/products/:id',
     { preHandler: [requireAuth] },
@@ -216,14 +234,14 @@ export function registerAdminProductRoutes(fastify: FastifyInstance): void {
       if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
 
       try {
-        const result = await query<ProductRow>(
-          `UPDATE products SET is_active = FALSE, updated_at = now() WHERE id = $1 RETURNING *`,
-          [request.params.id]
+        const result = await db.execute<ProductRow>(
+          sql`UPDATE products SET is_active = FALSE, updated_at = now() WHERE id = ${request.params.id} RETURNING id, sku, name, price, category, is_active, sort_order, created_at, updated_at`
         );
-        if (result.rows.length === 0) {
+        const row = result.rows[0];
+        if (!row) {
           return reply.status(404).send({ error: 'Product not found' });
         }
-        return reply.send({ product: formatRow(result.rows[0]!) });
+        return reply.send({ product: formatRow(row) });
       } catch (error) {
         request.log.error(error, 'Failed to deactivate product');
         return reply.status(500).send({ error: 'Internal server error' });

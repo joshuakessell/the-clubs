@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import type { Broadcaster } from '../realtime/broadcaster';
 
 declare module 'fastify' {
@@ -21,8 +22,8 @@ type ExpiredWaitlistRow = {
  * Returns the number of entries expired.
  */
 export async function expireWaitlistEntries(fastify: FastifyInstance): Promise<number> {
-  const result = await query<ExpiredWaitlistRow>(
-    `
+  const result = await db.execute<ExpiredWaitlistRow>(
+    sql`
     UPDATE waitlist w
     SET status = 'EXPIRED',
         updated_at = NOW()

@@ -1,0 +1,21 @@
+{
+  "version": "52.0.0",
+  "files": {
+    "33a97198ecdae01635f721fd40fe2f2c6ab8cd7db179f7034ec6d6be48f223ed": {
+      "displayName": "the-clubs-api Template",
+      "source": {
+        "path": "the-clubs-api.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "146469921099-us-east-1-60a75a93": {
+          "bucketName": "cdk-hnb659fds-assets-146469921099-us-east-1",
+          "objectKey": "33a97198ecdae01635f721fd40fe2f2c6ab8cd7db179f7034ec6d6be48f223ed.json",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::146469921099:role/cdk-hnb659fds-file-publishing-role-146469921099-us-east-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

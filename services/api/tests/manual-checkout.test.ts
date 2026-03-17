@@ -34,7 +34,7 @@ vi.mock('../src/auth/middleware.js', async () => {
   return {
     requireAuth: async (request: any, _reply: any) => {
       const authHeader = request.headers.authorization || request.headers.Authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      if (!authHeader?.startsWith('Bearer ')) {
         const staff = await ensureDefaultStaff();
         request.staff = { staffId: staff.staffId, name: staff.name, role: staff.role };
         return;
@@ -107,7 +107,7 @@ describe('Manual Checkout APIs', () => {
     } else {
       config = {
         host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
+        port: Number.parseInt(process.env.DB_PORT || '5432', 10),
         database: process.env.DB_NAME || 'club_operations',
         user: process.env.DB_USER || 'clubops',
         password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -134,8 +134,8 @@ describe('Manual Checkout APIs', () => {
     testCustomerId = customerResult.rows[0]!.id;
 
     const roomResult = await pool.query(
-      `INSERT INTO rooms (number, type, status, floor, assigned_to_customer_id)
-       VALUES ('200', 'STANDARD', 'OCCUPIED', 1, $1)
+      `INSERT INTO inventory_resources (kind, number, tier, status, floor, assigned_to_customer_id)
+       VALUES ('room', '200', 'STANDARD', 'OCCUPIED', 1, $1)
        RETURNING id`,
       [testCustomerId]
     );
@@ -165,7 +165,7 @@ describe('Manual Checkout APIs', () => {
 
     // Make scheduled checkout ~95 minutes in the past (90+ => $35 + ban)
     const blockResult = await pool.query(
-      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, room_id)
+      `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '8 hours', NOW() - INTERVAL '95 minutes', 'STANDARD', $2)
        RETURNING id`,
       [testVisitId, testRoomId]
@@ -196,7 +196,7 @@ describe('Manual Checkout APIs', () => {
     // Reset for each test
     await pool.query(`UPDATE visits SET ended_at = NULL WHERE id = $1`, [testVisitId]);
     await pool.query(
-      `UPDATE rooms SET status = 'OCCUPIED', assigned_to_customer_id = $1 WHERE id = $2`,
+      `UPDATE inventory_resources SET status = 'OCCUPIED', assigned_to_customer_id = $1 WHERE id = $2`,
       [testCustomerId, testRoomId]
     );
     await pool.query(`UPDATE customers SET past_due_balance = 0, banned_until = NULL WHERE id = $1`, [
@@ -211,7 +211,7 @@ describe('Manual Checkout APIs', () => {
       [testCustomerId, testBlockId]
     );
 
-    fastify = Fastify();
+    fastify = Fastify({ ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     const broadcaster = createBroadcaster();
     fastify.decorate('broadcaster', broadcaster);
     await fastify.register(checkoutRoutes);
@@ -279,7 +279,7 @@ describe('Manual Checkout APIs', () => {
     expect(visit.rows[0]!.ended_at).not.toBeNull();
 
     const room = await pool.query<{ status: string; assigned_to_customer_id: string | null }>(
-      `SELECT status, assigned_to_customer_id FROM rooms WHERE id = $1`,
+      `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
       [testRoomId]
     );
     expect(room.rows[0]!.status).toBe('DIRTY');
@@ -289,7 +289,7 @@ describe('Manual Checkout APIs', () => {
       past_due_balance: string;
       banned_until: Date | null;
     }>(`SELECT past_due_balance, banned_until FROM customers WHERE id = $1`, [testCustomerId]);
-    expect(parseFloat(String(customer.rows[0]!.past_due_balance))).toBe(30);
+    expect(Number.parseFloat(String(customer.rows[0]!.past_due_balance))).toBe(30);
     // Ban is applied immediately for 90+ minutes late; manager may later lift/adjust it.
     expect(customer.rows[0]!.banned_until).not.toBeNull();
 
@@ -305,7 +305,7 @@ describe('Manual Checkout APIs', () => {
     );
     expect(lateEvents.rows.length).toBe(1);
     expect(lateEvents.rows[0]!.checkout_request_id).toBeNull();
-    expect(parseFloat(String(lateEvents.rows[0]!.fee_amount))).toBe(30);
+    expect(Number.parseFloat(String(lateEvents.rows[0]!.fee_amount))).toBe(30);
 
     const second = await fastify.inject({
       method: 'POST',
@@ -321,7 +321,7 @@ describe('Manual Checkout APIs', () => {
       `SELECT past_due_balance FROM customers WHERE id = $1`,
       [testCustomerId]
     );
-    expect(parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
+    expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
 
     const lateEventsAfter = await pool.query<{ id: string }>(
       `SELECT id FROM late_checkout_events WHERE occupancy_id = $1`,

@@ -1,6 +1,6 @@
-import type { transaction } from '../db';
+import type pg from 'pg';
 
-export type PoolClient = Parameters<Parameters<typeof transaction>[0]>[0];
+export type PoolClient = pg.PoolClient;
 
 export type RoomRentalType = 'STANDARD' | 'DOUBLE' | 'SPECIAL';
 
@@ -22,7 +22,7 @@ export interface LaneSessionRow {
   assigned_resource_type: string | null;
   price_quote_json: unknown;
   disclaimers_ack_json: unknown;
-  payment_intent_id: string | null;
+  order_id: string | null;
   agreement_bypass_pending?: boolean;
   agreement_signed_method?: string | null;
   membership_purchase_intent?: 'PURCHASE' | 'RENEW' | null;
@@ -71,34 +71,43 @@ export interface CustomerRow {
   id_scan_value?: string | null;
 }
 
-export interface RoomRow {
+export interface ResourceRow {
   id: string;
   number: string;
-  type: string;
+  kind: string;
+  tier?: string;
   status: string;
   assigned_to_customer_id: string | null;
 }
 
-export interface LockerRow {
-  id: string;
-  number: string;
-  status: string;
-  assigned_to_customer_id: string | null;
-}
+/** @deprecated Use ResourceRow instead */
+export type RoomRow = ResourceRow;
+/** @deprecated Use ResourceRow instead */
+export type LockerRow = ResourceRow;
 
-export interface PaymentIntentRow {
+export interface OrderRow {
   id: string;
-  lane_session_id: string;
-  amount: number | string;
+  lane_session_id: string | null;
+  visit_id: string | null;
+  subtotal: number | string;
+  discount: number | string;
+  tax: number | string;
   tip?: number | null;
+  total: number | string;
   status: string;
   quote_json: unknown;
-  payment_method?: string;
-  failure_reason?: string;
-  failure_at?: Date | null;
-  register_number?: number | null;
+  payment_method: string | null;
+  split_cash_amount: number | null;
+  split_credit_amount: number | null;
+  error?: string | null;
   paid_by_staff_id?: string | null;
+  square_transaction_id: string | null;
+  paid_at?: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }
+
+
 
 /* ── Shared column-list constants ─────────────────────────────── */
 /*
@@ -114,7 +123,7 @@ export const LANE_SESSION_COLS = [
   'backup_rental_type', 'waitlist_requested_resource_number', 'waitlist_requested_resource_type',
   'assigned_resource_id', 'assigned_resource_type',
   'price_quote_json', 'disclaimers_ack_json',
-  'payment_intent_id', 'agreement_bypass_pending', 'agreement_signed_method',
+  'order_id', 'agreement_bypass_pending', 'agreement_signed_method',
   'membership_purchase_intent', 'membership_purchase_requested_at', 'membership_choice',
   'kiosk_acknowledged_at', 'checkin_mode', 'renewal_hours',
   'proposed_rental_type', 'proposed_by',
@@ -126,9 +135,4 @@ export const LANE_SESSION_COLS = [
   'created_at', 'updated_at',
 ].join(', ');
 
-export const PAYMENT_INTENT_COLS = [
-  'id', 'lane_session_id', 'amount', 'tip', 'status',
-  'quote_json', 'payment_method', 'failure_reason', 'failure_at',
-  'register_number', 'paid_by_staff_id',
-].join(', ');
-
+export const ORDER_COLS = "id, lane_session_id, subtotal, discount, tax, total, payment_method, split_cash_amount, split_credit_amount, square_transaction_id, paid_at, paid_by_staff_id, status, failure_reason AS error, quote_json, created_at, updated_at";

@@ -1,4 +1,4 @@
-import type { PoolClient, LaneSessionRow } from './types';
+import { type PoolClient, type LaneSessionRow, LANE_SESSION_COLS } from './types';
 import { HttpError } from '../errors/HttpError';
 
 /**
@@ -32,26 +32,28 @@ export async function resolveActiveSession(
   // If sessionId is given, try explicit lookup first.
   if (opts?.sessionId) {
     const byId = await client.query<LaneSessionRow>(
-      `SELECT * FROM lane_sessions WHERE id = $1 AND lane_id = $2${lock} LIMIT 1`,
+      `SELECT ${LANE_SESSION_COLS} FROM lane_sessions WHERE id = $1 AND lane_id = $2${lock} LIMIT 1`,
       [opts.sessionId, laneId],
     );
-    if (byId.rows.length > 0) return byId.rows[0]!;
+    const byIdRow = byId.rows[0];
+    if (byIdRow) return byIdRow;
   }
 
   // Fallback: most recent active session on the lane.
   const result = await client.query<LaneSessionRow>(
-    `SELECT * FROM lane_sessions
+    `SELECT ${LANE_SESSION_COLS} FROM lane_sessions
      WHERE lane_id = $1 AND status IN (${statuses})
      ORDER BY created_at DESC
      LIMIT 1${lock}`,
     [laneId],
   );
 
-  if (result.rows.length === 0) {
+  const row = result.rows[0];
+  if (!row) {
     throw new HttpError(404, 'No active session found');
   }
 
-  return result.rows[0]!;
+  return row;
 }
 
 /**
@@ -72,23 +74,22 @@ export async function validateAndLockResource(
   resourceRow: { id: string; number: string; status: string; assigned_to_customer_id: string | null; type?: string };
 }> {
   const { resourceType, resourceId, sessionId } = params;
-  const table = resourceType === 'room' ? 'rooms' : 'lockers';
+  const table = 'inventory_resources';
   const label = resourceType === 'room' ? 'Room' : 'Locker';
   const selectCols = resourceType === 'room'
-    ? 'id, number, type, status, assigned_to_customer_id'
+    ? 'id, number, tier as type, status, assigned_to_customer_id'
     : 'id, number, status, assigned_to_customer_id';
 
   // 1. Lock the resource row.
   const result = await client.query<{ id: string; number: string; type?: string; status: string; assigned_to_customer_id: string | null }>(
-    `SELECT ${selectCols} FROM ${table} WHERE id = $1 FOR UPDATE`,
-    [resourceId],
+    `SELECT ${selectCols} FROM ${table} WHERE id = $1 AND kind = $2 FOR UPDATE`,
+    [resourceId, resourceType],
   );
 
-  if (result.rows.length === 0) {
+  const resource = result.rows[0];
+  if (!resource) {
     throw new HttpError(404, `${label} not found`);
   }
-
-  const resource = result.rows[0]!;
 
   // 2. Room-specific: must be CLEAN.
   if (resourceType === 'room' && resource.status !== 'CLEAN') {

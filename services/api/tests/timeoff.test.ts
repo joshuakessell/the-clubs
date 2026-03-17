@@ -78,7 +78,7 @@ describe('Time off requests', () => {
       `CREATE UNIQUE INDEX IF NOT EXISTS idx_time_off_requests_employee_day ON time_off_requests(employee_id, day);`
     );
 
-    fastify = Fastify({ logger: false });
+    fastify = Fastify({ logger: { level: 'error' }, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     await fastify.register(timeoffRoutes);
     await fastify.ready();
   });

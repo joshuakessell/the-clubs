@@ -1,4 +1,4 @@
-import { useTransition } from 'react';
+import { useTransition, useEffect } from 'react';
 import { useCheckinFlow } from '../CheckinFlowContext';
 
 /**
@@ -27,9 +27,26 @@ export function WaitlistDisclaimerStep() {
     });
   };
 
+  /**
+   * Fast-forward bypass: if the customer already acked the waitlist
+   * disclaimer during a previous pass (stored in backend JSON and
+   * emitted via sp), we automatically skip this step and advance straight
+   * to payment without stalling the employee.
+   */
+  useEffect(() => {
+    if (sp.waitlistDisclaimerAck) {
+      sendFlowCommand({ type: 'SET_STEP', payload: { step: 'PAYMENT' } }).catch(console.error);
+    }
+  }, [sp.waitlistDisclaimerAck, sendFlowCommand]);
+
+  // If we are auto-forwarding, return null to avoid flash of content
+  if (sp.waitlistDisclaimerAck) {
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+      <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
         Waitlist Disclaimer
       </h3>
 
@@ -49,10 +66,10 @@ export function WaitlistDisclaimerStep() {
         </div>
 
         <div className="text-center">
-          <p className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+          <p className="text-sm font-semibold text-(--color-text-primary)">
             Waiting for customer acknowledgment…
           </p>
-          <p className="mt-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="mt-1 text-xs text-(--color-text-muted)">
             The customer is reviewing the waitlist procedures on the kiosk.
           </p>
         </div>
@@ -66,31 +83,29 @@ export function WaitlistDisclaimerStep() {
           borderColor: 'color-mix(in oklch, var(--color-status-warning) 15%, transparent)',
         }}
       >
-        <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--color-status-warning)' }}>
+        <p className="text-xs font-bold uppercase tracking-wider mb-2 text-(--color-status-warning)">
           Customer is being told:
         </p>
-        <ul className="space-y-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+        <ul className="space-y-1.5 text-xs text-(--color-text-secondary)">
           <li className="flex gap-2">
-            <span style={{ color: 'var(--color-status-warning)' }}>1.</span>
+            <span className="text-(--color-status-warning)">1.</span>
             They will use a {backupType} while they wait for {desiredType}
           </li>
           <li className="flex gap-2">
-            <span style={{ color: 'var(--color-status-warning)' }}>2.</span>
+            <span className="text-(--color-status-warning)">2.</span>
             They will be notified when their desired room becomes available
           </li>
           <li className="flex gap-2">
-            <span style={{ color: 'var(--color-status-warning)' }}>3.</span>
+            <span className="text-(--color-status-warning)">3.</span>
             They can upgrade by paying the price difference at the front desk
           </li>
         </ul>
       </div>
 
-      {/* Back button */}
       <button
         disabled={loading}
         onClick={() => void handleBack()}
-        className="self-start text-xs font-semibold"
-        style={{ color: 'var(--color-text-muted)' }}
+        className="self-start text-xs font-semibold text-(--color-text-muted)"
       >
         ← Back to Backup Selection
       </button>

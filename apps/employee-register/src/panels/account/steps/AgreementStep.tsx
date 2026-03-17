@@ -12,7 +12,7 @@ export function AgreementStep() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h3 className="text-sm font-bold" style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}>
+      <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
         Liability Agreement
       </h3>
 
@@ -34,7 +34,7 @@ export function AgreementStep() {
 
       {signed && (
         <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: 'color-mix(in oklch, var(--color-status-success) 5%, transparent)', borderColor: 'color-mix(in oklch, var(--color-status-success) 20%, transparent)' }}>
-          <p className="text-xs font-medium" style={{ color: 'var(--color-status-success)' }}>
+          <p className="text-xs font-medium text-(--color-status-success)">
             Agreement signed. Proceeding to room assignment…
           </p>
         </div>

@@ -7,9 +7,37 @@ import { idempotencyKey } from '../../middleware/idempotency';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { CheckinScanBodySchema } from '../../checkin/schemas';
 import { getHttpError } from '../../checkin/utils';
-import { transaction } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { processCheckinScan } from '../../services/checkin/scanService';
 import { processScanId } from '../../services/checkin/scanIdService';
+import { type DrizzleTx } from '../../db';
+
+/**
+ * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
+ * expected by scanIdService.processScanId.
+ */
+function toQueryable(tx: DrizzleTx) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
 
 export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
   /**
@@ -62,18 +90,16 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
       const body = parsed.data;
 
       try {
-        const result = await transaction(async (client) =>
-          processScanId(client, {
+        const result = await db.transaction(async (tx) =>
+          processScanId(toQueryable(tx) as any, {
             laneId: request.params.laneId,
             staffId: request.staff!.staffId,
             body,
           }),
         );
 
-        // Broadcast full session update
-        const { payload } = await transaction((client) =>
-          buildFullSessionUpdatedPayload(client, result.sessionId),
-        );
+        // buildFullSessionUpdatedPayload is already Drizzle-native — no transaction wrapper needed
+        const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
         fastify.broadcaster.broadcastSessionUpdated(payload, request.params.laneId);
 
         return reply.send(result);

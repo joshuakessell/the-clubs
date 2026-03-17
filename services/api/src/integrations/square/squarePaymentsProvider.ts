@@ -7,7 +7,8 @@ import type {
   RecordCashPaymentParams,
   RefundParams,
 } from '../contracts/providers';
-import { query } from '../../db';
+import { db } from '../../db';
+import { sql } from 'drizzle-orm';
 import { getSquareClient, getSquareLocationId } from './squareClient';
 import { logSquareEvent } from './squareLogger';
 import { mapSquarePayment } from './squarePaymentMapper';
@@ -54,11 +55,10 @@ async function persistExternalRef(
 ): Promise<void> {
   if (!internalPaymentId) return;
 
-  await query(
-    `INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id)
-     VALUES ('square', 'payment', $1, $2)
-     ON CONFLICT DO NOTHING`,
-    [internalPaymentId, externalId]
+  await db.execute(
+    sql`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id)
+     VALUES ('square', 'payment', ${internalPaymentId}, ${externalId})
+     ON CONFLICT DO NOTHING`
   );
 }
 

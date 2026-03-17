@@ -87,7 +87,7 @@ export type CustomerIdType = 'STATE_ID' | 'DRIVERS_LICENSE' | 'PASSPORT' | 'OTHE
  * Room status change event payload.
  */
 export interface RoomStatusChangedPayload {
-  roomId: string;
+  roomId: string;           // TODO: rename to resourceId once frontend consumers are updated
   previousStatus: RoomStatus;
   newStatus: RoomStatus;
   changedBy: string;
@@ -208,9 +208,9 @@ export interface SessionUpdatedPayload {
   pastDueBalance?: number;
   pastDueBlocked?: boolean;
   pastDueBypassed?: boolean;
-  paymentIntentId?: string;
-  paymentStatus?: 'DUE' | 'PAID';
-  paymentMethod?: 'CASH' | 'CREDIT';
+  orderId?: string;
+  orderStatus?: 'OPEN' | 'PAID';
+  paymentMethod?: 'CASH' | 'CREDIT' | 'SPLIT';
   paymentTotal?: number;
   paymentLineItems?: Array<{
     description: string;
@@ -225,6 +225,7 @@ export interface SessionUpdatedPayload {
   agreementSigned?: boolean;
   agreementBypassPending?: boolean;
   agreementSignedMethod?: 'DIGITAL' | 'MANUAL';
+  waitlistDisclaimerAck?: boolean;
   assignedResourceType?: 'room' | 'locker';
   assignedResourceNumber?: string;
   checkoutAt?: string;
@@ -336,7 +337,7 @@ export interface UpgradeHoldAvailablePayload {
   waitlistId: string;
   customerName: string;
   desiredTier: string;
-  roomId: string;
+  resourceId: string;
   roomNumber: string;
   expiresAt: string;
 }
@@ -345,7 +346,7 @@ export interface UpgradeOfferExpiredPayload {
   waitlistId: string;
   customerName: string;
   desiredTier: string;
-  roomId: string;
+  resourceId: string;
   roomNumber: string;
 }
 
@@ -354,10 +355,8 @@ export interface UpgradeOfferExpiredPayload {
  */
 export interface AssignmentCreatedPayload {
   sessionId: string;
-  roomId?: string;
-  roomNumber?: string;
-  lockerId?: string;
-  lockerNumber?: string;
+  resourceId: string;
+  resourceNumber: string;
   rentalType: string;
 }
 
@@ -367,8 +366,7 @@ export interface AssignmentCreatedPayload {
 export interface AssignmentFailedPayload {
   sessionId: string;
   reason: string;
-  requestedRoomId?: string;
-  requestedLockerId?: string;
+  requestedResourceId?: string;
 }
 
 /**
@@ -413,8 +411,7 @@ export interface CheckinBlock {
   startsAt: Date;
   endsAt: Date;
   rentalType: string;
-  roomId?: string;
-  lockerId?: string;
+  resourceId?: string;
 }
 
 export interface ActiveVisit {
@@ -440,10 +437,8 @@ export interface ResolvedCheckoutKey {
   customerName: string;
   membershipNumber?: string;
   rentalType: string;
-  roomId?: string;
-  roomNumber?: string;
-  lockerId?: string;
-  lockerNumber?: string;
+  resourceId?: string;
+  resourceNumber?: string;
   scheduledCheckoutAt: Date | string;
   hasTvRemote: boolean;
   lateMinutes: number;

@@ -79,12 +79,11 @@ export function AccountPanelContent() {
         <div className="flex flex-col items-center gap-3 text-center py-12">
           <span className="text-5xl">👤</span>
           <h3
-            className="text-lg font-semibold"
-            style={{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
+            className="text-lg font-semibold font-(--font-display) text-(--color-text-primary)"
           >
             No Customer Selected
           </h3>
-          <p className="text-sm max-w-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p className="text-sm max-w-xs text-(--color-text-muted)">
             Scan an ID or search for a customer to view their account.
           </p>
 
@@ -123,18 +122,13 @@ return (
       {/* Column 1: Profile — always shown */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
         <h3
-          className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0"
-          style={{ color: 'var(--color-text-muted)' }}
+          className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0 text-(--color-text-muted)"
         >
           👤 Profile
         </h3>
         <div
-          className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5"
-          style={{
-            backgroundColor: 'transparent',
-            borderColor: 'var(--color-border-subtle)',
-            scrollbarWidth: 'thin',
-          }}
+          className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5 bg-transparent border-(--color-border-subtle)"
+          style={{ scrollbarWidth: 'thin' }}
         >
           <ProfileTab />
         </div>
@@ -144,18 +138,13 @@ return (
       {showAssist && (
         <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           <h3
-            className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0"
-            style={{ color: 'var(--color-text-muted)' }}
+            className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0 text-(--color-text-muted)"
           >
             📋 Assist
           </h3>
           <div
-            className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5"
-            style={{
-              backgroundColor: 'transparent',
-              borderColor: 'var(--color-border-subtle)',
-              scrollbarWidth: 'thin',
-            }}
+            className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5 bg-transparent border-(--color-border-subtle)"
+            style={{ scrollbarWidth: 'thin' }}
           >
             <EmployeeAssistTab />
           </div>
@@ -166,18 +155,13 @@ return (
       {showCharges && (
         <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
           <h3
-            className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0"
-            style={{ color: 'var(--color-text-muted)' }}
+            className="mb-2 text-[10px] font-bold uppercase tracking-widest flex-shrink-0 text-(--color-text-muted)"
           >
             📋 Check-In Ledger
           </h3>
           <div
-            className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5"
-            style={{
-              backgroundColor: 'transparent',
-              borderColor: 'var(--color-border-subtle)',
-              scrollbarWidth: 'thin',
-            }}
+            className="flex-1 min-h-0 overflow-y-auto rounded-lg border p-2.5 bg-transparent border-(--color-border-subtle)"
+            style={{ scrollbarWidth: 'thin' }}
           >
             <ChargesTab />
           </div>
@@ -200,7 +184,7 @@ export function AccountPanel() {
     <Suspense fallback={
       <PanelShell align="top" scroll="hidden">
         <div className="flex flex-col items-center justify-center h-full opacity-50">
-          <p className="text-sm font-medium" style={{ color: 'var(--color-text-muted)' }}>Loading account profile...</p>
+          <p className="text-sm font-medium text-(--color-text-muted)">Loading account profile...</p>
         </div>
       </PanelShell>
     }>

@@ -1,4 +1,5 @@
-import { query } from '../db';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import type { AuthenticatorDevice, AuthenticatorTransportFuture } from '@simplewebauthn/types';
 
@@ -57,10 +58,9 @@ export async function storeChallenge(
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + 2); // 2 minute TTL
 
-  await query(
-    `INSERT INTO webauthn_challenges (challenge, staff_id, device_id, type, expires_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [challenge, staffId, deviceId, type, expiresAt]
+  await db.execute(
+    sql`INSERT INTO webauthn_challenges (challenge, staff_id, device_id, type, expires_at)
+     VALUES (${challenge}, ${staffId}, ${deviceId}, ${type}, ${expiresAt})`
   );
 }
 
@@ -73,17 +73,16 @@ export async function consumeChallenge(challenge: string): Promise<{
   deviceId: string | null;
   type: 'registration' | 'authentication' | 'reauth';
 } | null> {
-  const result = await query<{
+  const result = await db.execute<{
     staff_id: string | null;
     device_id: string | null;
     type: 'registration' | 'authentication' | 'reauth';
   }>(
-    `SELECT staff_id, device_id, type
+    sql`SELECT staff_id, device_id, type
      FROM webauthn_challenges
-     WHERE challenge = $1
+     WHERE challenge = ${challenge}
      AND expires_at > NOW()
-     FOR UPDATE SKIP LOCKED`,
-    [challenge]
+     FOR UPDATE SKIP LOCKED`
   );
 
   if (result.rows.length === 0) {
@@ -93,7 +92,7 @@ export async function consumeChallenge(challenge: string): Promise<{
   const row = result.rows[0]!;
 
   // Delete the challenge after consuming it (single-use)
-  await query(`DELETE FROM webauthn_challenges WHERE challenge = $1`, [challenge]);
+  await db.execute(sql`DELETE FROM webauthn_challenges WHERE challenge = ${challenge}`);
 
   return {
     staffId: row.staff_id,
@@ -106,18 +105,17 @@ export async function consumeChallenge(challenge: string): Promise<{
  * Get all active WebAuthn credentials for a staff member.
  */
 export async function getStaffCredentials(staffId: string): Promise<AuthenticatorDevice[]> {
-  const result = await query<{
+  const result = await db.execute<{
     credential_id: string;
     public_key: string;
     sign_count: number;
     transports: string[] | null;
   }>(
-    `SELECT credential_id, public_key, sign_count, transports
+    sql`SELECT credential_id, public_key, sign_count, transports
      FROM staff_webauthn_credentials
-     WHERE staff_id = $1
+     WHERE staff_id = ${staffId}
      AND revoked_at IS NULL
-     ORDER BY created_at DESC`,
-    [staffId]
+     ORDER BY created_at DESC`
   );
 
   return result.rows.map((row) => ({
@@ -135,17 +133,16 @@ export async function getCredentialByCredentialId(credentialId: string): Promise
   staffId: string;
   credential: AuthenticatorDevice;
 } | null> {
-  const result = await query<{
+  const result = await db.execute<{
     staff_id: string;
     public_key: string;
     sign_count: number;
     transports: string[] | null;
   }>(
-    `SELECT staff_id, public_key, sign_count, transports
+    sql`SELECT staff_id, public_key, sign_count, transports
      FROM staff_webauthn_credentials
-     WHERE credential_id = $1
-     AND revoked_at IS NULL`,
-    [credentialId]
+     WHERE credential_id = ${credentialId}
+     AND revoked_at IS NULL`
   );
 
   if (result.rows.length === 0) {
@@ -176,18 +173,12 @@ export async function storeCredential(
   signCount: number,
   transports?: AuthenticatorTransportFuture[]
 ): Promise<void> {
-  await query(
-    `INSERT INTO staff_webauthn_credentials 
+  const publicKeyBase64 = publicKey.toString('base64');
+  const transportsJson = transports ? JSON.stringify(transports) : null;
+  await db.execute(
+    sql`INSERT INTO staff_webauthn_credentials 
      (staff_id, device_id, credential_id, public_key, sign_count, transports)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [
-      staffId,
-      deviceId,
-      credentialId,
-      publicKey.toString('base64'),
-      signCount,
-      transports ? JSON.stringify(transports) : null,
-    ]
+     VALUES (${staffId}, ${deviceId}, ${credentialId}, ${publicKeyBase64}, ${signCount}, ${transportsJson})`
   );
 }
 
@@ -198,12 +189,11 @@ export async function updateCredentialSignCount(
   credentialId: string,
   newSignCount: number
 ): Promise<void> {
-  await query(
-    `UPDATE staff_webauthn_credentials
-     SET sign_count = $1, last_used_at = NOW()
-     WHERE credential_id = $2
-     AND revoked_at IS NULL`,
-    [newSignCount, credentialId]
+  await db.execute(
+    sql`UPDATE staff_webauthn_credentials
+     SET sign_count = ${newSignCount}, last_used_at = NOW()
+     WHERE credential_id = ${credentialId}
+     AND revoked_at IS NULL`
   );
 }
 
@@ -211,6 +201,8 @@ export async function updateCredentialSignCount(
  * Clean up expired challenges (should be run periodically).
  */
 export async function cleanupExpiredChallenges(): Promise<number> {
-  const result = await query(`DELETE FROM webauthn_challenges WHERE expires_at < NOW()`);
-  return result.rowCount || 0;
+  const result = await db.execute<{ id: string }>(
+    sql`DELETE FROM webauthn_challenges WHERE expires_at < NOW() RETURNING id`
+  );
+  return result.rows.length;
 }

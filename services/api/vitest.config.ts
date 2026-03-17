@@ -1,5 +1,5 @@
 import { defineConfig } from 'vitest/config';
-import path from 'path';
+import path from 'node:path';
 
 export default defineConfig({
     resolve: {
@@ -22,7 +22,7 @@ export default defineConfig({
         maxWorkers: 1,
         isolate: true,
         teardownTimeout: 10000,
-        forceExit: true,
+
         reporters: process.env.CI ? ['default', 'hanging-process'] : ['default'],
         coverage: {
             provider: 'v8',
