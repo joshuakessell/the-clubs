@@ -2,9 +2,9 @@ import type { FastifyInstance } from 'fastify';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../auth/middleware';
-import { createHash, randomUUID } from 'crypto';
-import { promises as fs } from 'fs';
-import { join } from 'path';
+import { createHash, randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import { join, basename } from 'node:path';
 import { insertAuditLogDrizzle } from '../audit/auditLog';
 
 
@@ -114,7 +114,7 @@ export async function documentsRoutes(fastify: FastifyInstance): Promise<void> {
         }
 
         const buffer = Buffer.from(body.fileData, 'base64');
-        const filename = body.filename;
+        const filename = basename(body.filename);
         const mimeType = body.mimeType || 'application/octet-stream';
         const hash = createHash('sha256').update(buffer).digest('hex');
 
