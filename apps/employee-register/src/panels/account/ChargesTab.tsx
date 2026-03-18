@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../../stores/useRegisterStore';
+import { PastDueOverrideModal } from '../../components/PastDueOverrideModal';
 
 type LedgerEntry = { description: string; amount: number };
 
@@ -16,6 +17,9 @@ export function ChargesTab() {
   const { sessionPayload, currentSessionId, activeCheckinInfo, customerId, laneId } = useRegisterStore();
   const token = useAuthStore((s) => s.session?.sessionToken);
   const sp = sessionPayload;
+
+  // Past-due override modal state
+  const [overrideModalOpen, setOverrideModalOpen] = useState(false);
 
   // ──────────────────────────────────────────────
   // Fetch visit charges from API when checked in but no active session
@@ -123,6 +127,9 @@ export function ChargesTab() {
       return new Date(validUntil + 'T23:59:59') >= new Date();
     })();
 
+    // Detect past-due line item
+    const pastDueItem = lineItems.find((item) => item.description === 'Past Due Balance');
+
     return (
       <div className="flex flex-col gap-2">
         <h3
@@ -131,7 +138,40 @@ export function ChargesTab() {
           Check-In Ledger
         </h3>
 
+        {/* Past-due override banner */}
+        {pastDueItem && !isPaid && (
+          <div
+            className="flex items-center justify-between rounded-lg px-3 py-2"
+            style={{
+              backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 8%, transparent)',
+              border: '1px solid color-mix(in oklch, var(--color-status-warning) 20%, transparent)',
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">⚠️</span>
+              <span className="text-sm font-semibold" style={{ color: 'var(--color-status-warning)' }}>
+                Outstanding past-due balance
+              </span>
+            </div>
+            <button
+              onClick={() => setOverrideModalOpen(true)}
+              className="rounded-lg px-3 py-1.5 text-xs font-bold transition-colors"
+              style={{
+                backgroundColor: 'var(--color-status-warning)',
+                color: '#000',
+              }}
+            >
+              Override
+            </button>
+          </div>
+        )}
 
+        {/* Past-due override modal */}
+        <PastDueOverrideModal
+          open={overrideModalOpen}
+          onClose={() => setOverrideModalOpen(false)}
+          balanceAmount={pastDueItem?.amount ?? 0}
+        />
 
         {/* Line items */}
         {lineItems.length > 0 ? (
