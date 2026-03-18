@@ -30,6 +30,7 @@ const DEMO_STAFF = [
  */
 export async function ensureDemoStaff(): Promise<number> {
   let upserted = 0;
+  const demoNames = DEMO_STAFF.map((m) => m.name);
 
   for (const member of DEMO_STAFF) {
     const qrTokenHash = hashQrToken(member.qrToken);
@@ -55,6 +56,13 @@ export async function ensureDemoStaff(): Promise<number> {
 
     upserted++;
   }
+
+  // Deactivate any staff NOT in the demo list so legacy entries don't appear
+  const namePlaceholders = demoNames.map((n) => sql`${n}`);
+  const nameList = sql.join(namePlaceholders, sql`, `);
+  await db.execute(
+    sql`UPDATE staff SET active = false WHERE name NOT IN (${nameList})`
+  );
 
   return upserted;
 }
