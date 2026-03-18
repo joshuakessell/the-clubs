@@ -17,6 +17,7 @@ import { registerAdminProductRoutes } from './admin/products';
 import { registerAdminMessageRoutes } from './admin/messages';
 import { registerRoomManagementRoutes } from './admin/room-management';
 import { registerAdminDemoCatchupRoutes } from './admin/demo-catchup';
+import { registerCalendarRoutes } from './admin/calendar';
 
 /**
  * Admin-only routes for operations management and metrics.
@@ -51,4 +52,5 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
   registerAdminProductRoutes(fastify);
   registerAdminMessageRoutes(fastify);
   registerRoomManagementRoutes(fastify);
+  registerCalendarRoutes(fastify);
 }

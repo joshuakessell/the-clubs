@@ -190,3 +190,30 @@ export async function getCleaningMetricsByStaff(staffId: string, from: Date, to:
     totalRoomsCleaned: Number.parseInt(totalCleanedResult.rows[0]?.count || '0', 10),
   };
 }
+
+// ── Week-over-Week Comparison ──
+
+export async function getWeekOverWeekComparison() {
+  const thisWeek = await db.execute<{ total: string }>(
+    sql`SELECT COALESCE(SUM(total), 0)::numeric(10,2) AS total
+        FROM orders
+        WHERE status = 'PAID'
+          AND paid_at >= CURRENT_DATE - INTERVAL '7 days'`
+  );
+  const lastWeek = await db.execute<{ total: string }>(
+    sql`SELECT COALESCE(SUM(total), 0)::numeric(10,2) AS total
+        FROM orders
+        WHERE status = 'PAID'
+          AND paid_at >= CURRENT_DATE - INTERVAL '14 days'
+          AND paid_at < CURRENT_DATE - INTERVAL '7 days'`
+  );
+
+  const thisWeekRevenue = Number.parseFloat(thisWeek.rows[0]?.total ?? '0');
+  const lastWeekRevenue = Number.parseFloat(lastWeek.rows[0]?.total ?? '0');
+  const changePercent = lastWeekRevenue > 0
+    ? Math.round(((thisWeekRevenue - lastWeekRevenue) / lastWeekRevenue) * 1000) / 10
+    : 0;
+
+  return { thisWeekRevenue, lastWeekRevenue, changePercent };
+}
+
