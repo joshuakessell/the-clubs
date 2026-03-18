@@ -767,6 +767,19 @@ export async function processAgreementSigning(
       });
     }
 
+    // ── Bind pre-paid ledger entries to the new visit ──
+    // During PAYMENT step, markOrderPaid created spend ledger entries with visit_id = NULL
+    // because the visit wasn't created yet. Now that we have the visitId, we associate them.
+    if (session.order_id) {
+      await tx.execute(
+        sql`UPDATE customer_spend_ledger_entries
+            SET visit_id = ${visitId}
+            WHERE customer_id = ${session.customer_id}
+              AND visit_id IS NULL
+              AND dedupe_key LIKE ${'LEDGER:CHECKIN:' + session.order_id + '%'}`
+      );
+    }
+
     await maybeCompleteSession(tx, session.id);
 
     return {

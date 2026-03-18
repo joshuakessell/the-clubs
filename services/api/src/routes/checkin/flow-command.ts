@@ -447,7 +447,7 @@ async function applyFlowPaymentSideEffects(
           [sessionId],
         );
 
-        if (session.customer_id && session.past_due_bypassed !== true) {
+        if (session.customer_id) {
           const pastDueRes = await client.query<{ past_due_balance: string | number | null }>(
             `SELECT past_due_balance FROM customers WHERE id = $1 FOR UPDATE`,
             [session.customer_id]
