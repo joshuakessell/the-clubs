@@ -283,16 +283,14 @@ export async function finalizeCloseout(
 export async function verifyEmployeePin(employeeId: string, pin: string, deviceId: string) {
   await ensureDeviceEnabled(deviceId);
 
-  const isDemoMode = process.env.DEMO_MODE === 'true';
-
-  const result = isDemoMode
-    ? await db.execute<Record<string, unknown>>(sql`SELECT id, name, role, pin_hash, active FROM staff WHERE id = ${employeeId} AND active = true LIMIT 1`)
-    : await db.execute<Record<string, unknown>>(sql`SELECT id, name, role, pin_hash, active FROM staff WHERE id = ${employeeId} AND pin_hash IS NOT NULL AND active = true LIMIT 1`);
+  const result = await db.execute<Record<string, unknown>>(
+    sql`SELECT id, name, role, pin_hash, active FROM staff WHERE id = ${employeeId} AND pin_hash IS NOT NULL AND active = true LIMIT 1`
+  );
 
   if (result.rows.length === 0) return { verified: false, reason: 'Employee not found or inactive' as const };
   const employee = result.rows[0] as unknown as EmployeeRow;
 
-  if (!isDemoMode && (!employee.pin_hash || !(await verifyPin(pin, employee.pin_hash)))) {
+  if (!employee.pin_hash || !(await verifyPin(pin, employee.pin_hash))) {
     return { verified: false, reason: 'Wrong PIN' as const };
   }
 

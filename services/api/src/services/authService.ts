@@ -4,12 +4,12 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { verifyPin, generateSessionToken, getSessionExpiry, hashSessionToken } from '../auth/utils';
 import { insertAuditLogDrizzle } from '../audit/auditLog';
 
-export async function listActiveStaff(isDemoMode: boolean) {
+export async function listActiveStaff() {
   const drizzleDb = getDb();
   return drizzleDb.query.staff.findMany({
     where: (staff, { eq, and, isNotNull }) => and(
       eq(staff.active, true),
-      isDemoMode ? undefined : isNotNull(staff.pinHash)
+      isNotNull(staff.pinHash)
     ),
     columns: { id: true, name: true, role: true },
     orderBy: (staff, { asc }) => [asc(staff.name)],
@@ -29,8 +29,7 @@ export async function loginWithPin(
   staffLookup: string,
   pin: string,
   deviceId: string,
-  deviceType: string,
-  isDemoMode: boolean
+  deviceType: string
 ): Promise<LoginResult | null> {
   const drizzleDb = getDb();
   
@@ -42,16 +41,14 @@ export async function loginWithPin(
           ilike(staff.name, staffLookup)
         ),
         eq(staff.active, true),
-        isDemoMode ? undefined : sql`${staff.pinHash} IS NOT NULL`
+        sql`${staff.pinHash} IS NOT NULL`
       )
     });
 
     if (!staffRow) return null;
 
-    if (!isDemoMode) {
-      if (!staffRow.pinHash || !(await verifyPin(pin, staffRow.pinHash))) {
-        return null;
-      }
+    if (!staffRow.pinHash || !(await verifyPin(pin, staffRow.pinHash))) {
+      return null;
     }
 
     const sessionToken = generateSessionToken();
@@ -241,8 +238,7 @@ export async function reauthWithPin(
 
     if (!staffRow) throw new Error("Invalid credentials");
 
-    const isDemoMode = process.env.DEMO_MODE === 'true';
-    if (!isDemoMode && (!staffRow.pinHash || !(await verifyPin(pin, staffRow.pinHash)))) {
+    if (!staffRow.pinHash || !(await verifyPin(pin, staffRow.pinHash))) {
       throw new Error("Invalid credentials");
     }
 

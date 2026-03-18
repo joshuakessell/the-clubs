@@ -28,15 +28,7 @@ export function registerAdminStaffRoutes(fastify: FastifyInstance): void {
   });
 
   fastify.post<{ Params: { id: string } }>('/v1/admin/staff/:id/pin-reset', { 
-    preHandler: async (request, reply) => {
-      if (process.env.DEMO_MODE === 'true') {
-        await requireAuth(request, reply);
-        if (reply.sent || reply.statusCode >= 400) return;
-        await requireAdmin(request, reply);
-      } else {
-        await requireReauthForAdmin(request, reply);
-      }
-    }
+    preHandler: [requireReauthForAdmin]
   }, async (request, reply) => {
     if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     try { return reply.send(await resetStaffPin(request.params.id, request.staff.staffId)); }

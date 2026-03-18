@@ -125,8 +125,7 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
             throw new HttpError(403, 'Only admins can bypass past-due balance');
           }
 
-          const isDemoMode = process.env.DEMO_MODE === 'true';
-          if (!isDemoMode && (!manager.pin_hash || !(await verifyPin(managerPin, manager.pin_hash)))) {
+          if (!manager.pin_hash || !(await verifyPin(managerPin, manager.pin_hash))) {
             throw new HttpError(401, 'Invalid PIN');
           }
 

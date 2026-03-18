@@ -27,8 +27,7 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
    */
   fastify.get('/v1/auth/staff', async (request, reply) => {
     try {
-      const isDemoMode = process.env.DEMO_MODE === 'true';
-      const staffList = await listActiveStaff(isDemoMode);
+      const staffList = await listActiveStaff();
 
       return reply.send({
         staff: staffList,
@@ -60,15 +59,13 @@ export async function authRoutes(fastify: FastifyInstance): Promise<void> {
     const body = parseResult.data;
 
     try {
-      const isDemoMode = process.env.DEMO_MODE === 'true';
       const deviceType = body.deviceType || 'tablet';
 
       const result = await loginWithPin(
         body.staffLookup,
         body.pin,
         body.deviceId,
-        deviceType,
-        isDemoMode
+        deviceType
       );
 
       if (!result) {

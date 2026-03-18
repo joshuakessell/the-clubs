@@ -116,8 +116,7 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
     return;
   }
 
-  // In DEMO_MODE, allow any authenticated user to access admin endpoints
-  if (process.env.DEMO_MODE === 'true') return;
+  // PIN validation is always enforced — no DEMO_MODE bypass
 
   if (request.staff.role !== 'ADMIN') {
     reply.status(403).send({
