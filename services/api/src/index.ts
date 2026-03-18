@@ -332,6 +332,44 @@ async function handleDemoSeeding(fastify: FastifyInstance) {
   }
 }
 
+/**
+ * Bootstrap an initial admin when the staff table is empty.
+ *
+ * Solves the chicken-and-egg problem: the admin panel requires login,
+ * but login requires at least one staff member with a PIN.
+ * Creates "Admin" with default PIN 000000 and forces a PIN change on first login.
+ */
+async function bootstrapInitialAdmin(fastify: FastifyInstance) {
+  try {
+    const { db: dbInstance } = await import('./db');
+    const { sql: sqlTag } = await import('drizzle-orm');
+    const { hashPin } = await import('./auth/utils');
+    const { staff: staffTable } = await import('./db/schema/schema');
+
+    const countResult = await dbInstance.execute<{ cnt: string }>(
+      sqlTag`SELECT COUNT(*)::text AS cnt FROM staff WHERE active = true`
+    );
+    const activeCount = Number.parseInt((countResult.rows[0] as { cnt: string })?.cnt ?? '0', 10);
+
+    if (activeCount > 0) return;
+
+    fastify.log.warn('⚠️  No active staff found — bootstrapping initial admin (PIN: 000000, force change on login)');
+    const pinHash = await hashPin('000000');
+
+    await dbInstance.insert(staffTable).values({
+      name: 'Admin',
+      role: 'ADMIN',
+      pinHash,
+      active: true,
+      forcePinChange: true,
+    });
+
+    fastify.log.info('✅ Initial admin "Admin" created. Sign in with PIN 000000 — you will be prompted to change it.');
+  } catch (err) {
+    fastify.log.error(err, 'Failed to bootstrap initial admin');
+  }
+}
+
 async function initializeDbAndSeed(fastify: FastifyInstance, abortSignal: AbortSignal) {
   const DB_INIT_MAX_RETRIES = 5;
   const DB_INIT_BASE_DELAY_MS = 2_000;
@@ -365,6 +403,7 @@ async function initializeDbAndSeed(fastify: FastifyInstance, abortSignal: AbortS
   await verifyDatabaseHealth(fastify);
   startSubsystems(fastify, abortSignal);
   await handleDemoSeeding(fastify);
+  await bootstrapInitialAdmin(fastify);
 }
 
 async function main() {
