@@ -323,6 +323,16 @@ async function handleDemoSeeding(fastify: FastifyInstance) {
       fastify.log.info('DEMO_MODE enabled; skipping startup seed.');
     } else {
       fastify.log.info(`DEMO_MODE enabled, seeding demo data (SEED_ON_STARTUP=${process.env.SEED_ON_STARTUP === 'true'})...`);
+
+      // Guarantee demo staff exist with valid PIN hashes
+      try {
+        const { ensureDemoStaff } = await import('./db/ensureDemoStaff');
+        const count = await ensureDemoStaff();
+        fastify.log.info(`✅ Ensured ${count} demo staff with valid PINs`);
+      } catch (err) {
+        fastify.log.error(err, '❌ Failed to ensure demo staff');
+      }
+
       try {
         await seedDemoData({ forceReseed: false });
       } catch (err) {
