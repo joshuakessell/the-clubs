@@ -1,7 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Badge } from '@the-clubs/ui';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
+import FullCalendar from '@fullcalendar/react';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import interactionPlugin from '@fullcalendar/interaction';
+import type { DateClickArg } from '@fullcalendar/interaction';
+import type { EventClickArg } from '@fullcalendar/core';
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -200,23 +205,62 @@ function CalendarPanel({ events, upcoming, onRefetch }: Readonly<{
   upcoming: CalendarEventData[];
   onRefetch: () => void;
 }>) {
-  const [showForm, setShowForm] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  const fcEvents = events.map((e) => ({
+    id: e.id,
+    title: e.title,
+    date: e.eventDate,
+    backgroundColor: EVENT_COLORS[e.eventType] ?? EVENT_COLORS.GENERAL,
+    borderColor: EVENT_COLORS[e.eventType] ?? EVENT_COLORS.GENERAL,
+    textColor: '#fff',
+    extendedProps: { eventType: e.eventType, highlight: e.highlight },
+  }));
+
+  const handleDateClick = useCallback((arg: DateClickArg) => {
+    setSelectedDate(arg.dateStr);
+    dialogRef.current?.showModal();
+  }, []);
+
+  const handleEventClick = useCallback((arg: EventClickArg) => {
+    const ev = events.find((e) => e.id === arg.event.id);
+    if (ev) {
+      const timeStr = ev.startTime ? ` at ${ev.startTime}` : '';
+      const msg = [ev.title, formatEventDate(ev.eventDate) + timeStr, `Type: ${ev.eventType}`].join('\n');
+      globalThis.alert(msg);
+    }
+  }, [events]);
+
+  const handleFormSuccess = useCallback(() => {
+    dialogRef.current?.close();
+    setSelectedDate(null);
+    onRefetch();
+  }, [onRefetch]);
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">Club Calendar</h3>
-          <button type="button" onClick={() => setShowForm(!showForm)}
-            className="rounded-lg border px-3 py-1.5 text-xs font-semibold transition border-(--color-border-default) text-(--color-accent-primary)">
-            {showForm ? '✕ Close' : '+ Add Event'}
-          </button>
-        </div>
-
-        {showForm && <AddEventForm onSuccess={() => { setShowForm(false); onRefetch(); }} />}
-
-        <MonthGrid events={events} />
+      <div className="rounded-xl border p-5 fc-dashboard" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
+        <FullCalendar
+          plugins={[dayGridPlugin, interactionPlugin]}
+          initialView="dayGridMonth"
+          headerToolbar={{ left: 'prev,next today', center: 'title', right: '' }}
+          height="auto"
+          events={fcEvents}
+          dateClick={handleDateClick}
+          eventClick={handleEventClick}
+          dayMaxEvents={3}
+          fixedWeekCount={false}
+        />
       </div>
+
+      <dialog ref={dialogRef} className="rounded-xl border p-6 backdrop:bg-black/40" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)', minWidth: 380 }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-(--color-text-muted)">Add Event {selectedDate ? `— ${formatEventDate(selectedDate)}` : ''}</h3>
+          <button type="button" onClick={() => dialogRef.current?.close()} className="text-(--color-text-muted) hover:text-(--color-text-primary)">✕</button>
+        </div>
+        <AddEventForm onSuccess={handleFormSuccess} prefillDate={selectedDate ?? ''} />
+      </dialog>
 
       {/* Upcoming events */}
       <div className="rounded-xl border p-5" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
@@ -291,8 +335,14 @@ function LaborBadge({ laborHours, revenue }: Readonly<{ laborHours: number; reve
     return <p className="text-sm text-(--color-text-muted)">—</p>;
   }
   const pct = ((laborHours * 15) / revenue) * 100;
-  const color = pct > 30 ? 'var(--color-status-error)' : pct > 20 ? 'var(--color-status-warning)' : 'var(--color-status-success)';
+  const color = getLaborColor(pct);
   return <p className="text-lg font-extrabold tabular-nums" style={{ color }}>{pct.toFixed(1)}%</p>;
+}
+
+function getLaborColor(pct: number): string {
+  if (pct > 30) return 'var(--color-status-error)';
+  if (pct > 20) return 'var(--color-status-warning)';
+  return 'var(--color-status-success)';
 }
 
 function WowBadge({ changePercent }: Readonly<{ changePercent: number }>) {
@@ -365,47 +415,15 @@ function CompactHeatmap({ grid }: Readonly<{ grid: HeatmapCell[] }>) {
   );
 }
 
-/* ── Calendar Sub-Components ───────────────────────────────────── */
+/* ── Event Type Colors ─────────────────────────────────────────── */
 
-function MonthGrid({ events }: Readonly<{ events: CalendarEventData[] }>) {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const firstDow = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = now.getDate();
-  const eventDates = new Set(events.map((e) => Number.parseInt(e.eventDate.split('-')[2], 10)));
-
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < firstDow; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-
-  return (
-    <div className="mt-3">
-      <div className="grid grid-cols-7 gap-1 text-center">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => (
-          <span key={d} className="text-[9px] font-bold text-(--color-text-muted)">{d}</span>
-        ))}
-        {cells.map((day, i) => (
-          <CalendarDay key={`${month}-${i}`} day={day} isToday={day === today} hasEvent={day !== null && eventDates.has(day)} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CalendarDay({ day, isToday, hasEvent }: Readonly<{ day: number | null; isToday: boolean; hasEvent: boolean }>) {
-  if (day === null) return <span />;
-  return (
-    <span className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full text-xs tabular-nums font-semibold ${isToday ? 'ring-2 ring-(--color-accent-primary)' : ''}`}
-      style={{
-        backgroundColor: hasEvent ? 'color-mix(in oklch, var(--color-accent-primary) 15%, transparent)' : 'transparent',
-        color: isToday ? 'var(--color-accent-primary)' : hasEvent ? 'var(--color-accent-primary)' : 'var(--color-text-secondary)',
-      }}>
-      {day}
-    </span>
-  );
-}
+const EVENT_COLORS: Record<string, string> = {
+  WEEKEND_EVENT: '#6366f1',
+  PRIVATE_PARTY: '#f59e0b',
+  HOLIDAY: '#ef4444',
+  SPECIAL: '#10b981',
+  GENERAL: '#6b7280',
+};
 
 function UpcomingList({ upcoming }: Readonly<{ upcoming: CalendarEventData[] }>) {
   if (upcoming.length === 0) {
@@ -439,24 +457,33 @@ function EventTypeDot({ type }: Readonly<{ type: string }>) {
   return <span className="block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: colors[type] ?? colors.GENERAL }} />;
 }
 
-function AddEventForm({ onSuccess }: Readonly<{ onSuccess: () => void }>) {
+function AddEventForm({ onSuccess, prefillDate }: Readonly<{ onSuccess: () => void; prefillDate: string }>) {
   const [title, setTitle] = useState('');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(prefillDate);
   const [eventType, setEventType] = useState('GENERAL');
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => { setDate(prefillDate); }, [prefillDate]);
 
   const handleSubmit = useCallback(async () => {
     if (!title.trim() || !date) return;
     setSubmitting(true);
     try {
-      await dashboardMutate('/api/v1/admin/calendar', 'POST', { title: title.trim(), eventDate: date, eventType, highlight: eventType === 'WEEKEND_EVENT' || eventType === 'SPECIAL' });
+      await dashboardMutate('/api/v1/admin/calendar', 'POST', {
+        title: title.trim(),
+        eventDate: date,
+        eventType,
+        highlight: eventType === 'WEEKEND_EVENT' || eventType === 'SPECIAL',
+      });
+      setTitle('');
+      setEventType('GENERAL');
       onSuccess();
     } catch { /* handled by dashboardMutate */ }
     setSubmitting(false);
   }, [title, date, eventType, onSuccess]);
 
   return (
-    <div className="mt-3 flex flex-col gap-2 rounded-lg border p-3 border-(--color-border-subtle)">
+    <div className="flex flex-col gap-2">
       <input type="text" placeholder="Event title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200}
         className="w-full rounded-lg border px-3 py-2 text-sm outline-none border-(--color-border-default) bg-(--color-surface-input) text-(--color-text-primary)" />
       <div className="flex gap-2">
@@ -470,6 +497,14 @@ function AddEventForm({ onSuccess }: Readonly<{ onSuccess: () => void }>) {
           <option value="HOLIDAY">Holiday</option>
           <option value="SPECIAL">Special</option>
         </select>
+      </div>
+      <div className="flex items-center gap-2">
+        {eventType !== 'GENERAL' && (
+          <span className="flex items-center gap-1 text-xs text-(--color-text-muted)">
+            <span className="block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: EVENT_COLORS[eventType] ?? EVENT_COLORS.GENERAL }} />
+            {eventType.replace('_', ' ')}
+          </span>
+        )}
       </div>
       <button type="button" onClick={() => void handleSubmit()} disabled={submitting || !title.trim() || !date}
         className="rounded-lg px-4 py-2 text-sm font-bold text-white transition disabled:opacity-50"
