@@ -23,48 +23,51 @@ const DEMO_STAFF = [
   { name: 'Manager Dallas',  role: 'ADMIN', qrToken: 'STAFF-012', pin: '654321' },
 ] as const;
 
+const DEMO_NAMES = DEMO_STAFF.map((m) => m.name);
+
+/** Upsert a single staff member by name. */
+async function upsertStaffMember(member: typeof DEMO_STAFF[number]): Promise<void> {
+  const qrTokenHash = hashQrToken(member.qrToken);
+  const pinHash = await hashPin(member.pin);
+
+  const updated = await db.execute(
+    sql`UPDATE staff
+        SET role = ${member.role},
+            qr_token_hash = ${qrTokenHash},
+            pin_hash = ${pinHash},
+            active = true
+        WHERE LOWER(name) = LOWER(${member.name})`
+  );
+
+  if ((updated.rowCount ?? 0) === 0) {
+    await db.execute(
+      sql`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
+          VALUES (${member.name}, ${member.role}, ${qrTokenHash}, ${pinHash}, true)`
+    );
+  }
+}
+
+/** Deactivate staff whose names are NOT in the demo list. */
+async function deactivateNonDemoStaff(): Promise<void> {
+  // Build a PostgreSQL array literal for the IN clause
+  await db.execute(
+    sql`UPDATE staff SET active = false
+        WHERE name != ALL(${DEMO_NAMES})`
+  );
+}
+
 /**
  * Ensure all demo staff exist with valid PIN hashes.
- * For each staff member: update if name exists, insert otherwise.
  * Safe to call on every startup.
  */
 export async function ensureDemoStaff(): Promise<number> {
-  let upserted = 0;
-  const demoNames = DEMO_STAFF.map((m) => m.name);
-
   for (const member of DEMO_STAFF) {
-    const qrTokenHash = hashQrToken(member.qrToken);
-    const pinHash = await hashPin(member.pin);
-
-    // Try to update existing staff by name first
-    const updated = await db.execute(
-      sql`UPDATE staff
-          SET role = ${member.role},
-              qr_token_hash = ${qrTokenHash},
-              pin_hash = ${pinHash},
-              active = true
-          WHERE LOWER(name) = LOWER(${member.name})`
-    );
-
-    if ((updated.rowCount ?? 0) === 0) {
-      // Staff doesn't exist — insert
-      await db.execute(
-        sql`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
-            VALUES (${member.name}, ${member.role}, ${qrTokenHash}, ${pinHash}, true)`
-      );
-    }
-
-    upserted++;
+    await upsertStaffMember(member);
   }
 
-  // Deactivate any staff NOT in the demo list so legacy entries don't appear
-  const namePlaceholders = demoNames.map((n) => sql`${n}`);
-  const nameList = sql.join(namePlaceholders, sql`, `);
-  await db.execute(
-    sql`UPDATE staff SET active = false WHERE name NOT IN (${nameList})`
-  );
+  await deactivateNonDemoStaff();
 
-  return upserted;
+  return DEMO_STAFF.length;
 }
 
 export { DEMO_STAFF };

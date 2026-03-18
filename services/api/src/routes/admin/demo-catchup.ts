@@ -17,8 +17,9 @@ export function registerAdminDemoCatchupRoutes(fastify: FastifyInstance): void {
       await seedDemoData({ forceReseed: false });
       return reply.send({ success: true, staffReseeded: staffCount });
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
       fastify.log.error(e, 'Failed to catch up demo data');
-      return reply.code(500).send({ error: 'Failed to run simulator' });
+      return reply.code(500).send({ error: 'Failed to run simulator', detail: msg });
     }
   });
 }
