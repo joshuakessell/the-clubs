@@ -1301,7 +1301,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
     // Determine simulation window
     let from: Date;
     let anchor = now;
-    const SIM_DAYS = 14;
+    const SIM_DAYS = 30;
 
     if (!options.forceReseed && state) {
       // Incremental mode: continue from where we left off
@@ -1313,7 +1313,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       }
       progress.log(`🔄 Incremental simulation from ${from.toISOString()} to ${now.toISOString()}`);
     } else {
-      // Full seed: base entities + 14-day simulation
+      // Full seed: base entities + 30-day simulation
       progress.log('🌱 First-time simulation — seeding base entities...');
       await seedBaseEntities(now, progress);
       await seedShifts(now, progress);

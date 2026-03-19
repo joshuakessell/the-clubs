@@ -5,8 +5,9 @@
  * valid PIN hashes exist. Uses the already-initialized `db` singleton.
  */
 import { db } from './index';
-import { sql } from 'drizzle-orm';
+import { sql, notInArray } from 'drizzle-orm';
 import { hashQrToken, hashPin } from '../auth/utils';
+import { staff as staffTable } from './schema/schema';
 
 const DEMO_STAFF = [
   { name: 'John Erikson',    role: 'STAFF', qrToken: 'STAFF-001', pin: '111111' },
@@ -23,7 +24,7 @@ const DEMO_STAFF = [
   { name: 'Manager Dallas',  role: 'ADMIN', qrToken: 'STAFF-012', pin: '654321' },
 ] as const;
 
-const DEMO_NAMES = DEMO_STAFF.map((m) => m.name);
+const DEMO_NAMES: string[] = DEMO_STAFF.map((m) => m.name);
 
 /** Upsert a single staff member by name. */
 async function upsertStaffMember(member: typeof DEMO_STAFF[number]): Promise<void> {
@@ -49,11 +50,9 @@ async function upsertStaffMember(member: typeof DEMO_STAFF[number]): Promise<voi
 
 /** Deactivate staff whose names are NOT in the demo list. */
 async function deactivateNonDemoStaff(): Promise<void> {
-  // Build a PostgreSQL array literal for the IN clause
-  await db.execute(
-    sql`UPDATE staff SET active = false
-        WHERE name != ALL(${DEMO_NAMES})`
-  );
+  await db.update(staffTable)
+    .set({ active: false })
+    .where(notInArray(staffTable.name, DEMO_NAMES));
 }
 
 /**

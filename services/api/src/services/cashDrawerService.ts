@@ -5,8 +5,8 @@
  * Migrated to Drizzle ORM typed queries.
  */
 import { db } from '../db';
-import { cashDrawerSessions, cashDrawerEvents, registerSessions } from '../db/schema';
-import { eq, and, sql, sum } from 'drizzle-orm';
+import { cashDrawerSessions, cashDrawerEvents, registerSessions, orders } from '../db/schema';
+import { eq, and, sql, sum, gte } from 'drizzle-orm';
 import { HttpError } from '../errors/HttpError';
 
 // ── Types ──
@@ -123,7 +123,29 @@ export async function closeDrawerSession(sessionId: string, input: CloseDrawerIn
     const paidOut = sumByType.get('PAID_OUT') ?? 0;
     const drops = sumByType.get('DROP') ?? 0;
     const adjustments = sumByType.get('ADJUSTMENT') ?? 0;
-    const cashPaymentsAppliedToOrders = 0; // TODO: add once tender tracking is implemented
+    const orderSums = await tx
+      .select({
+        paymentMethod: orders.paymentMethod,
+        total: sum(orders.total),
+        splitCashAmount: sum(orders.splitCashAmount),
+      })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.registerSessionId, session.registerSessionId),
+          gte(orders.createdAt, session.openedAt)
+        )
+      )
+      .groupBy(orders.paymentMethod);
+
+    let cashPaymentsAppliedToOrders = 0;
+    for (const row of orderSums) {
+      if (row.paymentMethod === 'CASH') {
+        cashPaymentsAppliedToOrders += Math.round(Number(row.total ?? 0) * 100);
+      } else if (row.paymentMethod === 'SPLIT') {
+        cashPaymentsAppliedToOrders += Math.round(Number(row.splitCashAmount ?? 0) * 100);
+      }
+    }
     const expectedCash = session.openingFloat + paidIn - paidOut - drops + adjustments + cashPaymentsAppliedToOrders;
     const overShort = input.countedCash - expectedCash;
 
