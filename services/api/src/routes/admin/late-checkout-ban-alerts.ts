@@ -113,12 +113,12 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
          ORDER BY banned_until ASC`
       );
 
-      type BanRow = { id: string; name: string; membership_number: string | null; banned_until: Date };
+      type BanRow = { id: string; name: string; membership_number: string | null; banned_until: Date | string };
       const alerts = (result.rows as unknown as BanRow[]).map((r) => ({
         id: r.id,
         customerName: r.name,
         membershipNumber: r.membership_number,
-        bannedUntil: r.banned_until.toISOString(),
+        bannedUntil: r.banned_until instanceof Date ? r.banned_until.toISOString() : String(r.banned_until),
       }));
 
       return reply.send({ alerts });
@@ -141,7 +141,11 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
             err.statusCode = 404;
             throw err;
           }
-          const customer = check.rows[0] as unknown as { id: string; name: string; banned_until: Date | null };
+          const rawCustomer = check.rows[0] as unknown as { id: string; name: string; banned_until: string | null };
+          const customer = {
+            ...rawCustomer,
+            banned_until: rawCustomer.banned_until ? new Date(rawCustomer.banned_until) : null,
+          };
 
           await tx.execute(
             sql`UPDATE customers SET banned_until = NULL, updated_at = NOW() WHERE id = ${customer.id}`
@@ -204,7 +208,11 @@ export function registerAdminLateCheckoutBanAlertRoutes(fastify: FastifyInstance
             err.statusCode = 404;
             throw err;
           }
-          const customer = check.rows[0] as unknown as { id: string; name: string; banned_until: Date | null };
+          const rawCustomer = check.rows[0] as unknown as { id: string; name: string; banned_until: string | null };
+          const customer = {
+            ...rawCustomer,
+            banned_until: rawCustomer.banned_until ? new Date(rawCustomer.banned_until) : null,
+          };
 
           await tx.execute(
             sql`UPDATE customers SET banned_until = ${newBannedUntil}, updated_at = NOW() WHERE id = ${customer.id}`
