@@ -78,6 +78,23 @@ export const schemaMigrations = pgTable("schema_migrations", {
 	unique("schema_migrations_name_key").on(table.name),
 ]);
 
+export const idempotencyKeys = pgTable("idempotency_keys", {
+	principalId: text("principal_id").notNull(),
+	routePath: text("route_path").notNull(),
+	idempotencyKey: text("idempotency_key").notNull(),
+	requestHash: text("request_hash").notNull(),
+	responseStatus: integer("response_status").notNull(),
+	responseBody: jsonb("response_body"),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'date' })
+		.default(sql`NOW() + INTERVAL '24 hours'`)
+		.notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.principalId, table.routePath, table.idempotencyKey] }),
+	index("idx_idempotency_keys_expires").using("btree", table.expiresAt.asc().nullsLast().op("timestamptz_ops")),
+	check("idempotency_keys_status_check", sql`response_status BETWEEN 100 AND 599`),
+]);
+
 export const staff = pgTable("staff", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	name: varchar({ length: 255 }).notNull(),
@@ -823,6 +840,7 @@ export const orders = pgTable("orders", {
 	metadataJson: jsonb("metadata_json"),
 }, (table) => [
 	index("idx_orders_created_at").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("idx_orders_metadata").using("gin", table.metadataJson),
 	index("idx_orders_created_by").using("btree", table.createdByStaffId.asc().nullsLast().op("uuid_ops")).where(sql`(created_by_staff_id IS NOT NULL)`),
 	index("idx_orders_customer").using("btree", table.customerId.asc().nullsLast().op("uuid_ops")).where(sql`(customer_id IS NOT NULL)`),
 	index("idx_orders_lane_session").using("btree", table.laneSessionId.asc().nullsLast().op("uuid_ops")).where(sql`(lane_session_id IS NOT NULL)`),
@@ -872,6 +890,7 @@ export const orderLineItems = pgTable("order_line_items", {
 	metadataJson: jsonb("metadata_json"),
 }, (table) => [
 	index("idx_order_line_items_order").using("btree", table.orderId.asc().nullsLast().op("uuid_ops")),
+	index("idx_order_line_items_metadata").using("gin", table.metadataJson),
 	foreignKey({
 			columns: [table.orderId],
 			foreignColumns: [orders.id],
@@ -985,6 +1004,7 @@ export const customerActivityEvents = pgTable("customer_activity_events", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 }, (table) => [
 	index("idx_customer_activity_events_action_category").using("btree", table.actionCategory.asc().nullsLast().op("text_ops"), table.occurredAt.desc().nullsFirst().op("text_ops")),
+	index("idx_customer_activity_events_metadata").using("gin", table.metadata),
 	index("idx_customer_activity_events_action_type").using("btree", table.actionType.asc().nullsLast().op("timestamptz_ops"), table.occurredAt.desc().nullsFirst().op("text_ops")),
 	index("idx_customer_activity_events_customer_occurred").using("btree", table.customerId.asc().nullsLast().op("uuid_ops"), table.occurredAt.desc().nullsFirst().op("uuid_ops"), table.id.desc().nullsFirst().op("uuid_ops")),
 	uniqueIndex("idx_customer_activity_events_dedupe").using("btree", table.dedupeKey.asc().nullsLast().op("text_ops")).where(sql`(dedupe_key IS NOT NULL)`),
@@ -1021,6 +1041,7 @@ export const customerSpendLedgerEntries = pgTable("customer_spend_ledger_entries
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 }, (table) => [
 	index("idx_customer_spend_ledger_customer_occurred").using("btree", table.customerId.asc().nullsLast().op("timestamptz_ops"), table.occurredAt.desc().nullsFirst().op("uuid_ops"), table.id.desc().nullsFirst().op("uuid_ops")),
+	index("idx_customer_spend_ledger_metadata").using("gin", table.metadata),
 	index("idx_customer_spend_ledger_customer_visit_occurred").using("btree", table.customerId.asc().nullsLast().op("uuid_ops"), table.visitId.asc().nullsLast().op("timestamptz_ops"), table.occurredAt.desc().nullsFirst().op("uuid_ops"), table.id.desc().nullsFirst().op("timestamptz_ops")),
 	uniqueIndex("idx_customer_spend_ledger_dedupe").using("btree", table.dedupeKey.asc().nullsLast().op("text_ops")).where(sql`(dedupe_key IS NOT NULL)`),
 	index("idx_customer_spend_ledger_entry_type").using("btree", table.entryType.asc().nullsLast().op("text_ops"), table.occurredAt.desc().nullsFirst().op("text_ops")),
@@ -1246,6 +1267,7 @@ export const clubEvents = pgTable("club_events", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'date' }).defaultNow().notNull(),
 }, (table) => [
 	index("idx_club_events_amount").using("btree", table.amount.asc().nullsLast().op("int4_ops"), table.occurredAt.desc().nullsFirst().op("int4_ops")).where(sql`(amount IS NOT NULL)`),
+	index("idx_club_events_metadata").using("gin", table.metadata),
 	index("idx_club_events_customer").using("btree", table.customerId.asc().nullsLast().op("uuid_ops"), table.occurredAt.desc().nullsFirst().op("timestamptz_ops")).where(sql`(customer_id IS NOT NULL)`),
 	uniqueIndex("idx_club_events_dedupe").using("btree", table.dedupeKey.asc().nullsLast().op("text_ops")).where(sql`(dedupe_key IS NOT NULL)`),
 	index("idx_club_events_domain").using("btree", table.eventDomain.asc().nullsLast().op("text_ops"), table.occurredAt.desc().nullsFirst().op("text_ops")),

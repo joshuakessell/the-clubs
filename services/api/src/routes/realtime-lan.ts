@@ -4,34 +4,9 @@ import { requireKioskTokenOrStaff } from '../auth/kioskToken';
 import { optionalAuth } from '../auth/middleware';
 import type { LocalLaneSockets } from '../realtime/localSockets';
 import { db, type DrizzleTx } from '../db';
-import { sql } from 'drizzle-orm';
+
 import { getLaneFeatureFlags } from '../checkin/laneFeatureFlags';
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by getLaneFeatureFlags.
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
-      }
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
 
 function isLanFallbackEnabled(): boolean {
   return process.env.LAN_FALLBACK === 'true';
@@ -39,7 +14,7 @@ function isLanFallbackEnabled(): boolean {
 
 async function isLanFallbackEnabledForLane(laneId: string): Promise<boolean> {
   try {
-    const flags = await db.transaction(async (tx) => getLaneFeatureFlags(toQueryable(tx) as any, laneId));
+    const flags = await db.transaction(async (tx) => getLaneFeatureFlags(tx, laneId));
     return flags.lanFallbackEnabled;
   } catch {
     return false;

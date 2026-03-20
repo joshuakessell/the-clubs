@@ -34,31 +34,7 @@ import { type DrizzleTx } from '../../db';
 
 
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the Queryable/PoolClient interface
- * expected by external helpers (maybeAttachScanIdentifiers, enrichCustomerIdentity).
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
-      }
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await (tx as any).execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
+
 
 // ── Types ──
 
@@ -190,7 +166,7 @@ async function attachAndEnrich(
   }
 ): Promise<void> {
   await maybeAttachScanIdentifiers({
-    client: toQueryable(tx) as any,
+    tx,
     customerId: matched.id,
     existingIdScanHash: matched.id_scan_hash,
     existingIdScanValue: matched.id_scan_value,
@@ -198,7 +174,7 @@ async function attachAndEnrich(
     idScanValue,
   });
 
-  await enrichCustomerIdentity(toQueryable(tx), matched.id, {
+  await enrichCustomerIdentity(tx, matched.id, {
     idExpirationDate: extracted.idExpirationDate,
     idNumber: extracted.idNumber,
     idState: extracted.jurisdiction || extracted.issuer || null,
@@ -487,7 +463,7 @@ async function resolveSelectedCustomer(
 
   // Attach scan identifiers
   await maybeAttachScanIdentifiers({
-    client: toQueryable(tx) as any,
+    tx,
     customerId: chosen.id,
     existingIdScanHash: chosen.id_scan_hash,
     existingIdScanValue: chosen.id_scan_value,
@@ -497,41 +473,27 @@ async function resolveSelectedCustomer(
 
   // Employee-resolution uses a more targeted enrichment (preserves existing DOB)
   // Dynamic SQL: build SET clause conditionally
-  const setClauses: string[] = [];
-  const values: unknown[] = [];
-  let paramIdx = 1;
+  const updates: ReturnType<typeof sql>[] = [];
   if (extracted.dob && !chosen.dob) {
-    setClauses.push(`dob = $${paramIdx}::date`);
-    values.push(extracted.dob);
-    paramIdx++;
+    updates.push(sql`dob = ${extracted.dob}::date`);
   }
   if (extracted.idExpirationDate) {
-    setClauses.push(`id_expiration_date = $${paramIdx}::date`);
-    values.push(extracted.idExpirationDate);
-    paramIdx++;
+    updates.push(sql`id_expiration_date = ${extracted.idExpirationDate}::date`);
   }
   if (extracted.idNumber) {
-    setClauses.push(`id_number = $${paramIdx}`);
-    values.push(extracted.idNumber);
-    paramIdx++;
+    updates.push(sql`id_number = ${extracted.idNumber}`);
   }
   if (extracted.jurisdiction || extracted.issuer) {
-    setClauses.push(`id_state = $${paramIdx}`);
-    values.push(extracted.jurisdiction || extracted.issuer || '');
-    paramIdx++;
+    updates.push(sql`id_state = ${extracted.jurisdiction || extracted.issuer || ''}`);
   }
   if (extracted.idType) {
-    setClauses.push(`id_type = $${paramIdx}`);
-    values.push(extracted.idType);
-    paramIdx++;
-    setClauses.push(`id_type_other = $${paramIdx}`);
-    values.push(extracted.idTypeOther ?? null);
-    paramIdx++;
+    updates.push(sql`id_type = ${extracted.idType}`);
+    updates.push(sql`id_type_other = ${extracted.idTypeOther ?? null}`);
   }
-  if (setClauses.length > 0) {
-    values.push(chosen.id);
-    const queryText = `UPDATE customers SET ${setClauses.join(', ')}, updated_at = NOW() WHERE id = $${paramIdx}`;
-    await toQueryable(tx).query(queryText, values);
+  if (updates.length > 0) {
+    updates.push(sql`updated_at = NOW()`);
+    const setClause = sql.join(updates, sql`, `);
+    await tx.execute(sql`UPDATE customers SET ${setClause} WHERE id = ${chosen.id}`);
   }
 
   if (idScanIssue) return makeIdScanIssueError(idScanIssue);

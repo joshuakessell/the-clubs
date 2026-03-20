@@ -28,37 +28,6 @@ import { type DrizzleTx } from '../db';
 import { calculateRenewalQuote, type RentalType } from '../pricing/engine';
 
 
-
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the Queryable interface
- * expected by ensureOrderWithReceipt.
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      // Use matchAll to find $N placeholders and their positions
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        // Append the literal text before this placeholder
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        // Parse the placeholder number and map to the correct param
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
-      }
-      // Append any trailing literal text
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await (tx as any).execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
-
 // ── Shared context (passed from route layer) ──
 
 export interface StaffContext {
@@ -726,7 +695,7 @@ export async function markFeePaid(
         const lineItems = [{ kind: 'LATE_FEE' as const, name: 'Late Fee', quantity: 1, unitPrice: feeAmount, total: feeAmount }];
         const totals = computeOrderTotals(lineItems, feeAmount, intent.tip ?? 0);
 
-        const ensured = await ensureOrderWithReceipt(toQueryable(tx), {
+        const ensured = await ensureOrderWithReceipt(tx, {
           dedupeKey: { field: 'checkoutRequestId', value: requestId },
           customerId: checkoutRequest.customer_id ?? null,
           registerSessionId: activeRegister?.id ?? null,

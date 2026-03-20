@@ -29,33 +29,6 @@ import { AGREEMENT_LEGAL_BODY_HTML_BY_LANG } from '@the-clubs/shared';
 import { HttpError } from '../errors/HttpError';
 
 
-
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the Queryable/PoolClient interface
- * expected by external helpers (selectRoomForNewCheckin, assertAssignedResourcePersistedAndUnavailable).
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1] as string, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = (match.index as number) + match[0].length;
-      }
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await (tx as any).execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
-
 // ── Types ──
 
 export interface AgreementContext {
@@ -409,8 +382,7 @@ async function autoAssignResource(
     return { id: locker.id, type: 'locker', number: locker.number };
   }
 
-  // Use toQueryable() adapter for external helper that expects PoolClient
-  const room = await selectRoomForNewCheckin(toQueryable(tx) as any, rentalType as RoomRentalType);
+  const room = await selectRoomForNewCheckin(tx, rentalType as RoomRentalType);
   if (!room) throw new HttpError(409, 'No available rooms');
   return { id: room.id, type: 'room', number: room.number };
 }
@@ -721,7 +693,7 @@ export async function finalizeCheckinWithoutAgreement(tx: DrizzleTx, session: La
   await maybeCreateWaitlist(tx, session, visitId, checkinBlockId, resource.id);
 
   await assertAssignedResourcePersistedAndUnavailable({
-    client: toQueryable(tx) as any, sessionId: session.id, customerId: session.customer_id,
+    tx, sessionId: session.id, customerId: session.customer_id,
     resourceType: resource.type, resourceId: resource.id, resourceNumber: resource.number,
   });
 
@@ -816,7 +788,7 @@ export async function processAgreementSigning(
     const waitlistInfo = await maybeCreateWaitlist(tx, session, visitId, checkinBlockId, resource.id);
 
     await assertAssignedResourcePersistedAndUnavailable({
-      client: toQueryable(tx) as any, sessionId: session.id, customerId: session.customer_id,
+    tx, sessionId: session.id, customerId: session.customer_id,
       resourceType: resource.type, resourceId: resource.id, resourceNumber: resource.number,
     });
 

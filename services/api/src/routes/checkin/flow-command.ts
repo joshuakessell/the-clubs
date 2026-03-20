@@ -13,38 +13,7 @@ import { toDate } from '../../checkin/utils';
 import { getLaneFeatureFlags } from '../../checkin/laneFeatureFlags';
 import { assertLaneWriteAuthority } from '../../checkin/laneAuthority';
 import { writeOfflineOutboxRecord } from '../../checkin/offlineOutbox';
-import { insertCustomerActivityEvent } from '../../activity/customerActivityLog';
-
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by getLaneFeatureFlags, assertLaneWriteAuthority, writeOfflineOutboxRecord.
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      // Use matchAll to find $N placeholders and their positions
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        if (match.index === undefined || !match[1]) continue;
-        // Append the literal text before this placeholder
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        // Parse the placeholder number and map to the correct param
-        const paramIndex = Number.parseInt(match[1], 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index + match[0].length;
-      }
-      // Append any trailing literal text
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
+import { insertCustomerActivityEventDrizzle } from '../../activity/customerActivityLog';
 
 /**
  * Structured error for flow command failures.
@@ -377,16 +346,12 @@ async function applyFlowPaymentSideEffects(
     let pastDueBalance: number | undefined;
 
     if (session.customer_id) {
-      const custResult = await client.query<CustomerRow>(
-        `SELECT dob, membership_card_type, membership_valid_until, past_due_balance FROM customers WHERE id = $1`,
-        [session.customer_id],
-      );
+      const custResult = await client.execute<CustomerRow & Record<string, unknown>>(sql`SELECT dob, membership_card_type, membership_valid_until, past_due_balance FROM customers WHERE id = ${session.customer_id}`);
       if (custResult.rows.length > 0) {
         const cust = custResult.rows[0];
         customerAge = calculateAge(cust.dob);
         membershipCardType = (cust.membership_card_type as 'NONE' | 'SIX_MONTH') || undefined;
         membershipValidUntil = toDate(cust.membership_valid_until) || undefined;
-        pastDueBalance = Number(cust.past_due_balance) || undefined;
       }
     }
 
@@ -421,37 +386,25 @@ async function applyFlowPaymentSideEffects(
       ? calculateRenewalQuote({ ...pricingInput, renewalHours })
       : calculatePriceQuote(pricingInput);
 
-    const intentResult = await client.query<OrderRow>(
-      `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, status, quote_json) VALUES ($1, $2, 0, 0, 0, $2, 'OPEN', $3) RETURNING ${ORDER_COLS}`,
-      [sessionId, quote.total, JSON.stringify(quote)],
-    );
+    const intentResult = await client.execute<OrderRow & Record<string, unknown>>(sql`INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, status, quote_json) VALUES (${sessionId}, ${quote.total}, 0, 0, 0, ${quote.total}, 'OPEN', ${JSON.stringify(quote)}) RETURNING ${sql.raw(ORDER_COLS)}`);
     const intent = intentResult.rows[0];
 
-    await client.query(
-      `UPDATE lane_sessions SET order_id = $1, price_quote_json = $2, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = $3`,
-      [intent.id, JSON.stringify(quote), sessionId],
-    );
+    await client.execute<Record<string, unknown>>(sql`UPDATE lane_sessions SET order_id = ${intent.id}, price_quote_json = ${JSON.stringify(quote)}, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = ${sessionId}`);
   }
 
   if (session.flow_step === 'AGREEMENT' && session.order_id && type === 'SET_STEP') {
     const requestedStep = payload?.['step'] as string | undefined;
     const requestedMethod = payload?.['paymentMethod'] as string | undefined;
     if (requestedStep === 'AGREEMENT' && (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT')) {
-      const intentStatusRes = await client.query<{ status: string }>(
-        `SELECT status FROM orders WHERE id = $1`,
-        [session.order_id],
-      );
+      const intentStatusRes = await client.execute<{ status: string }>(sql`SELECT status FROM orders WHERE id = ${session.order_id}`);
       if (intentStatusRes.rows[0]?.status !== 'PAID') {
         const splitCash = payload?.['splitCashAmount'] ? Number(payload['splitCashAmount']) : null;
         const splitCredit = payload?.['splitCreditAmount'] ? Number(payload['splitCreditAmount']) : null;
 
-        await client.query(
-          `UPDATE orders SET status = 'PAID', payment_method = $1, split_cash_amount = $2, split_credit_amount = $3, paid_at = NOW(), updated_at = NOW() WHERE id = $4`,
-          [requestedMethod, splitCash, splitCredit, session.order_id],
-        );
+        await client.execute(sql`UPDATE orders SET status = 'PAID', payment_method = ${requestedMethod}, split_cash_amount = ${splitCash}, split_credit_amount = ${splitCredit}, paid_at = NOW(), updated_at = NOW() WHERE id = ${session.order_id}`);
 
         if (session.customer_id) {
-          const orderRes = await client.query<{ total: number | string; quote_json: unknown }>(`SELECT total, quote_json FROM orders WHERE id = $1`, [session.order_id]);
+          const orderRes = await client.execute<{ total: number | string; quote_json: unknown }>(sql`SELECT total, quote_json FROM orders WHERE id = ${session.order_id}`);
           
           let lineItems: Array<{ description: string; amount: number }> = [];
           const quoteRaw = orderRes.rows[0]?.quote_json;
@@ -479,41 +432,20 @@ async function applyFlowPaymentSideEffects(
             else if (item.description.includes('Membership')) entryType = 'MEMBERSHIP_FEE';
             else if (item.description.includes('Renewal')) entryType = 'RENEWAL_FEE';
 
-            await client.query(
-              `INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
-               VALUES (NOW(), $1::uuid, NULL, $2, $3::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', $4::uuid, $5, $6, $7::jsonb, $8)
-               ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
-              [
-                session.customer_id,
-                entryType,
-                amountToInsert,
-                staffId || null,
-                staffName || null,
-                `${item.description} ($${item.amount.toFixed(2)} ${requestedMethod})`,
-                JSON.stringify({ orderId: session.order_id, paymentMethod: requestedMethod, laneSessionId: sessionId }),
-                `LEDGER:CHECKIN:${session.order_id}:${itemIndex++}`
-              ]
-            );
+            await client.execute(sql`INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+               VALUES (NOW(), ${session.customer_id}::uuid, NULL, ${entryType}, ${amountToInsert}::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', ${staffId}::uuid, ${staffName}, ${item.description}, ${JSON.stringify({ order_id: session.order_id })}::jsonb, ${session.order_id}-${itemIndex++})
+               ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`);
           }
         }
-        await client.query(
-          `UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`,
-          [sessionId],
-        );
+        await client.execute<Record<string, unknown>>(sql`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = ${sessionId}`);
 
         if (session.customer_id) {
-          const pastDueRes = await client.query<{ past_due_balance: string | number | null }>(
-            `SELECT past_due_balance FROM customers WHERE id = $1 FOR UPDATE`,
-            [session.customer_id]
-          );
+          const pastDueRes = await client.execute<{ past_due_balance: string | number | null }>(sql`SELECT past_due_balance FROM customers WHERE id = ${session.customer_id} FOR UPDATE`);
           
           const bal = pastDueRes.rows[0]?.past_due_balance;
           if (bal && Number(bal) > 0) {
-            await client.query(
-              `UPDATE customers SET past_due_balance = 0, updated_at = NOW() WHERE id = $1`,
-              [session.customer_id]
-            );
-            await insertCustomerActivityEvent(client, {
+            await client.execute(sql`UPDATE customers SET past_due_balance = 0, updated_at = NOW() WHERE id = ${session.customer_id}`);
+            await insertCustomerActivityEventDrizzle(client, {
               customerId: session.customer_id,
               actionType: 'PAST_DUE_PAID',
               actionCategory: 'PAYMENT',
@@ -530,10 +462,7 @@ async function applyFlowPaymentSideEffects(
 
   if (session.flow_step === 'PAYMENT' && session.order_id && type === 'SET_STEP' && payload?.['paymentFailed']) {
     const failureReason = (payload['failureReason'] as string) || 'Payment failed';
-    await client.query(
-      `UPDATE orders SET failure_reason = $1, updated_at = NOW() WHERE id = $2`,
-      [failureReason, session.order_id],
-    );
+    await client.execute(sql`UPDATE orders SET failure_reason = ${failureReason}, updated_at = NOW() WHERE id = ${session.order_id}`);
   }
 
   // 2hr renewal: PAYMENT → ASSIGNMENT skips AGREEMENT, so mark order PAID here
@@ -547,21 +476,15 @@ async function applyFlowPaymentSideEffects(
     const requestedStep = payload?.['step'] as string | undefined;
     const requestedMethod = payload?.['paymentMethod'] as string | undefined;
     if (requestedStep === 'ASSIGNMENT' && (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT')) {
-      const intentStatusRes = await client.query<{ status: string }>(
-        `SELECT status FROM orders WHERE id = $1`,
-        [session.order_id],
-      );
+      const intentStatusRes = await client.execute<{ status: string }>(sql`SELECT status FROM orders WHERE id = ${session.order_id}`);
       if (intentStatusRes.rows[0]?.status !== 'PAID') {
         const splitCash = payload?.['splitCashAmount'] ? Number(payload['splitCashAmount']) : null;
         const splitCredit = payload?.['splitCreditAmount'] ? Number(payload['splitCreditAmount']) : null;
 
-        await client.query(
-          `UPDATE orders SET status = 'PAID', payment_method = $1, split_cash_amount = $2, split_credit_amount = $3, paid_at = NOW(), updated_at = NOW() WHERE id = $4`,
-          [requestedMethod, splitCash, splitCredit, session.order_id],
-        );
+        await client.execute(sql`UPDATE orders SET status = 'PAID', payment_method = ${requestedMethod}, split_cash_amount = ${splitCash}, split_credit_amount = ${splitCredit}, paid_at = NOW(), updated_at = NOW() WHERE id = ${session.order_id}`);
 
         if (session.customer_id) {
-          const orderRes = await client.query<{ total: number | string; quote_json: any }>(`SELECT total, quote_json FROM orders WHERE id = $1`, [session.order_id]);
+          const orderRes = await client.execute<{ total: number | string; quote_json: any }>(sql`SELECT total, quote_json FROM orders WHERE id = ${session.order_id}`);
           
           let lineItems: Array<{ description: string; amount: number }> = [];
           const quoteRaw = orderRes.rows[0]?.quote_json;
@@ -589,27 +512,12 @@ async function applyFlowPaymentSideEffects(
             else if (item.description.includes('Membership')) entryType = 'MEMBERSHIP_FEE';
             else if (item.description.includes('Renewal')) entryType = 'RENEWAL_FEE';
 
-            await client.query(
-              `INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
-               VALUES (NOW(), $1::uuid, NULL, $2, $3::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', $4::uuid, $5, $6, $7::jsonb, $8)
-               ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
-              [
-                session.customer_id,
-                entryType,
-                amountToInsert,
-                staffId || null,
-                staffName || null,
-                `${item.description} ($${item.amount.toFixed(2)} ${requestedMethod})`,
-                JSON.stringify({ orderId: session.order_id, paymentMethod: requestedMethod, laneSessionId: sessionId }),
-                `LEDGER:CHECKIN:${session.order_id}:${itemIndex++}`
-              ]
-            );
+            await client.execute(sql`INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+               VALUES (NOW(), ${session.customer_id}::uuid, NULL, ${entryType}, ${amountToInsert}::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', ${staffId}::uuid, ${staffName}, ${item.description}, ${JSON.stringify({ order_id: session.order_id })}::jsonb, ${session.order_id}-${itemIndex++})
+               ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`);
           }
         }
-        await client.query(
-          `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
-          [sessionId],
-        );
+        await client.execute<Record<string, unknown>>(sql`UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = ${sessionId}`);
       }
     }
   }
@@ -665,21 +573,19 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
 
       try {
         const result = await db.transaction(async (tx) => {
-          const qClient = toQueryable(tx);
-
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          if (!(await isFlowCommandsEnabled({ client: qClient as Parameters<typeof getLaneFeatureFlags>[0], laneId }))) {
+          if (!(await isFlowCommandsEnabled({ client: tx, laneId }))) {
             throw new FlowCommandError(404, 'NotFound', 'Not Found');
           }
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const authority = await assertLaneWriteAuthority({ client: qClient as Parameters<typeof getLaneFeatureFlags>[0], laneId });
+          const authority = await assertLaneWriteAuthority({ tx, laneId });
           if (!authority.allowed) {
             throw new FlowCommandError(409, 'LaneNotAuthoritative', authority.reason ?? 'Lane write not allowed');
           }
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const lanMode = await isLanFallbackEnabledForLane({ client: qClient as Parameters<typeof getLaneFeatureFlags>[0], laneId });
+          const lanMode = await isLanFallbackEnabledForLane({ client: tx, laneId });
           const locked = await tx.execute<Record<string, unknown>>(
             sql`SELECT ${sql.raw(LANE_SESSION_COLS)}
              FROM lane_sessions
@@ -715,8 +621,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
           );
 
           if (lanMode) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            await writeOfflineOutboxRecord(qClient as any, {
+            await writeOfflineOutboxRecord(tx, {
               laneId,
               sessionId,
               commandId,
@@ -861,38 +766,35 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
 
           // This complex UPDATE uses positional params ($1..$21) with many CASE
           // expressions — best kept as raw SQL via the toQueryable adapter.
-          const updatedSession: { rows: LaneSessionRow[] } = await (qClient as any).query(
-            `UPDATE lane_sessions
-             SET status = $1::public.lane_session_status,
-                 flow_step = $2,
-                 flow_version = $3,
-                 flow_last_command_id = $4,
-                 flow_last_actor = $5,
-                 desired_rental_type = CASE WHEN $6 THEN NULL ELSE $7::public.rental_type END,
-                 proposed_rental_type = CASE WHEN $6 THEN NULL ELSE $8::public.rental_type END,
-                 proposed_by = CASE WHEN $6 THEN NULL ELSE $9 END,
-                 selection_confirmed = CASE WHEN $6 THEN false ELSE $10 END,
-                 selection_confirmed_by = CASE WHEN $6 THEN NULL ELSE $11 END,
-                 selection_locked_at = CASE WHEN $6 THEN NULL ELSE $12::timestamptz END,
-                 waitlist_desired_type = CASE WHEN $13 THEN NULL ELSE $14::public.rental_type END,
-                 waitlist_desired_types_json = CASE WHEN $13 THEN NULL ELSE $15::jsonb END,
-                 backup_rental_type = CASE WHEN $13 THEN NULL ELSE $16::public.rental_type END,
-                 waitlist_requested_resource_number = CASE WHEN $13 THEN NULL ELSE $17 END,
-                 waitlist_requested_resource_type = CASE WHEN $13 THEN NULL ELSE $18::public.inventory_resource_type END,
-                 order_id = CASE WHEN $19 THEN NULL ELSE order_id END,
-                 price_quote_json = CASE WHEN $19 THEN NULL ELSE price_quote_json END,
-                 disclaimers_ack_json = $22::jsonb,
-                 agreement_bypass_pending = CASE WHEN $20 THEN false ELSE agreement_bypass_pending END,
+          const updatedSession: { rows: LaneSessionRow[] } = await tx.execute<Record<string, unknown>>(sql`UPDATE lane_sessions
+             SET status = ${updateParams[0]}::public.lane_session_status,
+                 flow_step = ${updateParams[1]},
+                 flow_version = ${updateParams[2]},
+                 flow_last_command_id = ${updateParams[3]},
+                 flow_last_actor = ${updateParams[4]},
+                 desired_rental_type = CASE WHEN ${updateParams[5]} THEN NULL ELSE ${updateParams[6]}::public.rental_type END,
+                 proposed_rental_type = CASE WHEN ${updateParams[5]} THEN NULL ELSE ${updateParams[7]}::public.rental_type END,
+                 proposed_by = CASE WHEN ${updateParams[5]} THEN NULL ELSE ${updateParams[8]} END,
+                 selection_confirmed = CASE WHEN ${updateParams[5]} THEN false ELSE ${updateParams[9]} END,
+                 selection_confirmed_by = CASE WHEN ${updateParams[5]} THEN NULL ELSE ${updateParams[10]} END,
+                 selection_locked_at = CASE WHEN ${updateParams[5]} THEN NULL ELSE ${updateParams[11]}::timestamptz END,
+                 waitlist_desired_type = CASE WHEN ${updateParams[12]} THEN NULL ELSE ${updateParams[13]}::public.rental_type END,
+                 waitlist_desired_types_json = CASE WHEN ${updateParams[12]} THEN NULL ELSE ${updateParams[14]}::jsonb END,
+                 backup_rental_type = CASE WHEN ${updateParams[12]} THEN NULL ELSE ${updateParams[15]}::public.rental_type END,
+                 waitlist_requested_resource_number = CASE WHEN ${updateParams[12]} THEN NULL ELSE ${updateParams[16]} END,
+                 waitlist_requested_resource_type = CASE WHEN ${updateParams[12]} THEN NULL ELSE ${updateParams[17]}::public.inventory_resource_type END,
+                 order_id = CASE WHEN ${updateParams[18]} THEN NULL ELSE order_id END,
+                 price_quote_json = CASE WHEN ${updateParams[18]} THEN NULL ELSE price_quote_json END,
+                 disclaimers_ack_json = ${updateParams[21]}::jsonb,
+                 agreement_bypass_pending = CASE WHEN ${updateParams[19]} THEN false ELSE agreement_bypass_pending END,
                  updated_at = NOW()
-             WHERE id = $21
-             RETURNING ${LANE_SESSION_COLS}`,
-            updateParams
-          );
+             WHERE id = ${updateParams[20]}
+             RETURNING ${sql.raw(LANE_SESSION_COLS)}`) as unknown as { rows: LaneSessionRow[] };
 
           const finalSession = updatedSession.rows[0]!;
 
           // Apply payment-related side effects (auto-create intent, mark PAID, record failure).
-          await applyFlowPaymentSideEffects(qClient as any, {
+          await applyFlowPaymentSideEffects(tx, {
             session: finalSession,
             sessionId,
             type,

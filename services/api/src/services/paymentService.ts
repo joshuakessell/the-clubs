@@ -53,33 +53,6 @@ function parseOrderQuote(raw: unknown): {
   return isRecord(raw) ? raw : {};
 }
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the Queryable interface
- * expected by ensureOrderWithReceipt.
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      // Build parameterized sql using Drizzle's sql.raw + parameters
-      const values = params ?? [];
-      let built = sql.empty();
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
-      }
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await tx.execute<Record<string, unknown>>(built);
-      return { rows: result.rows as unknown as T[] };
-    },
-  };
-}
-
 // ── Service Methods ──
 
 /**
@@ -214,7 +187,7 @@ export async function markOrderPaid(input: MarkPaidInput) {
       lane_session_id?: string | null; tip?: number | null; paid_by_staff_id?: string | null;
     };
 
-    const queryable = toQueryable(tx);
+    const queryable = tx;
 
     const resolveOrderContext = async (orderRow: typeof order, quote: { type?: string; waitlistId?: string; visitId?: string; blockId?: string }) => {
       let customerId: string | null = null;

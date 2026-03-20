@@ -1,4 +1,6 @@
-import type { PoolClient } from 'pg';
+import type { DrizzleTx } from '../db';
+import { eq } from 'drizzle-orm';
+import { laneFeatureFlags } from '../db/schema/schema';
 
 export type LaneFeatureFlags = {
   lockstepV2Enabled: boolean;
@@ -15,7 +17,7 @@ const DEFAULT_FLAGS: LaneFeatureFlags = {
 };
 
 export async function getLaneFeatureFlags(
-  client: PoolClient,
+  tx: DrizzleTx,
   laneId: string
 ): Promise<LaneFeatureFlags> {
   const globalLockstep = process.env.LOCKSTEP_V2 === 'true';
@@ -23,20 +25,18 @@ export async function getLaneFeatureFlags(
   const globalLanFallback = process.env.LAN_FALLBACK === 'true';
   const globalLanAuthoritative = process.env.LAN_AUTHORITATIVE === 'true';
 
-  const result = await client.query<{
-    lockstep_v2_enabled: boolean | null;
-    flow_commands_enabled: boolean | null;
-    lan_fallback_enabled: boolean | null;
-    lan_authoritative_enabled: boolean | null;
-  }>(
-    `SELECT lockstep_v2_enabled, flow_commands_enabled, lan_fallback_enabled, lan_authoritative_enabled
-     FROM lane_feature_flags
-     WHERE lane_id = $1
-     LIMIT 1`,
-    [laneId]
-  );
+  const result = await tx
+    .select({
+      lockstepV2Enabled: laneFeatureFlags.lockstepV2Enabled,
+      flowCommandsEnabled: laneFeatureFlags.flowCommandsEnabled,
+      lanFallbackEnabled: laneFeatureFlags.lanFallbackEnabled,
+      lanAuthoritativeEnabled: laneFeatureFlags.lanAuthoritativeEnabled,
+    })
+    .from(laneFeatureFlags)
+    .where(eq(laneFeatureFlags.laneId, laneId))
+    .limit(1);
 
-  if (result.rows.length === 0) {
+  if (result.length === 0) {
     return {
       ...DEFAULT_FLAGS,
       lockstepV2Enabled: globalLockstep,
@@ -46,11 +46,11 @@ export async function getLaneFeatureFlags(
     };
   }
 
-  const row = result.rows[0]!;
+  const row = result[0]!;
   return {
-    lockstepV2Enabled: row.lockstep_v2_enabled ?? globalLockstep,
-    flowCommandsEnabled: row.flow_commands_enabled ?? globalFlowCommands,
-    lanFallbackEnabled: row.lan_fallback_enabled ?? globalLanFallback,
-    lanAuthoritativeEnabled: row.lan_authoritative_enabled ?? globalLanAuthoritative,
+    lockstepV2Enabled: row.lockstepV2Enabled ?? globalLockstep,
+    flowCommandsEnabled: row.flowCommandsEnabled ?? globalFlowCommands,
+    lanFallbackEnabled: row.lanFallbackEnabled ?? globalLanFallback,
+    lanAuthoritativeEnabled: row.lanAuthoritativeEnabled ?? globalLanAuthoritative,
   };
 }

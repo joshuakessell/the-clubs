@@ -212,8 +212,9 @@ function setupPeriodicJobs(fastify: FastifyInstance) {
     void (async () => {
       try {
         const { db: dbInstance } = await import('./db');
-        const { sql: sqlTag } = await import('drizzle-orm');
-        const result = await dbInstance.execute(sqlTag`DELETE FROM idempotency_keys WHERE expires_at < NOW()`);
+        const { sql: sqlTag, lt } = await import('drizzle-orm');
+        const { idempotencyKeys } = await import('./db/schema/schema');
+        const result = await dbInstance.delete(idempotencyKeys).where(lt(idempotencyKeys.expiresAt, sqlTag`NOW()`));
         if (result.rowCount && result.rowCount > 0) fastify.log.info(`Cleaned up ${result.rowCount} expired idempotency key(s)`);
       } catch { /* ignore */ }
     })();

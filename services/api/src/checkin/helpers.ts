@@ -1,29 +1,29 @@
 import { HttpError } from '../errors/HttpError';
-import type { PoolClient, RoomRentalType } from './types';
+import type { RoomRentalType } from './types';
+import { type DrizzleTx } from '../db';
+import { sql } from 'drizzle-orm';
 
 export async function assertAssignedResourcePersistedAndUnavailable(params: {
-  client: PoolClient;
+  tx: DrizzleTx;
   sessionId: string;
   customerId: string;
   resourceType: 'room' | 'locker';
   resourceId: string;
   resourceNumber?: string;
 }): Promise<void> {
-  const { client, sessionId, customerId, resourceType, resourceId, resourceNumber } = params;
+  const { tx, sessionId, customerId, resourceType, resourceId, resourceNumber } = params;
 
-  const row = (
-    await client.query<{
+  const result = await tx.execute<{
       id: string;
       number: string;
       status: string;
       assigned_to_customer_id: string | null;
     }>(
-      `SELECT id, number, status, assigned_to_customer_id
+      sql`SELECT id, number, status, assigned_to_customer_id
        FROM inventory_resources
-       WHERE id = $1`,
-      [resourceId]
-    )
-  ).rows[0];
+       WHERE id = ${resourceId}`
+  );
+  const row = result.rows[0];
 
   const number = resourceNumber ?? row?.number ?? '(unknown)';
   const assignedOk = row?.assigned_to_customer_id === customerId;
@@ -37,31 +37,30 @@ export async function assertAssignedResourcePersistedAndUnavailable(params: {
 }
 
 export async function selectRoomForNewCheckin(
-  client: PoolClient,
+  tx: DrizzleTx,
   rentalType: RoomRentalType
 ): Promise<{ id: string; number: string } | null> {
   // 1) ACTIVE + OFFERED waitlist demand count for this tier (still within scheduled stay)
-  const demandRes = await client.query<{ count: string }>(
-    `SELECT COUNT(*) as count
+  const demandRes = await tx.execute<{ count: string }>(
+    sql`SELECT COUNT(*) as count
      FROM waitlist w
      JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
      JOIN visits v ON v.id = w.visit_id
      WHERE w.status IN ('ACTIVE', 'OFFERED')
-       AND w.desired_tier::text = $1
+       AND w.desired_tier::text = ${rentalType}
        AND v.ended_at IS NULL
-       AND cb.ends_at > NOW()`,
-    [rentalType]
+       AND cb.ends_at > NOW()`
   );
   const waitlistDemandCount = Number.parseInt(demandRes.rows[0]?.count ?? '0', 10) || 0;
 
   // 2) Count available rooms of this tier (CLEAN, unassigned, not reserved by lane session)
-  const availableRes = await client.query<{ count: string }>(
-    `SELECT COUNT(*) as count
+  const availableRes = await tx.execute<{ count: string }>(
+    sql`SELECT COUNT(*) as count
      FROM inventory_resources
      WHERE status = 'CLEAN'
        AND assigned_to_customer_id IS NULL
        AND kind = 'room'
-       AND tier = $1
+       AND tier = ${rentalType}
        AND NOT EXISTS (
          SELECT 1
          FROM lane_sessions ls
@@ -76,8 +75,7 @@ export async function selectRoomForNewCheckin(
                'AWAITING_SIGNATURE'::public.lane_session_status
              ]
            )
-       )`,
-    [rentalType]
+       )`
   );
   const availableCount = Number.parseInt(availableRes.rows[0]?.count ?? '0', 10) || 0;
 
@@ -87,31 +85,29 @@ export async function selectRoomForNewCheckin(
   }
 
   // 4) OFFERED waitlist resources are explicitly reserved (do not assign them)
-  const offeredRes = await client.query<{ resource_id: string }>(
-    `SELECT w.resource_id
+  const offeredRes = await tx.execute<{ resource_id: string }>(
+    sql`SELECT w.resource_id
      FROM waitlist w
      JOIN checkin_blocks cb ON cb.id = w.checkin_block_id
      JOIN visits v ON v.id = w.visit_id
      WHERE w.status = 'OFFERED'
-       AND w.desired_tier::text = $1
+       AND w.desired_tier::text = ${rentalType}
        AND w.resource_id IS NOT NULL
        AND v.ended_at IS NULL
-       AND cb.ends_at > NOW()`,
-    [rentalType]
+       AND cb.ends_at > NOW()`
   );
   const offeredResourceIds = offeredRes.rows.map((r) => r.resource_id).filter(Boolean);
 
   // 5) Select the first clean, unassigned resource, excluding offered ones.
   const offeredResourceIdsSql = `{${offeredResourceIds.join(',')}}`;
-  const room = (
-    await client.query<{ id: string; number: string }>(
-      `SELECT id, number
+  const roomRes = await tx.execute<{ id: string; number: string }>(
+      sql`SELECT id, number
        FROM inventory_resources
        WHERE status = 'CLEAN'
          AND assigned_to_customer_id IS NULL
          AND kind = 'room'
-         AND tier = $1
-         AND id <> ALL($2::uuid[])
+         AND tier = ${rentalType}
+         AND id <> ALL(${offeredResourceIdsSql}::uuid[])
          AND NOT EXISTS (
            SELECT 1
            FROM lane_sessions ls
@@ -129,16 +125,15 @@ export async function selectRoomForNewCheckin(
          )
        ORDER BY number ASC
        LIMIT 1
-       FOR UPDATE SKIP LOCKED`,
-      [rentalType, offeredResourceIdsSql]
-    )
-  ).rows[0];
+       FOR UPDATE SKIP LOCKED`
+  );
+  const room = roomRes.rows[0];
 
   return room ?? null;
 }
 
 export async function maybeAttachScanIdentifiers(params: {
-  client: PoolClient;
+  tx: DrizzleTx;
   customerId: string;
   existingIdScanHash: string | null;
   existingIdScanValue: string | null;
@@ -150,13 +145,12 @@ export async function maybeAttachScanIdentifiers(params: {
   const shouldUpdateValue =
     !params.existingIdScanValue || params.existingIdScanValue !== params.idScanValue;
   if (!shouldUpdateHash && !shouldUpdateValue) return;
-  await params.client.query(
-    `UPDATE customers
-     SET id_scan_hash = CASE WHEN id_scan_hash IS NULL OR id_scan_hash <> $1 THEN $1 ELSE id_scan_hash END,
-         id_scan_value = CASE WHEN id_scan_value IS NULL OR id_scan_value <> $2 THEN $2 ELSE id_scan_value END,
+  await params.tx.execute(
+    sql`UPDATE customers
+     SET id_scan_hash = CASE WHEN id_scan_hash IS NULL OR id_scan_hash <> ${params.idScanHash} THEN ${params.idScanHash} ELSE id_scan_hash END,
+         id_scan_value = CASE WHEN id_scan_value IS NULL OR id_scan_value <> ${params.idScanValue} THEN ${params.idScanValue} ELSE id_scan_value END,
          updated_at = NOW()
-     WHERE id = $3
-      `,
-    [params.idScanHash, params.idScanValue, params.customerId]
+     WHERE id = ${params.customerId}
+      `
   );
 }
