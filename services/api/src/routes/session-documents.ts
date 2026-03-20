@@ -229,30 +229,42 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
       const row = result.rows[0] as unknown as PdfDataRow;
       const customerName = row.customer_name || 'Guest';
       const signedAt = row.sig_signed_at ? new Date(row.sig_signed_at) : new Date(row.block_starts_at);
-      const agreementText = row.sig_agreement_text || '';
+      let agreementText = row.sig_agreement_text || '';
       const isManualOverride = row.agreement_signed && !row.sig_png_base64;
 
-      const pdfBuf = await generateAgreementPdf({
-        agreementTitle: row.agreement_title || 'Club Agreement',
-        agreementVersion: row.sig_agreement_version || undefined,
-        agreementText,
-        customerName,
-        customerDob: row.customer_dob,
-        membershipNumber: row.membership_number || undefined,
-        checkinAt: new Date(row.block_starts_at),
-        signedAt,
-        ...(isManualOverride
-          ? { signatureText: 'Manual Signature Override' }
-          : { signatureImageBase64: row.sig_png_base64 || undefined }),
-      });
+      if (!agreementText) {
+        const fallbackResult = await db.execute<{ body_text: string }>(
+          sql`SELECT body_text FROM agreements WHERE active = true ORDER BY created_at DESC LIMIT 1`
+        );
+        agreementText = fallbackResult.rows[0]?.body_text || 'Agreement text is unavailable.';
+      }
 
-      reply.raw.writeHead(200, {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="agreement-${documentId.slice(0, 8)}.pdf"`,
-        'Content-Length': pdfBuf.length,
-      });
-      reply.raw.end(pdfBuf);
-      return reply;
+      try {
+        const pdfBuf = await generateAgreementPdf({
+          agreementTitle: row.agreement_title || 'Club Agreement',
+          agreementVersion: row.sig_agreement_version || undefined,
+          agreementText,
+          customerName,
+          customerDob: row.customer_dob,
+          membershipNumber: row.membership_number || undefined,
+          checkinAt: new Date(row.block_starts_at),
+          signedAt,
+          ...(isManualOverride
+            ? { signatureText: 'Manual Signature Override' }
+            : { signatureImageBase64: row.sig_png_base64 || undefined }),
+        });
+
+        reply.raw.writeHead(200, {
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `inline; filename="agreement-${documentId.slice(0, 8)}.pdf"`,
+          'Content-Length': pdfBuf.length,
+        });
+        reply.raw.end(pdfBuf);
+        return reply;
+      } catch (err) {
+        request.log.error({ err, documentId }, 'Failed to generate PDF on the fly');
+        return reply.status(500).send({ error: 'Failed to generate PDF document' });
+      }
     }
   );
 }
