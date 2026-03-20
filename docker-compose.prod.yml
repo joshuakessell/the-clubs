@@ -35,6 +35,7 @@ services:
       FLOW_COMMANDS: ${FLOW_COMMANDS:-true}
       DEMO_MODE: ${DEMO_MODE:-false}
       SEED_ON_STARTUP: ${SEED_ON_STARTUP:-false}
+      FORCE_RESEED: ${FORCE_RESEED:-false}
     ports:
       - "${HOST_PORT:-3000}:3000"
     healthcheck:

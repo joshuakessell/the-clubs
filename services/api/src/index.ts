@@ -322,9 +322,10 @@ async function handleDemoSeeding(fastify: FastifyInstance) {
     if (process.env.SKIP_DEMO_SEED === 'true') {
       fastify.log.info('DEMO_MODE enabled; skipping startup seed.');
     } else {
-      fastify.log.info('DEMO_MODE enabled, running simulator...');
+      const forceReseed = process.env.FORCE_RESEED === 'true';
+      fastify.log.info(`DEMO_MODE enabled, running simulator (forceReseed=${forceReseed})...`);
       try {
-        await seedDemoData({ forceReseed: false });
+        await seedDemoData({ forceReseed });
       } catch (err) {
         fastify.log.error(err, '❌ Demo seed failed');
       }

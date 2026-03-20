@@ -237,7 +237,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           envs: DB_PASSWORD,KIOSK_TOKEN,ALLOWED_ORIGINS,CLOUDFLARE_CERT_PEM,CLOUDFLARE_CERT_KEY
-          command_timeout: 10m
+          command_timeout: 15m
           script: |
             set -e
 
@@ -266,6 +266,7 @@ jobs:
               'FLOW_COMMANDS=true' \
               'DEMO_MODE=true' \
               'SEED_ON_STARTUP=true' \
+              'FORCE_RESEED=true' \
               "DB_PASSWORD=${DB_PASSWORD}" \
               "KIOSK_TOKEN=${KIOSK_TOKEN}" \
               'HOST_PORT=3001' \
@@ -312,6 +313,14 @@ jobs:
               nginx:alpine
             echo "✓ nginx reverse proxy started on ports 80 and 443"
 
+            # Wipe demo DB for clean 60-day reseed
+            echo "🗑️  Wiping demo database for fresh simulation..."
+            docker compose -f docker-compose.prod.yml \
+              --project-name "demo" \
+              --env-file "$ENV_FILE" \
+              down -v 2>/dev/null || true
+            echo "✓ Demo database volume removed"
+
             # Start/restart demo stack
             docker compose -f docker-compose.prod.yml \
               --project-name "demo" \
@@ -324,8 +333,8 @@ jobs:
             for i in $(seq 1 30); do
               if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
                 echo "✓ API is healthy on port 3001!"
-                echo "⏳ Waiting 30s for DB init + seed to complete..."
-                sleep 30
+                echo "⏳ Waiting 120s for 60-day simulation to complete..."
+                sleep 120
                 echo "── Container logs (last 80 lines) ──"
                 docker compose -f docker-compose.prod.yml \
                   --project-name "demo" \
