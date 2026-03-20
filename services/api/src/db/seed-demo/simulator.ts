@@ -25,6 +25,12 @@ import { sql } from 'drizzle-orm';
 import { SeedProgress } from './progress';
 import { ensureDemoStaff } from '../ensureDemoStaff';
 
+/**
+ * Minimal valid 1x1 PNG used as a placeholder for demo signature images.
+ * This ensures has_pdf = true and enables on-demand PDF reconstruction.
+ */
+const DEMO_SIGNATURE_PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVQI12P4z8AAAAACAAHiIbwzAAAAAElFTkSuQmCC';
+
 // ── Drizzle shims ───────────────────────────────────────────────────────────
 // Local wrappers that match the old raw-PG signatures so the simulator
 // (1600+ LOC of positional-param SQL) needs zero further changes.
@@ -846,9 +852,9 @@ async function simulateVisits(params: {
         [blockId, visitId, start, scheduledEnd, resourceId, signedAt, rentalType]
       );
       await client.query(
-        `INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, agreement_text_snapshot, agreement_version, checkin_block_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [randomUUID(), agreement.id, customer.name, customer.membership_number, signedAt, agreement.body_text, agreement.version, blockId]
+        `INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, signature_png_base64, agreement_text_snapshot, agreement_version, checkin_block_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [randomUUID(), agreement.id, customer.name, customer.membership_number, signedAt, DEMO_SIGNATURE_PNG_BASE64, agreement.body_text, agreement.version, blockId]
       );
 
       // --- Activity Events: CHECKIN_STARTED + CHECKIN_COMPLETED ---
@@ -1653,9 +1659,9 @@ async function seedActiveWaitlist(client: DbClient, p: {
     );
     if (agreement) {
       await client.query(
-        `INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, agreement_text_snapshot, agreement_version, checkin_block_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [randomUUID(), agreement.id, customer.name, customer.membership_number, signedAt, agreement.body_text, agreement.version, blockId]
+        `INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, signature_png_base64, agreement_text_snapshot, agreement_version, checkin_block_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [randomUUID(), agreement.id, customer.name, customer.membership_number, signedAt, DEMO_SIGNATURE_PNG_BASE64, agreement.body_text, agreement.version, blockId]
       );
     }
     if (reg) {
