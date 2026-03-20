@@ -13,8 +13,10 @@ interface StaffMember {
 }
 
 export function StaffView() {
+  const [showInactive, setShowInactive] = useState(false);
+  const activeFilter = showInactive ? '' : '?active=true';
   const { data, loading, error, refetch } = useDashboardFetch<{ staff: StaffMember[] }>(
-    '/api/v1/admin/staff',
+    `/api/v1/admin/staff${activeFilter}`,
   );
   const staff = data?.staff ?? [];
 
@@ -116,7 +118,12 @@ export function StaffView() {
             <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Staff Management</h2>
             <p className="text-sm text-(--color-text-muted)">{staff.length} staff members</p>
           </div>
-          <Button size="sm" onClick={() => setShowCreate(!showCreate)}>+ Add Staff</Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant={showInactive ? 'primary' : 'outline'} onClick={() => setShowInactive(!showInactive)}>
+              {showInactive ? 'Hide Inactive' : 'Show Inactive'}
+            </Button>
+            <Button size="sm" onClick={() => setShowCreate(!showCreate)}>+ Add Staff</Button>
+          </div>
         </div>
 
         {showCreate && (
