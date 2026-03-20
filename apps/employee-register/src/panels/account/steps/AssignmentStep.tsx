@@ -45,6 +45,8 @@ export function AssignmentStep() {
       };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
+      if (!laneId) return;
+
       const res = await fetch(
         getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/complete`),
         {

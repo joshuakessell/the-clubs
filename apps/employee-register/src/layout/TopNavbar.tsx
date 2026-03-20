@@ -92,7 +92,7 @@ height = "28"
   />
   </div>
   <span className="text-sm font-bold uppercase font-(--font-brand) text-(--color-text-primary)">
-    Club Dallas — Register #{laneId.replaceAll(/\D/g, '') || '1'}
+    Club Dallas — Register #{laneId?.replaceAll(/\D/g, '') || '1'}
 </span>
   </div>
 

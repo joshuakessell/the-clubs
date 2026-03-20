@@ -73,7 +73,7 @@ export function KioskDrawer() {
 
         {/* Body: full-size mirror */}
         <div className="flex-1 flex flex-col items-center justify-center overflow-auto">
-          <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId} />
+          <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId ?? undefined} />
         </div>
       </div>
 

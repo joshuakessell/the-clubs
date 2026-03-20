@@ -106,7 +106,7 @@ export function KioskPiP() {
               animation: 'kioskModalFadeIn 0.2s ease-out',
             }}
           >
-            <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId} />
+            <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId ?? undefined} />
           </div>
 
           {/* Close hint */}

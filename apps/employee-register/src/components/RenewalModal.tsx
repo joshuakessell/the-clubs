@@ -51,6 +51,8 @@ export function RenewalModal({
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
+      if (!laneId) return;
+
       const res = await fetch(
         getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/start`),
         {

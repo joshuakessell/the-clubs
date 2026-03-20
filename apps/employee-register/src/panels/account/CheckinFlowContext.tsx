@@ -134,7 +134,7 @@ export function CheckinFlowProvider({ children }: { children: React.ReactNode })
     },
     meta: {
       token: token ?? null,
-      laneId,
+      laneId: laneId ?? '',
       currentSessionId,
     },
   };
