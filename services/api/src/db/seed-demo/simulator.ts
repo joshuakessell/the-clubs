@@ -104,6 +104,7 @@ type SimRegisterSession = {
   device_id: string;
 };
 type SimAgreement = { id: string; version: string; title: string; body_text: string };
+type SimShift = { employee_id: string; starts_at: Date; ends_at: Date };
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG (Mulberry32)
@@ -592,6 +593,28 @@ async function syncClubEvents(client: DbClient): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Shift-aware Staff Resolution
+// ---------------------------------------------------------------------------
+
+function getOnShiftStaff(
+  shifts: SimShift[],
+  allStaff: SimStaff[],
+  time: Date,
+  rng: () => number,
+): SimStaff {
+  const onShift = shifts
+    .filter(s => s.starts_at <= time && s.ends_at > time)
+    .map(s => allStaff.find(st => st.id === s.employee_id))
+    .filter((s): s is SimStaff => s !== undefined);
+
+  if (onShift.length > 0) {
+    return onShift[Math.floor(rng() * onShift.length)];
+  }
+  // Fallback: pick any staff member at random if no shift data covers this time
+  return allStaff[Math.floor(rng() * allStaff.length)];
+}
+
+// ---------------------------------------------------------------------------
 // Core Visit Simulation
 // ---------------------------------------------------------------------------
 
@@ -605,9 +628,10 @@ async function simulateVisits(params: {
   lockers: SimLocker[];
   rooms: SimRoom[];
   staff: SimStaff[];
+  shifts: SimShift[];
   registerSessions: SimRegisterSession[];
 }): Promise<number> {
-  const { client, from, to, anchor, agreement, customers, lockers, rooms, staff, registerSessions } = params;
+  const { client, from, to, anchor, agreement, customers, lockers, rooms, staff, shifts, registerSessions } = params;
   const windowMs = to.getTime() - from.getTime();
   if (windowMs <= 0) return 0;
 
@@ -657,8 +681,10 @@ async function simulateVisits(params: {
         customers.push(customer);
       }
 
-      const reg = registerSessions[(lockerIdx + j) % registerSessions.length];
-      const emp = staff.find(s => s.id === reg.employee_id) ?? staff[0];
+      // Pick the employee who is on-shift at this visit's check-in time
+      const emp = getOnShiftStaff(shifts, staff, start, rng);
+      const reg = registerSessions.find(r => r.employee_id === emp.id)
+        ?? registerSessions[(lockerIdx + j) % registerSessions.length];
 
       // --- Choose resource (62% locker, 38% room) ---
       let resourceId: string | null = null;
@@ -1322,18 +1348,27 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
     }
 
     // Load entities from the database for simulation
-    const [agreementRes, customersRes, lockersRes, roomsRes, staffRes, registerRes] = await Promise.all([
+    const [agreementRes, customersRes, lockersRes, roomsRes, staffRes, registerRes, shiftsRes] = await Promise.all([
       query<SimAgreement>(`SELECT id, version, title, body_text FROM agreements WHERE active = true ORDER BY created_at DESC LIMIT 1`),
       query<SimCustomer>(`SELECT id, name, membership_number, dob, membership_valid_until FROM customers ORDER BY created_at`),
       query<SimLocker>(`SELECT id, number FROM inventory_resources WHERE kind = 'locker' ORDER BY number`),
       query<SimRoom>(`SELECT id, number, tier FROM inventory_resources WHERE kind = 'room' ORDER BY number`),
       query<SimStaff>(`SELECT id, name FROM staff WHERE active = true ORDER BY name`),
       query<SimRegisterSession>(`SELECT id, register_number, employee_id, device_id FROM register_sessions WHERE signed_out_at IS NULL ORDER BY created_at DESC`),
+      query<{ employee_id: string; starts_at: string; ends_at: string }>(`SELECT employee_id, starts_at, ends_at FROM employee_shifts WHERE starts_at >= $1 AND ends_at <= $2 ORDER BY starts_at`, [from, now]),
     ]);
 
     const agreement = agreementRes.rows[0];
     if (!agreement) { progress.log('❌ No active agreement found.'); return; }
     if (staffRes.rows.length === 0) { progress.log('❌ No active staff found.'); return; }
+
+    // Convert raw SQL timestamp strings to Date objects for shift lookups
+    const shifts: SimShift[] = shiftsRes.rows.map(r => ({
+      employee_id: r.employee_id,
+      starts_at: new Date(r.starts_at),
+      ends_at: new Date(r.ends_at),
+    }));
+    progress.log(`📋 Loaded ${shifts.length} employee shifts for simulation window`);
 
     // If no register sessions, create temporary ones for the sim
     const registerSessions = registerRes.rows;
@@ -1369,6 +1404,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
         lockers: lockersRes.rows,
         rooms: roomsRes.rows,
         staff: staffRes.rows,
+        shifts,
         registerSessions,
       });
 
