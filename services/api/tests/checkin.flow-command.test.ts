@@ -698,10 +698,10 @@ describe('Check-in Flow Commands', () => {
 
     await query(`UPDATE customers SET past_due_balance = 50.00 WHERE id = $1`, [cid]);
 
-    // Stage session at AGREEMENT step with an OPEN order
+    // Stage session at PAYMENT step with an OPEN order
     await query(
       `UPDATE lane_sessions
-       SET flow_step = 'AGREEMENT',
+       SET flow_step = 'PAYMENT',
            flow_version = 1,
            order_id = '11111111-1111-1111-1111-111111111111'
        WHERE id = $1`,

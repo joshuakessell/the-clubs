@@ -433,7 +433,7 @@ async function applyFlowPaymentSideEffects(
     );
   }
 
-  if (session.flow_step === 'PAYMENT' && session.order_id && type === 'SET_STEP') {
+  if (session.flow_step === 'AGREEMENT' && session.order_id && type === 'SET_STEP') {
     const requestedStep = payload?.['step'] as string | undefined;
     const requestedMethod = payload?.['paymentMethod'] as string | undefined;
     if (requestedStep === 'AGREEMENT' && (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT')) {
@@ -538,7 +538,7 @@ async function applyFlowPaymentSideEffects(
 
   // 2hr renewal: PAYMENT → ASSIGNMENT skips AGREEMENT, so mark order PAID here
   if (
-    session.flow_step === 'PAYMENT' &&
+    session.flow_step === 'ASSIGNMENT' &&
     session.order_id &&
     type === 'SET_STEP' &&
     session.checkin_mode === 'RENEWAL' &&
@@ -576,7 +576,7 @@ async function applyFlowPaymentSideEffects(
           if (lineItems.length === 0) {
              const amountInt = Math.round(Number(orderRes.rows[0]?.total ?? 0));
              if (amountInt > 0) {
-                lineItems.push({ description: 'Check-in fee paid', amount: amountInt / 100 });
+                lineItems.push({ description: 'Check-in fee paid', amount: amountInt });
              }
           }
 
