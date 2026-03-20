@@ -132,6 +132,7 @@ describe('Auth Tests', () => {
     await query('DELETE FROM staff_webauthn_credentials');
     await query('DELETE FROM webauthn_challenges');
     await query('DELETE FROM audit_log');
+    await query('DELETE FROM customer_spend_ledger_entries');
     await query('DELETE FROM staff');
   });
 
