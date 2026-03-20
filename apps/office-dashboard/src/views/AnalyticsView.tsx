@@ -29,7 +29,7 @@ export function AnalyticsView() {
   const daysDiff = Math.max(1, Math.round((new Date(dateTo).getTime() - new Date(dateFrom).getTime()) / 86_400_000));
 
   const { data: trend, loading: trendL } = useDashboardFetch<{ days: number; trend: TrendDay[] }>(
-    `/api/v1/admin/reports/revenue-trend?days=${daysDiff}`,
+    `/api/v1/admin/reports/revenue-trend?from=${dateFrom}&to=${dateTo}`,
   );
   const { data: heatmap, loading: heatL } = useDashboardFetch<{ activityGrid: HeatmapCell[]; revenueGrid: RevenueHeatCell[] }>(
     `/api/v1/admin/reports/hourly-heatmap?weeks=${Math.max(1, Math.round(daysDiff / 7))}`,

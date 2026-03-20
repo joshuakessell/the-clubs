@@ -42,10 +42,10 @@ export async function getDailySummary(targetDate: string) {
 
 // ── Revenue Trend ──
 
-export async function getRevenueTrend(days: number) {
-  const clampedDays = Math.min(Math.max(days, 1), 365);
-  const result = await db.execute<{ day: string; total: string; transaction_count: number }>(sql`SELECT TO_CHAR(paid_at::date, 'YYYY-MM-DD') AS day, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS transaction_count FROM orders WHERE status = 'PAID' AND paid_at >= NOW() - ${clampedDays}::int * INTERVAL '1 day' GROUP BY paid_at::date ORDER BY day`);
-  return { days: clampedDays, trend: result.rows.map((r) => ({ date: r.day, revenue: Number.parseFloat(r.total), transactions: r.transaction_count })) };
+export async function getRevenueTrend(from: string, to: string) {
+  const result = await db.execute<{ day: string; total: string; transaction_count: number }>(sql`SELECT TO_CHAR(paid_at::date, 'YYYY-MM-DD') AS day, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS transaction_count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY paid_at::date ORDER BY day`);
+  const dayCount = Math.max(1, Math.ceil((new Date(to + 'T23:59:59').getTime() - new Date(from + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24)));
+  return { days: dayCount, trend: result.rows.map((r) => ({ date: r.day, revenue: Number.parseFloat(r.total), transactions: r.transaction_count })) };
 }
 
 // ── Staff Productivity ──
@@ -120,7 +120,7 @@ export async function getHourlyHeatmap(weeks: number) {
 export async function getRevenueBreakdown(from: string, to: string) {
   const byMethod = await db.execute<{ payment_method: string | null; total: string; count: number }>(sql`SELECT COALESCE(payment_method, 'UNKNOWN') AS payment_method, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY payment_method`);
   const byDow = await db.execute<{ dow: number; day_name: string; total: string; count: number }>(sql`SELECT EXTRACT(DOW FROM paid_at)::int AS dow, TO_CHAR(paid_at, 'Dy') AS day_name, COALESCE(SUM(total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day' GROUP BY dow, day_name ORDER BY dow`);
-  const byRentalType = await db.execute<{ rental_type: string; total: string; count: number }>(sql`SELECT cb.rental_type::text AS rental_type, COALESCE(SUM(pi.total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders pi JOIN lane_sessions ls ON ls.order_id = pi.id JOIN checkin_blocks cb ON cb.session_id = ls.id WHERE pi.status = 'PAID' AND pi.paid_at >= ${from}::date AND pi.paid_at < ${to}::date + INTERVAL '1 day' GROUP BY cb.rental_type`);
+  const byRentalType = await db.execute<{ rental_type: string; total: string; count: number }>(sql`SELECT cb.rental_type::text AS rental_type, COALESCE(SUM(pi.total), 0)::numeric(10,2) AS total, COUNT(*)::int AS count FROM orders pi JOIN checkin_blocks cb ON cb.visit_id = pi.visit_id WHERE pi.status = 'PAID' AND pi.paid_at >= ${from}::date AND pi.paid_at < ${to}::date + INTERVAL '1 day' GROUP BY cb.rental_type`);
   const tipStats = await db.execute<{ total: string; avg_tip: string; tip_count: number; total_revenue: string }>(sql`SELECT COALESCE(SUM(tip), 0) AS total, COALESCE(AVG(tip) FILTER (WHERE tip > 0), 0)::numeric(10,0) AS avg_tip, COUNT(*) FILTER (WHERE tip > 0)::int AS tip_count, COALESCE(SUM(total), 0)::numeric(10,2) AS total_revenue FROM orders WHERE status = 'PAID' AND paid_at >= ${from}::date AND paid_at < ${to}::date + INTERVAL '1 day'`);
 
   const totalTips = Number.parseInt(tipStats.rows[0]?.total ?? '0', 10);

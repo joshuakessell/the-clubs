@@ -358,9 +358,11 @@ async function applyFlowPaymentSideEffects(
     sessionId: string;
     type: FlowCommandType;
     payload?: Record<string, unknown>;
+    staffId?: string | null;
+    staffName?: string | null;
   },
 ): Promise<void> {
-  const { session, sessionId, type, payload } = params;
+  const { session, sessionId, type, payload, staffId, staffName } = params;
 
   if (session.flow_step === 'PAYMENT' && !session.order_id) {
     let rentalType = (session.desired_rental_type ?? session.proposed_rental_type ?? 'LOCKER') as 'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
@@ -442,6 +444,25 @@ async function applyFlowPaymentSideEffects(
           `UPDATE orders SET status = 'PAID', payment_method = $1, split_cash_amount = $2, split_credit_amount = $3, paid_at = NOW(), updated_at = NOW() WHERE id = $4`,
           [requestedMethod, splitCash, splitCredit, session.order_id],
         );
+
+        if (session.customer_id) {
+          const orderRes = await client.query<{ total: number | string }>(`SELECT total FROM orders WHERE id = $1`, [session.order_id]);
+          const amountInt = Math.round(Number(orderRes.rows[0]?.total ?? 0));
+          await client.query(
+            `INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+             VALUES (NOW(), $1::uuid, NULL, 'RENTAL_FEE', $2::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', $3::uuid, $4, $5, $6::jsonb, $7)
+             ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+            [
+              session.customer_id,
+              amountInt,
+              staffId || null,
+              staffName || null,
+              `Check-in fee paid ($${(amountInt / 100).toFixed(2)} ${requestedMethod})`,
+              JSON.stringify({ orderId: session.order_id, paymentMethod: requestedMethod, laneSessionId: sessionId }),
+              `LEDGER:CHECKIN:${session.order_id}`
+            ]
+          );
+        }
         await client.query(
           `UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`,
           [sessionId],
@@ -505,6 +526,25 @@ async function applyFlowPaymentSideEffects(
           `UPDATE orders SET status = 'PAID', payment_method = $1, split_cash_amount = $2, split_credit_amount = $3, paid_at = NOW(), updated_at = NOW() WHERE id = $4`,
           [requestedMethod, splitCash, splitCredit, session.order_id],
         );
+
+        if (session.customer_id) {
+          const orderRes = await client.query<{ total: number | string }>(`SELECT total FROM orders WHERE id = $1`, [session.order_id]);
+          const amountInt = Math.round(Number(orderRes.rows[0]?.total ?? 0));
+          await client.query(
+            `INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+             VALUES (NOW(), $1::uuid, NULL, 'RENTAL_FEE', $2::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', $3::uuid, $4, $5, $6::jsonb, $7)
+             ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+            [
+              session.customer_id,
+              amountInt,
+              staffId || null,
+              staffName || null,
+              `Check-in fee paid ($${(amountInt / 100).toFixed(2)} ${requestedMethod})`,
+              JSON.stringify({ orderId: session.order_id, paymentMethod: requestedMethod, laneSessionId: sessionId }),
+              `LEDGER:CHECKIN:${session.order_id}`
+            ]
+          );
+        }
         await client.query(
           `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
           [sessionId],
@@ -790,6 +830,8 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
             sessionId,
             type,
             payload,
+            staffId: request.staff?.staffId ?? null,
+            staffName: request.staff?.name ?? null,
           });
 
           return { applied: true as const, deduped: false as const, session: finalSession };

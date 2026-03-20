@@ -914,17 +914,33 @@ async function simulateVisits(params: {
 
       // --- Payment Intent + Charge ---
       const piId = randomUUID();
-      const chargeId = randomUUID();
+      let orderTotal = price;
+      const lines = [{ name: rentalLabel(rentalType), price }];
+      if (!hasValidMembership) {
+        orderTotal += 13;
+        lines.push({ name: 'Membership Fee', price: 13 });
+      }
+
       await client.query(
         `INSERT INTO orders (id, visit_id, subtotal, discount, tax, tip, total, currency, status, payment_method, register_session_id, register_number, created_by_staff_id, paid_by_staff_id, quote_json, paid_at, created_at, updated_at)
          VALUES ($1,$2,$3,0,0,0,$3,'USD','PAID',$4,$5,$6,$7,$7,$8,$9,$9,$9)`,
-        [piId, visitId, price, paymentMethod, reg.id, reg.register_number, emp.id, { type: 'CHECKIN', rentalType, price }, signedAt]
+        [piId, visitId, orderTotal, paymentMethod, reg.id, reg.register_number, emp.id, { type: 'CHECKIN', rentalType, total: orderTotal, lines }, signedAt]
       );
+      
+      const chargeId = randomUUID();
       await client.query(
         `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
          VALUES ($1,$2,'CHECKIN_FEE',$3,1,$4,0,0,$4)`,
         [chargeId, piId, rentalLabel(rentalType), price]
       );
+      
+      if (!hasValidMembership) {
+        await client.query(
+          `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
+           VALUES ($1,$2,'ADDON','Membership Fee',1,13,0,0,13)`,
+          [randomUUID(), piId]
+        );
+      }
 
       // --- Checkout Activity Event ---
       await insertActivityEvent(client, {
