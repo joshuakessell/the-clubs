@@ -28,12 +28,13 @@ function toQueryable(tx: DrizzleTx) {
       const regex = /\$(\d+)/g;
       let lastIndex = 0;
       for (const match of queryText.matchAll(regex)) {
+        if (match.index === undefined || !match[1]) continue;
         // Append the literal text before this placeholder
         built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
         // Parse the placeholder number and map to the correct param
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        const paramIndex = Number.parseInt(match[1], 10) - 1;
         built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
+        lastIndex = match.index + match[0].length;
       }
       // Append any trailing literal text
       if (lastIndex < queryText.length) {
@@ -242,8 +243,8 @@ function parseFlowStep(value: unknown): FlowStep | null {
 
 function getPreviousFlowStep(step: FlowStep): FlowStep {
   const currentIndex = FLOW_STEPS.indexOf(step);
-  if (currentIndex <= 0) return FLOW_STEPS[0]!;
-  return FLOW_STEPS[currentIndex - 1]!;
+  if (currentIndex <= 0) return FLOW_STEPS[0];
+  return FLOW_STEPS[currentIndex - 1];
 }
 
 function computeFlowUpdate(input: {
@@ -381,7 +382,7 @@ async function applyFlowPaymentSideEffects(
         [session.customer_id],
       );
       if (custResult.rows.length > 0) {
-        const cust = custResult.rows[0]!;
+        const cust = custResult.rows[0];
         customerAge = calculateAge(cust.dob);
         membershipCardType = (cust.membership_card_type as 'NONE' | 'SIX_MONTH') || undefined;
         membershipValidUntil = toDate(cust.membership_valid_until) || undefined;
@@ -424,7 +425,7 @@ async function applyFlowPaymentSideEffects(
       `INSERT INTO orders (lane_session_id, subtotal, discount, tax, tip, total, status, quote_json) VALUES ($1, $2, 0, 0, 0, $2, 'OPEN', $3) RETURNING ${ORDER_COLS}`,
       [sessionId, quote.total, JSON.stringify(quote)],
     );
-    const intent = intentResult.rows[0]!;
+    const intent = intentResult.rows[0];
 
     await client.query(
       `UPDATE lane_sessions SET order_id = $1, price_quote_json = $2, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = $3`,
@@ -432,9 +433,10 @@ async function applyFlowPaymentSideEffects(
     );
   }
 
-  if (session.flow_step === 'AGREEMENT' && session.order_id && type === 'SET_STEP') {
+  if (session.flow_step === 'PAYMENT' && session.order_id && type === 'SET_STEP') {
+    const requestedStep = payload?.['step'] as string | undefined;
     const requestedMethod = payload?.['paymentMethod'] as string | undefined;
-    if (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT') {
+    if (requestedStep === 'AGREEMENT' && (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT')) {
       const intentStatusRes = await client.query<{ status: string }>(
         `SELECT status FROM orders WHERE id = $1`,
         [session.order_id],
@@ -449,14 +451,14 @@ async function applyFlowPaymentSideEffects(
         );
 
         if (session.customer_id) {
-          const orderRes = await client.query<{ total: number | string; quote_json: any }>(`SELECT total, quote_json FROM orders WHERE id = $1`, [session.order_id]);
+          const orderRes = await client.query<{ total: number | string; quote_json: unknown }>(`SELECT total, quote_json FROM orders WHERE id = $1`, [session.order_id]);
           
           let lineItems: Array<{ description: string; amount: number }> = [];
           const quoteRaw = orderRes.rows[0]?.quote_json;
           if (quoteRaw) {
              const quote = typeof quoteRaw === 'string' ? JSON.parse(quoteRaw) : quoteRaw;
              if (Array.isArray(quote?.lineItems)) {
-                lineItems = quote.lineItems.filter((i: any) => i.amount > 0);
+                lineItems = quote.lineItems.filter((i: { amount: number; description: string }) => i.amount > 0);
              }
           }
            
@@ -470,7 +472,7 @@ async function applyFlowPaymentSideEffects(
 
           let itemIndex = 0;
           for (const item of lineItems) {
-            const amountInt = Math.round(item.amount * 100);
+            const amountToInsert = item.amount;
             let entryType: 'RENTAL_FEE' | 'LATE_FEE' | 'MEMBERSHIP_FEE' | 'RENEWAL_FEE' = 'RENTAL_FEE';
             if (item.description.includes('Waitlist') && item.amount === 0) continue;
             if (item.description.includes('Past Due') || item.description.includes('Late Fee')) entryType = 'LATE_FEE';
@@ -484,7 +486,7 @@ async function applyFlowPaymentSideEffects(
               [
                 session.customer_id,
                 entryType,
-                amountInt,
+                amountToInsert,
                 staffId || null,
                 staffName || null,
                 `${item.description} ($${item.amount.toFixed(2)} ${requestedMethod})`,
@@ -566,7 +568,7 @@ async function applyFlowPaymentSideEffects(
           if (quoteRaw) {
              const quote = typeof quoteRaw === 'string' ? JSON.parse(quoteRaw) : quoteRaw;
              if (Array.isArray(quote?.lineItems)) {
-                lineItems = quote.lineItems.filter((i: any) => i.amount > 0);
+                lineItems = quote.lineItems.filter((i: { amount: number, description: string }) => i.amount > 0);
              }
           }
            
@@ -665,16 +667,19 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
         const result = await db.transaction(async (tx) => {
           const qClient = toQueryable(tx);
 
-          if (!(await isFlowCommandsEnabled({ client: qClient as any, laneId }))) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          if (!(await isFlowCommandsEnabled({ client: qClient as Parameters<typeof getLaneFeatureFlags>[0], laneId }))) {
             throw new FlowCommandError(404, 'NotFound', 'Not Found');
           }
 
-          const authority = await assertLaneWriteAuthority({ client: qClient as any, laneId });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const authority = await assertLaneWriteAuthority({ client: qClient as Parameters<typeof getLaneFeatureFlags>[0], laneId });
           if (!authority.allowed) {
             throw new FlowCommandError(409, 'LaneNotAuthoritative', authority.reason ?? 'Lane write not allowed');
           }
 
-          const lanMode = await isLanFallbackEnabledForLane({ client: qClient as any, laneId });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const lanMode = await isLanFallbackEnabledForLane({ client: qClient as Parameters<typeof getLaneFeatureFlags>[0], laneId });
           const locked = await tx.execute<Record<string, unknown>>(
             sql`SELECT ${sql.raw(LANE_SESSION_COLS)}
              FROM lane_sessions
@@ -710,6 +715,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
           );
 
           if (lanMode) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await writeOfflineOutboxRecord(qClient as any, {
               laneId,
               sessionId,
@@ -817,7 +823,9 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
           
           // If moving forward from WAITLIST_DISCLAIMER, inject the acknowledgment
           if (type === 'SET_STEP' && currentStep === 'WAITLIST_DISCLAIMER' && nextStep === 'PAYMENT') {
-            finalDisclaimersAckJson = { ...(finalDisclaimersAckJson || {}), waitlistDisclaimerAck: true };
+            finalDisclaimersAckJson = finalDisclaimersAckJson
+              ? { ...finalDisclaimersAckJson, waitlistDisclaimerAck: true }
+              : { waitlistDisclaimerAck: true };
           }
 
           const stringifyIfObject = (val: unknown) => {
