@@ -24,6 +24,7 @@ import { loadEnvFromDotEnvIfPresent } from '../../env/loadEnv';
 import { closeDatabase, db, getPool } from '../index';
 import { sql } from 'drizzle-orm';
 import { SeedProgress } from './progress';
+import { ensureDemoStaff } from '../ensureDemoStaff';
 
 // ── Drizzle shims ───────────────────────────────────────────────────────────
 // Local wrappers that match the old raw-PG signatures so the simulator
@@ -1436,6 +1437,8 @@ async function closeOrphanedVisits(client: DbClient, now: Date): Promise<number>
 // ---------------------------------------------------------------------------
 
 export async function runSimulator(options: { forceReseed?: boolean } = {}): Promise<void> {
+  // Enforce CST timezone for all generated timestamps
+  process.env.TZ = 'America/Chicago';
   const now = new Date();
   const progress = new SeedProgress({ title: 'Demo Simulator' });
 
@@ -1465,8 +1468,11 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       }
       progress.log(`🔄 Incremental simulation from ${from.toISOString()} to ${now.toISOString()}`);
     } else {
-      // Full seed: base entities + 30-day simulation
-      progress.log('🌱 First-time simulation — seeding base entities...');
+      // Full seed: staff, base entities, shifts + 60-day simulation
+      progress.log('🌱 First-time simulation — ensuring demo staff...');
+      const staffCount = await ensureDemoStaff();
+      progress.log(`✅ Ensured ${staffCount} demo staff with valid PINs`);
+      progress.log('🏗️  Seeding base entities (rooms, lockers, customers)...');
       await seedBaseEntities(now, progress);
       await seedShifts(now, progress);
       from = new Date(now.getTime() - SIM_DAYS * 24 * 60 * 60 * 1000);
