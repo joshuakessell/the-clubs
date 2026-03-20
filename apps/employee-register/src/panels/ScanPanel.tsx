@@ -26,6 +26,39 @@ interface Candidate {
 /** Debounce idle time (ms) — once no keystrokes arrive for this long, auto-submit */
 const SCAN_IDLE_MS = 500;
 
+/** Dev/demo-only button to run incremental seed data */
+function DemoCatchUpButton() {
+  const [isCatchingUp, setIsCatchingUp] = useState(false);
+
+  const handleCatchUp = async () => {
+    setIsCatchingUp(true);
+    try {
+      await fetch(getApiUrl('/api/v1/admin/demo-catchup'), { method: 'POST' });
+    } finally {
+      setIsCatchingUp(false);
+    }
+  };
+
+  return (
+    <div className="mt-6 flex justify-center">
+      <button
+        type="button"
+        onClick={() => void handleCatchUp()}
+        disabled={isCatchingUp}
+        className="rounded-lg border-2 border-dashed px-5 py-2.5 text-sm font-semibold transition-colors duration-200"
+        style={{
+          backgroundColor: 'color-mix(in oklch, var(--color-accent-primary) 8%, transparent)',
+          borderColor: 'var(--color-accent-primary)',
+          color: 'var(--color-accent-primary)',
+          opacity: isCatchingUp ? 0.6 : 1,
+        }}
+      >
+        {isCatchingUp ? '⏳ Catching up…' : '🔄 Catch-up Demo Data'}
+      </button>
+    </div>
+  );
+}
+
 export function ScanPanel() {
   const hiddenInputRef = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -277,6 +310,10 @@ export function ScanPanel() {
           })()}
         </p>
 
+        {/* Dev/Demo: Catch-up seed button */}
+        {(import.meta.env.DEV || (typeof globalThis !== 'undefined' && globalThis.location?.hostname.includes('demo'))) && (
+          <DemoCatchUpButton />
+        )}
 
       </div>
 

@@ -2,6 +2,64 @@ import { useState } from 'react';
 import { useKioskSession } from '../KioskSessionContext';
 import { getApiUrl } from '@the-clubs/shared';
 
+/** Format an ISO timestamp as a relative wait duration string (e.g., "~45 minutes") */
+function formatWaitDuration(isoString: string): string {
+  const diffMs = new Date(isoString).getTime() - Date.now();
+  const totalMinutes = Math.max(0, Math.round(diffMs / 60_000));
+  if (totalMinutes < 60) return `~${totalMinutes} minutes`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (mins === 0) return `~${hours} hour${hours > 1 ? 's' : ''}`;
+  return `~${hours} hour${hours > 1 ? 's' : ''} ${mins} minutes`;
+}
+
+/** Highlighted callout showing estimated wait time or standby-only message */
+function WaitTimeCallout({
+  estimatedReadyAt,
+  standbyOnly,
+}: Readonly<{ estimatedReadyAt?: string; standbyOnly?: boolean }>) {
+  if (standbyOnly) {
+    return (
+      <div
+        className="mx-6 mt-2 rounded-xl px-5 py-4 text-center"
+        style={{
+          backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 10%, transparent)',
+          border: '1px solid color-mix(in oklch, var(--color-status-warning) 25%, transparent)',
+        }}
+      >
+        <p className="text-lg font-bold text-(--color-status-warning)">
+          Waitlist full, stand-by only
+        </p>
+        <p className="text-sm mt-1 text-(--color-text-muted)">
+          You will be notified if a room becomes available
+        </p>
+      </div>
+    );
+  }
+
+  if (!estimatedReadyAt) return null;
+
+  return (
+    <div
+      className="mx-6 mt-2 rounded-xl px-5 py-4 text-center"
+      style={{
+        backgroundColor: 'color-mix(in oklch, var(--color-status-success) 8%, transparent)',
+        border: '1px solid color-mix(in oklch, var(--color-status-success) 20%, transparent)',
+      }}
+    >
+      <p className="text-sm font-medium text-(--color-text-muted)">
+        Estimated room availability
+      </p>
+      <p
+        className="text-2xl font-bold mt-1"
+        style={{ color: 'var(--color-status-success)' }}
+      >
+        {formatWaitDuration(estimatedReadyAt)}
+      </p>
+    </div>
+  );
+}
+
 const WAITLIST_PROCEDURES = [
   'You will be given the backup rental you selected while you wait for your desired room.',
   'When your desired room type becomes available, an attendant will notify you.',
@@ -78,6 +136,12 @@ export function WaitlistDisclaimerModal() {
             Please read and acknowledge to continue
           </p>
         </div>
+
+        {/* Estimated wait time callout */}
+        <WaitTimeCallout
+          estimatedReadyAt={sessionPayload?.waitlistEstimatedReadyAt}
+          standbyOnly={sessionPayload?.waitlistStandbyOnly}
+        />
 
         {/* Body */}
         <div className="p-6 flex flex-col gap-4">

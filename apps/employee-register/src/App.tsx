@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { ErrorBoundary, LockScreen, ChangePinScreen, ValidatingScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
 import { getApiUrl, useSessionPollingFallback, type SessionUpdatedPayload } from '@the-clubs/shared';
 import { AppLayout } from './layout/AppLayout';
+import { RegisterSelectScreen } from './screens/RegisterSelectScreen';
 import { useRegisterSSE } from './hooks/useRegisterSSE';
 import { useRegisterStore } from './stores/useRegisterStore';
 import { RouteLogger } from './components/RouteLogger';
@@ -118,6 +119,7 @@ export default function App() {
     if (isValidating) return <ValidatingScreen />;
     if (!session) return <LockScreen appTitle="Employee Register" />;
     if (session.mustChangePin) return <ChangePinScreen />;
+    if (!laneId) return <RegisterSelectScreen />;
     return <AppLayout />;
   }
 

@@ -350,7 +350,7 @@ function WaitlistTableRow({
             size="sm"
           />
         </div>
-        {/* Subheader: [X mins ago] · [Current] => [Upgrade Target] */}
+        {/* Subheader: [X mins ago] · [Current] */}
         <div className="flex items-center gap-1 mt-0.5 flex-wrap">
           <span className="text-xs text-(--color-text-muted)">
             {timeAgo(entry.createdAt)}
@@ -358,17 +358,6 @@ function WaitlistTableRow({
           <span className="text-xs text-(--color-text-muted)">·</span>
           <span className="text-xs text-(--color-text-muted)">
             {currentLabel}
-          </span>
-          <span className="text-xs font-bold text-(--color-text-muted)">⇒</span>
-          <span
-            className="text-xs font-semibold"
-            style={{
-              color: firstAvail
-                ? 'var(--color-accent-secondary, #a78bfa)'
-                : TIER_COLORS[getPrimaryTier(entry)] ?? 'var(--color-text-primary)',
-            }}
-          >
-            {upgradeTarget}
           </span>
           {isOffered && entry.offeredRoomNumber ? (
             <>
@@ -383,6 +372,18 @@ function WaitlistTableRow({
           ) : null}
         </div>
       </div>
+
+      {/* Upgrade target — right-aligned badge */}
+      <span
+        className="text-sm font-semibold whitespace-nowrap shrink-0 self-center"
+        style={{
+          color: firstAvail
+            ? 'var(--color-accent-secondary, #a78bfa)'
+            : TIER_COLORS[getPrimaryTier(entry)] ?? 'var(--color-text-primary)',
+        }}
+      >
+        {upgradeTarget}
+      </span>
 
       {/* Action buttons — side by side for touch */}
       <div className="flex flex-row gap-2 shrink-0 ml-auto">

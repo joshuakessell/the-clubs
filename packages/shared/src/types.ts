@@ -168,6 +168,8 @@ export interface SessionUpdatedPayload {
   waitlistRequestedResourceType?: 'room' | 'locker';
   waitlistPosition?: number;
   waitlistEstimatedReadyAt?: string;
+  /** True when queue depth exceeds available rooms — show "stand-by only" instead of an ETA */
+  waitlistStandbyOnly?: boolean;
   status?: string;
   proposedRentalType?: string;
   proposedBy?: 'CUSTOMER' | 'EMPLOYEE';

@@ -1,14 +1,14 @@
 /**
  * Unified Demo Simulator for Club Dallas
  *
- * A clean, incremental, append-only simulation engine that generates 14 days
+ * A clean, incremental, append-only simulation engine that generates 60 days
  * of realistic club activity. The timeline is phase-shifted so `now()` always
  * maps to a peak Saturday night (high room demand, ~6-person waitlist).
  *
  * Usage:
  *   DEMO_MODE=true pnpm --filter @the-clubs/api exec tsx src/db/seed-demo/simulator.ts
  *
- * On first run: generates 14 days of data ending at the current moment.
+ * On first run: generates 60 days of data ending at the current moment.
  * On subsequent runs: only appends data for the time gap since last run.
  */
 
@@ -471,14 +471,14 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
 }
 
 // ---------------------------------------------------------------------------
-// Employee Shift Seeding (28-day window: -14 to +14 days)
+// Employee Shift Seeding (120-day window: -60 to +60 days)
 // ---------------------------------------------------------------------------
 
 async function seedShifts(now: Date, progress: SeedProgress): Promise<void> {
   const existingShifts = await query<{ count: string }>(
     `SELECT COUNT(*) as count FROM employee_shifts
      WHERE starts_at >= $1 AND starts_at <= $2`,
-    [new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000), new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000)]
+    [new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000), new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000)]
   );
   if (Number.parseInt(existingShifts.rows[0]?.count || '0', 10) > 0) {
     progress.log('⚠️  Shifts already exist, skipping.');
@@ -507,8 +507,8 @@ async function seedShifts(now: Date, progress: SeedProgress): Promise<void> {
     6: { A: [s[1], s[9]], B: [s[2], s[6]], C: [s[5], s[7]] },
   };
 
-  progress.addTotal(29);
-  for (let dayOffset = -14; dayOffset <= 14; dayOffset++) {
+  progress.addTotal(121);
+  for (let dayOffset = -60; dayOffset <= 60; dayOffset++) {
     const baseDate = new Date(now);
     baseDate.setDate(baseDate.getDate() + dayOffset);
     baseDate.setHours(0, 0, 0, 0);
@@ -1301,7 +1301,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
     // Determine simulation window
     let from: Date;
     let anchor = now;
-    const SIM_DAYS = 30;
+    const SIM_DAYS = 60;
 
     if (!options.forceReseed && state) {
       // Incremental mode: continue from where we left off

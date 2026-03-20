@@ -196,7 +196,7 @@ export interface RenewalEligibilityResult {
 
 /**
  * Check if a customer is eligible for stay renewal based on their occupancy.
- * Eligible: < 45 min before checkout AND < 29 min past checkout, total stay < 14h.
+ * Eligible: < 60 min before checkout AND < 15 min past checkout, total stay < 14h.
  */
 export async function checkRenewalEligibility(
   occupancyId: string,
@@ -242,11 +242,11 @@ export async function checkRenewalEligibility(
   const nowMs = Date.now();
   const minutesUntilCheckout = (checkoutMs - nowMs) / (1000 * 60);
 
-  if (minutesUntilCheckout > 45) {
-    return { eligible: false, reason: 'More than 45 minutes until checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
+  if (minutesUntilCheckout > 60) {
+    return { eligible: false, reason: 'More than 60 minutes until checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
   }
-  if (minutesUntilCheckout < -29) {
-    return { eligible: false, reason: 'More than 29 minutes past checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
+  if (minutesUntilCheckout < -15) {
+    return { eligible: false, reason: 'More than 15 minutes past checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
   }
 
   // Check if remaining time to 14h cap allows renewal
