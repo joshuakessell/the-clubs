@@ -734,6 +734,13 @@ export async function processAgreementSigning(
       sessionId: session.id, signedAt,
     });
 
+    // Backfill visit_id into spend ledger entries created during checkin payment
+    await tx.execute(sql`UPDATE customer_spend_ledger_entries
+       SET visit_id = ${visitId}
+       WHERE customer_id = ${session.customer_id}
+         AND visit_id IS NULL
+         AND metadata->>'laneSessionId' = ${session.id}`);
+
     const waitlistInfo = await maybeCreateWaitlist(tx, session, visitId, checkinBlockId, resource.id);
 
     await assertAssignedResourcePersistedAndUnavailable({

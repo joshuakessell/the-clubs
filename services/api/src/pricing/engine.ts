@@ -20,11 +20,13 @@ export interface PricingInput {
   /** Waitlist string constants for $0 item line tracking */
   waitlistDesiredType?: RentalType;
   waitlistDesiredTypesJson?: string;
+  pastDueBalance?: number;
 }
 
 export interface PriceQuote {
   rentalFee: number;
   membershipFee: number;
+  pastDueFee?: number;
   total: number;
   lineItems: Array<{
     description: string;
@@ -305,13 +307,22 @@ export function calculatePriceQuote(input: PricingInput): PriceQuote {
     });
   }
 
-  const total = rentalFee + membershipFee + sixMonthMembershipPurchaseFee;
+  const pastDueFee = input.pastDueBalance ?? 0;
+  if (pastDueFee > 0) {
+    lineItems.push({
+      description: 'Past Due Balance',
+      amount: pastDueFee,
+    });
+  }
+
+  const total = rentalFee + membershipFee + sixMonthMembershipPurchaseFee + pastDueFee;
 
   const messages: string[] = ['No refunds'];
 
   return {
     rentalFee,
     membershipFee,
+    pastDueFee,
     total,
     lineItems,
     messages,
@@ -340,6 +351,7 @@ export function calculateRenewalQuote(
   return {
     rentalFee: renewalFee,
     membershipFee: 0,
+    pastDueFee: 0,
     total: renewalFee,
     lineItems,
     messages: ['No refunds'],

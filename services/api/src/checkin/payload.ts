@@ -393,6 +393,7 @@ function buildCheckinRental(
     membershipCardType: customer?.membership_card_type as 'NONE' | 'SIX_MONTH' | undefined,
     membershipValidUntil: toDate(customer?.membership_valid_until) || undefined,
     includeSixMonthMembershipPurchase: session.membership_choice === 'SIX_MONTH',
+    pastDueBalance: toNumber(customer?.past_due_balance) || undefined,
   });
   
   const label = rentalLabel[rentalType] ?? rentalType;

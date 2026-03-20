@@ -574,7 +574,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
         resourceType: sessionPayload.assignedResourceType ?? 'room',
         resourceNumber: sessionPayload.assignedResourceNumber,
         checkinAt: new Date().toISOString(),
-        checkoutAt: null,
+        checkoutAt: sessionPayload.checkoutAt ?? null,
         overdue: false,
       };
     }

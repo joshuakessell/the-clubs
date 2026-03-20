@@ -320,7 +320,7 @@ function computeFlowUpdate(input: {
   if (type === 'CANCEL_STEP') {
     const clear = {
       rental: currentStep === 'RENTAL',
-      waitlistBackup: currentStep === 'WAITLIST_BACKUP',
+      waitlistBackup: currentStep === 'WAITLIST_BACKUP' || currentStep === 'RENTAL',
       paymentIntent: currentStep === 'PAYMENT',
       agreement: currentStep === 'AGREEMENT',
     };
@@ -373,10 +373,11 @@ async function applyFlowPaymentSideEffects(
     let customerAge: number | undefined;
     let membershipCardType: 'NONE' | 'SIX_MONTH' | undefined;
     let membershipValidUntil: Date | undefined;
+    let pastDueBalance: number | undefined;
 
     if (session.customer_id) {
       const custResult = await client.query<CustomerRow>(
-        `SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = $1`,
+        `SELECT dob, membership_card_type, membership_valid_until, past_due_balance FROM customers WHERE id = $1`,
         [session.customer_id],
       );
       if (custResult.rows.length > 0) {
@@ -384,6 +385,7 @@ async function applyFlowPaymentSideEffects(
         customerAge = calculateAge(cust.dob);
         membershipCardType = (cust.membership_card_type as 'NONE' | 'SIX_MONTH') || undefined;
         membershipValidUntil = toDate(cust.membership_valid_until) || undefined;
+        pastDueBalance = Number(cust.past_due_balance) || undefined;
       }
     }
 
@@ -411,6 +413,7 @@ async function applyFlowPaymentSideEffects(
       includeSixMonthMembershipPurchase: includeSixMonth,
       waitlistDesiredType: sessionWaitlistType,
       waitlistDesiredTypesJson: parsedWaitlistTypesJson,
+      pastDueBalance,
     };
 
     const quote = isRenewal && renewalHours
@@ -446,22 +449,50 @@ async function applyFlowPaymentSideEffects(
         );
 
         if (session.customer_id) {
-          const orderRes = await client.query<{ total: number | string }>(`SELECT total FROM orders WHERE id = $1`, [session.order_id]);
-          const amountInt = Math.round(Number(orderRes.rows[0]?.total ?? 0));
-          await client.query(
-            `INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
-             VALUES (NOW(), $1::uuid, NULL, 'RENTAL_FEE', $2::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', $3::uuid, $4, $5, $6::jsonb, $7)
-             ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
-            [
-              session.customer_id,
-              amountInt,
-              staffId || null,
-              staffName || null,
-              `Check-in fee paid ($${(amountInt / 100).toFixed(2)} ${requestedMethod})`,
-              JSON.stringify({ orderId: session.order_id, paymentMethod: requestedMethod, laneSessionId: sessionId }),
-              `LEDGER:CHECKIN:${session.order_id}`
-            ]
-          );
+          const orderRes = await client.query<{ total: number | string; quote_json: any }>(`SELECT total, quote_json FROM orders WHERE id = $1`, [session.order_id]);
+          
+          let lineItems: Array<{ description: string; amount: number }> = [];
+          const quoteRaw = orderRes.rows[0]?.quote_json;
+          if (quoteRaw) {
+             const quote = typeof quoteRaw === 'string' ? JSON.parse(quoteRaw) : quoteRaw;
+             if (Array.isArray(quote?.lineItems)) {
+                lineItems = quote.lineItems.filter((i: any) => i.amount > 0);
+             }
+          }
+           
+          // If no line items (e.g. legacy/unexpected format), fallback to the total
+          if (lineItems.length === 0) {
+             const amountInt = Math.round(Number(orderRes.rows[0]?.total ?? 0));
+             if (amountInt > 0) {
+                lineItems.push({ description: 'Check-in fee paid', amount: amountInt / 100 });
+             }
+          }
+
+          let itemIndex = 0;
+          for (const item of lineItems) {
+            const amountInt = Math.round(item.amount * 100);
+            let entryType: 'RENTAL_FEE' | 'LATE_FEE' | 'MEMBERSHIP_FEE' | 'RENEWAL_FEE' = 'RENTAL_FEE';
+            if (item.description.includes('Waitlist') && item.amount === 0) continue;
+            if (item.description.includes('Past Due') || item.description.includes('Late Fee')) entryType = 'LATE_FEE';
+            else if (item.description.includes('Membership')) entryType = 'MEMBERSHIP_FEE';
+            else if (item.description.includes('Renewal')) entryType = 'RENEWAL_FEE';
+
+            await client.query(
+              `INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+               VALUES (NOW(), $1::uuid, NULL, $2, $3::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', $4::uuid, $5, $6, $7::jsonb, $8)
+               ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+              [
+                session.customer_id,
+                entryType,
+                amountInt,
+                staffId || null,
+                staffName || null,
+                `${item.description} ($${item.amount.toFixed(2)} ${requestedMethod})`,
+                JSON.stringify({ orderId: session.order_id, paymentMethod: requestedMethod, laneSessionId: sessionId }),
+                `LEDGER:CHECKIN:${session.order_id}:${itemIndex++}`
+              ]
+            );
+          }
         }
         await client.query(
           `UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = $1`,
@@ -528,22 +559,50 @@ async function applyFlowPaymentSideEffects(
         );
 
         if (session.customer_id) {
-          const orderRes = await client.query<{ total: number | string }>(`SELECT total FROM orders WHERE id = $1`, [session.order_id]);
-          const amountInt = Math.round(Number(orderRes.rows[0]?.total ?? 0));
-          await client.query(
-            `INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
-             VALUES (NOW(), $1::uuid, NULL, 'RENTAL_FEE', $2::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', $3::uuid, $4, $5, $6::jsonb, $7)
-             ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
-            [
-              session.customer_id,
-              amountInt,
-              staffId || null,
-              staffName || null,
-              `Check-in fee paid ($${(amountInt / 100).toFixed(2)} ${requestedMethod})`,
-              JSON.stringify({ orderId: session.order_id, paymentMethod: requestedMethod, laneSessionId: sessionId }),
-              `LEDGER:CHECKIN:${session.order_id}`
-            ]
-          );
+          const orderRes = await client.query<{ total: number | string; quote_json: any }>(`SELECT total, quote_json FROM orders WHERE id = $1`, [session.order_id]);
+          
+          let lineItems: Array<{ description: string; amount: number }> = [];
+          const quoteRaw = orderRes.rows[0]?.quote_json;
+          if (quoteRaw) {
+             const quote = typeof quoteRaw === 'string' ? JSON.parse(quoteRaw) : quoteRaw;
+             if (Array.isArray(quote?.lineItems)) {
+                lineItems = quote.lineItems.filter((i: any) => i.amount > 0);
+             }
+          }
+           
+          // If no line items, fallback to the total
+          if (lineItems.length === 0) {
+             const amountInt = Math.round(Number(orderRes.rows[0]?.total ?? 0));
+             if (amountInt > 0) {
+                lineItems.push({ description: 'Check-in fee paid', amount: amountInt / 100 });
+             }
+          }
+
+          let itemIndex = 0;
+          for (const item of lineItems) {
+            const amountToInsert = item.amount;
+            let entryType: 'RENTAL_FEE' | 'LATE_FEE' | 'MEMBERSHIP_FEE' | 'RENEWAL_FEE' = 'RENTAL_FEE';
+            if (item.description.includes('Waitlist') && item.amount === 0) continue;
+            if (item.description.includes('Past Due') || item.description.includes('Late Fee')) entryType = 'LATE_FEE';
+            else if (item.description.includes('Membership')) entryType = 'MEMBERSHIP_FEE';
+            else if (item.description.includes('Renewal')) entryType = 'RENEWAL_FEE';
+
+            await client.query(
+              `INSERT INTO customer_spend_ledger_entries (occurred_at, customer_id, visit_id, entry_type, amount, currency, source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
+               VALUES (NOW(), $1::uuid, NULL, $2, $3::bigint, 'USD', 'EMPLOYEE_REGISTER', 'STAFF', $4::uuid, $5, $6, $7::jsonb, $8)
+               ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`,
+              [
+                session.customer_id,
+                entryType,
+                amountToInsert,
+                staffId || null,
+                staffName || null,
+                `${item.description} ($${item.amount.toFixed(2)} ${requestedMethod})`,
+                JSON.stringify({ orderId: session.order_id, paymentMethod: requestedMethod, laneSessionId: sessionId }),
+                `LEDGER:CHECKIN:${session.order_id}:${itemIndex++}`
+              ]
+            );
+          }
         }
         await client.query(
           `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
