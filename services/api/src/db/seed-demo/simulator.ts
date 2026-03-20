@@ -475,6 +475,178 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
 // Employee Shift Seeding (120-day window: -60 to +60 days)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Shift Scheduling Helpers
+// ---------------------------------------------------------------------------
+
+type ShiftCode = 'A' | 'B' | 'C';
+type StaffMember = { id: string; name: string; role: string };
+
+const SHIFT_HOURS: Record<ShiftCode, { start: number; durationH: number }> = {
+  A: { start: 0, durationH: 8 },
+  B: { start: 8, durationH: 8 },
+  C: { start: 16, durationH: 8 },
+};
+const SHIFT_CODES: ShiftCode[] = ['A', 'B', 'C'];
+const MAX_WEEKLY_HOURS = 40;
+const HOURS_PER_SHIFT = 8;
+
+/** Returns true for Fri (5), Sat (6), Sun (0) */
+function isWeekendDay(dow: number): boolean {
+  return dow === 0 || dow === 5 || dow === 6;
+}
+
+/** Required non-manager staff headcount for a given day */
+function requiredNonManagerCount(dow: number): number {
+  return isWeekendDay(dow) ? 2 : 1;
+}
+
+/** ISO week key for grouping (Mon-based week) */
+function weekKey(d: Date): string {
+  const copy = new Date(d);
+  const dayNum = copy.getDay() || 7; // Mon=1..Sun=7
+  copy.setDate(copy.getDate() + 4 - dayNum);
+  const yearStart = new Date(copy.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((copy.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${copy.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+/**
+ * Builds a weekly assignment map: for each week, assign non-manager staff
+ * to shifts respecting the 40h cap, then layer in managers separately.
+ */
+function buildWeeklySchedule(
+  days: Date[],
+  nonManagers: StaffMember[],
+  managers: StaffMember[],
+): Map<string, { date: Date; code: ShiftCode; employeeIds: string[] }[]> {
+  // Group days by ISO week
+  const weekDays = new Map<string, Date[]>();
+  for (const d of days) {
+    const wk = weekKey(d);
+    const arr = weekDays.get(wk) ?? [];
+    arr.push(d);
+    weekDays.set(wk, arr);
+  }
+
+  const allShifts = new Map<string, { date: Date; code: ShiftCode; employeeIds: string[] }[]>();
+
+  for (const [wk, weekDates] of weekDays) {
+    const hoursUsed = new Map<string, number>();
+    nonManagers.forEach(s => hoursUsed.set(s.id, 0));
+    managers.forEach(s => hoursUsed.set(s.id, 0));
+
+    const shifts: { date: Date; code: ShiftCode; employeeIds: string[] }[] = [];
+
+    for (const date of weekDates) {
+      const dow = date.getDay();
+      const needed = requiredNonManagerCount(dow);
+
+      for (const code of SHIFT_CODES) {
+        const assigned = assignStaffToShift(nonManagers, needed, hoursUsed);
+        const mgr = assignStaffToShift(managers, 1, hoursUsed);
+        shifts.push({ date, code, employeeIds: [...assigned, ...mgr] });
+      }
+    }
+
+    allShifts.set(wk, shifts);
+  }
+
+  return allShifts;
+}
+
+/** Pick staff with the least hours used this week, up to `count`. */
+function assignStaffToShift(
+  pool: StaffMember[],
+  count: number,
+  hoursUsed: Map<string, number>,
+): string[] {
+  const assigned: string[] = [];
+  // Sort by hours ascending (least-used first)
+  const sorted = [...pool].sort((a, b) => {
+    const ha = hoursUsed.get(a.id) ?? 0;
+    const hb = hoursUsed.get(b.id) ?? 0;
+    return ha - hb;
+  });
+
+  for (const s of sorted) {
+    if (assigned.length >= count) break;
+    const used = hoursUsed.get(s.id) ?? 0;
+    if (used + HOURS_PER_SHIFT <= MAX_WEEKLY_HOURS) {
+      assigned.push(s.id);
+      hoursUsed.set(s.id, used + HOURS_PER_SHIFT);
+    }
+  }
+  return assigned;
+}
+
+/** Compute shift start/end Date objects from a base day and shift code. */
+function getShiftTimes(baseDate: Date, code: ShiftCode): { start: Date; end: Date } {
+  const { start: startHour, durationH } = SHIFT_HOURS[code];
+  const shiftStart = new Date(baseDate);
+  shiftStart.setHours(startHour, 0, 0, 0);
+  const shiftEnd = new Date(shiftStart.getTime() + durationH * 60 * 60 * 1000);
+  return { start: shiftStart, end: shiftEnd };
+}
+
+/** Insert a single shift row + timeclock entry for past/current shifts. */
+async function insertShiftWithTimeclock(
+  empId: string,
+  shiftStart: Date,
+  shiftEnd: Date,
+  code: ShiftCode,
+  createdBy: string,
+  now: Date,
+): Promise<void> {
+  const shiftRes = await query<{ id: string }>(
+    `INSERT INTO employee_shifts (employee_id, starts_at, ends_at, shift_code, status, created_by)
+     VALUES ($1, $2, $3, $4, 'SCHEDULED', $5) RETURNING id`,
+    [empId, shiftStart, shiftEnd, code, createdBy]
+  );
+  const shiftId = shiftRes.rows[0].id;
+
+  const isPast = shiftEnd.getTime() <= now.getTime();
+  const isCurrent = shiftStart.getTime() <= now.getTime() && shiftEnd.getTime() > now.getTime();
+
+  if (isPast) {
+    await insertPastTimeclock(empId, shiftId, shiftStart, shiftEnd);
+  } else if (isCurrent) {
+    await insertCurrentTimeclock(empId, shiftId, shiftStart);
+  }
+}
+
+async function insertPastTimeclock(empId: string, shiftId: string, shiftStart: Date, shiftEnd: Date): Promise<void> {
+  const scenario = Math.random();
+  if (scenario >= 0.95) return; // 5% no-show
+  let clockIn = new Date(shiftStart);
+  let clockOut = new Date(shiftEnd);
+  if (scenario < 0.15) clockIn = new Date(shiftStart.getTime() + (5 + Math.random() * 10) * 60 * 1000);
+  if (scenario > 0.85) clockOut = new Date(shiftEnd.getTime() - (5 + Math.random() * 10) * 60 * 1000);
+  await query(
+    `INSERT INTO timeclock_sessions (employee_id, shift_id, clock_in_at, clock_out_at, source)
+     VALUES ($1, $2, $3, $4, 'OFFICE_DASHBOARD')`,
+    [empId, shiftId, clockIn, clockOut]
+  );
+}
+
+async function insertCurrentTimeclock(empId: string, shiftId: string, shiftStart: Date): Promise<void> {
+  const existing = await query<{ count: string }>(
+    `SELECT COUNT(*) as count FROM timeclock_sessions WHERE employee_id = $1 AND clock_out_at IS NULL`,
+    [empId]
+  );
+  if (Number.parseInt(existing.rows[0]?.count || '0', 10) === 0) {
+    await query(
+      `INSERT INTO timeclock_sessions (employee_id, shift_id, clock_in_at, clock_out_at, source)
+       VALUES ($1, $2, $3, NULL, 'OFFICE_DASHBOARD')`,
+      [empId, shiftId, new Date(shiftStart.getTime() + Math.random() * 5 * 60 * 1000)]
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main Shift Seeder
+// ---------------------------------------------------------------------------
+
 async function seedShifts(now: Date, progress: SeedProgress): Promise<void> {
   const existingShifts = await query<{ count: string }>(
     `SELECT COUNT(*) as count FROM employee_shifts
@@ -490,84 +662,39 @@ async function seedShifts(now: Date, progress: SeedProgress): Promise<void> {
     `SELECT id, name, role FROM staff WHERE active = true ORDER BY name`
   );
   if (staffRes.rows.length === 0) { progress.log('⚠️  No staff found.'); return; }
-  const staff = staffRes.rows;
-  const adminStaff = staff.find(s => s.role === 'ADMIN') || staff[0];
-  const pick = (idx: number) => staff[idx % staff.length].id;
+  const allStaff = staffRes.rows;
+  const adminStaff = allStaff.find(s => s.role === 'ADMIN') ?? allStaff[0];
+  const nonManagers = allStaff.filter(s => s.role !== 'ADMIN');
+  const managers = allStaff.filter(s => s.role === 'ADMIN');
 
-  // Weekly schedule: ensures 24/7 coverage with 2+ on busy nights
-  const s = Array.from({ length: 10 }, (_, i) => pick(i));
-  type DaySchedule = Record<'A' | 'B' | 'C', string[]>;
-  const weekly: Record<number, DaySchedule> = {
-    0: { A: [s[0], s[8]], B: [s[2]],       C: [s[4]]       },
-    1: { A: [s[0]],       B: [s[2]],       C: [s[4]]       },
-    2: { A: [s[1]],       B: [s[3]],       C: [s[5]]       },
-    3: { A: [s[0]],       B: [s[2]],       C: [s[4]]       },
-    4: { A: [s[1]],       B: [s[3]],       C: [s[5]]       },
-    5: { A: [s[0]],       B: [s[3], s[6]], C: [s[4], s[7]] },
-    6: { A: [s[1], s[9]], B: [s[2], s[6]], C: [s[5], s[7]] },
-  };
+  // Build array of all days in [-60, +60]
+  const days: Date[] = [];
+  for (let offset = -60; offset <= 60; offset++) {
+    const d = new Date(now);
+    d.setDate(d.getDate() + offset);
+    d.setHours(0, 0, 0, 0);
+    days.push(d);
+  }
 
-  progress.addTotal(121);
-  for (let dayOffset = -60; dayOffset <= 60; dayOffset++) {
-    const baseDate = new Date(now);
-    baseDate.setDate(baseDate.getDate() + dayOffset);
-    baseDate.setHours(0, 0, 0, 0);
-    const dow = baseDate.getDay();
-    const dayPlan = weekly[dow];
+  const schedule = buildWeeklySchedule(days, nonManagers, managers);
 
-    for (const [code, empIds] of Object.entries(dayPlan) as ['A' | 'B' | 'C', string[]][]) {
-      let startHour = 16;
-      if (code === 'A') startHour = 0;
-      else if (code === 'B') startHour = 8;
-      const shiftStart = new Date(baseDate);
-      shiftStart.setHours(startHour, 0, 0, 0);
-      const shiftEnd = code === 'C'
-        ? new Date(new Date(baseDate).setDate(baseDate.getDate() + 1))
-        : new Date(baseDate);
-      if (code === 'C') shiftEnd.setHours(0, 0, 0, 0);
-      else shiftEnd.setHours(startHour + 8, 0, 0, 0);
+  // Count total shifts for progress bar
+  let totalShifts = 0;
+  for (const shifts of schedule.values()) {
+    for (const shift of shifts) totalShifts += shift.employeeIds.length;
+  }
+  progress.addTotal(totalShifts);
 
-      for (const empId of empIds) {
-        const shiftRes = await query<{ id: string }>(
-          `INSERT INTO employee_shifts (employee_id, starts_at, ends_at, shift_code, status, created_by)
-           VALUES ($1, $2, $3, $4, 'SCHEDULED', $5) RETURNING id`,
-          [empId, shiftStart, shiftEnd, code, adminStaff.id]
-        );
-        const shiftId = shiftRes.rows[0].id;
+  progress.log(`📋 Scheduling ${totalShifts} shifts across ${days.length} days (${nonManagers.length} staff + ${managers.length} managers)`);
 
-        // Past shifts: create timeclock entries
-        if (dayOffset < 0) {
-          const scenario = Math.random();
-          if (scenario < 0.95) {
-            let clockIn = new Date(shiftStart);
-            let clockOut = new Date(shiftEnd);
-            if (scenario < 0.15) clockIn = new Date(shiftStart.getTime() + (5 + Math.random() * 10) * 60 * 1000);
-            if (scenario > 0.85) clockOut = new Date(shiftEnd.getTime() - (5 + Math.random() * 10) * 60 * 1000);
-            await query(
-              `INSERT INTO timeclock_sessions (employee_id, shift_id, clock_in_at, clock_out_at, source)
-               VALUES ($1, $2, $3, $4, 'OFFICE_DASHBOARD')`,
-              [empId, shiftId, clockIn, clockOut]
-            );
-          }
-        } else if (dayOffset === 0) {
-          // Today: clock in if shift is active now
-          if (shiftStart.getTime() <= now.getTime() && shiftEnd.getTime() > now.getTime()) {
-            const existing = await query<{ count: string }>(
-              `SELECT COUNT(*) as count FROM timeclock_sessions WHERE employee_id = $1 AND clock_out_at IS NULL`,
-              [empId]
-            );
-            if (Number.parseInt(existing.rows[0]?.count || '0', 10) === 0) {
-              await query(
-                `INSERT INTO timeclock_sessions (employee_id, shift_id, clock_in_at, clock_out_at, source)
-                 VALUES ($1, $2, $3, NULL, 'OFFICE_DASHBOARD')`,
-                [empId, shiftId, new Date(shiftStart.getTime() + Math.random() * 5 * 60 * 1000)]
-              );
-            }
-          }
-        }
+  for (const shifts of schedule.values()) {
+    for (const { date, code, employeeIds } of shifts) {
+      const { start, end } = getShiftTimes(date, code);
+      for (const empId of employeeIds) {
+        await insertShiftWithTimeclock(empId, start, end, code, adminStaff.id, now);
+        progress.tick();
       }
     }
-    progress.tick();
   }
 }
 
