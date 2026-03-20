@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { getApiUrl } from '@the-clubs/shared';
-import { useAuthStore } from '@the-clubs/ui';
+import { useAuthStore, PinInput } from '@the-clubs/ui';
 import { useRegisterStore } from '../stores/useRegisterStore';
 
 interface PastDueOverrideModalProps {
@@ -16,11 +16,9 @@ interface PastDueOverrideModalProps {
  * to enter their own PIN to authorize removal of the customer's past-due balance.
  */
 export function PastDueOverrideModal({ open, onClose, balanceAmount }: PastDueOverrideModalProps) {
-  const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const token = useAuthStore((s) => s.session?.sessionToken);
   const laneId = useRegisterStore((s) => s.laneId);
@@ -32,10 +30,8 @@ export function PastDueOverrideModal({ open, onClose, balanceAmount }: PastDueOv
     if (!dialog) return;
 
     if (open && !dialog.open) {
-      setPin('');
       setError(null);
       dialog.showModal();
-      setTimeout(() => inputRef.current?.focus(), 100);
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -50,7 +46,7 @@ export function PastDueOverrideModal({ open, onClose, balanceAmount }: PastDueOv
     return () => dialog.removeEventListener('close', handler);
   }, [onClose]);
 
-  const handleSubmit = useCallback(async () => {
+  const handlePinSubmit = useCallback(async (pin: string) => {
     if (pin.length !== 6) {
       setError('PIN must be 6 digits');
       return;
@@ -85,14 +81,7 @@ export function PastDueOverrideModal({ open, onClose, balanceAmount }: PastDueOv
       setError('Network error. Please try again.');
       setSubmitting(false);
     }
-  }, [pin, token, laneId, setToast, onClose]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !submitting) {
-      e.preventDefault();
-      void handleSubmit();
-    }
-  }, [handleSubmit, submitting]);
+  }, [token, laneId, setToast, onClose]);
 
   return (
     <dialog
@@ -138,50 +127,36 @@ export function PastDueOverrideModal({ open, onClose, balanceAmount }: PastDueOv
         Management approval is required. This action will be logged for review.
       </div>
 
-      {/* PIN input */}
-      <label
-        htmlFor="past-due-pin"
-        className="mb-1 block text-xs font-bold uppercase tracking-widest text-(--color-text-muted)"
+      {/* PIN label */}
+      <p
+        className="mb-3 text-center text-xs font-bold uppercase tracking-widest"
+        style={{ color: 'var(--color-text-muted)' }}
       >
         Enter your PIN to confirm
-      </label>
-      <input
-        ref={inputRef}
-        id="past-due-pin"
-        type="password"
-        inputMode="numeric"
-        maxLength={6}
-        value={pin}
-        onChange={(e) => {
-          const v = e.target.value.replaceAll(/\D/g, '').slice(0, 6);
-          setPin(v);
-          setError(null);
-        }}
-        onKeyDown={handleKeyDown}
-        className="mb-3 w-full rounded-lg border px-4 py-3 text-center text-xl font-bold tracking-[0.5em] outline-none transition-colors focus:ring-2"
-        style={{
-          backgroundColor: 'var(--color-surface-input)',
-          borderColor: error ? 'var(--color-status-error)' : 'var(--color-border-default)',
-          color: 'var(--color-text-primary)',
-        }}
-        placeholder="••••••"
+      </p>
+
+      {/* PIN Input — matches the sign-in screen format */}
+      <PinInput
+        length={6}
         disabled={submitting}
-        autoComplete="off"
+        onSubmit={(pin) => void handlePinSubmit(pin)}
+        submitLabel={submitting ? 'Verifying…' : 'Confirm Override'}
+        submitDisabled={submitting}
       />
 
       {/* Error message */}
       {error && (
-        <p className="mb-3 text-sm font-semibold" style={{ color: 'var(--color-status-error)' }}>
+        <p className="mt-3 text-center text-sm font-semibold" style={{ color: 'var(--color-status-error)' }}>
           {error}
         </p>
       )}
 
-      {/* Buttons */}
-      <div className="flex gap-2">
+      {/* Cancel button */}
+      <div className="mt-4 flex justify-center">
         <button
           onClick={onClose}
           disabled={submitting}
-          className="flex-1 rounded-lg border px-4 py-2.5 text-sm font-semibold transition-colors"
+          className="rounded-lg border px-6 py-2.5 text-sm font-semibold transition-colors"
           style={{
             borderColor: 'var(--color-border-default)',
             color: 'var(--color-text-secondary)',
@@ -189,19 +164,7 @@ export function PastDueOverrideModal({ open, onClose, balanceAmount }: PastDueOv
         >
           Cancel
         </button>
-        <button
-          onClick={() => void handleSubmit()}
-          disabled={submitting || pin.length !== 6}
-          className="flex-1 rounded-lg px-4 py-2.5 text-sm font-bold transition-colors disabled:opacity-50"
-          style={{
-            backgroundColor: 'var(--color-status-warning)',
-            color: '#000',
-          }}
-        >
-          {submitting ? 'Verifying…' : 'Confirm Override'}
-        </button>
       </div>
     </dialog>
   );
 }
-

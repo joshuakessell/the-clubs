@@ -34,9 +34,7 @@ async function upsertStaffMember(member: typeof DEMO_STAFF[number]): Promise<voi
         ON CONFLICT (qr_token_hash) DO UPDATE SET
           name = EXCLUDED.name,
           role = EXCLUDED.role,
-          pin_hash = EXCLUDED.pin_hash,
-          active = true,
-          force_pin_change = true`
+          active = true`
   );
 }
 
