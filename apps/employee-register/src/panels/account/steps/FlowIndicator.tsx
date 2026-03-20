@@ -21,7 +21,7 @@ export function FlowIndicator() {
   const effectiveStep = (step === 'WAITLIST_BACKUP' || step === 'WAITLIST_DISCLAIMER') ? 'RENTAL' : step;
   // For ASSIGNMENT in renewal mode, map to COMPLETE position
   const mappedStep = sp.mode === 'RENEWAL' && (effectiveStep === 'ASSIGNMENT' || effectiveStep === 'COMPLETE') ? 'COMPLETE' : effectiveStep;
-  const idx = steps.indexOf(mappedStep as any);
+  const idx = steps.indexOf(mappedStep as typeof steps[number]);
 
   return (
     <div className="flex items-center gap-1">

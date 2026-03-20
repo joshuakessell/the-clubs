@@ -250,10 +250,10 @@ describe('calculateRenewalQuote', () => {
     expect(q.lineItems[0].description).toBe('Renewal (2 Hours)');
   });
 
-  it('2h renewal still charges membership fee for 25+', () => {
+  it('2h renewal has no membership fee (flat rate only)', () => {
     const q = calculateRenewalQuote({ ...base(), renewalHours: 2, customerAge: 30 });
-    expect(q.membershipFee).toBe(13);
-    expect(q.total).toBe(20 + 13);
+    expect(q.membershipFee).toBe(0);
+    expect(q.total).toBe(20);
   });
 
   it('2h renewal no membership fee for youth', () => {
@@ -277,7 +277,7 @@ describe('calculateRenewalQuote', () => {
     expect(q.rentalFee).toBe(27);
   });
 
-  it('2h renewal with 6-month membership purchase', () => {
+  it('2h renewal ignores 6-month membership purchase (flat rate only)', () => {
     const q = calculateRenewalQuote({
       ...base(),
       renewalHours: 2,
@@ -285,7 +285,7 @@ describe('calculateRenewalQuote', () => {
       includeSixMonthMembershipPurchase: true,
     });
     expect(q.membershipFee).toBe(0);
-    expect(q.total).toBe(20 + 43);
+    expect(q.total).toBe(20);
   });
 });
 
