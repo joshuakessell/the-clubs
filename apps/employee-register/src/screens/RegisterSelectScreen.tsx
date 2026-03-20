@@ -1,17 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useRegisterStore } from '../stores/useRegisterStore';
 
 const REGISTERS = [
-  { slug: 'lane-1', number: 1, label: 'Register 1', description: 'Standard Check-in' },
-  { slug: 'lane-2', number: 2, label: 'Register 2', description: 'Standard Check-in' },
-  { slug: 'lane-3', number: 3, label: 'Register 3', description: 'Upgrades & Renewals' },
+  { slug: 'lane-1', registerId: 'register-1', label: 'Register 1', description: 'Standard Check-in' },
+  { slug: 'lane-2', registerId: 'register-2', label: 'Register 2', description: 'Standard Check-in' },
+  { slug: 'lane-3', registerId: 'register-3', label: 'Register 3', description: 'Upgrades & Renewals' },
 ];
 
 /**
  * RegisterSelectScreen — Shown after staff login, before AppLayout.
  * Lets the employee pick which register this browser instance operates.
- * Navigates to /lane-1, /lane-2, or /lane-3.
+ * Uses in-app navigation to preserve auth state (no full-page reload).
  */
 export function RegisterSelectScreen() {
+  const navigate = useNavigate();
+  const setLaneId = useRegisterStore((s) => s.setLaneId);
+
   const [activeTheme, setActiveTheme] = useState(
     () => document.documentElement.dataset.theme ?? '',
   );
@@ -25,6 +30,11 @@ export function RegisterSelectScreen() {
   }, []);
 
   const isLightTheme = ['theme-arctic-bloom', 'theme-solar-flare'].includes(activeTheme);
+
+  const handleSelect = useCallback((slug: string, registerId: string) => {
+    setLaneId(registerId);
+    navigate(`/${slug}`);
+  }, [setLaneId, navigate]);
 
   const applyHoverStyle = (el: HTMLElement) => {
     el.style.backgroundColor =
@@ -77,10 +87,11 @@ export function RegisterSelectScreen() {
         {/* Register buttons */}
         <div className="flex flex-col gap-4 w-full max-w-xs">
           {REGISTERS.map((reg) => (
-            <a
+            <button
               key={reg.slug}
-              href={`/${reg.slug}`}
-              className="flex items-center justify-between gap-3 rounded-xl border-2 px-8 py-5 text-lg font-bold transition-all duration-200"
+              type="button"
+              onClick={() => handleSelect(reg.slug, reg.registerId)}
+              className="flex items-center justify-between gap-3 rounded-xl border-2 px-8 py-5 text-lg font-bold transition-all duration-200 cursor-pointer"
               style={{
                 borderColor: 'var(--color-border-accent)',
                 color: 'var(--color-accent-primary)',
@@ -98,10 +109,11 @@ export function RegisterSelectScreen() {
               >
                 {reg.description}
               </span>
-            </a>
+            </button>
           ))}
         </div>
       </div>
     </div>
   );
 }
+

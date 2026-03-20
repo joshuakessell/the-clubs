@@ -45,6 +45,7 @@ export interface ActiveCheckinInfo {
 interface RegisterState {
   /* ── Lane ──────────────────────────────────── */
   laneId: string | null;
+  setLaneId: (laneId: string | null) => void;
 
   /* ── Scan ─────────────────────────────────── */
   scanReady: boolean;
@@ -164,6 +165,7 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null;
 export const useRegisterStore = create<RegisterState>((set, get) => ({
   /* Lane */
   laneId: deriveLaneIdFromUrl(),
+  setLaneId: (laneId) => set({ laneId }),
 
   /* Scan */
   scanReady: true,
