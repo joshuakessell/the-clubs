@@ -485,7 +485,6 @@ async function seedShifts(now: Date, progress: SeedProgress): Promise<void> {
     progress.log('⚠️  Shifts already exist, skipping.');
     return;
   }
-
   progress.setMessage('Seeding employee shifts');
   const staffRes = await query<{ id: string; name: string; role: string }>(
     `SELECT id, name, role FROM staff WHERE active = true ORDER BY name`
