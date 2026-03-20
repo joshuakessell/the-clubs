@@ -46,6 +46,16 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
             `${isCancelled ? 'Cancelling' : 'Completing'} lane session (reset)`
           );
 
+          if (!isCancelled && session.assigned_resource_id) {
+            const blockCheck = await tx.execute(
+              sql`SELECT id FROM checkin_blocks WHERE session_id = ${session.id} LIMIT 1`
+            );
+            if (blockCheck.rows.length === 0) {
+              const { finalizeCheckinWithoutAgreement } = await import('../../services/agreementService');
+              await finalizeCheckinWithoutAgreement(tx as any, session);
+            }
+          }
+
           await tx.execute(
             sql`UPDATE lane_sessions
            SET status = ${newStatus}::public.lane_session_status,

@@ -43,9 +43,9 @@ function toQueryable(tx: DrizzleTx) {
       let lastIndex = 0;
       for (const match of queryText.matchAll(regex)) {
         built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        const paramIndex = Number.parseInt(match[1] as string, 10) - 1;
         built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
+        lastIndex = (match.index as number) + match[0].length;
       }
       if (lastIndex < queryText.length) {
         built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
@@ -484,7 +484,7 @@ async function createVisitAndBlock(params: BlockInsertParams): Promise<{ visitId
      RETURNING id`
   );
 
-  return { visitId: visitId!, checkinBlockId: blockResult.rows[0].id };
+  return { visitId, checkinBlockId: blockResult.rows[0].id };
 }
 
 async function maybeCreateWaitlist(
@@ -679,10 +679,82 @@ function buildAgreementTextSnapshot(
 // ── Service Methods ──
 
 /**
+ * Finalizes a checkin when the customer has bypassed the agreement (e.g., returning member or 2hr renewal).
+ * Creates the visit, time block, marks the resource occupied, and logs the activity.
+ */
+export async function finalizeCheckinWithoutAgreement(tx: DrizzleTx, session: LaneSessionRow): Promise<void> {
+  const signedAt = new Date();
+
+  if (!session.customer_id) {
+    throw new HttpError(400, 'Session has no customer; cannot complete check-in');
+  }
+
+  const timeBlock = await resolveTimeBlock(tx, session, signedAt);
+  const rentalType = (session.desired_rental_type || session.backup_rental_type || 'LOCKER') as
+    'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
+  const resource = await resolveResourceAssignment(tx, session, timeBlock, rentalType);
+
+  await markResourceOccupied(tx, timeBlock.isRenewal, resource.type, session.customer_id, resource.id);
+
+  // Update lane session snapshot
+  await tx.execute(sql`UPDATE lane_sessions
+     SET assigned_resource_id = ${resource.id},
+         assigned_resource_type = ${resource.type},
+         agreement_bypass_pending = false,
+         updated_at = NOW()
+     WHERE id = ${session.id}`);
+
+  const { visitId, checkinBlockId } = await createVisitAndBlock({
+    tx, visitId: timeBlock.visitId, customerId: session.customer_id,
+    blockType: timeBlock.blockType, startsAt: timeBlock.startsAt, endsAt: timeBlock.endsAt,
+    rentalType, resourceType: resource.type, resourceId: resource.id,
+    sessionId: session.id, signedAt,
+  });
+
+  // Backfill visit_id into spend ledger entries
+  await tx.execute(sql`UPDATE customer_spend_ledger_entries
+     SET visit_id = ${visitId}
+     WHERE customer_id = ${session.customer_id}
+       AND visit_id IS NULL
+       AND metadata->>'laneSessionId' = ${session.id}`);
+
+  await maybeCreateWaitlist(tx, session, visitId, checkinBlockId, resource.id);
+
+  await assertAssignedResourcePersistedAndUnavailable({
+    client: toQueryable(tx) as any, sessionId: session.id, customerId: session.customer_id,
+    resourceType: resource.type, resourceId: resource.id, resourceNumber: resource.number,
+  });
+
+  if (session.order_id) {
+    await tx.execute(
+      sql`UPDATE customer_spend_ledger_entries
+          SET visit_id = ${visitId}
+          WHERE customer_id = ${session.customer_id}
+            AND visit_id IS NULL
+            AND dedupe_key LIKE ${'LEDGER:CHECKIN:' + session.order_id + '%'}`
+    );
+  }
+
+  await insertCustomerActivityEventDrizzle(tx, {
+    customerId: session.customer_id,
+    actionType: 'CHECK_IN',
+    actionCategory: 'VISIT_HISTORY',
+    sourceApp: 'CUSTOMER_KIOSK',
+    actorType: 'SYSTEM',
+    summary: 'Check-in completed without new agreement signing',
+    metadata: {
+      laneSessionId: session.id, visitId, checkinBlockId,
+      assignedResourceType: resource.type, assignedResourceNumber: resource.number,
+      rentalType,
+    },
+  });
+}
+
+/**
  * Unified agreement signing flow.
  *
  * Covers both customer digital signature AND employee manual override.
- * When `signaturePayload === 'MANUAL_OVERRIDE'`, generates PDF with override text instead of signature image.
+ * When \`signaturePayload === 'MANUAL_OVERRIDE'\`, generates PDF with override text instead of signature image.
  */
 export async function processAgreementSigning(
   input: SigningInput
