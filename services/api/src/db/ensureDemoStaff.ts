@@ -26,26 +26,20 @@ const DEMO_STAFF = [
 
 const DEMO_NAMES: string[] = DEMO_STAFF.map((m) => m.name);
 
-/** Upsert a single staff member by name. */
+/** Upsert a single staff member by qr_token_hash (unique constraint). */
 async function upsertStaffMember(member: typeof DEMO_STAFF[number]): Promise<void> {
   const qrTokenHash = hashQrToken(member.qrToken);
   const pinHash = await hashPin(member.pin);
 
-  const updated = await db.execute(
-    sql`UPDATE staff
-        SET role = ${member.role},
-            qr_token_hash = ${qrTokenHash},
-            pin_hash = ${pinHash},
-            active = true
-        WHERE LOWER(name) = LOWER(${member.name})`
+  await db.execute(
+    sql`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
+        VALUES (${member.name}, ${member.role}, ${qrTokenHash}, ${pinHash}, true)
+        ON CONFLICT (qr_token_hash) DO UPDATE SET
+          name = EXCLUDED.name,
+          role = EXCLUDED.role,
+          pin_hash = EXCLUDED.pin_hash,
+          active = true`
   );
-
-  if ((updated.rowCount ?? 0) === 0) {
-    await db.execute(
-      sql`INSERT INTO staff (name, role, qr_token_hash, pin_hash, active)
-          VALUES (${member.name}, ${member.role}, ${qrTokenHash}, ${pinHash}, true)`
-    );
-  }
 }
 
 /** Deactivate staff whose names are NOT in the demo list. */
