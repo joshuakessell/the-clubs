@@ -260,7 +260,7 @@ jobs:
             # Write demo .env
             ENV_FILE="/home/ec2-user/.env.demo"
             printf '%s\n' \
-              'DB_NAME=club_operations_demo' \
+              'DB_NAME=club_operations' \
               'DB_USER=clubops' \
               "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}" \
               'FLOW_COMMANDS=true' \
