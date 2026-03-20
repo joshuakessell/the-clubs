@@ -588,7 +588,7 @@ async function fetchWaitlistEstimates(
     if (!Number.isFinite(roomNum)) continue;
     const roomTier = getRoomTierFromNumber(roomNum);
     if (!tierSet.has(roomTier)) continue;
-    matchingCheckouts.push(row.ends_at);
+    matchingCheckouts.push(new Date(row.ends_at));
     if (matchingCheckouts.length >= queuePosition) break;
   }
 
