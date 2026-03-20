@@ -263,6 +263,20 @@ export function ChangePinScreen() {
             <span className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Saving PIN…</span>
           </div>
         )}
+
+        {/* Cancel button — returns to login screen without changing PIN */}
+        {!isLoading && (
+          <div className="mt-6 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setSession(null)}
+              className="text-sm font-medium transition-colors duration-150"
+              style={{ color: 'var(--color-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
