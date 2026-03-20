@@ -79,6 +79,7 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
         sql`SELECT
            cb.id,
            cb.created_at,
+           cb.agreement_signed,
            sig.id as sig_id,
            sig.signature_png_base64,
            sig.signature_strokes_json,
@@ -98,7 +99,7 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
          ORDER BY v.started_at DESC NULLS LAST, cb.created_at DESC`
       );
 
-      type DocRow = { id: string; created_at: Date; visit_started_at: Date | null; visit_ended_at: Date | null } & SignatureQueryRow;
+      type DocRow = { id: string; created_at: Date; agreement_signed: boolean; visit_started_at: Date | null; visit_ended_at: Date | null } & SignatureQueryRow;
       const documents = (rows.rows as unknown as DocRow[]).map((r) => {
         const sigMeta = buildSignatureMetadata(r);
         return {
@@ -108,7 +109,7 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
           created_at: r.created_at.toISOString(),
           has_signature: sigMeta.has_signature,
           signature_hash_prefix: sigMeta.signature_hash_prefix,
-          has_pdf: sigMeta.has_signature,
+          has_pdf: r.agreement_signed,
           visit_started_at: r.visit_started_at ? r.visit_started_at.toISOString() : null,
           visit_ended_at: r.visit_ended_at ? r.visit_ended_at.toISOString() : null,
         };
@@ -128,6 +129,7 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
         sql`SELECT
            cb.id,
            cb.created_at,
+           cb.agreement_signed,
            sig.id as sig_id,
            sig.signature_png_base64,
            sig.signature_strokes_json,
@@ -144,7 +146,7 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
          ORDER BY cb.created_at DESC`
       );
 
-      type DocRow = { id: string; created_at: Date } & SignatureQueryRow;
+      type DocRow = { id: string; created_at: Date; agreement_signed: boolean } & SignatureQueryRow;
       const documents = (rows.rows as unknown as DocRow[]).map((r) => {
         const sigMeta = buildSignatureMetadata(r);
         let createdAtStr = String(r.created_at);
@@ -161,7 +163,7 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
           created_at: createdAtStr,
           has_signature: sigMeta.has_signature,
           signature_hash_prefix: sigMeta.signature_hash_prefix,
-          has_pdf: sigMeta.has_signature,
+          has_pdf: r.agreement_signed,
         };
       });
 

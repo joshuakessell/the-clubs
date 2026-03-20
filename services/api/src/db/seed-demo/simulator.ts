@@ -778,6 +778,9 @@ async function simulateVisits(params: {
   let created = 0;
   let orderSeed = Math.floor(from.getTime() / 60000) % 100000;
 
+  // Track when each customer's latest visit ends to prevent overlapping visits
+  const activeVisitEnd = new Map<string, number>();
+
   for (let i = 0; i < intervals && created < maxVisits; i++) {
     const slotStart = new Date(from.getTime() + i * HOUR_MS);
     const slotEnd = new Date(Math.min(slotStart.getTime() + HOUR_MS, to.getTime()));
@@ -799,19 +802,32 @@ async function simulateVisits(params: {
       if (end <= start || end > to) continue;
 
       // --- Pick customer (80% returning, 20% new) ---
-      let customer: SimCustomer;
-      if (rng() < 0.8 && customers.length > 0) {
-        customer = customers[Math.floor(rng() * customers.length)];
-      } else {
-        const nc = generateNewCustomer(rng, to);
-        await client.query(
-          `INSERT INTO customers (id, name, dob, membership_number, id_number, id_type, id_state, id_expiration_date, primary_language, past_due_balance, created_at, updated_at)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'EN',0,$9,$9)`,
-          [nc.id, nc.name, nc.dob, nc.membershipNumber, nc.idNumber, nc.idType, nc.idState, nc.idExpirationDate, start]
-        );
-        customer = { id: nc.id, name: nc.name, membership_number: null, membership_valid_until: null, dob: nc.dob };
-        customers.push(customer);
+      // Retry up to 5 times if the picked customer has an overlapping visit
+      let customer: SimCustomer | null = null;
+      for (let attempt = 0; attempt < 5 && !customer; attempt++) {
+        let candidate: SimCustomer;
+        if (rng() < 0.8 && customers.length > 0) {
+          candidate = customers[Math.floor(rng() * customers.length)];
+        } else {
+          const nc = generateNewCustomer(rng, to);
+          await client.query(
+            `INSERT INTO customers (id, name, dob, membership_number, id_number, id_type, id_state, id_expiration_date, primary_language, past_due_balance, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'EN',0,$9,$9)`,
+            [nc.id, nc.name, nc.dob, nc.membershipNumber, nc.idNumber, nc.idType, nc.idState, nc.idExpirationDate, start]
+          );
+          candidate = { id: nc.id, name: nc.name, membership_number: null, membership_valid_until: null, dob: nc.dob };
+          customers.push(candidate);
+        }
+        // Check for overlapping visit
+        const prevEnd = activeVisitEnd.get(candidate.id) ?? 0;
+        if (start.getTime() >= prevEnd) {
+          customer = candidate;
+        }
       }
+      if (!customer) continue; // All attempts had overlap — skip this visit
+
+      // Record this customer's visit window
+      activeVisitEnd.set(customer.id, end.getTime());
 
       // Pick the employee who is on-shift at this visit's check-in time
       const emp = getOnShiftStaff(shifts, staff, start, rng);
@@ -900,9 +916,9 @@ async function simulateVisits(params: {
       const piId = randomUUID();
       const chargeId = randomUUID();
       await client.query(
-        `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, payment_method, register_session_id, register_number, created_by_staff_id, paid_by_staff_id, quote_json, paid_at, created_at, updated_at)
-         VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$5,$6,$6,$7,$8,$8,$8)`,
-        [piId, price, paymentMethod, reg.id, reg.register_number, emp.id, { type: 'CHECKIN', rentalType, price }, signedAt]
+        `INSERT INTO orders (id, visit_id, subtotal, discount, tax, tip, total, currency, status, payment_method, register_session_id, register_number, created_by_staff_id, paid_by_staff_id, quote_json, paid_at, created_at, updated_at)
+         VALUES ($1,$2,$3,0,0,0,$3,'USD','PAID',$4,$5,$6,$7,$7,$8,$9,$9,$9)`,
+        [piId, visitId, price, paymentMethod, reg.id, reg.register_number, emp.id, { type: 'CHECKIN', rentalType, price }, signedAt]
       );
       await client.query(
         `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
@@ -1105,9 +1121,9 @@ async function insertUpgrade(client: DbClient, p: {
   // Payment + Charge
   const ugPaymentMethod = p.rng() < 0.3 ? 'CASH' : 'CREDIT';
   await client.query(
-    `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, payment_method, created_by_staff_id, paid_by_staff_id, quote_json, paid_at, created_at, updated_at)
-     VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$5,$6,$6,$6)`,
-    [piId, ugPrice, ugPaymentMethod, p.staffId, { type: 'UPGRADE', from: 'LOCKER', to: p.roomType, price: ugPrice }, p.ugAt]
+    `INSERT INTO orders (id, visit_id, subtotal, discount, tax, tip, total, currency, status, payment_method, created_by_staff_id, paid_by_staff_id, quote_json, paid_at, created_at, updated_at)
+     VALUES ($1,$2,$3,0,0,0,$3,'USD','PAID',$4,$5,$5,$6,$7,$7,$7)`,
+    [piId, p.visitId, ugPrice, ugPaymentMethod, p.staffId, { type: 'UPGRADE', from: 'LOCKER', to: p.roomType, price: ugPrice }, p.ugAt]
   );
   await client.query(
     `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
@@ -1181,8 +1197,8 @@ async function insertLateCheckout(client: DbClient, p: {
     const piId = randomUUID();
     const cId = randomUUID();
     await client.query(
-      `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at) VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
-      [piId, p.feeAmount, { type: 'LATE_FEE', lateMinutes: p.lateMins, feeAmount: p.feeAmount }, p.at]
+      `INSERT INTO orders (id, visit_id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at) VALUES ($1,$2,$3,0,0,0,$3,'USD','PAID',$4,$5,$5,$5)`,
+      [piId, p.visitId, p.feeAmount, { type: 'LATE_FEE', lateMinutes: p.lateMins, feeAmount: p.feeAmount }, p.at]
     );
     await client.query(
       `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
@@ -1250,9 +1266,9 @@ async function insertOrder(client: DbClient, p: {
   const paymentMethod = p.rng() < 0.33 ? 'CASH' : 'CREDIT';
 
   await client.query(
-    `INSERT INTO orders (id, customer_id, register_session_id, register_number, created_by_staff_id, paid_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, payment_method, paid_at, metadata_json)
-     VALUES ($1,$2,$3,$4,$5,$5,$6,'PAID',$7,0,0,0,$8,'USD',$9,$6,$10)`,
-    [orderId, p.customerId, p.regSessionId, p.regNumber, p.staffId, p.at, subtotal, total, paymentMethod, { tender: { paymentMethod, source: 'SIM' } }]
+    `INSERT INTO orders (id, visit_id, customer_id, register_session_id, register_number, created_by_staff_id, paid_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, payment_method, paid_at, metadata_json)
+     VALUES ($1,$2,$3,$4,$5,$6,$6,$7,'PAID',$8,0,0,0,$9,'USD',$10,$7,$11)`,
+    [orderId, p.visitId, p.customerId, p.regSessionId, p.regNumber, p.staffId, p.at, subtotal, total, paymentMethod, { tender: { paymentMethod, source: 'SIM' } }]
   );
 
   for (const item of lineItems) {
