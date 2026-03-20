@@ -190,7 +190,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
                 });
 
                 const visitRow = await tx.execute<{ id: string }>(
-                  sql`SELECT id FROM visits WHERE customer_id = ${session.customer_id} AND checked_out_at IS NULL ORDER BY checked_in_at DESC LIMIT 1`
+                  sql`SELECT id FROM visits WHERE customer_id = ${session.customer_id} AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1`
                 );
                 const activeVisitId = visitRow.rows[0]?.id ?? null;
                 const amountInt = Math.round(amount);
@@ -201,7 +201,7 @@ export function registerCheckinDemoPaymentRoutes(fastify: FastifyInstance): void
                       source_app, actor_type, actor_staff_id, actor_staff_name, summary, metadata, dedupe_key)
                    VALUES
                      (NOW(), ${session.customer_id}::uuid, ${activeVisitId}::uuid, 'RENTAL_FEE', ${amountInt}::bigint, 'USD',
-                      ${request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK'}, ${request.staff ? 'STAFF' : 'CUSTOMER'}, ${staffId}::uuid, ${request.staff?.name ?? null}, ${`Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`}, ${JSON.stringify({ orderId: intent.id, paymentMethod, laneSessionId: session.id })}::jsonb, ${'LEDGER:RENTAL_FEE:' + intent.id})
+                      ${request.staff ? 'EMPLOYEE_REGISTER' : 'CUSTOMER_KIOSK'}, ${request.staff ? 'STAFF' : 'CUSTOMER'}, ${staffId}::uuid, ${request.staff?.name ?? null}, ${`Check-in fee paid ($${amount.toFixed(2)} ${paymentMethod})`}, ${JSON.stringify({ orderId: intent.id, paymentMethod, laneSessionId: session.id })}::jsonb, ${'LEDGER:CHECKIN:' + intent.id})
                    ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING`
                 );
                 await tx.execute(sql.raw('RELEASE SAVEPOINT activity_logging'));
