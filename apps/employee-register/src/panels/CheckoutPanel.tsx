@@ -284,7 +284,16 @@ function DetailPanel({
       {!renewalLoading && renewalEligibility?.eligible && (
         <button
           disabled={isProcessing}
-          onClick={() => setShowRenewalModal(true)}
+          onClick={() => {
+            const hasActiveSession = useRegisterStore.getState().currentSessionId;
+            if (hasActiveSession) {
+              useRegisterStore.getState().setSuccessToastMessage(
+                'A check-in is already in progress. Complete or cancel it first.'
+              );
+              return;
+            }
+            setShowRenewalModal(true);
+          }}
           className="w-full rounded-lg py-2 text-sm font-bold flex items-center justify-center gap-2 mt-2"
           style={{
             backgroundColor: 'color-mix(in oklch, var(--color-brand-primary) 10%, transparent)',

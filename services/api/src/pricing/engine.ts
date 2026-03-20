@@ -320,8 +320,8 @@ export function calculatePriceQuote(input: PricingInput): PriceQuote {
 
 /**
  * Calculate price quote for a renewal (2h or 6h).
- * - 2h renewals: flat $20 + daily membership fee (if applicable)
- * - 6h renewals: full base pricing (same as initial check-in)
+ * - 2h renewals: flat $20 (no membership fee)
+ * - 6h renewals: full base pricing (same as initial check-in, includes membership fee unless 6-month member)
  */
 export function calculateRenewalQuote(
   input: PricingInput & { renewalHours: 2 | 6 | null | undefined }
@@ -331,34 +331,16 @@ export function calculateRenewalQuote(
     return calculatePriceQuote(input);
   }
 
-  const lineItems: Array<{ description: string; amount: number }> = [];
+  // 2-hour renewal: flat $20, no membership fee
   const renewalFee = 20;
-  lineItems.push({ description: 'Renewal (2 Hours)', amount: renewalFee });
-
-  const sixMonthMembershipPurchaseFee = input.includeSixMonthMembershipPurchase ? 43 : 0;
-  const membershipFee = input.includeSixMonthMembershipPurchase
-    ? 0
-    : getMembershipFee(
-        input.checkInTime,
-        input.customerAge,
-        input.membershipCardType,
-        input.membershipValidUntil
-      );
-
-  if (membershipFee > 0) {
-    lineItems.push({ description: 'Membership Fee', amount: membershipFee });
-  }
-
-  if (sixMonthMembershipPurchaseFee > 0) {
-    lineItems.push({ description: '6 Month Membership', amount: sixMonthMembershipPurchaseFee });
-  }
-
-  const total = renewalFee + membershipFee + sixMonthMembershipPurchaseFee;
+  const lineItems: Array<{ description: string; amount: number }> = [
+    { description: 'Renewal (2 Hours)', amount: renewalFee },
+  ];
 
   return {
     rentalFee: renewalFee,
-    membershipFee,
-    total,
+    membershipFee: 0,
+    total: renewalFee,
     lineItems,
     messages: ['No refunds'],
   };

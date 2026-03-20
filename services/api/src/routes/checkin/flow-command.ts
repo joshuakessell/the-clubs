@@ -185,7 +185,7 @@ const ALLOWED_STEP_TRANSITIONS: Readonly<Record<FlowStep, ReadonlySet<FlowStep>>
   RENTAL: new Set(['RENTAL', 'WAITLIST_BACKUP', 'PAYMENT']),
   WAITLIST_BACKUP: new Set(['RENTAL', 'WAITLIST_BACKUP', 'WAITLIST_DISCLAIMER', 'PAYMENT']),
   WAITLIST_DISCLAIMER: new Set(['WAITLIST_BACKUP', 'WAITLIST_DISCLAIMER', 'PAYMENT']),
-  PAYMENT: new Set(['RENTAL', 'WAITLIST_BACKUP', 'PAYMENT', 'AGREEMENT']),
+  PAYMENT: new Set(['RENTAL', 'WAITLIST_BACKUP', 'PAYMENT', 'AGREEMENT', 'ASSIGNMENT']),
   AGREEMENT: new Set(['PAYMENT', 'AGREEMENT', 'ASSIGNMENT']),
   ASSIGNMENT: new Set(['AGREEMENT', 'ASSIGNMENT', 'COMPLETE']),
   COMPLETE: new Set(['ASSIGNMENT', 'COMPLETE']),
@@ -480,6 +480,37 @@ async function applyFlowPaymentSideEffects(
       `UPDATE orders SET failure_reason = $1, updated_at = NOW() WHERE id = $2`,
       [failureReason, session.order_id],
     );
+  }
+
+  // 2hr renewal: PAYMENT → ASSIGNMENT skips AGREEMENT, so mark order PAID here
+  if (
+    session.flow_step === 'PAYMENT' &&
+    session.order_id &&
+    type === 'SET_STEP' &&
+    session.checkin_mode === 'RENEWAL' &&
+    session.renewal_hours === 2
+  ) {
+    const requestedStep = payload?.['step'] as string | undefined;
+    const requestedMethod = payload?.['paymentMethod'] as string | undefined;
+    if (requestedStep === 'ASSIGNMENT' && (requestedMethod === 'CASH' || requestedMethod === 'CREDIT' || requestedMethod === 'SPLIT')) {
+      const intentStatusRes = await client.query<{ status: string }>(
+        `SELECT status FROM orders WHERE id = $1`,
+        [session.order_id],
+      );
+      if (intentStatusRes.rows[0]?.status !== 'PAID') {
+        const splitCash = payload?.['splitCashAmount'] ? Number(payload['splitCashAmount']) : null;
+        const splitCredit = payload?.['splitCreditAmount'] ? Number(payload['splitCreditAmount']) : null;
+
+        await client.query(
+          `UPDATE orders SET status = 'PAID', payment_method = $1, split_cash_amount = $2, split_credit_amount = $3, paid_at = NOW(), updated_at = NOW() WHERE id = $4`,
+          [requestedMethod, splitCash, splitCredit, session.order_id],
+        );
+        await client.query(
+          `UPDATE lane_sessions SET status = 'COMPLETED', updated_at = NOW() WHERE id = $1`,
+          [sessionId],
+        );
+      }
+    }
   }
 }
 

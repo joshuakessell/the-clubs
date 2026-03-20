@@ -7,6 +7,8 @@ export function PaymentStep() {
   const { sendFlowCommand } = actions;
 
   const isPaid = sp.orderStatus === 'PAID';
+  const isRenewal = sp.mode === 'RENEWAL';
+  const is2hRenewal = isRenewal && sp.renewalHours === 2;
   const [loading, setLoading] = useState(false);
   const [showSplit, setShowSplit] = useState(false);
   const totalDollars = Number((sp.ledgerTotal ?? sp.paymentTotal ?? 0).toFixed(2));
@@ -55,12 +57,15 @@ export function PaymentStep() {
   //   } catch { /* best-effort */ }
   // }, [laneId, token, currentSessionId]);
 
+  // 2hr renewals skip AGREEMENT — go directly to ASSIGNMENT
+  const nextStepAfterPayment = is2hRenewal ? 'ASSIGNMENT' : 'AGREEMENT';
+
   const handleMarkPaid = async (method: 'CASH' | 'CREDIT') => {
     setLoading(true);
     try {
       await sendFlowCommand({
         type: 'SET_STEP',
-        payload: { step: 'AGREEMENT', paymentMethod: method },
+        payload: { step: nextStepAfterPayment, paymentMethod: method },
       });
     } finally {
       setLoading(false);
@@ -74,7 +79,7 @@ export function PaymentStep() {
       await sendFlowCommand({
         type: 'SET_STEP',
         payload: {
-          step: 'AGREEMENT',
+          step: nextStepAfterPayment,
           paymentMethod: 'SPLIT',
           splitCashAmount: splitCashDollars,
           splitCreditAmount: splitCreditDollars,
@@ -162,7 +167,7 @@ export function PaymentStep() {
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-sm font-bold font-(--font-display) text-(--color-text-primary)">
-        Collect Payment
+        {isRenewal ? 'Collect Renewal Payment' : 'Collect Payment'}
       </h3>
 
       {isPaid && (
@@ -233,13 +238,15 @@ export function PaymentStep() {
         </div>
       )}
 
-      {/* Back button */}
-      <button
-        onClick={() => { sendFlowCommand({ type: 'SET_STEP', payload: { step: 'RENTAL' } }); }}
-        className="self-start text-xs font-semibold text-(--color-text-muted)"
-      >
-        ← Back to Rental
-      </button>
+      {/* Back button — hidden for renewals (no rental step to go back to) */}
+      {!isRenewal && (
+        <button
+          onClick={() => { sendFlowCommand({ type: 'SET_STEP', payload: { step: 'RENTAL' } }); }}
+          className="self-start text-xs font-semibold text-(--color-text-muted)"
+        >
+          ← Back to Rental
+        </button>
+      )}
     </div>
   );
 }
