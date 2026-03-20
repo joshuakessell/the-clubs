@@ -810,8 +810,12 @@ async function simulateVisits(params: {
 
       // Pick the employee who is on-shift at this visit's check-in time
       const emp = getOnShiftStaff(shifts, staff, start, rng);
-      const reg = registerSessions.find(r => r.employee_id === emp.id)
-        ?? registerSessions[(lockerIdx + j) % registerSessions.length];
+      // Check-ins go to register 1 or 2; upgrades/retail to register 3
+      const checkinRegs = registerSessions.filter(r => r.register_number <= 2);
+      const reg = checkinRegs.length > 0
+        ? checkinRegs[j % checkinRegs.length]
+        : registerSessions[0];
+      const paymentMethod = rng() < 0.3 ? 'CASH' : 'CREDIT';
 
       // --- Choose resource (62% locker, 38% room) ---
       let resourceId: string | null = null;
@@ -891,9 +895,9 @@ async function simulateVisits(params: {
       const piId = randomUUID();
       const chargeId = randomUUID();
       await client.query(
-        `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at)
-         VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
-        [piId, price, { type: 'CHECKIN', rentalType, price }, signedAt]
+        `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, payment_method, register_session_id, register_number, created_by_staff_id, paid_by_staff_id, quote_json, paid_at, created_at, updated_at)
+         VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$5,$6,$6,$7,$8,$8,$8)`,
+        [piId, price, paymentMethod, reg.id, reg.register_number, emp.id, { type: 'CHECKIN', rentalType, price }, signedAt]
       );
       await client.query(
         `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
@@ -975,13 +979,15 @@ async function simulateVisits(params: {
       }
 
       // --- Retail Orders (~24% customer-linked, ~55% anonymous) ---
+      // Retail during check-in uses the same register (R1/R2); standalone retail uses R3
       if (rng() < 0.24) {
         orderSeed++;
-        await insertOrder(client, { at: new Date(start.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: customer.id, visitId, seed: orderSeed, rng, to });
+        await insertOrder(client, { at: new Date(start.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000), regSessionId: reg.id, regNumber: reg.register_number, staffId: emp.id, customerId: customer.id, visitId, seed: orderSeed, rng, to });
       }
       if (rng() < 0.55) {
         orderSeed++;
-        await insertOrder(client, { at: new Date(start.getTime() + (45 + Math.floor(rng() * 120)) * 60 * 1000), regSessionId: reg.id, staffId: emp.id, customerId: null, visitId: null, seed: orderSeed, rng, to });
+        const retailReg = registerSessions.find(r => r.register_number === 3) ?? reg;
+        await insertOrder(client, { at: new Date(start.getTime() + (45 + Math.floor(rng() * 120)) * 60 * 1000), regSessionId: retailReg.id, regNumber: retailReg.register_number, staffId: emp.id, customerId: null, visitId: null, seed: orderSeed, rng, to });
       }
 
       created++;
@@ -1092,10 +1098,11 @@ async function insertUpgrade(client: DbClient, p: {
   );
 
   // Payment + Charge
+  const ugPaymentMethod = p.rng() < 0.3 ? 'CASH' : 'CREDIT';
   await client.query(
-    `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, quote_json, paid_at, created_at, updated_at)
-     VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$4)`,
-    [piId, ugPrice, { type: 'UPGRADE', from: 'LOCKER', to: p.roomType, price: ugPrice }, p.ugAt]
+    `INSERT INTO orders (id, subtotal, discount, tax, tip, total, currency, status, payment_method, created_by_staff_id, paid_by_staff_id, quote_json, paid_at, created_at, updated_at)
+     VALUES ($1,$2,0,0,0,$2,'USD','PAID',$3,$4,$4,$5,$6,$6,$6)`,
+    [piId, ugPrice, ugPaymentMethod, p.staffId, { type: 'UPGRADE', from: 'LOCKER', to: p.roomType, price: ugPrice }, p.ugAt]
   );
   await client.query(
     `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
@@ -1217,7 +1224,7 @@ async function insertLateCheckout(client: DbClient, p: {
 // ---------------------------------------------------------------------------
 
 async function insertOrder(client: DbClient, p: {
-  at: Date; regSessionId: string; staffId: string; customerId: string | null; visitId: string | null;
+  at: Date; regSessionId: string; regNumber: number; staffId: string; customerId: string | null; visitId: string | null;
   seed: number; rng: () => number; to: Date;
 }): Promise<void> {
   if (p.at > p.to) return;
@@ -1238,9 +1245,9 @@ async function insertOrder(client: DbClient, p: {
   const paymentMethod = p.rng() < 0.33 ? 'CASH' : 'CREDIT';
 
   await client.query(
-    `INSERT INTO orders (id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json)
-     VALUES ($1,$2,$3,$4,$5,'PAID',$6,0,0,0,$7,'USD',$8)`,
-    [orderId, p.customerId, p.regSessionId, p.staffId, p.at, subtotal, total, { tender: { paymentMethod, source: 'SIM' } }]
+    `INSERT INTO orders (id, customer_id, register_session_id, register_number, created_by_staff_id, paid_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, payment_method, paid_at, metadata_json)
+     VALUES ($1,$2,$3,$4,$5,$5,$6,'PAID',$7,0,0,0,$8,'USD',$9,$6,$10)`,
+    [orderId, p.customerId, p.regSessionId, p.regNumber, p.staffId, p.at, subtotal, total, paymentMethod, { tender: { paymentMethod, source: 'SIM' } }]
   );
 
   for (const item of lineItems) {
