@@ -22,7 +22,6 @@ import {
   selectRoomForNewCheckin,
 } from '../checkin/helpers';
 import { getRoomTier } from '../checkin/waitlist';
-import { generateAgreementPdf } from '../utils/pdf-generator';
 import { roundUpToQuarterHour } from '../time/rounding';
 import { insertCustomerActivityEventDrizzle } from '../activity/customerActivityLog';
 import { insertClubEventDrizzle } from '../activity/clubEventLog';
@@ -466,7 +465,6 @@ interface BlockInsertParams {
   resourceType: 'room' | 'locker';
   resourceId: string;
   sessionId: string;
-  pdfBuffer: Buffer;
   signedAt: Date;
 }
 
@@ -481,8 +479,8 @@ async function createVisitAndBlock(params: BlockInsertParams): Promise<{ visitId
 
   const blockResult = await params.tx.execute<{ id: string }>(
     sql`INSERT INTO checkin_blocks
-     (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, session_id, agreement_signed, agreement_pdf, agreement_signed_at)
-     VALUES (${visitId}, ${params.blockType}, ${params.startsAt}, ${params.endsAt}, ${params.rentalType}, ${params.resourceId}, ${params.sessionId}, true, ${params.pdfBuffer}, ${params.signedAt})
+     (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, session_id, agreement_signed, agreement_signed_at)
+     VALUES (${visitId}, ${params.blockType}, ${params.startsAt}, ${params.endsAt}, ${params.rentalType}, ${params.resourceId}, ${params.sessionId}, true, ${params.signedAt})
      RETURNING id`
   );
 
@@ -695,7 +693,7 @@ export async function processAgreementSigning(
     const session = await findActiveSession(tx, input.laneId, input.sessionId);
     await validatePrerequisites(tx, session);
 
-    const { customerName, customerDob, membershipNumber, customerLang } =
+    const { customerName, membershipNumber, customerLang } =
       await fetchCustomerInfo(tx, session);
 
     const agreement = await fetchActiveAgreement(tx);
@@ -724,31 +722,16 @@ export async function processAgreementSigning(
 
     await maybeInsertFlowCommand(tx, session.id);
 
-    // Build agreement text + PDF
+    // Build agreement text snapshot (stored for on-demand PDF reconstruction)
     const agreementTextSnapshot = buildAgreementTextSnapshot(
       timeBlock.startsAt, timeBlock.endsAt, customerLang, agreement.body_text,
     );
-    const agreementTitleForPdf = customerLang === 'ES' ? 'Acuerdo del Club' : agreement.title;
-
-    const pdfBuffer = await generateAgreementPdf({
-      agreementTitle: agreementTitleForPdf,
-      agreementVersion: agreement.version,
-      agreementText: agreementTextSnapshot,
-      customerName,
-      customerDob,
-      membershipNumber,
-      checkinAt: timeBlock.startsAt,
-      signedAt,
-      ...(isManualOverride
-        ? { signatureText: 'Manual Signature Override' }
-        : { signatureImageBase64: signatureData }),
-    });
 
     const { visitId, checkinBlockId } = await createVisitAndBlock({
       tx, visitId: timeBlock.visitId, customerId: session.customer_id,
       blockType: timeBlock.blockType, startsAt: timeBlock.startsAt, endsAt: timeBlock.endsAt,
       rentalType, resourceType: resource.type, resourceId: resource.id,
-      sessionId: session.id, pdfBuffer, signedAt,
+      sessionId: session.id, signedAt,
     });
 
     const waitlistInfo = await maybeCreateWaitlist(tx, session, visitId, checkinBlockId, resource.id);

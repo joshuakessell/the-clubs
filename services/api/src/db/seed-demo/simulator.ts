@@ -13,7 +13,6 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import {
   LOCKER_NUMBERS,
   ROOMS,
@@ -1563,14 +1562,6 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       return visitCount;
     });
 
-    // Backfill fake agreement PDFs for all checkin blocks that are missing one
-    progress.log('📄 Generating placeholder agreement PDFs...');
-    const fakePdf = await generateFakeDemoPdf();
-    const pdfResult = await query(
-      `UPDATE checkin_blocks SET agreement_pdf = $1 WHERE agreement_pdf IS NULL AND agreement_signed = true`,
-      [fakePdf]
-    );
-    progress.log(`📄 Backfilled ${pdfResult.rowCount ?? 0} agreement PDFs.`);
 
     await saveSimState(now, anchor);
     progress.log(`✅ Simulation complete: ${created} visits generated.`);
@@ -1784,186 +1775,6 @@ async function seedActiveWaitlist(client: DbClient, p: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Fake Agreement PDF for demo data
-// ---------------------------------------------------------------------------
-
-async function generateFakeDemoPdf(): Promise<Buffer> {
-  const pdfDoc = await PDFDocument.create();
-  const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const helvBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const helvOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
-  const page = pdfDoc.addPage([612, 792]); // US Letter
-
-  const black = rgb(0, 0, 0);
-  const darkGray = rgb(0.25, 0.25, 0.25);
-  const midGray = rgb(0.45, 0.45, 0.45);
-  const lineGray = rgb(0.75, 0.75, 0.75);
-  const accentBlue = rgb(0.12, 0.35, 0.65);
-
-  const LM = 54; // left margin
-  const RM = 558; // right margin
-  const PW = RM - LM; // printable width
-
-  // ── Letterhead ──
-  page.drawText('CLUB DALLAS', { x: LM, y: 748, size: 20, font: helvBold, color: accentBlue });
-  page.drawText('2616 Swiss Avenue, Dallas, TX 75204', { x: LM, y: 732, size: 8, font: helv, color: midGray });
-  page.drawText('(214) 821-1990  •  www.clubdallas.com', { x: LM, y: 722, size: 8, font: helv, color: midGray });
-  page.drawLine({ start: { x: LM, y: 714 }, end: { x: RM, y: 714 }, thickness: 1.5, color: accentBlue });
-
-  // ── Title ──
-  page.drawText('ENTRY & LIABILITY WAIVER AGREEMENT', { x: LM, y: 692, size: 14, font: helvBold, color: black });
-  page.drawLine({ start: { x: LM, y: 684 }, end: { x: RM, y: 684 }, thickness: 0.5, color: lineGray });
-
-  // ── Customer Info Block ──
-  const signDate = new Date();
-  const dateStr = signDate.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-  const timeStr = signDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-
-  const infoLabels = ['Customer:', 'Membership #:', 'Date:', 'Time:'];
-  const infoValues = ['John Smith', 'CD-100042', dateStr, timeStr];
-  let infoY = 666;
-  for (let i = 0; i < infoLabels.length; i++) {
-    page.drawText(infoLabels[i], { x: LM, y: infoY, size: 9, font: helvBold, color: darkGray });
-    page.drawText(infoValues[i], { x: LM + 90, y: infoY, size: 9, font: helv, color: black });
-    infoY -= 14;
-  }
-
-  // ── Agreement Sections ──
-  const sections: Array<{ title: string; body: string }> = [
-    {
-      title: '1.  ASSUMPTION OF RISK',
-      body: 'I understand that Club Dallas is a private membership club and bathhouse facility. I voluntarily assume all risks associated with my use of the premises, including but not limited to: wet surfaces, sauna and steam room facilities, hot tub areas, gym equipment, and any other amenities provided. I acknowledge that physical activities carry inherent risks of injury.',
-    },
-    {
-      title: '2.  RELEASE & WAIVER OF LIABILITY',
-      body: 'In consideration for being permitted entry, I hereby release, waive, discharge, and covenant not to sue Club Dallas, its owners, operators, employees, agents, and affiliates from any and all liability, claims, demands, actions, or causes of action arising out of or related to any loss, damage, or injury that may be sustained by me while on the premises.',
-    },
-    {
-      title: '3.  CONSENT TO SEARCH',
-      body: 'I consent to inspection of my personal belongings upon entry and exit. I understand that prohibited items including but not limited to weapons, illegal substances, cameras, and recording devices are not permitted on the premises and will be confiscated.',
-    },
-    {
-      title: '4.  IDENTIFICATION VERIFICATION',
-      body: 'I certify that I am at least 18 years of age and have presented valid government-issued photo identification. I understand that Club Dallas is required to verify the identity and age of all patrons.',
-    },
-    {
-      title: '5.  RULES OF CONDUCT',
-      body: 'I agree to abide by all posted rules and policies. I understand that management reserves the right to revoke my membership and require me to leave the premises at any time for any violation of club rules, disruptive behavior, or at the discretion of management.',
-    },
-    {
-      title: '6.  REVOCATION & LATE CHECKOUT',
-      body: 'I understand that my rental period is for the time specified at check-in. Late checkout fees of $15 per 15 minutes will apply if I exceed my allotted time by more than 15 minutes. Repeated late checkouts may result in temporary or permanent suspension of privileges.',
-    },
-  ];
-
-  let y = 610;
-  for (const section of sections) {
-    page.drawText(section.title, { x: LM, y, size: 9, font: helvBold, color: darkGray });
-    y -= 13;
-    // Word-wrap the body text
-    const words = section.body.split(' ');
-    let line = '';
-    for (const word of words) {
-      const test = line ? `${line} ${word}` : word;
-      if (helv.widthOfTextAtSize(test, 8.5) > PW - 10) {
-        page.drawText(line, { x: LM + 6, y, size: 8.5, font: helv, color: darkGray });
-        y -= 11;
-        line = word;
-      } else {
-        line = test;
-      }
-    }
-    if (line) {
-      page.drawText(line, { x: LM + 6, y, size: 8.5, font: helv, color: darkGray });
-      y -= 11;
-    }
-    y -= 6; // section gap
-  }
-
-  // ── Acknowledgment ──
-  y -= 4;
-  page.drawLine({ start: { x: LM, y: y + 6 }, end: { x: RM, y: y + 6 }, thickness: 0.5, color: lineGray });
-  y -= 8;
-  const ackText = 'By signing below, I acknowledge that I have read, understand, and agree to all terms set forth in this agreement. I confirm that I am signing this document voluntarily and of my own free will.';
-  const ackWords = ackText.split(' ');
-  let ackLine = '';
-  for (const word of ackWords) {
-    const test = ackLine ? `${ackLine} ${word}` : word;
-    if (helvBold.widthOfTextAtSize(test, 8.5) > PW) {
-      page.drawText(ackLine, { x: LM, y, size: 8.5, font: helvBold, color: black });
-      y -= 12;
-      ackLine = word;
-    } else {
-      ackLine = test;
-    }
-  }
-  if (ackLine) {
-    page.drawText(ackLine, { x: LM, y, size: 8.5, font: helvBold, color: black });
-    y -= 12;
-  }
-
-  // ── Signature Block ──
-  y -= 14;
-  // Signature line
-  page.drawLine({ start: { x: LM, y }, end: { x: LM + 240, y }, thickness: 0.75, color: black });
-  page.drawText('Signature', { x: LM, y: y - 12, size: 8, font: helv, color: midGray });
-
-  // Draw a realistic cursive signature ("John Smith") using bezier curves
-  const sigX = LM + 20;
-  const sigY = y + 8;
-  const sigColor = rgb(0.05, 0.05, 0.35); // dark blue ink
-
-  // "J" stroke
-  page.drawLine({ start: { x: sigX, y: sigY + 18 }, end: { x: sigX + 8, y: sigY + 22 }, thickness: 1.2, color: sigColor });
-  page.drawLine({ start: { x: sigX + 8, y: sigY + 22 }, end: { x: sigX + 12, y: sigY + 10 }, thickness: 1.2, color: sigColor });
-  page.drawLine({ start: { x: sigX + 12, y: sigY + 10 }, end: { x: sigX + 6, y: sigY - 2 }, thickness: 1.2, color: sigColor });
-  page.drawLine({ start: { x: sigX + 6, y: sigY - 2 }, end: { x: sigX - 2, y: sigY + 2 }, thickness: 1, color: sigColor });
-
-  // "ohn" cursive strokes
-  page.drawLine({ start: { x: sigX + 14, y: sigY + 4 }, end: { x: sigX + 22, y: sigY + 14 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sigX + 22, y: sigY + 14 }, end: { x: sigX + 28, y: sigY + 4 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sigX + 28, y: sigY + 4 }, end: { x: sigX + 36, y: sigY + 14 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sigX + 36, y: sigY + 14 }, end: { x: sigX + 42, y: sigY + 4 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sigX + 42, y: sigY + 4 }, end: { x: sigX + 52, y: sigY + 14 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sigX + 52, y: sigY + 14 }, end: { x: sigX + 58, y: sigY + 6 }, thickness: 1, color: sigColor });
-
-  // Space then "S" 
-  const sx = sigX + 70;
-  page.drawLine({ start: { x: sx, y: sigY + 20 }, end: { x: sx + 10, y: sigY + 24 }, thickness: 1.3, color: sigColor });
-  page.drawLine({ start: { x: sx + 10, y: sigY + 24 }, end: { x: sx + 4, y: sigY + 14 }, thickness: 1.2, color: sigColor });
-  page.drawLine({ start: { x: sx + 4, y: sigY + 14 }, end: { x: sx + 14, y: sigY + 8 }, thickness: 1.2, color: sigColor });
-  page.drawLine({ start: { x: sx + 14, y: sigY + 8 }, end: { x: sx + 8, y: sigY }, thickness: 1.1, color: sigColor });
-
-  // "mith" cursive
-  page.drawLine({ start: { x: sx + 16, y: sigY + 4 }, end: { x: sx + 24, y: sigY + 14 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sx + 24, y: sigY + 14 }, end: { x: sx + 30, y: sigY + 4 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sx + 30, y: sigY + 4 }, end: { x: sx + 36, y: sigY + 14 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sx + 36, y: sigY + 14 }, end: { x: sx + 42, y: sigY + 4 }, thickness: 1, color: sigColor });
-  page.drawLine({ start: { x: sx + 42, y: sigY + 4 }, end: { x: sx + 50, y: sigY + 18 }, thickness: 0.9, color: sigColor });
-  page.drawLine({ start: { x: sx + 50, y: sigY + 18 }, end: { x: sx + 52, y: sigY + 4 }, thickness: 0.9, color: sigColor });
-  page.drawLine({ start: { x: sx + 52, y: sigY + 4 }, end: { x: sx + 60, y: sigY + 12 }, thickness: 0.8, color: sigColor });
-
-  // Date line
-  const dateX = LM + 300;
-  page.drawLine({ start: { x: dateX, y }, end: { x: dateX + 200, y }, thickness: 0.75, color: black });
-  page.drawText('Date', { x: dateX, y: y - 12, size: 8, font: helv, color: midGray });
-  page.drawText(`${dateStr}  ${timeStr}`, { x: dateX + 4, y: y + 6, size: 10, font: helvOblique, color: black });
-
-  // ── Printed Name ──
-  y -= 30;
-  page.drawLine({ start: { x: LM, y }, end: { x: LM + 240, y }, thickness: 0.75, color: black });
-  page.drawText('Printed Name', { x: LM, y: y - 12, size: 8, font: helv, color: midGray });
-  page.drawText('John Smith', { x: LM + 4, y: y + 6, size: 10, font: helv, color: black });
-
-  // ── Footer ──
-  page.drawLine({ start: { x: LM, y: 40 }, end: { x: RM, y: 40 }, thickness: 0.5, color: lineGray });
-  page.drawText('Club Dallas — Confidential | Agreement v1.0', { x: LM, y: 28, size: 7, font: helv, color: midGray });
-  page.drawText(`Document ID: DEMO-${Date.now().toString(36).toUpperCase()}`, { x: RM - 180, y: 28, size: 7, font: helv, color: midGray });
-
-  const pdfBytes = await pdfDoc.save({ useObjectStreams: false });
-  return Buffer.from(pdfBytes);
-}
 
 // ---------------------------------------------------------------------------
 // CLI Entrypoint
