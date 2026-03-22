@@ -2,9 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
 import { db } from '../../db';
-import { sql } from 'drizzle-orm';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import { type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
+import { getActiveLaneSession } from '../../checkin/helpers';
 import { createOrder, addLineItems, type LineItemInput } from '../../services/orderService';
 
 const AddRetailItemsSchema = z.object({
@@ -38,17 +37,7 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
 
       try {
         // Find the active lane session
-        const sessionResult = await db.execute<Record<string, unknown>>(
-          sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
-           WHERE lane_id = ${laneId} AND status NOT IN ('COMPLETED', 'CANCELLED')
-           ORDER BY created_at DESC
-           LIMIT 1`
-        );
-        const session = sessionResult.rows[0] as unknown as LaneSessionRow | undefined;
-
-        if (!session) {
-          return reply.status(404).send({ error: 'No active session found' });
-        }
+        const session = await db.transaction(async (tx) => getActiveLaneSession(tx, laneId));
 
         // Create the order linked to this session via metadata
         const orderResult = await createOrder(

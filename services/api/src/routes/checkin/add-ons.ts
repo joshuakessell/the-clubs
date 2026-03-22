@@ -2,7 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { AddOnsSchema } from '../../checkin/schemas';
-import { type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../../checkin/types';
+import { type OrderRow, ORDER_COLS } from '../../checkin/types';
+import { getLaneSessionById, getActiveLaneSession } from '../../checkin/helpers';
 import { getHttpError, parsePriceQuote, roundToWhole } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -33,26 +34,10 @@ export function registerCheckinAddOnRoutes(fastify: FastifyInstance): void {
 
     try {
       const result = await db.transaction(async (tx) => {
-        let sessionResult: { rows: Record<string, unknown>[] };
-        if (sessionId) {
-          sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
-          );
-        } else {
-          sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
-                 WHERE lane_id = ${laneId}
-                   AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-                 ORDER BY created_at DESC
-                 LIMIT 1`
-          );
-        }
+        const session = sessionId
+          ? await getLaneSessionById(tx, sessionId)
+          : await getActiveLaneSession(tx, laneId);
 
-        if (sessionResult.rows.length === 0) {
-          throw new HttpError(404, 'No active session found');
-        }
-
-        const session = sessionResult.rows[0] as unknown as LaneSessionRow;
         const resolvedLaneId = session.lane_id || laneId;
 
         if (!session.order_id) {

@@ -5,12 +5,20 @@ import { buildFullSessionUpdatedPayload } from '../checkin/payload';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import type { LocalLaneSSEClients } from '../realtime/localSSE';
+import { ConnectionLimiter, type ConnectionLimits } from '../security/connectionLimiter';
 
 declare module 'fastify' {
   interface FastifyInstance {
     localLaneSSE?: LocalLaneSSEClients;
+    connectionLimiter?: ConnectionLimiter;
   }
 }
+
+const DEFAULT_CONNECTION_LIMITS: ConnectionLimits = {
+  maxPerLane: 50,
+  maxTotal: 500,
+  maxPerIp: 20,
+};
 
 /**
  * SSE endpoint for lane-scoped realtime events.
@@ -29,6 +37,14 @@ declare module 'fastify' {
  * without waiting for the next mutation broadcast.
  */
 export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void> {
+  const limits: ConnectionLimits = {
+    maxPerLane: Number.parseInt(process.env.SSE_MAX_PER_LANE ?? String(DEFAULT_CONNECTION_LIMITS.maxPerLane), 10),
+    maxTotal: Number.parseInt(process.env.SSE_MAX_TOTAL ?? String(DEFAULT_CONNECTION_LIMITS.maxTotal), 10),
+    maxPerIp: Number.parseInt(process.env.SSE_MAX_PER_IP ?? String(DEFAULT_CONNECTION_LIMITS.maxPerIp), 10),
+  };
+  const limiter = new ConnectionLimiter(limits);
+  fastify.decorate('connectionLimiter', limiter);
+
   fastify.get<{
     Params: { laneId: string };
     Querystring: { kioskToken?: string; staffToken?: string };
@@ -36,7 +52,6 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
     '/v1/realtime/sse/lane/:laneId',
     {
       preHandler: [
-        // Extract auth from query params into headers for middleware compatibility
         async (request) => {
           const query = request.query as { kioskToken?: string; staffToken?: string };
           if (query.kioskToken && !request.headers['x-kiosk-token']) {
@@ -52,13 +67,23 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
     },
     async (request, reply) => {
       const laneId = request.params.laneId;
+      const clientIp = (request.ip ?? 'unknown').replace(/^::ffff:/, '');
 
       const sseClients = fastify.localLaneSSE;
       if (!sseClients) {
         return reply.status(503).send({ error: 'SSE not available' });
       }
 
-      // Set SSE headers and copy pre-existing ones (like CORS)
+      const attempt = limiter.attempt(laneId, clientIp);
+      if (!attempt.allowed) {
+        return reply.status(429).send({
+          error: 'Too Many Connections',
+          reason: attempt.reason,
+        });
+      }
+
+      const clientId = attempt.clientId!;
+
       const raw = reply.raw;
       const headers = reply.getHeaders();
       raw.writeHead(200, {
@@ -66,17 +91,15 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no', // Disable nginx buffering
+        'X-Accel-Buffering': 'no',
       } as import('http').OutgoingHttpHeaders);
 
-      // Send initial connected event
       raw.write(`data: ${JSON.stringify({
         type: 'SSE_CONNECTED',
-        payload: { laneId },
+        payload: { laneId, clientId },
         timestamp: new Date().toISOString(),
       })}\n\n`);
 
-      // Snapshot-first: send current session state immediately after connect.
       try {
         const row = await db.execute<{ id: string }>(
           sql`SELECT id
@@ -95,7 +118,6 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
 
         const session = row.rows[0];
         if (session) {
-          // buildFullSessionUpdatedPayload is already Drizzle-native
           const { payload } = await buildFullSessionUpdatedPayload(session.id);
           raw.write(`data: ${JSON.stringify({
             type: 'SESSION_UPDATED',
@@ -107,19 +129,15 @@ export async function realtimeSSERoutes(fastify: FastifyInstance): Promise<void>
         request.log.warn({ laneId, err }, 'SSE snapshot-first failed (non-fatal)');
       }
 
-      // Register this client
-      sseClients.add(laneId, raw);
+      const sseClient = sseClients.add(laneId, raw);
+      limiter.register(laneId, clientId, clientIp);
+      request.log.info({ laneId, clientId, clientIp }, 'SSE client connected');
 
-      request.log.info({ laneId }, 'SSE client connected');
-
-      // Keep the connection open — Fastify will handle cleanup
-      // when the client disconnects via the 'close' event on raw response
-      // (handled inside LocalLaneSSEClients.add)
-
-      // Prevent Fastify from auto-closing the response
       await new Promise<void>((resolve) => {
         raw.on('close', () => {
-          request.log.info({ laneId }, 'SSE client disconnected');
+          sseClients.remove(laneId, sseClient);
+          limiter.unregister(clientId);
+          request.log.info({ laneId, clientId }, 'SSE client disconnected');
           resolve();
         });
       });

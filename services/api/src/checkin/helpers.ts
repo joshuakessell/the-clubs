@@ -1,5 +1,6 @@
 import { HttpError } from '../errors/HttpError';
-import type { RoomRentalType } from './types';
+import type { RoomRentalType, LaneSessionRow } from './types';
+import { LANE_SESSION_COLS } from './types';
 import { type DrizzleTx } from '../db';
 import { sql } from 'drizzle-orm';
 
@@ -153,4 +154,22 @@ export async function maybeAttachScanIdentifiers(params: {
      WHERE id = ${params.customerId}
       `
   );
+}
+
+export async function getLaneSessionById(tx: DrizzleTx, id: string): Promise<LaneSessionRow> {
+  const r = await tx.execute<Record<string, unknown>>(
+    sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${id} LIMIT 1`
+  );
+  if (r.rows.length === 0) throw new HttpError(404, 'Session not found');
+  return r.rows[0] as unknown as LaneSessionRow;
+}
+
+export async function getActiveLaneSession(tx: DrizzleTx, laneId: string): Promise<LaneSessionRow> {
+  const r = await tx.execute<Record<string, unknown>>(
+    sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
+     WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
+     ORDER BY created_at DESC LIMIT 1`
+  );
+  if (r.rows.length === 0) throw new HttpError(404, 'No active session found for lane');
+  return r.rows[0] as unknown as LaneSessionRow;
 }

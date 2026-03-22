@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { optionalAuth } from '../../auth/middleware';
 import { requireKioskTokenOrStaff } from '../../auth/kioskToken';
 import { type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
+import { getLaneSessionById, getActiveLaneSession } from '../../checkin/helpers';
 import { getHttpError } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -28,12 +29,10 @@ async function setLanguageForLaneSession(
 
   const result = await db.transaction(async (tx) => {
     // Session resolution: explicit ID → name fallback → lane fallback.
-    let sessionRows: Record<string, unknown>[];
+    let sessionRows: Record<string, unknown>[] = [];
     if (sessionId) {
-      const r = await tx.execute<Record<string, unknown>>(
-        sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE id = ${sessionId} LIMIT 1`
-      );
-      sessionRows = r.rows;
+      const session = await getLaneSessionById(tx, sessionId);
+      sessionRows = [session as unknown as Record<string, unknown>];
       if (sessionRows.length === 0 && customerName) {
         const r2 = await tx.execute<Record<string, unknown>>(
           sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
@@ -44,12 +43,8 @@ async function setLanguageForLaneSession(
         sessionRows = r2.rows;
       }
     } else {
-      const r = await tx.execute<Record<string, unknown>>(
-        sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
-         WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_CUSTOMER', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-         ORDER BY created_at DESC LIMIT 1`
-      );
-      sessionRows = r.rows;
+      const session = await getActiveLaneSession(tx, laneId);
+      sessionRows = [session as unknown as Record<string, unknown>];
     }
 
     if (sessionRows.length === 0) {

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { db, type DrizzleTx } from '../../db';
+import { db } from '../../db';
 import { sql } from 'drizzle-orm';
 import {
   type ResolveKeyInput,
@@ -15,37 +15,10 @@ import type {
 } from '../../checkout/types';
 import type {
   CheckoutRequestSummary,
-  CheckoutRequestedPayload,
   ResolvedCheckoutKey,
 } from '@the-clubs/shared';
 import { calculateLateFee } from '../../checkout/utils';
 import { HttpError } from '../../errors/HttpError';
-
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by insertClubEvent.
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
-      }
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
 
 async function resolveCheckoutKeyLogic(token: string): Promise<ResolvedCheckoutKey> {
   const tagResult = await db.execute<Record<string, unknown>>(
@@ -131,49 +104,65 @@ async function createCheckoutRequestLogic(body: CreateCheckoutRequestInput, fast
     const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
 
     let keyTagId: string | null = null;
+    let resourceNumber: string | undefined;
+
     if (block.resource_id) {
       const keyResult = await tx.execute<Record<string, unknown>>(sql`SELECT id FROM key_tags WHERE resource_id = ${block.resource_id} AND is_active = true LIMIT 1`);
       if (keyResult.rows.length > 0) keyTagId = (keyResult.rows[0] as unknown as { id: string }).id;
+
+      const resourceResult = await tx.execute<Record<string, unknown>>(sql`SELECT number, kind FROM inventory_resources WHERE id = ${block.resource_id}`);
+      if (resourceResult.rows.length > 0) resourceNumber = (resourceResult.rows[0] as unknown as ResourceRow).number;
     }
+
+    const customerResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, name, membership_number FROM customers WHERE id = ${block.customer_id}`);
+    const customer = customerResult.rows[0] as unknown as CustomerRow;
 
     const requestResult = await tx.execute<Record<string, unknown>>(
       sql`INSERT INTO checkout_requests (
       occupancy_id, customer_id, key_tag_id, kiosk_device_id, customer_checklist_json, late_minutes, late_fee_amount, ban_applied
     ) VALUES (${body.occupancyId}, ${block.customer_id}, ${keyTagId}, ${body.kioskDeviceId}, ${JSON.stringify(body.checklist)}, ${lateMinutes}, ${feeAmount}, ${banApplied}) RETURNING id, occupancy_id, customer_id, key_tag_id, kiosk_device_id, created_at, claimed_by_staff_id, claimed_at, claim_expires_at, customer_checklist_json, status, late_minutes, late_fee_amount, ban_applied, items_confirmed, fee_paid, completed_at`
     );
-    return requestResult.rows[0] as unknown as CheckoutRequestRow;
+    const checkoutReq = requestResult.rows[0] as unknown as CheckoutRequestRow;
+
+    if (fastify.broadcaster) {
+      const summary: CheckoutRequestSummary = {
+        requestId: checkoutReq.id,
+        customerId: customer.id,
+        customerName: customer.name,
+        membershipNumber: customer.membership_number || undefined,
+        rentalType: block.rental_type,
+        roomNumber: resourceNumber,
+        lockerNumber: undefined,
+        scheduledCheckoutAt: block.ends_at,
+        currentTime: new Date(),
+        lateMinutes: checkoutReq.late_minutes,
+        lateFeeAmount: checkoutReq.late_fee_amount,
+        banApplied: checkoutReq.ban_applied,
+      };
+      fastify.broadcaster.broadcast({ type: 'CHECKOUT_REQUESTED', payload: { request: summary }, timestamp: new Date().toISOString() });
+    }
+
+    let resourceLabel = '';
+    if (resourceNumber) {
+      const typeLabel = block.rental_type === 'LOCKER' ? 'Locker' : 'Room';
+      resourceLabel = ` (${typeLabel} ${resourceNumber})`;
+    }
+    await insertClubEventDrizzle(tx, {
+      eventType: 'CHECKOUT_REQUESTED',
+      eventDomain: 'CHECKOUT',
+      sourceApp: 'CUSTOMER_KIOSK',
+      customerId: customer.id,
+      customerName: customer.name,
+      visitId: block.visit_id,
+      summary: `Checkout requested — ${customer.name}${resourceLabel}`,
+      metadata: { checkoutRequestId: checkoutReq.id, occupancyId: body.occupancyId, resourceNumber: resourceNumber ?? null, lateMinutes: checkoutReq.late_minutes, lateFeeAmount: checkoutReq.late_fee_amount, banApplied: checkoutReq.ban_applied },
+      dedupeKey: `CLUB:CHECKOUT_REQUESTED:${checkoutReq.id}`,
+    });
+
+    return checkoutReq.id;
   }, { isolationLevel: 'serializable' });
 
-  const blockResult = await db.execute<Record<string, unknown>>(sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at, cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote, v.customer_id FROM checkin_blocks cb JOIN visits v ON cb.visit_id = v.id WHERE cb.id = ${body.occupancyId}`);
-  const block = blockResult.rows[0] as unknown as CheckinBlockRow & { customer_id: string };
-
-  const customerResult = await db.execute<Record<string, unknown>>(sql`SELECT id, name, membership_number FROM customers WHERE id = ${block.customer_id}`);
-  const customer = customerResult.rows[0] as unknown as CustomerRow;
-
-  let resourceNumber: string | undefined;
-  if (block.resource_id) {
-    const resourceResult = await db.execute<Record<string, unknown>>(sql`SELECT number, kind FROM inventory_resources WHERE id = ${block.resource_id}`);
-    if (resourceResult.rows.length > 0) resourceNumber = (resourceResult.rows[0] as unknown as ResourceRow).number;
-  }
-
-  if (fastify.broadcaster) {
-    const summary: CheckoutRequestSummary = {
-      requestId: result.id, customerId: customer.id, customerName: customer.name, membershipNumber: customer.membership_number || undefined,
-      rentalType: block.rental_type, roomNumber: resourceNumber, lockerNumber: undefined, scheduledCheckoutAt: block.ends_at, currentTime: new Date(), lateMinutes: result.late_minutes, lateFeeAmount: result.late_fee_amount, banApplied: result.ban_applied,
-    };
-    fastify.broadcaster.broadcast({ type: 'CHECKOUT_REQUESTED', payload: { request: summary }, timestamp: new Date().toISOString() });
-  }
-
-  await db.transaction(async (tx) => {
-    const resourceLabel = resourceNumber ? ` (${block.rental_type === 'LOCKER' ? 'Locker' : 'Room'} ${resourceNumber})` : '';
-    await insertClubEventDrizzle(tx, {
-      eventType: 'CHECKOUT_REQUESTED', eventDomain: 'CHECKOUT', sourceApp: 'CUSTOMER_KIOSK', customerId: customer.id, customerName: customer.name, visitId: block.visit_id, summary: `Checkout requested — ${customer.name}${resourceLabel}`,
-      metadata: { checkoutRequestId: result.id, occupancyId: body.occupancyId, resourceNumber: resourceNumber ?? null, lateMinutes: result.late_minutes, lateFeeAmount: result.late_fee_amount, banApplied: result.ban_applied },
-      dedupeKey: `CLUB:CHECKOUT_REQUESTED:${result.id}`,
-    });
-  });
-
-  return result.id;
+  return result;
 }
 
 export function registerCheckoutKioskRoutes(fastify: FastifyInstance): void {

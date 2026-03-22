@@ -332,7 +332,7 @@ async function resolveRenewalResource(
   return { assignedResourceId: resource.id, assignedResourceType: resourceType, assignedResourceNumber: resource.number };
 }
 
-async function resolvePreAssignedResource(
+export async function resolvePreAssignedResource(
   tx: DrizzleTx,
   session: LaneSessionRow,
   assignedResourceId: string,
@@ -360,7 +360,7 @@ async function resolvePreAssignedResource(
   return resource.number;
 }
 
-async function autoAssignResource(
+export async function autoAssignResource(
   tx: DrizzleTx,
   rentalType: string,
 ): Promise<{ id: string; type: 'room' | 'locker'; number: string }> {

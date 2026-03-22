@@ -3,6 +3,7 @@ import { Badge, Button, useAuthStore } from '@the-clubs/ui';
 import { getApiUrl } from '@the-clubs/shared';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
 import { ViewSpinner } from '../components/ViewSpinner';
+import { CustomerSyncWizard } from '../components/CustomerSyncWizard';
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -343,6 +344,7 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
 /* ── Main View ─────────────────────────────────────────────────── */
 
 export function CustomersView() {
+  const [showSyncWizard, setShowSyncWizard] = useState(false);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -366,8 +368,19 @@ export function CustomersView() {
 
   return (
     <div className="flex flex-col gap-6">
+      {showSyncWizard && (
+        <CustomerSyncWizard 
+          onClose={() => setShowSyncWizard(false)} 
+          onComplete={() => { setShowSyncWizard(false); refetch(); }} 
+        />
+      )}
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Customer Lookup</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Customer Lookup</h2>
+          <Button size="sm" onClick={() => setShowSyncWizard(true)} variant="primary">
+            Sync Square DB
+          </Button>
+        </div>
         <div className="mt-3 flex gap-2">
           <input
             className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none"

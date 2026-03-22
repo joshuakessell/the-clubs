@@ -9,6 +9,8 @@
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { insertCustomerSpendLedgerEntryDrizzle } from '../ledger/customerSpendLedger';
+import { createSquareOrder } from './squareSyncService';
+import { getCatalogIdForLineItem } from '../config/squareCatalog';
 import {
   calculatePriceQuote,
   calculateRenewalQuote,
@@ -157,6 +159,99 @@ export async function createCheckoutOrder(laneId: string) {
   });
 }
 
+
+export async function createSquarePOSOrder(laneId: string) {
+  return db.transaction(async (tx) => {
+    const sessionResult = await tx.execute<{ id: string, order_id: string | null, customer_id: string | null, assigned_resource_id: string | null, assigned_resource_type: string | null }>(
+      sql`SELECT id, order_id, customer_id, assigned_resource_id, assigned_resource_type FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`
+    );
+    if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
+    const session = sessionResult.rows[0];
+
+    if (!session.order_id) throw new HttpError(400, 'Session has no active order yet');
+
+    let squareCustomerId: string | null = null;
+    let customerName: string | null = null;
+    let customerDobStr: string | null = null;
+    let membershipNumber: string | null = null;
+
+    if (session.customer_id) {
+       const custResult = await tx.execute<{ square_customer_id: string | null, name: string | null, dob: string | null, membership_number: string | null }>(
+           sql`SELECT square_customer_id, name, dob, membership_number FROM customers WHERE id = ${session.customer_id}`
+       );
+       if (custResult.rows.length > 0) {
+         squareCustomerId = custResult.rows[0].square_customer_id;
+         customerName = custResult.rows[0].name;
+         customerDobStr = custResult.rows[0].dob;
+         membershipNumber = custResult.rows[0].membership_number;
+       }
+    }
+
+    let resourceNumber: string | null = null;
+    if (session.assigned_resource_id) {
+       const res = await tx.execute<{ number: string }>(sql`SELECT number FROM inventory_resources WHERE id = ${session.assigned_resource_id}`);
+       resourceNumber = res.rows[0]?.number ?? null;
+    }
+
+    const lineItemsResult = await tx.execute<{ name: string, total: string | number }>(
+      sql`SELECT name, total FROM order_line_items WHERE order_id = ${session.order_id}`
+    );
+
+    if (lineItemsResult.rows.length === 0) throw new HttpError(400, 'Order has no line items');
+
+    const lineItems = lineItemsResult.rows.map((row) => {
+        const catalogObjectId = getCatalogIdForLineItem(row.name);
+
+        let noteText: string | undefined = undefined;
+        
+        // Items requiring detailed notes: Rooms, Lockers, Late Fees, Lost Key Fees
+        const requiresNote = row.name.includes('Room') || 
+                             row.name.includes('Locker') || 
+                             row.name.includes('Fee') || 
+                             row.name.includes('Lost Key');
+                             
+        const isYouth = row.name.includes('Youth');
+
+        if (requiresNote) {
+           const noteParts: string[] = [];
+           
+           if (resourceNumber) {
+             const typeStr = session.assigned_resource_type === 'locker' ? 'Locker' : 'Room';
+             noteParts.push(`${typeStr} ${resourceNumber}`);
+           }
+           if (customerName) {
+             noteParts.push(customerName);
+           }
+           if (customerDobStr) {
+             noteParts.push(customerDobStr);
+           }
+           if (membershipNumber && !isYouth) {
+             noteParts.push(`Mem: ${membershipNumber}`);
+           }
+           
+           if (noteParts.length > 0) {
+             noteText = noteParts.join(' | ');
+           }
+        }
+
+        return {
+           name: row.name,
+           amountCents: Math.round(Number(row.total) * 100),
+           note: noteText,
+           catalogObjectId
+        };
+    });
+
+    const squareOrderId = await createSquareOrder({
+      squareCustomerId,
+      lineItems
+    });
+
+    if (!squareOrderId) throw new HttpError(500, 'Failed to create Square Order');
+
+    return { squareOrderId, orderId: session.order_id };
+  });
+}
 
 
 export interface MarkPaidInput {

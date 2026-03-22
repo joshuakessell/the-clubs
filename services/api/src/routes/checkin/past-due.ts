@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireAuth } from '../../auth/middleware';
 import { verifyPin } from '../../auth/utils';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import { type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
+import { getActiveLaneSession } from '../../checkin/helpers';
 import { getHttpError } from '../../checkin/utils';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
@@ -29,18 +29,10 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
 
       try {
         const result = await db.transaction(async (tx) => {
-          const sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
-           WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT')
-           ORDER BY created_at DESC
-           LIMIT 1`
-          );
-
-          if (sessionResult.rows.length === 0) {
-            throw new HttpError(404, 'No active session found');
+          const session = await getActiveLaneSession(tx, laneId);
+          if (session.status !== 'ACTIVE' && session.status !== 'AWAITING_ASSIGNMENT') {
+            throw new HttpError(400, 'Session must be ACTIVE or AWAITING_ASSIGNMENT');
           }
-
-          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
 
           if (outcome === 'CASH_SUCCESS' || outcome === 'CREDIT_SUCCESS') {
             if (session.customer_id) {
@@ -129,18 +121,10 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
           }
 
           // Find the active lane session
-          const sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
-           WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT')
-           ORDER BY created_at DESC
-           LIMIT 1`
-          );
-
-          if (sessionResult.rows.length === 0) {
-            throw new HttpError(404, 'No active session found');
+          const session = await getActiveLaneSession(tx, laneId);
+          if (session.status !== 'ACTIVE' && session.status !== 'AWAITING_ASSIGNMENT') {
+            throw new HttpError(400, 'Session must be ACTIVE or AWAITING_ASSIGNMENT');
           }
-
-          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
 
           if (!session.customer_id) {
             throw new HttpError(400, 'Session has no customer');

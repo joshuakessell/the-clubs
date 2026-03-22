@@ -4,6 +4,7 @@ import { idempotencyKey } from '../../middleware/idempotency';
 import { getHttpError } from '../../checkin/utils';
 import {
   createCheckoutOrder,
+  createSquarePOSOrder,
   markOrderPaid,
   getSessionPayload,
 } from '../../services/paymentService';
@@ -26,6 +27,25 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
         const httpErr = getHttpError(error);
         if (httpErr) return reply.status(httpErr.statusCode).send({ error: httpErr.message ?? 'Failed to create payment intent' });
         return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to create payment intent' });
+      }
+    }
+  );
+
+  // POST /v1/checkin/lane/:laneId/square-order
+  fastify.post<{ Params: { laneId: string } }>(
+    '/v1/checkin/lane/:laneId/square-order',
+    { preHandler: [requireAuth, idempotencyKey] },
+    async (request, reply) => {
+      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
+
+      try {
+        const result = await createSquarePOSOrder(request.params.laneId);
+        return reply.send({ squareOrderId: result.squareOrderId, orderId: result.orderId });
+      } catch (error: unknown) {
+        request.log.error(error, 'Failed to create Square Order');
+        const httpErr = getHttpError(error);
+        if (httpErr) return reply.status(httpErr.statusCode).send({ error: httpErr.message ?? 'Failed to create Square Order' });
+        return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to create Square Order' });
       }
     }
   );

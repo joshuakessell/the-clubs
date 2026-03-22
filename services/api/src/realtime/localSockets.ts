@@ -33,13 +33,19 @@ export class LocalLaneSockets {
       try {
         socket.send(payload);
       } catch {
-        // Socket is likely in CLOSING state; remove it from the set
-        // so we don't retry on every future broadcast.
         set.delete(socket);
       }
     }
     if (set.size === 0) {
       this.socketsByLane.delete(laneId);
     }
+  }
+
+  get clientCount(): number {
+    let count = 0;
+    for (const set of this.socketsByLane.values()) {
+      count += set.size;
+    }
+    return count;
   }
 }

@@ -63,3 +63,25 @@ export async function executeManualCheckout(
     throw new Error((d as Record<string, string>).error ?? `HTTP ${res.status}`);
   }
 }
+
+/**
+ * Creates a Square POS Order for the current checkout lane session.
+ */
+export async function createSquareOrder(
+  laneId: string,
+  token: string | undefined,
+): Promise<{ squareOrderId: string; orderId: string }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/square-order`), {
+    method: 'POST',
+    headers,
+  });
+
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error((d as Record<string, string>).error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}

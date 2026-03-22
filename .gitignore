@@ -17,6 +17,3 @@ terraform.tfvars
 
 # SSH keys
 *.pem
-
-# OpenClaw
-openclaw.json

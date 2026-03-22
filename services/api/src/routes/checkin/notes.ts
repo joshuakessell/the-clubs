@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAuth } from '../../auth/middleware';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
-import { type CustomerRow, type LaneSessionRow, LANE_SESSION_COLS } from '../../checkin/types';
+import { getActiveLaneSession } from '../../checkin/helpers';
 import { db } from '../../db';
 import { sql } from 'drizzle-orm';
 import { insertCustomerActivityEventDrizzle } from '../../activity/customerActivityLog';
@@ -30,24 +30,13 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
       const { laneId } = request.params;
       const { note } = request.body;
 
-      if (!note || !note.trim()) {
+      if (!note?.trim()) {
         return reply.status(400).send({ error: 'Note is required' });
       }
 
       try {
         const result = await db.transaction(async (tx) => {
-          const sessionResult = await tx.execute<Record<string, unknown>>(
-            sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions
-           WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE')
-           ORDER BY created_at DESC
-           LIMIT 1`
-          );
-
-          if (sessionResult.rows.length === 0) {
-            throw new HttpError(404, 'No active session found');
-          }
-
-          const session = sessionResult.rows[0] as unknown as LaneSessionRow;
+          const session = await getActiveLaneSession(tx, laneId);
 
           if (!session.customer_id) {
             throw new HttpError(400, 'Session has no customer');
@@ -72,7 +61,7 @@ export function registerCheckinNoteRoutes(fastify: FastifyInstance): void {
             `
           );
 
-          const noteId = inserted.rows[0]!.id;
+          const noteId = inserted.rows[0].id;
           const preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
           await insertCustomerActivityEventDrizzle(tx, {
             customerId: session.customer_id,

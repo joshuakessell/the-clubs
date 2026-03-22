@@ -7,6 +7,7 @@ import { RegisterSelectScreen } from './screens/RegisterSelectScreen';
 import { useRegisterSSE } from './hooks/useRegisterSSE';
 import { useRegisterStore } from './stores/useRegisterStore';
 import { RouteLogger } from './components/RouteLogger';
+import { SquareCallbackRoute } from './routes/SquareCallbackRoute';
 
 const kioskToken = (import.meta.env.VITE_KIOSK_TOKEN as string) || null;
 
@@ -163,6 +164,10 @@ function AppRoutes({ session, isValidating, laneId }: Readonly<AppRoutesProps>) 
 
   // Lane-based screen
   if (isLanePath && laneId) return <AppLayout />;
+
+  if (location.pathname.startsWith('/checkout/square-callback')) {
+    return <SquareCallbackRoute />;
+  }
 
   // /register or any other non-lane path → show register selection
   return (

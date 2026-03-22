@@ -1,23 +1,18 @@
 /**
  * Customer service — business logic for customer management.
- *
- * Extracted from routes/customers.ts. Zero HTTP/Fastify concepts.
- *
- * Migrated to Drizzle ORM — uses db.execute(sql`...`) for reads and db.transaction() for writes.
+ * Fully migrated to Drizzle ORM.
  */
 import { db } from '../db';
-import { sql } from 'drizzle-orm';
+import { sql, eq, and, or, ilike, isNull, desc, asc, lt } from 'drizzle-orm';
+import { customers, customerNotes, checkinBlocks, visits } from '../db/schema/schema';
+import { insertCustomerActivityEventDrizzle, type CustomerActivitySourceApp } from '../activity/customerActivityLog';
+import { HttpError } from '../errors/HttpError';
 import {
   computeIdScanIdentityHash,
   computeSha256Hex,
   getIdScanIssue,
   getIdScanIssueMessage,
 } from '../checkin/identity';
-import { insertCustomerActivityEventDrizzle, type CustomerActivitySourceApp } from '../activity/customerActivityLog';
-import { customerNotes } from '../db/schema';
-import { HttpError } from '../errors/HttpError';
-
-// ── Types ──
 
 export interface StaffContext {
   staffId: string;
@@ -29,7 +24,7 @@ type DobField = string | Date | null;
 interface CustomerRow {
   id: string;
   name: string;
-  membership_number: string | null;
+  membershipNumber: string | null;
   dob: DobField;
 }
 
@@ -49,8 +44,6 @@ interface CustomerProfileRow {
   id_scan_hash: string | null;
   past_due_balance: number | string | null;
 }
-
-// ── Utility Functions ──
 
 function normalizeScanText(raw: string): string {
   const lf = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
@@ -85,7 +78,7 @@ function extractDob(dob: Date | string | null | undefined): string | null {
 
 function toIsoTimestamp(value: DateOrStringField | undefined): string | null {
   if (!value) return null;
-  if (typeof value === 'string') return value; // Already an ISO string
+  if (typeof value === 'string') return value;
   return Number.isFinite(value.getTime()) ? value.toISOString() : null;
 }
 
@@ -168,23 +161,34 @@ const IdTypeValues = ['STATE_ID', 'DRIVERS_LICENSE', 'PASSPORT', 'OTHER'] as con
 type IdType = (typeof IdTypeValues)[number];
 function isIdType(v: string): v is IdType { return (IdTypeValues as readonly string[]).includes(v); }
 
-// ── Service Methods ──
-
 export async function searchCustomers(q: string, limit: number) {
   const like = `${q}%`;
-  const result = await db.execute<Record<string, unknown>>(
-    sql`SELECT id, name, membership_number, dob FROM customers
-     WHERE name ILIKE ${like} OR split_part(name, ' ', 2) ILIKE ${like}
-     ORDER BY name LIMIT ${limit}`
-  );
 
-  return result.rows.map((r) => {
-    const row = r as unknown as CustomerRow;
+  const result = await db
+    .select({
+      id: customers.id,
+      name: customers.name,
+      membershipNumber: customers.membershipNumber,
+      dob: customers.dob,
+    })
+    .from(customers)
+    .where(
+      or(
+        ilike(customers.name, like),
+        ilike(sql`split_part(${customers.name}, ' ', 2)`, like)
+      )
+    )
+    .limit(limit);
+
+  return result.map((row) => {
     const { firstName, lastName } = splitFullName(row.name);
-    const disambiguator = (row.membership_number?.slice(-4)) || row.id.slice(0, 8);
+    const disambiguator = (row.membershipNumber?.slice(-4)) || row.id.slice(0, 8);
     return {
-      id: row.id, name: row.name, firstName, lastName,
-      membershipNumber: row.membership_number || undefined,
+      id: row.id,
+      name: row.name,
+      firstName,
+      lastName,
+      membershipNumber: row.membershipNumber || undefined,
       dobMonthDay: toDobMonthDay(row.dob) ?? undefined,
       disambiguator,
     };
@@ -196,23 +200,54 @@ export async function listCustomerNotes(
   opts: { limit: number; cursor?: string }
 ) {
   const cursor = parseNotesCursor(opts.cursor);
-  const rows = await db.execute<{
-    id: string; customer_id: string; created_at: Date;
-    created_by_staff_id: string | null; created_by_staff_name: string;
-    source_app: string; note: string; is_important: boolean;
-  }>(
-    sql`SELECT id, customer_id, created_at, created_by_staff_id, created_by_staff_name, source_app, note, is_important
-     FROM customer_notes WHERE customer_id = ${customerId} AND deleted_at IS NULL
-     AND (${cursor?.createdAt ?? null}::timestamptz IS NULL OR (created_at < ${cursor?.createdAt ?? null} OR (created_at = ${cursor?.createdAt ?? null} AND id < ${cursor?.id ?? '00000000-0000-0000-0000-000000000000'}::uuid)))
-     ORDER BY created_at DESC, id DESC LIMIT ${opts.limit}`
-  );
 
-  const notes = rows.rows.map((r) => ({
-    id: r.id, customerId: r.customer_id,
-    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : String(r.created_at),
-    createdByStaffId: r.created_by_staff_id, createdByStaffName: r.created_by_staff_name,
-    sourceApp: r.source_app, note: r.note, isImportant: r.is_important,
-    cursor: buildNotesCursor({ createdAt: r.created_at, id: r.id }),
+  let whereCondition;
+
+  if (cursor) {
+    whereCondition = and(
+      eq(customerNotes.customerId, customerId),
+      isNull(customerNotes.deletedAt),
+      or(
+        lt(customerNotes.createdAt, cursor.createdAt),
+        and(
+          eq(customerNotes.createdAt, cursor.createdAt),
+          lt(customerNotes.id, cursor.id)
+        )
+      )
+    );
+  } else {
+    whereCondition = and(
+      eq(customerNotes.customerId, customerId),
+      isNull(customerNotes.deletedAt)
+    );
+  }
+
+  const rows = await db
+    .select({
+      id: customerNotes.id,
+      customerId: customerNotes.customerId,
+      createdAt: customerNotes.createdAt,
+      createdByStaffId: customerNotes.createdByStaffId,
+      createdByStaffName: customerNotes.createdByStaffName,
+      sourceApp: customerNotes.sourceApp,
+      note: customerNotes.note,
+      isImportant: customerNotes.isImportant,
+    })
+    .from(customerNotes)
+    .where(whereCondition)
+    .orderBy(desc(customerNotes.createdAt), desc(customerNotes.id))
+    .limit(opts.limit);
+
+  const notes = rows.map((r) => ({
+    id: r.id,
+    customerId: r.customerId,
+    createdAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+    createdByStaffId: r.createdByStaffId,
+    createdByStaffName: r.createdByStaffName,
+    sourceApp: r.sourceApp,
+    note: r.note,
+    isImportant: r.isImportant,
+    cursor: buildNotesCursor({ createdAt: r.createdAt, id: r.id }),
   }));
 
   const nextCursor = notes.length === opts.limit ? notes.at(-1)?.cursor ?? null : null;
@@ -244,15 +279,22 @@ export async function createCustomerNote(
 
     const preview = trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
     await insertCustomerActivityEventDrizzle(tx, {
-      customerId, actionType: 'NOTE_ADDED', actionCategory: 'NOTE',
+      customerId,
+      actionType: 'NOTE_ADDED',
+      actionCategory: 'NOTE',
       sourceApp: opts.sourceApp ?? 'EMPLOYEE_REGISTER',
-      actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.staffName,
+      actorType: 'STAFF',
+      actorStaffId: staff.staffId,
+      actorStaffName: staff.staffName,
       summary: `Note added: ${preview}`,
       metadata: { noteId: row.id, isImportant: opts.isImportant ?? false },
       dedupeKey: null,
     });
 
-    return { id: row.id, createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt) };
+    return {
+      id: row.id,
+      createdAt: row.createdAt instanceof Date ? row.createdAt.toISOString() : String(row.createdAt),
+    };
   });
 }
 
@@ -261,71 +303,159 @@ export async function getCustomerProfile(customerId: string) {
   if (!normalizedId) return null;
 
   const looksLikeUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedId);
-  const whereClause = looksLikeUuid ? sql`id = ${normalizedId}` : sql`membership_number = ${normalizedId}`;
-  
-  const result = await db.execute<Record<string, unknown>>(
-    sql`SELECT id, name, dob, membership_number, membership_valid_until, id_number, id_type, id_type_other,
-            id_expiration_date, primary_language, id_scan_hash, past_due_balance
-     FROM customers WHERE ${whereClause} LIMIT 1`
-  );
-  
-  if (result.rows.length === 0) return null;
-  const row = result.rows[0] as unknown as CustomerProfileRow;
+
+  let customerResult;
+  if (looksLikeUuid) {
+    customerResult = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        dob: customers.dob,
+        membershipNumber: customers.membershipNumber,
+        membershipValidUntil: customers.membershipValidUntil,
+        idNumber: customers.idNumber,
+        idType: customers.idType,
+        idTypeOther: customers.idTypeOther,
+        idExpirationDate: customers.idExpirationDate,
+        primaryLanguage: customers.primaryLanguage,
+        idScanHash: customers.idScanHash,
+        pastDueBalance: customers.pastDueBalance,
+      })
+      .from(customers)
+      .where(eq(customers.id, normalizedId))
+      .limit(1);
+  } else {
+    customerResult = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        dob: customers.dob,
+        membershipNumber: customers.membershipNumber,
+        membershipValidUntil: customers.membershipValidUntil,
+        idNumber: customers.idNumber,
+        idType: customers.idType,
+        idTypeOther: customers.idTypeOther,
+        idExpirationDate: customers.idExpirationDate,
+        primaryLanguage: customers.primaryLanguage,
+        idScanHash: customers.idScanHash,
+        pastDueBalance: customers.pastDueBalance,
+      })
+      .from(customers)
+      .where(eq(customers.membershipNumber, normalizedId))
+      .limit(1);
+  }
+
+  if (customerResult.length === 0) return null;
+  const [row] = customerResult;
+  if (!row) return null;
 
   const { firstName, lastName } = splitFullName(row.name);
-  const idType = row.id_type && isIdType(row.id_type) ? row.id_type : null;
+  const idType = row.idType && isIdType(row.idType) ? row.idType : null;
 
   let lastVisitAt: string | null = null;
   try {
-    const lastVisitResult = await db.execute<{ starts_at: Date | string }>(
-      sql`SELECT cb.starts_at FROM checkin_blocks cb JOIN visits v ON v.id = cb.visit_id
-       WHERE v.customer_id = ${row.id} ORDER BY cb.starts_at DESC LIMIT 1`
-    );
-    lastVisitAt = lastVisitResult.rows.length > 0 ? toIsoTimestamp(lastVisitResult.rows[0].starts_at) : null;
+    const lastVisitResult = await db
+      .select({ startsAt: checkinBlocks.startsAt })
+      .from(checkinBlocks)
+      .innerJoin(visits, eq(visits.id, checkinBlocks.visitId))
+      .where(eq(visits.customerId, row.id))
+      .orderBy(desc(checkinBlocks.startsAt))
+      .limit(1);
+
+    if (lastVisitResult.length > 0) {
+      const [lastVisit] = lastVisitResult;
+      lastVisitAt = lastVisit ? toIsoTimestamp(lastVisit.startsAt) : null;
+    }
   } catch (err) {
     console.error('[getCustomerProfile] lastVisit query failed:', err);
-    // Don't throw — lastVisitAt will just be null
   }
-  
-  const pastDueBalance = typeof row.past_due_balance === 'string' ? Number.parseInt(row.past_due_balance, 10) || 0 : (row.past_due_balance ?? 0);
+
+  const pastDueBalance =
+    typeof row.pastDueBalance === 'string'
+      ? Number.parseInt(row.pastDueBalance, 10) || 0
+      : row.pastDueBalance ?? 0;
 
   return {
-    id: row.id, name: row.name, firstName, lastName,
-    dob: toDateOnlyString(row.dob), dobMonthDay: toDobMonthDay(row.dob),
-    membershipNumber: row.membership_number,
-    membershipValidUntil: toDateOnlyString(row.membership_valid_until),
-    idNumber: row.id_number, idType, idTypeOther: row.id_type_other,
-    idExpirationDate: toDateOnlyString(row.id_expiration_date),
-    primaryLanguage: row.primary_language === 'EN' || row.primary_language === 'ES' ? row.primary_language : null,
-    lastVisitAt, pastDueBalance,
-    hasEncryptedLookupMarker: Boolean(row.id_scan_hash),
+    id: row.id,
+    name: row.name,
+    firstName,
+    lastName,
+    dob: toDateOnlyString(row.dob),
+    dobMonthDay: toDobMonthDay(row.dob),
+    membershipNumber: row.membershipNumber,
+    membershipValidUntil: toDateOnlyString(row.membershipValidUntil),
+    idNumber: row.idNumber,
+    idType,
+    idTypeOther: row.idTypeOther,
+    idExpirationDate: toDateOnlyString(row.idExpirationDate),
+    primaryLanguage:
+      row.primaryLanguage === 'EN' || row.primaryLanguage === 'ES' ? row.primaryLanguage : null,
+    lastVisitAt,
+    pastDueBalance,
+    hasEncryptedLookupMarker: Boolean(row.idScanHash),
   };
 }
 
 async function updateExistingCustomerFromScan(
-  row: { id: string; id_scan_hash: string | null; id_scan_value: string | null },
+  row: { id: string; idScanHash: string | null; idScanValue: string | null },
   idScanHash: string,
   idScanValue: string,
-  idExpirationDate: Date | null,
+  idExpirationDate: string | null,
   input: CreateFromScanInput,
   idType: string | null,
   idTypeOther: string | null
 ) {
-  const needsScanUpdate = !row.id_scan_hash || !row.id_scan_value || row.id_scan_hash !== idScanHash || row.id_scan_value !== idScanValue;
+  const needsScanUpdate =
+    !row.idScanHash ||
+    !row.idScanValue ||
+    row.idScanHash !== idScanHash ||
+    row.idScanValue !== idScanValue;
+
+  let updateIdExpirationDate: any;
+  if (!row.idScanHash && idExpirationDate) {
+    updateIdExpirationDate = sql`${idExpirationDate}::date`;
+  } else if (row.idScanHash) {
+    updateIdExpirationDate = undefined;
+  } else {
+    updateIdExpirationDate = null;
+  }
+
   if (needsScanUpdate || input.idNumber || input.state || idType || idTypeOther) {
-    await db.execute(
-      sql`UPDATE customers SET
-       id_scan_hash = CASE WHEN id_scan_hash IS NULL OR id_scan_hash <> ${idScanHash} THEN ${idScanHash} ELSE id_scan_hash END,
-       id_scan_value = CASE WHEN id_scan_value IS NULL OR id_scan_value <> ${idScanValue} THEN ${idScanValue} ELSE id_scan_value END,
-       id_expiration_date = COALESCE(id_expiration_date, ${idExpirationDate}::date),
-       id_number = CASE WHEN ${input.idNumber || null}::text IS NOT NULL THEN ${input.idNumber || null} ELSE id_number END,
-       id_state = CASE WHEN ${input.state || null}::text IS NOT NULL THEN ${input.state || null} ELSE id_state END,
-       id_type = CASE WHEN ${idType}::text IS NOT NULL THEN ${idType} ELSE id_type END,
-       id_type_other = CASE WHEN ${idType}::text IS NOT NULL THEN ${idTypeOther} ELSE id_type_other END,
-       updated_at = NOW() WHERE id = ${row.id}`
-    );
+    await db
+      .update(customers)
+      .set({
+        idScanHash:
+          !row.idScanHash || row.idScanHash !== idScanHash ? idScanHash : row.idScanHash,
+        idScanValue:
+          !row.idScanValue || row.idScanValue !== idScanValue ? idScanValue : row.idScanValue,
+        idExpirationDate: updateIdExpirationDate,
+        idNumber: input.idNumber ?? undefined,
+        idState: input.state ?? undefined,
+        idType: idType ?? undefined,
+        idTypeOther: idTypeOther ?? undefined,
+        updatedAt: new Date(),
+      })
+      .where(eq(customers.id, row.id));
   } else if (idExpirationDate) {
-    await db.execute(sql`UPDATE customers SET id_expiration_date = ${idExpirationDate}::date, updated_at = NOW() WHERE id = ${row.id}`);
+    await db
+      .update(customers)
+      .set({
+        idExpirationDate: sql`${idExpirationDate}::date`,
+        updatedAt: new Date(),
+      })
+      .where(eq(customers.id, row.id));
+  }
+}
+
+async function mirrorToSquareAsync(localId: string, firstName: string, lastName: string, dob: string | null, referenceId: string | null) {
+  try {
+    const { createSquareCustomer } = await import('./squareSyncService');
+    const squareId = await createSquareCustomer({ firstName, lastName, dob, referenceId });
+    if (squareId) {
+      await db.update(customers).set({ squareCustomerId: squareId, updatedAt: new Date() }).where(eq(customers.id, localId));
+    }
+  } catch (error) {
+    console.error(`[mirrorToSquareAsync] Failed to mirror customer ${localId} to Square:`, error);
   }
 }
 
@@ -349,8 +479,12 @@ export async function createFromScan(input: CreateFromScanInput) {
   if (!idScanValue) throw new HttpError(400, 'Invalid scan input');
 
   const idScanHash =
-    computeIdScanIdentityHash({ firstName: input.firstName, lastName: input.lastName, fullName: input.fullName, dob: input.dob }) ||
-    input.idScanHash || computeSha256Hex(idScanValue);
+    computeIdScanIdentityHash({
+      firstName: input.firstName,
+      lastName: input.lastName,
+      fullName: input.fullName,
+      dob: input.dob,
+    }) || input.idScanHash || computeSha256Hex(idScanValue);
 
   const dob = toDateOnly(input.dob);
   if (!dob) throw new HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
@@ -366,93 +500,185 @@ export async function createFromScan(input: CreateFromScanInput) {
   const name = (input.fullName?.trim() || `${input.firstName} ${input.lastName}`.trim()).slice(0, 255);
   if (!name) throw new HttpError(400, 'Invalid name');
 
-  // Check for existing customer
-  const existing = await db.execute<{
-    id: string; name: string; dob: DobField; membership_number: string | null;
-    banned_until: DateOrStringField; id_scan_hash: string | null; id_scan_value: string | null;
-  }>(
-    sql`SELECT id, name, dob, membership_number, banned_until, id_scan_hash, id_scan_value FROM customers WHERE id_scan_hash = ${idScanHash} OR id_scan_value = ${idScanValue} LIMIT 1`
-  );
+  const existing = await db
+    .select({
+      id: customers.id,
+      name: customers.name,
+      dob: customers.dob,
+      membershipNumber: customers.membershipNumber,
+      bannedUntil: customers.bannedUntil,
+      idScanHash: customers.idScanHash,
+      idScanValue: customers.idScanValue,
+    })
+    .from(customers)
+    .where(
+      or(eq(customers.idScanHash, idScanHash), eq(customers.idScanValue, idScanValue))
+    )
+    .limit(1);
 
-  if (existing.rows.length > 0) {
-    const row = existing.rows[0];
-    if (row.banned_until && row.banned_until > new Date()) throw new HttpError(403, 'Customer is banned');
+  if (existing.length > 0) {
+    const row = existing[0]!;
+    if (row.bannedUntil && row.bannedUntil > new Date()) throw new HttpError(403, 'Customer is banned');
 
-    await updateExistingCustomerFromScan(row, idScanHash, idScanValue, idExpirationDate as Date | null, input, idType, idTypeOther);
+    await updateExistingCustomerFromScan(
+      { id: row.id, idScanHash: row.idScanHash, idScanValue: row.idScanValue },
+      idScanHash,
+      idScanValue,
+      idExpirationDate,
+      input,
+      idType,
+      idTypeOther
+    );
 
     return {
       created: false,
       customer: {
-        id: row.id, name: row.name,
+        id: row.id,
+        name: row.name,
         dob: extractDob(row.dob),
-        membershipNumber: row.membership_number,
+        membershipNumber: row.membershipNumber,
       },
     };
   }
 
-  const inserted = await db.execute<{ id: string; name: string; dob: DateOrStringField; membership_number: string | null }>(
-    sql`INSERT INTO customers (name, dob, id_expiration_date, id_number, id_state, id_type, id_type_other, id_scan_hash, id_scan_value, created_at, updated_at)
-     VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${input.idNumber || null}, ${input.state || null}, ${idType}, ${idTypeOther}, ${idScanHash}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`
-  );
-  const row = inserted.rows[0];
+  const inserted = await db
+    .insert(customers)
+    .values({
+      name,
+      dob,
+      idExpirationDate,
+      idNumber: input.idNumber ?? null,
+      idState: input.state ?? null,
+      idType,
+      idTypeOther,
+      idScanHash,
+      idScanValue,
+    })
+    .returning({ id: customers.id, name: customers.name, dob: customers.dob, membershipNumber: customers.membershipNumber });
+
+  const row = inserted[0];
   if (!row) throw new HttpError(500, 'Failed to insert customer');
+
+  // Mirror asynchronously to Square
+  void mirrorToSquareAsync(row.id, input.firstName, input.lastName, extractDob(row.dob), input.idNumber ?? null);
+
   return {
     created: true,
-    customer: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
+    customer: {
+      id: row.id,
+      name: row.name,
+      dob: extractDob(row.dob),
+      membershipNumber: row.membershipNumber,
+    },
   };
 }
 
-export async function matchIdentity(input: { firstName: string; lastName: string; dob: string; idNumber?: string }) {
+export async function matchIdentity(input: {
+  firstName: string;
+  lastName: string;
+  dob: string;
+  idNumber?: string;
+}) {
   const dob = toDateOnly(input.dob);
   if (!dob) throw new HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
 
   const inputParts = splitNamePartsForMatch(`${input.firstName} ${input.lastName}`);
   if (!inputParts) throw new HttpError(400, 'Invalid name');
 
-  // Check by ID number first
   if (input.idNumber?.trim()) {
-    const byIdNumber = await db.execute<{ id: string; name: string; dob: DateOrStringField; membership_number: string | null }>(
-      sql`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER(${input.idNumber.trim()}) LIMIT 1`
-    );
-    if (byIdNumber.rows.length > 0) {
-      const row = byIdNumber.rows[0];
-      return {
-        matchCount: 1, matchReason: 'ID_NUMBER' as const,
-        bestMatch: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
-      };
+    const byIdNumber = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        dob: customers.dob,
+        membershipNumber: customers.membershipNumber,
+      })
+      .from(customers)
+      .where(eq(sql`UPPER(${customers.idNumber})`, input.idNumber.trim().toUpperCase()))
+      .limit(1);
+
+    if (byIdNumber.length > 0) {
+      const [row] = byIdNumber;
+      if (row) {
+        return {
+          matchCount: 1,
+          matchReason: 'ID_NUMBER' as const,
+          bestMatch: {
+            id: row.id,
+            name: row.name,
+            dob: extractDob(row.dob),
+            membershipNumber: row.membershipNumber,
+          },
+        };
+      }
     }
   }
 
-  // Fuzzy match by name + DOB
-  const res = await db.execute<{ id: string; name: string; dob: DateOrStringField; membership_number: string | null; created_at: Date }>(
-    sql`SELECT id, name, dob, membership_number, created_at FROM customers WHERE dob = ${dob}::date ORDER BY created_at ASC LIMIT 50`
-  );
+  const res = await db
+    .select({
+      id: customers.id,
+      name: customers.name,
+      dob: customers.dob,
+      membershipNumber: customers.membershipNumber,
+      createdAt: customers.createdAt,
+    })
+    .from(customers)
+    .where(eq(customers.dob, dob))
+    .orderBy(asc(customers.createdAt))
+    .limit(50);
 
-  const matches = res.rows
+  const matches = res
     .map((row) => {
       const parts = splitNamePartsForMatch(row.name);
       if (!parts) return null;
-      const score = scoreNameSimilarity(inputParts, parts) + (row.membership_number ? 0.5 : 0);
+      const score =
+        scoreNameSimilarity(inputParts, parts) + (row.membershipNumber ? 0.5 : 0);
       if (score < 1.5) return null;
       return {
-        id: row.id, name: row.name,
+        id: row.id,
+        name: row.name,
         dob: extractDob(row.dob),
-        membershipNumber: row.membership_number, score, createdAt: row.created_at,
+        membershipNumber: row.membershipNumber,
+        score,
+        createdAt: row.createdAt,
       };
     })
-    .filter(Boolean) as Array<{ id: string; name: string; dob: string | null; membershipNumber: string | null; score: number; createdAt: Date }>;
+    .filter(Boolean) as Array<{
+    id: string;
+    name: string;
+    dob: string | null;
+    membershipNumber: string | null;
+    score: number;
+    createdAt: Date;
+  }>;
 
-  matches.sort((a, b) => b.score - a.score || new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  matches.sort(
+    (a, b) =>
+      b.score - a.score ||
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
   const best = matches[0] ?? null;
   return {
     matchCount: matches.length,
-    bestMatch: best ? { id: best.id, name: best.name, dob: best.dob, membershipNumber: best.membershipNumber } : null,
+    bestMatch: best
+      ? {
+          id: best.id,
+          name: best.name,
+          dob: best.dob,
+          membershipNumber: best.membershipNumber,
+        }
+      : null,
   };
 }
 
 export async function createManual(input: {
-  firstName: string; lastName: string; dob: string;
-  idExpirationDate: string; idType: string; idTypeOther?: string; idNumber?: string;
+  firstName: string;
+  lastName: string;
+  dob: string;
+  idExpirationDate: string;
+  idType: string;
+  idTypeOther?: string;
+  idNumber?: string;
 }) {
   const dob = toDateOnly(input.dob);
   if (!dob) throw new HttpError(400, 'Invalid dob; expected YYYY-MM-DD');
@@ -468,40 +694,90 @@ export async function createManual(input: {
   const idScanIssue = getIdScanIssue({ dob, idExpirationDate });
   if (idScanIssue) throw new HttpError(403, getIdScanIssueMessage(idScanIssue), { code: idScanIssue });
 
-  // Dedup: check ID number
   if (idScanValue) {
-    const byIdNumber = await db.execute<{ id: string; name: string; dob: DateOrStringField; membership_number: string | null }>(
-      sql`SELECT id, name, dob, membership_number FROM customers WHERE UPPER(id_number) = UPPER(${idScanValue}) LIMIT 1`
-    );
-    if (byIdNumber.rows.length > 0) {
-      const row = byIdNumber.rows[0];
+    const byIdNumber = await db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        dob: customers.dob,
+        membershipNumber: customers.membershipNumber,
+      })
+      .from(customers)
+      .where(eq(sql`UPPER(${customers.idNumber})`, idScanValue.toUpperCase()))
+      .limit(1);
+
+    if (byIdNumber.length > 0) {
+      const [row] = byIdNumber;
+      if (row) {
+        return {
+          created: false,
+          existing: true,
+          matchReason: 'ID_NUMBER' as const,
+          customer: {
+            id: row.id,
+            name: row.name,
+            dob: extractDob(row.dob),
+            membershipNumber: row.membershipNumber,
+          },
+        };
+      }
+    }
+  }
+
+  const byNameDob = await db
+    .select({
+      id: customers.id,
+      name: customers.name,
+      dob: customers.dob,
+      membershipNumber: customers.membershipNumber,
+    })
+    .from(customers)
+    .where(and(eq(customers.dob, dob), eq(sql`LOWER(${customers.name})`, name.toLowerCase())))
+    .limit(1);
+
+  if (byNameDob.length > 0) {
+    const [row] = byNameDob;
+    if (row) {
       return {
-        created: false, existing: true, matchReason: 'ID_NUMBER' as const,
-        customer: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
+        created: false,
+        existing: true,
+        matchReason: 'NAME_DOB' as const,
+        customer: {
+          id: row.id,
+          name: row.name,
+          dob: extractDob(row.dob),
+          membershipNumber: row.membershipNumber,
+        },
       };
     }
   }
 
-  // Dedup: check name + DOB
-  const byNameDob = await db.execute<{ id: string; name: string; dob: DateOrStringField; membership_number: string | null }>(
-    sql`SELECT id, name, dob, membership_number FROM customers WHERE dob = ${dob}::date AND LOWER(name) = LOWER(${name}) LIMIT 1`
-  );
-  if (byNameDob.rows.length > 0) {
-    const row = byNameDob.rows[0];
-    return {
-      created: false, existing: true, matchReason: 'NAME_DOB' as const,
-      customer: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
-    };
-  }
+  const inserted = await db
+    .insert(customers)
+    .values({
+      name,
+      dob,
+      idExpirationDate,
+      idType,
+      idTypeOther,
+      idScanValue,
+      idNumber: idScanValue,
+    })
+    .returning({ id: customers.id, name: customers.name, dob: customers.dob, membershipNumber: customers.membershipNumber });
 
-  const inserted = await db.execute<{ id: string; name: string; dob: Date | string | null; membership_number: string | null }>(
-    sql`INSERT INTO customers (name, dob, id_expiration_date, id_type, id_type_other, id_scan_value, id_number, created_at, updated_at)
-     VALUES (${name}, ${dob}::date, ${idExpirationDate}::date, ${idType}, ${idTypeOther}, ${idScanValue}, ${idScanValue}, NOW(), NOW()) RETURNING id, name, dob, membership_number`
-  );
-  const row = inserted.rows[0];
+  const row = inserted[0];
   if (!row) throw new HttpError(500, 'Failed to create customer');
+
+  // Mirror asynchronously to Square
+  void mirrorToSquareAsync(row.id, input.firstName, input.lastName, extractDob(row.dob), idScanValue);
+
   return {
     created: true,
-    customer: { id: row.id, name: row.name, dob: extractDob(row.dob), membershipNumber: row.membership_number },
+    customer: {
+      id: row.id,
+      name: row.name,
+      dob: extractDob(row.dob),
+      membershipNumber: row.membershipNumber,
+    },
   };
 }
