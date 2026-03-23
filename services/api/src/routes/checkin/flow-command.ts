@@ -743,7 +743,7 @@ async function executeFlowCommandTransaction(
            price_quote_json = CASE WHEN ${updateParams[18]} THEN NULL ELSE price_quote_json END,
            disclaimers_ack_json = ${updateParams[21]}::jsonb,
            agreement_bypass_pending = CASE WHEN ${updateParams[19]} THEN false ELSE agreement_bypass_pending END,
-           assigned_resource_id = CASE WHEN ${updateParams[5]} THEN NULL ELSE ${updateParams[22]} END,
+           assigned_resource_id = CASE WHEN ${updateParams[5]} THEN NULL ELSE ${updateParams[22]}::uuid END,
            assigned_resource_type = CASE WHEN ${updateParams[5]} THEN NULL ELSE ${updateParams[23]}::public.inventory_resource_type END,
            updated_at = NOW()
        WHERE id = ${updateParams[20]}
