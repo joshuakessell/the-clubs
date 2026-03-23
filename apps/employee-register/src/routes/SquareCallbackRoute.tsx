@@ -4,6 +4,12 @@ import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
 import { useRegisterStore } from '../stores/useRegisterStore';
 
+const getReturnPath = (laneId: string) => {
+  if (laneId.startsWith('register-')) return `/lane-${laneId.replace('register-', '')}`;
+  if (laneId.startsWith('lane-')) return `/${laneId}`;
+  return '/register';
+};
+
 export function SquareCallbackRoute() {
   const [error, setError] = useState<string | null>(null);
   const location = useLocation();
@@ -19,7 +25,9 @@ export function SquareCallbackRoute() {
 
         if (!dataParam) {
           setError('No data received from Square POS.');
-          setTimeout(() => navigate(laneId.startsWith('lane-') ? `/${laneId}` : '/register'), 3000);
+          setTimeout(() => {
+            navigate(getReturnPath(laneId));
+          }, 3000);
           return;
         }
 
@@ -28,14 +36,16 @@ export function SquareCallbackRoute() {
           parsed = JSON.parse(decodeURIComponent(dataParam));
         } catch {
           setError('Invalid data received from Square POS.');
-          setTimeout(() => navigate(laneId.startsWith('lane-') ? `/${laneId}` : '/register'), 3000);
+          setTimeout(() => navigate(getReturnPath(laneId)), 3000);
           return;
         }
 
         if (parsed.error_code) {
           // Transaction cancelled or failed
           setError(`Square Error: ${parsed.error_code}`);
-          setTimeout(() => navigate(laneId.startsWith('lane-') ? `/${laneId}` : '/register'), 3000);
+          setTimeout(() => {
+            navigate(getReturnPath(laneId));
+          }, 3000);
           return;
         }
 
@@ -50,7 +60,9 @@ export function SquareCallbackRoute() {
 
         if (!orderId) {
           setError('Lost order tracking. Please check the checkout tab.');
-          setTimeout(() => navigate(laneId.startsWith('lane-') ? `/${laneId}` : '/register'), 3000);
+          setTimeout(() => {
+            navigate(getReturnPath(laneId));
+          }, 3000);
           return;
         }
 
@@ -75,12 +87,8 @@ export function SquareCallbackRoute() {
         globalThis.sessionStorage.removeItem('square_checkout_lane_id');
         globalThis.sessionStorage.removeItem('square_checkout_order_id');
         
-        // Re-hydrate the transient Zustand memory explicitly before we attempt router navigation,
-        // because iOS Safari aggressively unloads the browser tab memory context during the Square POS 
-        // external intent lifecycle, which natively drops `useRegisterStore.laneId` to null.
         useRegisterStore.getState().setLaneId(laneId);
-        
-        navigate(`/${laneId}`);
+        navigate(getReturnPath(laneId));
         
       } catch (err: any) {
         console.error('Square callback error:', err);

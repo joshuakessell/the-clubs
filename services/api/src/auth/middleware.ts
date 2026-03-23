@@ -77,18 +77,19 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
     };
 
     // Sliding window: extend session expiry on each authenticated request.
-    // Only fires if less than 23h remain (throttles to ~1 write/hour max).
+    // Only fires if less than 6 days remain (throttles to ~1 write/day max).
     db.execute(
       sql`UPDATE staff_sessions
-       SET expires_at = NOW() + INTERVAL '24 hours'
+       SET expires_at = NOW() + INTERVAL '7 days'
        WHERE session_token = ${tokenHash}
-         AND expires_at - NOW() < INTERVAL '23 hours'`
+         AND expires_at - NOW() < INTERVAL '6 days'`
     ).catch(() => {}); // fire-and-forget, non-blocking
 
     return true;
   } catch (error) {
     request.log.error({ err: error, url: request.url }, 'auth_reject: DB error validating session token');
-    return false;
+    // Important: Throw 500 so the client doesn't wipe its Bearer token on transient DB faults
+    throw error;
   }
 }
 

@@ -435,28 +435,12 @@ async function main() {
   const fastify = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || 'info',
-      transport: {
-        targets: [
-          ...(process.env.NODE_ENV === 'production' ? [] : [
-            {
-              target: 'pino-pretty',
-              options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
-              level: process.env.LOG_LEVEL || 'info',
-            }
-          ]),
-          ...(process.env.AWS_REGION ? [
-            {
-              target: '@serdnam/pino-cloudwatch-transport',
-              options: {
-                logGroupName: 'the-clubs-api',
-                logStreamName: `api-stream-${new Date().toISOString().split('T')[0]}`,
-                awsRegion: process.env.AWS_REGION
-              },
-              level: process.env.LOG_LEVEL || 'info',
-            }
-          ] : [])
-        ]
-      }
+      ...(process.env.NODE_ENV === 'production' ? {} : {
+        transport: {
+          target: 'pino-pretty',
+          options: { translateTime: 'HH:MM:ss Z', ignore: 'pid,hostname' },
+        },
+      }),
     },
     ajv: {
       customOptions: {
