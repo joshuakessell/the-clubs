@@ -214,11 +214,11 @@ export async function createSquarePOSOrder(laneId: string) {
 
         let noteText: string | undefined = undefined;
         
-        // Items requiring detailed notes: Rooms, Lockers, Late Fees, Lost Key Fees
         const requiresNote = row.name.includes('Room') || 
                              row.name.includes('Locker') || 
                              row.name.includes('Fee') || 
-                             row.name.includes('Lost Key');
+                             row.name.includes('Lost Key') ||
+                             row.name.includes('Renewal');
                              
         const isYouth = row.name.includes('Youth');
 
@@ -429,3 +429,73 @@ export async function markOrderPaid(input: MarkPaidInput) {
 export async function getSessionPayload(sessionId: string) {
   return buildFullSessionUpdatedPayload(sessionId);
 }
+
+export async function createGenericSquarePOSOrder(orderId: string) {
+  return db.transaction(async (tx) => {
+    const orderResult = await tx.execute<{ id: string, customer_id: string | null }>(
+      sql`SELECT id, customer_id FROM orders WHERE id = ${orderId}`
+    );
+    if (orderResult.rows.length === 0) throw new HttpError(404, 'Order not found');
+    const order = orderResult.rows[0];
+
+    let squareCustomerId: string | null = null;
+    let customerName: string | null = null;
+    let customerDobStr: string | null = null;
+    let membershipNumber: string | null = null;
+
+    if (order.customer_id) {
+       const custResult = await tx.execute<{ square_customer_id: string | null, name: string | null, dob: string | null, membership_number: string | null }>(
+           sql`SELECT square_customer_id, name, dob, membership_number FROM customers WHERE id = ${order.customer_id}`
+       );
+       if (custResult.rows.length > 0) {
+         squareCustomerId = custResult.rows[0].square_customer_id;
+         customerName = custResult.rows[0].name;
+         customerDobStr = custResult.rows[0].dob;
+         membershipNumber = custResult.rows[0].membership_number;
+       }
+    }
+
+    const lineItemsResult = await tx.execute<{ name: string, total: string | number }>(
+      sql`SELECT name, total FROM order_line_items WHERE order_id = ${orderId}`
+    );
+
+    if (lineItemsResult.rows.length === 0) throw new HttpError(400, 'Order has no line items');
+
+    const lineItems = lineItemsResult.rows.map((row) => {
+        const catalogObjectId = getCatalogIdForLineItem(row.name);
+
+        let noteText: string | undefined = undefined;
+        
+        const requiresNote = row.name.includes('Room') || 
+                             row.name.includes('Locker') || 
+                             row.name.includes('Fee') || 
+                             row.name.includes('Lost Key') ||
+                             row.name.includes('Retail') ||
+                             row.name.includes('Renewal');
+                             
+        const isYouth = row.name.includes('Youth');
+
+        if (requiresNote) {
+           const noteParts: string[] = [];
+           if (customerName) noteParts.push(customerName);
+           if (customerDobStr) noteParts.push(customerDobStr);
+           if (membershipNumber && !isYouth) noteParts.push(`Mem: ${membershipNumber}`);
+           if (noteParts.length > 0) noteText = noteParts.join(' | ');
+        }
+
+        return {
+           name: row.name,
+           amountCents: Math.round(Number(row.total) * 100),
+           note: noteText,
+           catalogObjectId
+        };
+    });
+
+    const squareOrderId = await createSquareOrder({ squareCustomerId, lineItems });
+
+    if (!squareOrderId) throw new HttpError(500, 'Failed to create Square Order');
+
+    return { squareOrderId, orderId: orderId };
+  });
+}
+

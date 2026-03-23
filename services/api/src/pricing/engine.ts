@@ -339,7 +339,14 @@ export function calculateRenewalQuote(
 ): PriceQuote {
   const hours = input.renewalHours ?? 6;
   if (hours === 6) {
-    return calculatePriceQuote(input);
+    const baseQuote = calculatePriceQuote(input);
+    return {
+      ...baseQuote,
+      lineItems: baseQuote.lineItems.map((item) => ({
+        ...item,
+        description: `Renewal (6 Hours) - ${item.description}`,
+      })),
+    };
   }
 
   // 2-hour renewal: flat $20, no membership fee

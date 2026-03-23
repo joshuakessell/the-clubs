@@ -75,6 +75,7 @@ export interface ManualCompleteResult {
   resourceId?: string | null;
   cancelledWaitlistIds: string[];
   visitId: string;
+  orderId?: string | null;
 }
 
 export interface ClaimResult {
@@ -442,6 +443,8 @@ export async function completeManualCheckout(
        ON CONFLICT (occupancy_id) WHERE checkout_request_id IS NULL DO NOTHING`);
     }
 
+    let generatedOrderId: string | undefined;
+
     // Late fee bookkeeping
     if (feeAmount > 0) {
       if (payAtCheckout) {
@@ -451,7 +454,8 @@ export async function completeManualCheckout(
           sql`INSERT INTO orders (customer_id, created_by_staff_id, status, subtotal, discount, tax, tip, total, currency, metadata_json, payment_method, paid_at, quote_json)
            VALUES (${row.customer_id}, ${staff.staffId}, 'PAID', ${feeAmountCents}, 0, 0, 0, ${feeAmountCents}, 'USD', ${JSON.stringify(metadata)}::jsonb, ${paymentMethod ?? null}, NOW(), ${JSON.stringify(metadata)}::jsonb) RETURNING id`
         );
-        const orderId = existingOrder.rows[0]!.id;
+        generatedOrderId = existingOrder.rows[0].id;
+        const orderId = generatedOrderId;
         const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE order_id = ${orderId} AND kind = 'LATE_FEE' LIMIT 1`);
         if (existingLate.rows.length === 0) {
           await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, discount, tax, total) VALUES (${orderId}, 'LATE_FEE', 'Late Fee', 1, ${feeAmountCents}, 0, 0, ${feeAmountCents})`);
@@ -575,6 +579,7 @@ export async function completeManualCheckout(
       resourceId: row.resource_id,
       cancelledWaitlistIds: waitlistRows.map((r) => r.id),
       visitId: row.visit_id,
+      orderId: generatedOrderId,
     };
   }, { isolationLevel: 'serializable' });
 

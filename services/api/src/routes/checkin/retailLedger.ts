@@ -5,6 +5,7 @@ import { db } from '../../db';
 import { buildFullSessionUpdatedPayload } from '../../checkin/payload';
 import { getActiveLaneSession } from '../../checkin/helpers';
 import { createOrder, addLineItems, type LineItemInput } from '../../services/orderService';
+import { createGenericSquarePOSOrder } from '../../services/paymentService';
 
 const AddRetailItemsSchema = z.object({
   items: z.array(z.object({
@@ -59,6 +60,9 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
 
         await addLineItems(orderResult.orderId, lineItems);
 
+        // Generate the Square cart mapping
+        const squareData = await createGenericSquarePOSOrder(orderResult.orderId);
+
         // buildFullSessionUpdatedPayload is already Drizzle-native — no transaction wrapper needed
         const { payload } = await buildFullSessionUpdatedPayload(session.id);
         fastify.broadcaster.broadcastSessionUpdated(payload, laneId);
@@ -66,6 +70,7 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
         return reply.send({
           success: true,
           orderId: orderResult.orderId,
+          squareOrderId: squareData.squareOrderId,
           sessionId: session.id,
         });
       } catch (error: unknown) {

@@ -118,6 +118,7 @@ export async function startLaneSession(
     let blockEndsAtDate: Date | null = null;
     let currentTotalHours = 0;
     let renewalHoursForSession: number | null = null;
+    let activeAssignedResourceId: string | null = null;
     let activeAssignedResourceType: 'room' | 'locker' | null = null;
     let activeAssignedResourceNumber: string | null = null;
     let activeRentalType: string | null = null;
@@ -151,6 +152,7 @@ export async function startLaneSession(
       if (!row) return;
       activeRentalType = row.rental_type;
       if (row.resource_id && row.resource_number) {
+        activeAssignedResourceId = row.resource_id;
         activeAssignedResourceType = row.resource_kind === 'locker' ? 'locker' : 'room';
         activeAssignedResourceNumber = row.resource_number;
       }
@@ -229,6 +231,8 @@ export async function startLaneSession(
     if (computedMode === 'RENEWAL' && !activeRentalType) throw new HttpError(400, 'Unable to determine rental type for renewal');
 
     const desiredRentalTypeForSession = computedMode === 'RENEWAL' && activeRentalType ? activeRentalType : null;
+    const assignedIdForSession = computedMode === 'RENEWAL' ? activeAssignedResourceId : null;
+    const assignedTypeForSession = computedMode === 'RENEWAL' ? activeAssignedResourceType : null;
     const selectionConfirmedForSession = computedMode === 'RENEWAL';
     const selectionConfirmedByForSession = computedMode === 'RENEWAL' ? 'EMPLOYEE' : null;
     const selectionLockedAtForSession = computedMode === 'RENEWAL' ? new Date() : null;
@@ -241,7 +245,7 @@ export async function startLaneSession(
          staff_id = ${staff.staffId}, checkin_mode = ${computedMode}, renewal_hours = ${renewalHoursForSession}, desired_rental_type = ${desiredRentalTypeForSession},
          waitlist_desired_type = NULL, waitlist_desired_types_json = NULL, backup_rental_type = NULL,
          waitlist_requested_resource_number = NULL, waitlist_requested_resource_type = NULL,
-         assigned_resource_id = NULL, assigned_resource_type = NULL, membership_choice = NULL,
+         assigned_resource_id = ${assignedIdForSession}, assigned_resource_type = ${assignedTypeForSession}, membership_choice = NULL,
          membership_purchase_intent = NULL, membership_purchase_requested_at = NULL,
          order_id = NULL, price_quote_json = NULL, disclaimers_ack_json = NULL,
          kiosk_acknowledged_at = NULL, proposed_rental_type = NULL, proposed_by = NULL,
@@ -256,7 +260,7 @@ export async function startLaneSession(
          checkin_mode, renewal_hours, desired_rental_type, assigned_resource_id, assigned_resource_type,
          membership_choice, selection_confirmed, selection_confirmed_by, selection_locked_at, flow_step, flow_version)
          VALUES (${laneId}, 'ACTIVE', ${staff.staffId}, ${customerId}, ${customerName}, ${membershipNumber}, ${computedMode}, ${renewalHoursForSession},
-         ${desiredRentalTypeForSession}, NULL, NULL, NULL, ${selectionConfirmedForSession}, ${selectionConfirmedByForSession}, ${selectionLockedAtForSession}, ${flowStepForSession}, 0) RETURNING ${sql.raw(LANE_SESSION_COLS)}`
+         ${desiredRentalTypeForSession}, ${assignedIdForSession}, ${assignedTypeForSession}, NULL, ${selectionConfirmedForSession}, ${selectionConfirmedByForSession}, ${selectionLockedAtForSession}, ${flowStepForSession}, 0) RETURNING ${sql.raw(LANE_SESSION_COLS)}`
       );
       session = newSessionResult.rows[0] as unknown as LaneSessionRow;
     }

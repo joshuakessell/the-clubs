@@ -12,6 +12,8 @@ export const SquareCatalogMap: Record<string, string> = mappingJson;
  */
 export function getCatalogIdForLineItem(name: string): string | undefined {
   const matchers = [
+    { rules: ['Renewal (2 Hours)'], target: 'Renewal - 2 Hours' },
+    { rules: ['Renewal (6 Hours)'], target: 'Renewal - 6 Hours' },
     { rules: ['One Time Membership', 'Check-in fee'], target: 'One Time Membership' },
     { rules: ['6-Month Membership'], target: '6 Month Membership' },
     { rules: ['Youth', 'Double Room'], target: 'Youth Double Room', requiresAll: true },

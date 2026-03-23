@@ -10,6 +10,7 @@ import {
   completeManualCheckout,
   checkRenewalEligibility,
 } from '../../services/checkoutService';
+import { createGenericSquarePOSOrder } from '../../services/paymentService';
 
 export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
   /**
@@ -134,6 +135,16 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
           }
         }
 
+        let squareOrderId: string | undefined;
+        if (result.orderId) {
+          try {
+            const sqData = await createGenericSquarePOSOrder(result.orderId);
+            squareOrderId = sqData.squareOrderId;
+          } catch (sqErr) {
+            fastify.log.error(sqErr, 'Failed to generate Square POS payload for late fee');
+          }
+        }
+
         return reply.send({
           occupancyId: result.occupancyId,
           resourceType: result.resourceType,
@@ -145,6 +156,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
           fee: result.fee,
           banApplied: result.banApplied,
           alreadyCheckedOut: result.alreadyCheckedOut,
+          squareOrderId,
         });
       } catch (error) {
         if (error && typeof error === 'object' && 'statusCode' in error) {

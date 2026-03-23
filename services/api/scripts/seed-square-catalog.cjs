@@ -27,6 +27,8 @@ const ITEMS_TO_CREATE = [
   { name: 'Late Fee - 30 Min', price: 500 },
   { name: 'Late Fee - 60 Min', price: 1000 },
   { name: 'Late Fee - 90 Min', price: 1500 },
+  { name: 'Renewal - 2 Hours', price: 500 },
+  { name: 'Renewal - 6 Hours', price: 1500 },
   { name: 'Lost Key Fee', price: 2500 },
   { name: 'Retail Items', price: 0 }
 ];

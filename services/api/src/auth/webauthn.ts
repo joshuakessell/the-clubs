@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { eq, isNull, gt, and, sql, desc } from 'drizzle-orm';
+import { eq, isNull, gt, lt, and, sql, desc } from 'drizzle-orm';
 import {
   webauthnChallenges,
   staffWebauthnCredentials,
@@ -195,7 +195,7 @@ export async function updateCredentialSignCount(
 export async function cleanupExpiredChallenges(): Promise<number> {
   const result = await db
     .delete(webauthnChallenges)
-    .where(gt(sql`(NOW())`, webauthnChallenges.expiresAt))
+    .where(lt(webauthnChallenges.expiresAt, sql`NOW()`))
     .returning({ id: webauthnChallenges.id });
 
   return result.length;
