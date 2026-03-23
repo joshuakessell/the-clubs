@@ -1,4 +1,5 @@
-import { Component, type ReactNode } from 'react';
+import { Component, type ReactNode, type ErrorInfo } from 'react';
+import { getApiUrl } from '@the-clubs/shared';
 
 interface Props {
   children: ReactNode;
@@ -16,8 +17,24 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true };
   }
 
-  componentDidCatch(error: unknown) {
+  componentDidCatch(error: unknown, info: ErrorInfo) {
     console.error('App error:', error);
+    try {
+      const err = error instanceof Error ? error : new Error(String(error));
+      void fetch(getApiUrl('/api/v1/telemetry/crash'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: err.message,
+          stack: err.stack,
+          componentStack: info.componentStack,
+          url: globalThis.window?.location?.href,
+          userAgent: globalThis.navigator?.userAgent
+        })
+      }).catch(console.error);
+    } catch (e) {
+      console.error('Failed to report telemetry', e);
+    }
   }
 
   render() {
@@ -35,7 +52,7 @@ export class ErrorBoundary extends Component<Props, State> {
               Please reload the page. If the issue persists, contact support.
             </p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => globalThis.location.reload()}
               className="rounded-lg px-4 py-2 text-sm font-medium transition-colors"
               style={{
                 backgroundColor: 'var(--color-accent-primary)',
