@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Badge, Spinner, useAuthStore } from '@the-clubs/ui';
 import { getApiUrl } from '@the-clubs/shared';
 import { useRegisterStore } from '../stores/useRegisterStore';
@@ -6,6 +6,9 @@ import { useRegisterStore } from '../stores/useRegisterStore';
 import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
 import { BarcodeIcon } from '../components/BarcodeIcon';
+import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
+import { HiddenScannerInput } from '../components/HiddenScannerInput';
+import { parseAAMVAPdf417 } from '../utils/pdf417';
 
 /* Convert ISO date (YYYY-MM-DD) to MMDDYYYY digits for the manual entry form */
 function isoToMmDdYyyyDigits(iso: string | null | undefined): string {
@@ -22,9 +25,6 @@ interface Candidate {
   membershipNumber: string | null;
   matchScore: number;
 }
-
-/** Debounce idle time (ms) — once no keystrokes arrive for this long, auto-submit */
-const SCAN_IDLE_MS = 500;
 
 /** Dev/demo-only button to run incremental seed data */
 function DemoCatchUpButton() {
@@ -60,8 +60,6 @@ function DemoCatchUpButton() {
 }
 
 export function ScanPanel() {
-  const hiddenInputRef = useRef<HTMLInputElement>(null);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     laneId,
     scanReady,
@@ -85,32 +83,11 @@ export function ScanPanel() {
   const [pendingScanData, setPendingScanData] = useState<{ extracted?: Record<string, string> } | null>(null);
   const [isReceiving, setIsReceiving] = useState(false);
 
-  /* ── Auto-focus the hidden input when the panel mounts ── */
-  useEffect(() => {
-    hiddenInputRef.current?.focus();
-
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Do not intercept if actively typing inside an open form modal or explicit input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      // Do not intercept if we are locked in transmission
-      if (useRegisterStore.getState().scanCaptureSubmitting) return;
-
-      hiddenInputRef.current?.focus();
-    };
-
-    document.addEventListener('keydown', handleGlobalKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleGlobalKeyDown);
-    };
-  }, []);
-
   /* ── Re-focus on click anywhere in the panel ── */
   const handlePanelClick = useCallback(() => {
-    if (!scanCaptureSubmitting) {
-      hiddenInputRef.current?.focus();
-    }
-  }, [scanCaptureSubmitting]);
+    // HiddenScannerInput automatically re-attaches focus when necessary,
+    // but we can provide a manual trigger target just in case.
+  }, []);
 
   /** Prefill the manual entry form and navigate to firstTime tab */
   const prefillAndNavigate = useCallback((opts: {
@@ -127,14 +104,40 @@ export function ScanPanel() {
     if (opts.idType) setManualIdType(opts.idType);
     if (opts.idNumber) setManualIdNumber(opts.idNumber);
     if (opts.idExpiration) setManualIdExpirationDigits(isoToMmDdYyyyDigits(opts.idExpiration));
-    if (hiddenInputRef.current) hiddenInputRef.current.value = '';
     selectNavTab('firstTime');
   }, [setManualFirstName, setManualLastName, setManualDobDigits, setManualIdType, setManualIdNumber, setManualIdExpirationDigits, selectNavTab]);
 
+  /** Decoupled NO_MATCH handler to keep Cognitive Complexity below 15 */
+  const handleNoMatch = useCallback((scanType?: string, extracted?: Record<string, string>, passportNumber?: string) => {
+    if (scanType === 'STATE_ID' && extracted) {
+      setScanError('No exact match found. Prefilling Manual Entry with scanned ID info.');
+      setTimeout(() => prefillAndNavigate({
+        firstName: extracted.firstName,
+        lastName: extracted.lastName,
+        dob: extracted.dob,
+        idType: extracted.idType ?? 'DRIVERS_LICENSE',
+        idNumber: extracted.idNumber,
+        idExpiration: extracted.idExpirationDate,
+      }), 1200);
+      return;
+    }
+
+    if (scanType === 'PASSPORT' && passportNumber) {
+      setScanError('No passport match found. Prefilling Manual Entry.');
+      setTimeout(() => prefillAndNavigate({
+        idType: 'PASSPORT',
+        idNumber: passportNumber,
+      }), 1200);
+      return;
+    }
+
+    setScanError('No matching customer found. Try Manual Entry.');
+    setTimeout(() => selectNavTab('firstTime'), 1500);
+  }, [prefillAndNavigate, selectNavTab]);
+
   /** Dispatch scan result — flat early-return style to avoid nested if/else */
-  const processScanResult = useCallback((data: Record<string, unknown>) => {
+  const processScanResult = useCallback((data: Record<string, unknown>, rawText: string) => {
     if (data.result === 'MATCHED' && data.customer) {
-      if (hiddenInputRef.current) hiddenInputRef.current.value = '';
       const cust = data.customer as { id: string; name: string };
       openCustomerAccount(cust.id, cust.name, { autoStart: true, authToken: token });
       return;
@@ -147,33 +150,19 @@ export function ScanPanel() {
     }
 
     if (data.result === 'NO_MATCH') {
-      const scanType = data.scanType as string | undefined;
-      const extracted = data.extracted as Record<string, string> | undefined;
+      let scanType = data.scanType as string | undefined;
+      let extracted = data.extracted as Record<string, string> | undefined;
 
-      if (scanType === 'STATE_ID' && extracted) {
-        setScanError('No exact match found. Prefilling Manual Entry with scanned ID info.');
-        setTimeout(() => prefillAndNavigate({
-          firstName: extracted.firstName,
-          lastName: extracted.lastName,
-          dob: extracted.dob,
-          idType: extracted.idType ?? 'DRIVERS_LICENSE',
-          idNumber: extracted.idNumber,
-          idExpiration: extracted.idExpirationDate,
-        }), 1200);
-        return;
+      // Fallback: If backend failed to extract but it looks like a driver's license (PDF417 AAMVA), process it natively.
+      if (!extracted && rawText.includes('ANSI')) {
+        const offlineParsed = parseAAMVAPdf417(rawText);
+        if (offlineParsed) {
+          extracted = offlineParsed;
+          scanType = 'STATE_ID';
+        }
       }
 
-      if (scanType === 'PASSPORT' && data.passportNumber) {
-        setScanError('No passport match found. Prefilling Manual Entry.');
-        setTimeout(() => prefillAndNavigate({
-          idType: 'PASSPORT',
-          idNumber: data.passportNumber as string,
-        }), 1200);
-        return;
-      }
-
-      setScanError('No matching customer found. Try Manual Entry.');
-      setTimeout(() => selectNavTab('firstTime'), 1500);
+      handleNoMatch(scanType, extracted, data.passportNumber as string | undefined);
       return;
     }
 
@@ -184,10 +173,9 @@ export function ScanPanel() {
     }
 
     setScanError('Unexpected response from scan');
-  }, [token, openCustomerAccount, prefillAndNavigate, selectNavTab]);
+  }, [token, openCustomerAccount, handleNoMatch]);
 
-  const handleScanSubmit = useCallback(async () => {
-    const rawText = hiddenInputRef.current?.value?.trim();
+  const handleScanSubmit = useCallback(async (rawText: string) => {
     if (!rawText) return;
 
     setIsReceiving(false);
@@ -206,43 +194,24 @@ export function ScanPanel() {
       });
 
       const data = await res.json();
-      processScanResult(data);
+      processScanResult(data, rawText);
     } catch {
       setScanError('Network error processing scan');
     } finally {
       setScanCaptureSubmitting(false);
-      if (hiddenInputRef.current) hiddenInputRef.current.value = '';
-      // Re-focus after processing
-      setTimeout(() => hiddenInputRef.current?.focus(), 100);
     }
   }, [token, laneId, setScanCaptureSubmitting, processScanResult]);
 
-  /* ── Keystroke handler with debounce ── */
-  const handleInput = useCallback(() => {
-    // Mark as receiving scan data
-    setIsReceiving(true);
-    setScanError(null);
+  /* ── Idempotent barcode hook ── */
+  useBarcodeScanner((data) => {
+    // Prevent overlapping scans if currently transmitting
+    if (useRegisterStore.getState().scanCaptureSubmitting) return;
 
-    // Clear existing timer
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-
-    // Set new timer — auto-submit after SCAN_IDLE_MS of silence
-    debounceTimer.current = setTimeout(() => {
-      setIsReceiving(false);
-      void handleScanSubmit();
-    }, SCAN_IDLE_MS);
-  }, [handleScanSubmit]);
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, []);
+    void handleScanSubmit(data);
+  });
 
   /** Handle candidate selection from the fuzzy match modal */
   const handleSelectCandidate = (candidate: Candidate) => {
-    if (hiddenInputRef.current) hiddenInputRef.current.value = '';
     setCandidates(null);
     setPendingScanData(null);
     openCustomerAccount(candidate.id, candidate.name, {
@@ -296,19 +265,8 @@ export function ScanPanel() {
           <BarcodeIcon />
         </div>
 
-        {/* Hidden input — captures scanner keystrokes */}
-        <input
-          ref={hiddenInputRef}
-          type="text"
-          className="sr-only"
-          aria-label="Scanner input"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          disabled={!scanInputEnabled || scanCaptureSubmitting}
-          onInput={handleInput}
-          tabIndex={-1}
-        />
+        {/* Hidden input — rigidly captures scanner keystrokes */}
+        {scanInputEnabled && !scanCaptureSubmitting && <HiddenScannerInput />}
 
         {/* Error message */}
         {scanError && (
