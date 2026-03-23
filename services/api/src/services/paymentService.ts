@@ -184,16 +184,18 @@ export async function createSquarePOSOrder(laneId: string) {
     let customerName: string | null = null;
     let customerDobStr: string | null = null;
     let membershipNumber: string | null = null;
+    let membershipValidUntil: Date | null = null;
 
     if (session.customer_id) {
-       const custResult = await tx.execute<{ square_customer_id: string | null, name: string | null, dob: string | null, membership_number: string | null }>(
-           sql`SELECT square_customer_id, name, dob, membership_number FROM customers WHERE id = ${session.customer_id}`
+       const custResult = await tx.execute<Record<string, unknown>>(
+           sql`SELECT square_customer_id, name, dob, membership_number, membership_valid_until FROM customers WHERE id = ${session.customer_id}`
        );
        if (custResult.rows.length > 0) {
-         squareCustomerId = custResult.rows[0].square_customer_id;
-         customerName = custResult.rows[0].name;
-         customerDobStr = custResult.rows[0].dob;
-         membershipNumber = custResult.rows[0].membership_number;
+         squareCustomerId = custResult.rows[0].square_customer_id as string | null;
+         customerName = custResult.rows[0].name as string | null;
+         customerDobStr = custResult.rows[0].dob as string | null;
+         membershipNumber = custResult.rows[0].membership_number as string | null;
+         membershipValidUntil = toDate(custResult.rows[0].membership_valid_until as string | null) || null;
        }
     }
 
@@ -214,33 +216,44 @@ export async function createSquarePOSOrder(laneId: string) {
 
         let noteText: string | undefined = undefined;
         
-        const requiresNote = row.name.includes('Room') || 
-                             row.name.includes('Locker') || 
-                             row.name.includes('Fee') || 
-                             row.name.includes('Lost Key') ||
-                             row.name.includes('Renewal');
-                             
+        const isRoomOrLocker = row.name.includes('Room') || row.name.includes('Locker');
+        const isMembership = row.name.includes('6 Month Membership') || row.name.includes('One Time Membership');
+        const requiresNote = isRoomOrLocker || isMembership || row.name.includes('Fee') || row.name.includes('Lost Key') || row.name.includes('Renewal');
         const isYouth = row.name.includes('Youth');
 
         if (requiresNote) {
            const noteParts: string[] = [];
            
-           if (resourceNumber) {
-             const typeStr = session.assigned_resource_type === 'locker' ? 'Locker' : 'Room';
-             noteParts.push(`${typeStr} ${resourceNumber}`);
-           }
            if (customerName) {
-             noteParts.push(customerName);
+             noteParts.push(`Customer Name: ${customerName}`);
            }
            if (customerDobStr) {
-             noteParts.push(customerDobStr);
+             const d = new Date(customerDobStr);
+             const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+             const dd = String(d.getUTCDate()).padStart(2, '0');
+             const yyyy = d.getUTCFullYear();
+             noteParts.push(`DOB: ${mm}/${dd}/${yyyy}`);
            }
-           if (membershipNumber && !isYouth) {
-             noteParts.push(`Mem: ${membershipNumber}`);
+           
+           if (isRoomOrLocker && resourceNumber) {
+             const typeStr = session.assigned_resource_type === 'locker' ? 'Locker' : 'Room';
+             noteParts.push(`${typeStr} #: ${resourceNumber}`);
+           }
+           
+           if (membershipNumber && (!isYouth || isMembership)) {
+             noteParts.push(`Member Number: ${membershipNumber}`);
+           }
+           
+           if (isMembership && row.name.includes('6 Month') && membershipValidUntil) {
+             const d = membershipValidUntil;
+             const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+             const dd = String(d.getUTCDate()).padStart(2, '0');
+             const yyyy = d.getUTCFullYear();
+             noteParts.push(`Expiration Date: ${mm}/${dd}/${yyyy}`);
            }
            
            if (noteParts.length > 0) {
-             noteText = noteParts.join(' | ');
+             noteText = noteParts.join('\n'); // Crucial: newline separator for clean Square UI reading
            }
         }
 
