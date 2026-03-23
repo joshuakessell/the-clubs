@@ -81,7 +81,7 @@ describe('Square Integration Tests', () => {
           {
             name: 'Locker Rental',
             amountCents: 200,
-            note: 'Locker 42 | John Doe | 1990-01-01 | Mem: MEMB-999',
+            note: 'Customer Name: John Doe\n DOB: 01/01/1990\n Locker #: 42\n Member Number: MEMB-999',
             catalogObjectId: 'F3NEPKN5IY7GV2ZSWTTJFMQS'
           },
           {
