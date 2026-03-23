@@ -261,8 +261,24 @@ async function resolveCustomerLedger(tx: DrizzleTx, customerId: string | null, m
       pastDueBlocked = pastDueBalance > 0 && !(pastDueBypassed || false);
       const mCardType = cust.membership_card_type as string | undefined;
       const mValidUntil = toDate(cust.membership_valid_until);
-      const hasMembership = !!membershipNumber || (mCardType === 'SIX_MONTH' && mValidUntil != null && new Date() <= mValidUntil);
-      if (mValidUntil) customerMembershipValidUntil = mValidUntil.toISOString().slice(0, 10);
+      
+      let isExpired = false;
+      // Normalizing to midnight to avoid timestamp drift and fractional-second failure
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (mValidUntil) {
+        const expDate = new Date(mValidUntil);
+        expDate.setHours(0, 0, 0, 0);
+        isExpired = expDate < today;
+        customerMembershipValidUntil = mValidUntil.toISOString().slice(0, 10);
+      }
+
+      // Explicit Check: Even if membershipNumber exists, they are a non-member if their explicit valid-until boundary has lapsed
+      const hasMembership = 
+        (!!membershipNumber && !isExpired) || 
+        (mCardType === 'SIX_MONTH' && mValidUntil != null && !isExpired);
+
       if (!hasMembership && computedMode === 'CHECKIN') {
         ledgerLineItems = [{ description: 'Membership Fee', amount: 13 }];
         ledgerTotal = 13;
