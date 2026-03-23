@@ -82,22 +82,49 @@ export function PaymentStep() {
 
       {!isPaid && (
         <div className="flex flex-col gap-3">
-          <button
-            disabled={loading}
-            onClick={handleSquareCheckout}
-            className="w-full rounded-lg border px-4 py-4 text-sm font-bold transition-colors shadow-sm"
-            style={{
-              borderColor: 'var(--color-accent-primary)',
-              color: 'var(--color-on-accent)',
-              backgroundColor: 'var(--color-accent-primary)'
-            }}
-          >
-            {loading ? 'Opening Square Checkout…' : 'Launch Square POS App'}
-          </button>
+          {totalDollars === 0 ? (
+            <button
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await sendFlowCommand({
+                    type: 'SET_STEP',
+                    payload: { step: 'PAYMENT', paymentMethod: 'CASH', splitCashAmount: 0, splitCreditAmount: 0 },
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="w-full rounded-lg border px-4 py-4 text-sm font-bold transition-colors shadow-sm"
+              style={{
+                borderColor: 'var(--color-status-success)',
+                color: 'white',
+                backgroundColor: 'var(--color-status-success)'
+              }}
+            >
+              {loading ? 'Processing…' : 'Complete (No Payment Due)'}
+            </button>
+          ) : (
+            <>
+              <button
+                disabled={loading}
+                onClick={handleSquareCheckout}
+                className="w-full rounded-lg border px-4 py-4 text-sm font-bold transition-colors shadow-sm"
+                style={{
+                  borderColor: 'var(--color-accent-primary)',
+                  color: 'var(--color-on-accent)',
+                  backgroundColor: 'var(--color-accent-primary)'
+                }}
+              >
+                {loading ? 'Opening Square Checkout…' : 'Launch Square POS App'}
+              </button>
 
-          <p className="text-center text-xs text-(--color-text-muted) px-4">
-            iPad will automatically switch to Square Point of Sale. After the swipe, it will instantly return here to finalize.
-          </p>
+              <p className="text-center text-xs text-(--color-text-muted) px-4">
+                iPad will automatically switch to Square Point of Sale. After the swipe, it will instantly return here to finalize.
+              </p>
+            </>
+          )}
         </div>
       )}
 
