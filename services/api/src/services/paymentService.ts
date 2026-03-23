@@ -6,7 +6,7 @@
  *
  * Migrated to Drizzle ORM — uses db.transaction() with tx.execute(sql).
  */
-import { db } from '../db';
+import { db, type DrizzleTx } from '../db';
 import { sql } from 'drizzle-orm';
 import { insertCustomerSpendLedgerEntryDrizzle } from '../ledger/customerSpendLedger';
 import { createSquareOrder } from './squareSyncService';
@@ -16,9 +16,9 @@ import {
   calculateRenewalQuote,
   type PricingInput,
 } from '../pricing/engine';
-import { type CustomerRow, type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../checkin/types';
+import { type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from '../checkin/types';
 import { buildFullSessionUpdatedPayload } from '../checkin/payload';
-import { toDate, toNumber } from '../checkin/utils';
+import { toDate } from '../checkin/utils';
 import { calculateAge } from '../checkin/identity';
 import { insertAuditLogDrizzle } from '../audit/auditLog';
 import { HttpError } from '../errors/HttpError';
@@ -28,7 +28,7 @@ import {
   ensureOrderWithReceipt,
   toDollars,
 } from '../money/orderAudit';
-import { type DrizzleTx } from '../db';
+
 
 
 
@@ -55,37 +55,22 @@ function parseOrderQuote(raw: unknown): {
   return isRecord(raw) ? raw : {};
 }
 
-// ── Service Methods ──
+// ── Helpers ──
 
-/**
- * Creates (or reuses) an OPEN order for a lane session's checkout.
- * Replaces the former createPaymentIntent function.
- */
-export async function createCheckoutOrder(laneId: string) {
-  return db.transaction(async (tx) => {
-    const sessionResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`
-    );
-    if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
-    const session = sessionResult.rows[0] as unknown as LaneSessionRow;
-
-    if (!session.selection_confirmed || !session.selection_locked_at) throw new HttpError(400, 'Selection must be confirmed/locked before creating payment intent');
-    if (!session.desired_rental_type && !session.backup_rental_type) throw new HttpError(400, 'No desired rental type set on session');
-
-    // Customer info for pricing
+async function getPricingQuote(tx: DrizzleTx, session: any) {
     let customerAge: number | undefined;
     let membershipCardType: 'NONE' | 'SIX_MONTH' | undefined;
     let membershipValidUntil: Date | undefined;
 
     if (session.customer_id) {
-      const customerResult = await tx.execute<Record<string, unknown>>(
+      const customerResult = await tx.execute(
         sql`SELECT dob, membership_card_type, membership_valid_until FROM customers WHERE id = ${session.customer_id}`
       );
       if (customerResult.rows.length > 0) {
-        const customer = customerResult.rows[0] as unknown as CustomerRow;
-        customerAge = calculateAge(customer.dob);
+        const customer = customerResult.rows[0];
+        customerAge = calculateAge(customer.dob as string | null);
         membershipCardType = (customer.membership_card_type as 'NONE' | 'SIX_MONTH') || undefined;
-        membershipValidUntil = toDate(customer.membership_valid_until) || undefined;
+        membershipValidUntil = toDate(customer.membership_valid_until as string | null) || undefined;
       }
     }
 
@@ -99,63 +84,87 @@ export async function createCheckoutOrder(laneId: string) {
       membershipCardType, membershipValidUntil,
       includeSixMonthMembershipPurchase: !!session.membership_purchase_intent,
     };
-    const quote = isRenewal ? calculateRenewalQuote({ ...pricingInput, renewalHours }) : calculatePriceQuote(pricingInput);
-    const quoteJson = JSON.stringify(quote);
-    const totalStr = quote.total.toString();
+    return isRenewal ? calculateRenewalQuote({ ...pricingInput, renewalHours }) : calculatePriceQuote(pricingInput);
+}
 
-    // Ensure at most one active OPEN order for this session
-    const openOrders = await tx.execute<Record<string, unknown>>(
-      sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE lane_session_id = ${session.id} AND status = 'OPEN' ORDER BY created_at DESC`
-    );
-    const openRows = openOrders.rows as unknown as OrderRow[];
-
-    let order: OrderRow;
-    if (openRows.length > 0) {
-      order = openRows[0]!;
-      if (openRows.length > 1) {
-        const extraIds = openRows.slice(1).map((r) => r.id);
-        await tx.execute(sql`UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id IN (${sql.join(extraIds.map(id => sql`${id}::uuid`), sql`, `)})`);
-      }
-      await tx.execute(sql`UPDATE orders SET total = ${totalStr}, subtotal = ${totalStr}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${order.id}`);
-    } else {
-      const orderResult = await tx.execute<Record<string, unknown>>(
-        sql`INSERT INTO orders (lane_session_id, customer_id, status, subtotal, discount, tax, total, quote_json)
-            VALUES (${session.id}, ${session.customer_id}, 'OPEN', ${totalStr}, '0', '0', ${totalStr}, ${quoteJson}::jsonb)
-            RETURNING ${sql.raw(ORDER_COLS)}`
-      );
-      order = orderResult.rows[0] as unknown as OrderRow;
+async function handleFlowCommands(tx: DrizzleTx, sessionId: string) {
+    if (isFlowCommandsEnabled()) {
+      const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `pay-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      await tx.execute(sql`
+        INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
+        VALUES (${sessionId}, ${commandId}, 'EMPLOYEE', 'SET_STEP', ${'{"step":"PAYMENT"}'}::jsonb)
+        ON CONFLICT (session_id, command_id) DO NOTHING
+      `);
+      await tx.execute(sql`UPDATE lane_sessions SET flow_step = 'PAYMENT', flow_version = COALESCE(flow_version, 0) + 1, flow_last_command_id = ${commandId}, flow_last_actor = 'EMPLOYEE', updated_at = NOW() WHERE id = ${sessionId}`);
     }
+}
 
-    // Map quote items to order line items (idempotent: delete existing first)
-    await tx.execute(sql`DELETE FROM order_line_items WHERE order_id = ${order.id}`);
+async function mapOrderLineItems(tx: DrizzleTx, orderId: string, quote: any, isRenewal: boolean, totalStr: string) {
+    await tx.execute(sql`DELETE FROM order_line_items WHERE order_id = ${orderId}`);
     const lineItemKind = isRenewal ? 'RENEWAL_FEE' : 'CHECKIN_FEE';
-    const quoteObj = typeof quote === 'object' && 'lineItems' in quote && Array.isArray((quote as any).lineItems)
-      ? (quote as any).lineItems as Array<{ description: string; amount: number }>
+    const quoteObj = typeof quote === 'object' && quote !== null && 'lineItems' in quote && Array.isArray(quote.lineItems)
+      ? quote.lineItems as Array<{ description: string; amount: number }>
       : [];
     if (quoteObj.length > 0) {
       for (const item of quoteObj) {
         const itemTotal = item.amount.toString();
         await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, total)
-          VALUES (${order.id}, ${lineItemKind}, ${item.description}, 1, ${itemTotal}, ${itemTotal})`);
+          VALUES (${orderId}, ${lineItemKind}, ${item.description}, 1, ${itemTotal}, ${itemTotal})`);
       }
     } else if (quote.total > 0) {
       await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, total)
-        VALUES (${order.id}, ${lineItemKind}, ${isRenewal ? 'Renewal fee' : 'Check-in fee'}, 1, ${totalStr}, ${totalStr})`);
+        VALUES (${orderId}, ${lineItemKind}, ${isRenewal ? 'Renewal fee' : 'Check-in fee'}, 1, ${totalStr}, ${totalStr})`);
+    }
+}
+
+/**
+ * Creates (or reuses) an OPEN order for a lane session's checkout.
+ * Replaces the former createPaymentIntent function.
+ */
+export async function createCheckoutOrder(laneId: string) {
+  return db.transaction(async (tx) => {
+    const sessionResult = await tx.execute<{ id: string, customer_id: string | null, checkin_mode: string | null, desired_rental_type: string | null, backup_rental_type: string | null, renewal_hours: number | null, membership_purchase_intent: boolean | null, selection_confirmed: boolean | null, selection_locked_at: Date | null }>(
+      sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT') ORDER BY created_at DESC LIMIT 1`
+    );
+    if (sessionResult.rows.length === 0) throw new HttpError(404, 'No active session found');
+    const session = sessionResult.rows[0];
+
+    if (!session.selection_confirmed || !session.selection_locked_at) throw new HttpError(400, 'Selection must be confirmed/locked before creating payment intent');
+    if (!session.desired_rental_type && !session.backup_rental_type) throw new HttpError(400, 'No desired rental type set on session');
+
+    const quote = await getPricingQuote(tx, session);
+    const quoteJson = JSON.stringify(quote);
+    const totalStr = quote.total.toString();
+
+    // Ensure at most one active OPEN order for this session
+    const openOrders = await tx.execute<{ id: string }>(
+      sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE lane_session_id = ${session.id} AND status = 'OPEN' ORDER BY created_at DESC`
+    );
+    const openRows = openOrders.rows;
+
+    let orderId: string;
+    if (openRows.length > 0) {
+      orderId = openRows[0].id;
+      if (openRows.length > 1) {
+        for (let i = 1; i < openRows.length; i++) {
+           await tx.execute(sql`UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id = ${openRows[i].id}::uuid`);
+        }
+      }
+      await tx.execute(sql`UPDATE orders SET total = ${totalStr}, subtotal = ${totalStr}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${orderId}`);
+    } else {
+      const orderResult = await tx.execute<{ id: string, total: string | number }>(
+        sql`INSERT INTO orders (lane_session_id, customer_id, status, subtotal, discount, tax, total, quote_json)
+            VALUES (${session.id}, ${session.customer_id}, 'OPEN', ${totalStr}, '0', '0', ${totalStr}, ${quoteJson}::jsonb)
+            RETURNING ${sql.raw(ORDER_COLS)}`
+      );
+      orderId = orderResult.rows[0].id;
     }
 
-    await tx.execute(sql`UPDATE lane_sessions SET order_id = ${order.id}, price_quote_json = ${quoteJson}::jsonb, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = ${session.id}`);
+    await mapOrderLineItems(tx, orderId, quote, session.checkin_mode === 'RENEWAL', totalStr);
+    await tx.execute(sql`UPDATE lane_sessions SET order_id = ${orderId}, price_quote_json = ${quoteJson}::jsonb, status = 'AWAITING_PAYMENT', updated_at = NOW() WHERE id = ${session.id}`);
+    await handleFlowCommands(tx, session.id);
 
-    if (isFlowCommandsEnabled()) {
-      const commandId = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `pay-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      await tx.execute(sql`
-        INSERT INTO lane_session_commands (session_id, command_id, actor, type, payload_json)
-        VALUES (${session.id}, ${commandId}, 'EMPLOYEE', 'SET_STEP', ${'{"step":"PAYMENT"}'}::jsonb)
-        ON CONFLICT (session_id, command_id) DO NOTHING
-      `);
-      await tx.execute(sql`UPDATE lane_sessions SET flow_step = 'PAYMENT', flow_version = COALESCE(flow_version, 0) + 1, flow_last_command_id = ${commandId}, flow_last_actor = 'EMPLOYEE', updated_at = NOW() WHERE id = ${session.id}`);
-    }
-
-    return { sessionId: session.id, orderId: order.id, amount: toNumber(order.total), quote };
+    return { sessionId: session.id, orderId: orderId, amount: quote.total, quote };
   });
 }
 
@@ -263,75 +272,136 @@ export interface MarkPaidInput {
   tip?: number;
 }
 
+const resolveOrderContext = async (tx: DrizzleTx, orderRow: any, quote: any) => {
+  let customerId: string | null = null;
+  if (orderRow.lane_session_id) {
+    const lsResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, customer_id FROM lane_sessions WHERE id = ${orderRow.lane_session_id}`);
+    customerId = (lsResult.rows[0] as any)?.customer_id ?? null;
+  } else if (quote.type === 'UPGRADE' && quote.waitlistId) {
+    const wlc = await tx.execute<Record<string, unknown>>(sql`SELECT v.customer_id FROM waitlist w JOIN visits v ON v.id = w.visit_id WHERE w.id = ${quote.waitlistId}`);
+    customerId = (wlc.rows[0] as any)?.customer_id ?? null;
+  } else if (quote.type === 'FINAL_EXTENSION' && quote.visitId) {
+    const vc = await tx.execute<Record<string, unknown>>(sql`SELECT customer_id FROM visits WHERE id = ${quote.visitId}`);
+    customerId = (vc.rows[0] as any)?.customer_id ?? null;
+  }
+  let registerSessionId: string | null = null;
+  if (orderRow.register_number) {
+    const rs = await tx.execute<Record<string, unknown>>(sql`SELECT id FROM register_sessions WHERE register_number = ${orderRow.register_number} AND (signed_out_at IS NULL OR signed_out_at >= NOW()) ORDER BY created_at DESC LIMIT 1`);
+    registerSessionId = (rs.rows[0] as any)?.id ?? null;
+  }
+  return { customerId, registerSessionId };
+};
+
+const ensureAuditTrail = async (tx: DrizzleTx, input: MarkPaidInput, orderRow: any, quote: any) => {
+  const amount = toDollars(orderRow.total);
+  const lineItems = buildLineItemsFromQuote(orderRow.quote_json, amount);
+  const totals = computeOrderTotals(lineItems.items, amount, orderRow.tip ?? 0);
+  const { customerId, registerSessionId } = await resolveOrderContext(tx, orderRow, quote);
+  await ensureOrderWithReceipt(tx, {
+    dedupeKey: { field: 'orderId', value: orderRow.id },
+    customerId, registerSessionId, createdByStaffId: input.staffId, totals,
+    lineItems: lineItems.items,
+    metadata: { orderId: orderRow.id, paymentType: quote.type ?? null, paymentMethod: orderRow.payment_method ?? null, registerNumber: orderRow.register_number ?? null },
+    tender: { orderId: orderRow.id, paymentMethod: orderRow.payment_method ?? null, amount: amount ?? null, tip: orderRow.tip ?? 0, registerNumber: orderRow.register_number ?? null, providerPaymentId: orderRow.square_transaction_id ?? input.squareTransactionId ?? null },
+  });
+};
+
+const processLedgerEntries = async (tx: DrizzleTx, paidOrder: any, session: any, input: MarkPaidInput, parsedQuote: any) => {
+  const visitRow = await tx.execute<Record<string, unknown>>(
+    sql`SELECT visit_id FROM checkin_blocks WHERE session_id = ${session.id} ORDER BY created_at DESC LIMIT 1`
+  );
+  const visitId = (visitRow.rows[0] as any)?.visit_id ?? null;
+  const amount = toDollars(paidOrder.total) ?? 0;
+  
+  const quoteObj = typeof paidOrder.quote_json === 'string'
+    ? JSON.parse(paidOrder.quote_json)
+    : paidOrder.quote_json;
+  const lineItems: Array<{ description: string; amount: number }> =
+    Array.isArray(quoteObj?.lineItems) ? quoteObj.lineItems : [];
+
+  if (lineItems.length > 0) {
+    for (const item of lineItems) {
+      await insertCustomerSpendLedgerEntryDrizzle(tx, {
+        customerId: session.customer_id, visitId, entryType: 'CHECKIN_CHARGE',
+        amount: typeof item.amount === 'number' ? item.amount : 0,
+        sourceApp: 'EMPLOYEE_REGISTER', actorType: 'STAFF', actorStaffId: input.staffId,
+        summary: item.description ?? 'Check-in charge',
+        dedupeKey: `LEDGER:CHECKIN:${paidOrder.id}:${item.description}`,
+      });
+    }
+  } else if (amount > 0) {
+    await insertCustomerSpendLedgerEntryDrizzle(tx, {
+      customerId: session.customer_id, visitId, entryType: 'CHECKIN_CHARGE', amount,
+      sourceApp: 'EMPLOYEE_REGISTER', actorType: 'STAFF', actorStaffId: input.staffId,
+      summary: `Check-in payment (${parsedQuote.type ?? 'standard'})`,
+      dedupeKey: `LEDGER:CHECKIN:${paidOrder.id}`,
+    });
+  }
+};
+
+const handleAlreadyPaidOrder = async (tx: DrizzleTx, input: MarkPaidInput, order: any, quote: any) => {
+  if (!order.paid_by_staff_id) {
+    await tx.execute(sql`UPDATE orders SET paid_by_staff_id = ${input.staffId} WHERE id = ${order.id} AND paid_by_staff_id IS NULL`);
+  }
+  const extId = input.squareTransactionId || order.square_transaction_id;
+  if (extId) {
+    await tx.execute(sql`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id) VALUES ('square', 'payment', ${order.id}, ${extId}) ON CONFLICT DO NOTHING`);
+  }
+  await ensureAuditTrail(tx, input, order, quote);
+  return { orderId: order.id, status: 'PAID' as const, alreadyPaid: true, laneSessionToBroadcast: null as null | { sessionId: string; laneId: string } };
+};
+
+const handlePaidOrderEffects = async (tx: DrizzleTx, input: MarkPaidInput, paidOrder: any, quote: any) => {
+  if (quote.type === 'UPGRADE' && quote.waitlistId) {
+    await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'UPGRADE_PAID', entityType: 'order', entityId: paidOrder.id, oldValue: { status: 'OPEN' }, newValue: { status: 'PAID', waitlistId: quote.waitlistId } });
+  } else if (quote.type === 'FINAL_EXTENSION' && quote.visitId && quote.blockId) {
+    await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'FINAL_EXTENSION_PAID', entityType: 'order', entityId: paidOrder.id, oldValue: { status: 'OPEN' }, newValue: { status: 'PAID', visitId: quote.visitId, blockId: quote.blockId } });
+    await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'FINAL_EXTENSION_COMPLETED', entityType: 'visit', entityId: quote.visitId, oldValue: { orderId: paidOrder.id, status: 'OPEN' }, newValue: { orderId: paidOrder.id, status: 'PAID', blockId: quote.blockId } });
+  } else {
+    const sessionResult = await tx.execute<Record<string, unknown>>(sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE order_id = ${paidOrder.id}`);
+    if (sessionResult.rows.length > 0) {
+      const session = sessionResult.rows[0] as unknown as LaneSessionRow;
+      await tx.execute(sql`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = ${session.id}`);
+      await ensureAuditTrail(tx, input, paidOrder, quote);
+
+      if (session.customer_id) {
+        await processLedgerEntries(tx, paidOrder, session, input, quote);
+      }
+
+      return { orderId: paidOrder.id, status: 'PAID' as const, laneSessionToBroadcast: { sessionId: session.id, laneId: session.lane_id } };
+    }
+  }
+
+  await ensureAuditTrail(tx, input, paidOrder, quote);
+  return { orderId: paidOrder.id, status: 'PAID' as const, laneSessionToBroadcast: null as null | { sessionId: string; laneId: string } };
+};
+
 export async function markOrderPaid(input: MarkPaidInput) {
   const orderId = input.orderId;
-  const resolvedPaymentMethod = input.paymentMethod === 'CASH' || input.paymentMethod === 'CREDIT'
-    ? input.paymentMethod
-    : input.squareTransactionId ? 'CREDIT' : undefined;
+  
+  let resolvedPaymentMethod = input.paymentMethod;
+  if (input.paymentMethod !== 'CASH' && input.paymentMethod !== 'CREDIT') {
+    resolvedPaymentMethod = input.squareTransactionId ? 'CREDIT' : undefined;
+  }
+  
   const resolvedRegisterNumber = typeof input.registerNumber === 'number' && Number.isFinite(input.registerNumber) ? Math.trunc(input.registerNumber) : undefined;
   const resolvedTip = typeof input.tip === 'number' && Number.isFinite(input.tip) ? Math.trunc(input.tip) : undefined;
 
   return db.transaction(async (tx) => {
-    const orderResult = await tx.execute<Record<string, unknown>>(
-      sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${orderId}`
-    );
+    const orderResult = await tx.execute<Record<string, unknown>>(sql`SELECT ${sql.raw(ORDER_COLS)} FROM orders WHERE id = ${orderId}`);
     if (orderResult.rows.length === 0) throw new HttpError(404, 'Order not found');
+    
     const order = orderResult.rows[0] as unknown as OrderRow & {
       payment_method?: string | null; register_number?: number | null;
       square_transaction_id?: string | null; paid_at?: Date | null;
       lane_session_id?: string | null; tip?: number | null; paid_by_staff_id?: string | null;
     };
 
-    const queryable = tx;
-
-    const resolveOrderContext = async (orderRow: typeof order, quote: { type?: string; waitlistId?: string; visitId?: string; blockId?: string }) => {
-      let customerId: string | null = null;
-      if (orderRow.lane_session_id) {
-        const lsResult = await tx.execute<{ id: string; customer_id: string | null }>(sql`SELECT id, customer_id FROM lane_sessions WHERE id = ${orderRow.lane_session_id}`);
-        customerId = lsResult.rows[0]?.customer_id ?? null;
-      } else if (quote.type === 'UPGRADE' && quote.waitlistId) {
-        const wlc = await tx.execute<{ customer_id: string | null }>(sql`SELECT v.customer_id FROM waitlist w JOIN visits v ON v.id = w.visit_id WHERE w.id = ${quote.waitlistId}`);
-        customerId = wlc.rows[0]?.customer_id ?? null;
-      } else if (quote.type === 'FINAL_EXTENSION' && quote.visitId) {
-        const vc = await tx.execute<{ customer_id: string | null }>(sql`SELECT customer_id FROM visits WHERE id = ${quote.visitId}`);
-        customerId = vc.rows[0]?.customer_id ?? null;
-      }
-      let registerSessionId: string | null = null;
-      if (orderRow.register_number) {
-        const rs = await tx.execute<{ id: string }>(sql`SELECT id FROM register_sessions WHERE register_number = ${orderRow.register_number} AND (signed_out_at IS NULL OR signed_out_at >= NOW()) ORDER BY created_at DESC LIMIT 1`);
-        registerSessionId = rs.rows[0]?.id ?? null;
-      }
-      return { customerId, registerSessionId };
-    };
-
-    const ensureAuditTrail = async (orderRow: typeof order, quote: { type?: string; waitlistId?: string; visitId?: string; blockId?: string }) => {
-      const amount = toDollars(orderRow.total);
-      const lineItems = buildLineItemsFromQuote(orderRow.quote_json, amount);
-      const totals = computeOrderTotals(lineItems.items, amount, orderRow.tip ?? 0);
-      const { customerId, registerSessionId } = await resolveOrderContext(orderRow, quote);
-      await ensureOrderWithReceipt(queryable, {
-        dedupeKey: { field: 'orderId', value: orderRow.id },
-        customerId, registerSessionId, createdByStaffId: input.staffId, totals,
-        lineItems: lineItems.items,
-        metadata: { orderId: orderRow.id, paymentType: quote.type ?? null, paymentMethod: orderRow.payment_method ?? null, registerNumber: orderRow.register_number ?? null },
-        tender: { orderId: orderRow.id, paymentMethod: orderRow.payment_method ?? null, amount: amount ?? null, tip: orderRow.tip ?? 0, registerNumber: orderRow.register_number ?? null, providerPaymentId: orderRow.square_transaction_id ?? input.squareTransactionId ?? null },
-      });
-    };
-
     if (order.status === 'PAID') {
-      if (!order.paid_by_staff_id) {
-        await tx.execute(sql`UPDATE orders SET paid_by_staff_id = ${input.staffId} WHERE id = ${order.id} AND paid_by_staff_id IS NULL`);
-      }
       const quote = parseOrderQuote(order.quote_json);
-      if (input.squareTransactionId || order.square_transaction_id) {
-        const extId = input.squareTransactionId || order.square_transaction_id;
-        await tx.execute(sql`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id) VALUES ('square', 'payment', ${order.id}, ${extId}) ON CONFLICT DO NOTHING`);
-      }
-      await ensureAuditTrail(order, quote);
-      return { orderId: order.id, status: 'PAID' as const, alreadyPaid: true, laneSessionToBroadcast: null as null | { sessionId: string; laneId: string } };
+      return handleAlreadyPaidOrder(tx, input, order, quote);
     }
 
-    // Mark as paid
     const updatedOrder = await tx.execute<Record<string, unknown>>(
       sql`UPDATE orders SET status = 'PAID', paid_at = NOW(),
        square_transaction_id = COALESCE(${input.squareTransactionId || null}, square_transaction_id),
@@ -343,77 +413,13 @@ export async function markOrderPaid(input: MarkPaidInput) {
     );
     const paidOrder = updatedOrder.rows[0] as unknown as typeof order;
 
-    if (input.squareTransactionId || paidOrder.square_transaction_id) {
-      const extId = input.squareTransactionId || paidOrder.square_transaction_id;
-      await tx.execute(sql`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id) VALUES ('square', 'payment', ${paidOrder.id}, ${extId}) ON CONFLICT DO NOTHING`);
+    const paidExtId = input.squareTransactionId || paidOrder.square_transaction_id;
+    if (paidExtId) {
+      await tx.execute(sql`INSERT INTO external_provider_refs (provider, entity_type, internal_id, external_id) VALUES ('square', 'payment', ${paidOrder.id}, ${paidExtId}) ON CONFLICT DO NOTHING`);
     }
 
     const quote = parseOrderQuote(paidOrder.quote_json);
-    const paymentType = quote.type;
-
-    if (paymentType === 'UPGRADE' && quote.waitlistId) {
-      await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'UPGRADE_PAID', entityType: 'order', entityId: orderId, oldValue: { status: 'OPEN' }, newValue: { status: 'PAID', waitlistId: quote.waitlistId } });
-    } else if (paymentType === 'FINAL_EXTENSION' && quote.visitId && quote.blockId) {
-      await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'FINAL_EXTENSION_PAID', entityType: 'order', entityId: orderId, oldValue: { status: 'OPEN' }, newValue: { status: 'PAID', visitId: quote.visitId, blockId: quote.blockId } });
-      await insertAuditLogDrizzle(tx, { staffId: input.staffId, action: 'FINAL_EXTENSION_COMPLETED', entityType: 'visit', entityId: quote.visitId, oldValue: { orderId, status: 'OPEN' }, newValue: { orderId, status: 'PAID', blockId: quote.blockId } });
-    } else {
-      const sessionResult = await tx.execute<Record<string, unknown>>(
-        sql`SELECT ${sql.raw(LANE_SESSION_COLS)} FROM lane_sessions WHERE order_id = ${paidOrder.id}`
-      );
-      if (sessionResult.rows.length > 0) {
-        const session = sessionResult.rows[0] as unknown as LaneSessionRow;
-        await tx.execute(sql`UPDATE lane_sessions SET status = 'AWAITING_SIGNATURE', updated_at = NOW() WHERE id = ${session.id}`);
-        await ensureAuditTrail(paidOrder, quote);
-
-        // ── Write spend ledger entries so ChargesTab can show visit charges ──
-        if (session.customer_id) {
-          const visitRow = await tx.execute<{ visit_id: string }>(
-            sql`SELECT visit_id FROM checkin_blocks WHERE session_id = ${session.id} ORDER BY created_at DESC LIMIT 1`
-          );
-          const visitId = visitRow.rows[0]?.visit_id ?? null;
-          const amount = toDollars(paidOrder.total) ?? 0;
-          const parsedQuote = parseOrderQuote(paidOrder.quote_json);
-          const quoteObj = typeof paidOrder.quote_json === 'string'
-            ? JSON.parse(paidOrder.quote_json)
-            : paidOrder.quote_json;
-          const lineItems: Array<{ description: string; amount: number }> =
-            Array.isArray(quoteObj?.lineItems) ? quoteObj.lineItems : [];
-
-          if (lineItems.length > 0) {
-            for (const item of lineItems) {
-              await insertCustomerSpendLedgerEntryDrizzle(tx, {
-                customerId: session.customer_id,
-                visitId,
-                entryType: 'CHECKIN_CHARGE',
-                amount: typeof item.amount === 'number' ? item.amount : 0,
-                sourceApp: 'EMPLOYEE_REGISTER',
-                actorType: 'STAFF',
-                actorStaffId: input.staffId,
-                summary: item.description ?? 'Check-in charge',
-                dedupeKey: `LEDGER:CHECKIN:${paidOrder.id}:${item.description}`,
-              });
-            }
-          } else if (amount > 0) {
-            await insertCustomerSpendLedgerEntryDrizzle(tx, {
-              customerId: session.customer_id,
-              visitId,
-              entryType: 'CHECKIN_CHARGE',
-              amount,
-              sourceApp: 'EMPLOYEE_REGISTER',
-              actorType: 'STAFF',
-              actorStaffId: input.staffId,
-              summary: `Check-in payment (${parsedQuote.type ?? 'standard'})`,
-              dedupeKey: `LEDGER:CHECKIN:${paidOrder.id}`,
-            });
-          }
-        }
-
-        return { orderId: paidOrder.id, status: 'PAID' as const, laneSessionToBroadcast: { sessionId: session.id, laneId: session.lane_id } };
-      }
-    }
-
-    await ensureAuditTrail(paidOrder, quote);
-    return { orderId: paidOrder.id, status: 'PAID' as const, laneSessionToBroadcast: null as null | { sessionId: string; laneId: string } };
+    return handlePaidOrderEffects(tx, input, paidOrder, quote);
   });
 }
 

@@ -572,6 +572,7 @@ CREATE TABLE public.cleaning_events (
 
 CREATE TABLE public.customers (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+    square_customer_id text,
     name character varying(255) NOT NULL,
     dob date,
     membership_number character varying(50),
