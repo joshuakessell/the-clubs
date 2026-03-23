@@ -108,11 +108,11 @@ async function mapOrderLineItems(tx: DrizzleTx, orderId: string, quote: any, isR
     if (quoteObj.length > 0) {
       for (const item of quoteObj) {
         const itemTotal = item.amount.toString();
-        await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price_cents, total_cents)
+        await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, total)
           VALUES (${orderId}, ${lineItemKind}, ${item.description}, 1, ${itemTotal}, ${itemTotal})`);
       }
     } else if (quote.total > 0) {
-      await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price_cents, total_cents)
+      await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, total)
         VALUES (${orderId}, ${lineItemKind}, ${isRenewal ? 'Renewal fee' : 'Check-in fee'}, 1, ${totalStr}, ${totalStr})`);
     }
 }
@@ -144,20 +144,21 @@ export async function createCheckoutOrder(laneId: string) {
 
     let orderId: string;
     if (openRows.length > 0) {
-      orderId = openRows[0].id;
       if (openRows.length > 1) {
         for (let i = 1; i < openRows.length; i++) {
            await tx.execute(sql`UPDATE orders SET status = 'CANCELED', updated_at = NOW() WHERE id = ${openRows[i].id}::uuid`);
         }
       }
-      await tx.execute(sql`UPDATE orders SET total = ${totalStr}, subtotal = ${totalStr}, quote_json = ${quoteJson}::jsonb, updated_at = NOW() WHERE id = ${orderId}`);
-    } else {
-      const orderResult = await tx.execute<{ id: string, total: string | number }>(
-        sql`INSERT INTO orders (lane_session_id, customer_id, status, subtotal, discount, tax, total, quote_json)
-            VALUES (${session.id}, ${session.customer_id}, 'OPEN', ${totalStr}, '0', '0', ${totalStr}, ${quoteJson}::jsonb)
-            RETURNING ${sql.raw(ORDER_COLS)}`
+      const updatedOrder = await tx.execute<{ id: string }>(
+        sql`UPDATE orders SET subtotal = ${totalStr}, discount = '0', tax = '0', total = ${totalStr}, quote_json = ${quoteJson}::jsonb WHERE id = ${openRows[0].id} RETURNING id`
       );
-      orderId = orderResult.rows[0].id;
+      orderId = updatedOrder.rows[0].id;
+    } else {
+      const newOrder = await tx.execute<{ id: string }>(
+        sql`INSERT INTO orders (lane_session_id, customer_id, status, subtotal, discount, tax, total, quote_json)
+          VALUES (${session.id}, ${session.customer_id}, 'OPEN', ${totalStr}, '0', '0', ${totalStr}, ${quoteJson}::jsonb) RETURNING id`
+      );
+      orderId = newOrder.rows[0].id;
     }
 
     await mapOrderLineItems(tx, orderId, quote, session.checkin_mode === 'RENEWAL', totalStr);
