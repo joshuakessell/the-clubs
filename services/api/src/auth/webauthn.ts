@@ -3,7 +3,7 @@ import { eq, isNull, gt, lt, and, sql, desc } from 'drizzle-orm';
 import {
   webauthnChallenges,
   staffWebauthnCredentials,
-} from '../db/schema/schema';
+} from '../db/schema/index';
 import type { AuthenticatorDevice, AuthenticatorTransportFuture } from '@simplewebauthn/types';
 import crypto from 'node:crypto';
 

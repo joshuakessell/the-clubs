@@ -814,7 +814,7 @@ export function registerCheckinFlowCommandRoutes(fastify: FastifyInstance): void
         const result = await executeFlowCommandTransaction(
           laneId,
           parsed.data,
-          request.staff ? { staffId: request.staff.staffId, name: request.staff.name } : undefined
+          request.staff ? { staffId: request.staff!.staffId, name: request.staff!.name } : undefined
         );
 
         // buildFullSessionUpdatedPayload is already Drizzle-native

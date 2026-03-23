@@ -1,6 +1,6 @@
 import type { DrizzleTx } from '../db';
 import { eq } from 'drizzle-orm';
-import { laneFeatureFlags } from '../db/schema/schema';
+import { laneFeatureFlags } from '../db/schema/index';
 
 export type LaneFeatureFlags = {
   lockstepV2Enabled: boolean;

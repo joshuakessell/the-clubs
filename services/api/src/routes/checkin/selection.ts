@@ -186,7 +186,6 @@ export function registerCheckinSelectionRoutes(fastify: FastifyInstance): void {
       waitlistRequestedResourceType?: 'room' | 'locker';
     };
   }>('/v1/checkin/lane/:laneId/select-rental', { preHandler: [requireAuth] }, async (request, reply) => {
-    if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const { laneId } = request.params;
 
     try {

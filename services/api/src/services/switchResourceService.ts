@@ -6,7 +6,7 @@ import { getRoomTierFromNumber } from '@the-clubs/shared';
 import { insertAuditLogDrizzle } from '../audit/auditLog';
 import { db } from '../db';
 import { eq, and, desc } from 'drizzle-orm';
-import { visits, checkinBlocks, inventoryResources, orders, orderLineItems } from '../db/schema/schema';
+import { visits, checkinBlocks, inventoryResources, orders, orderLineItems } from '../db/schema/index';
 import { getUpgradeFee, type RentalType } from '../pricing/engine';
 import { insertCustomerActivityEventDrizzle } from '../activity/customerActivityLog';
 import { HttpError } from '../errors/HttpError';

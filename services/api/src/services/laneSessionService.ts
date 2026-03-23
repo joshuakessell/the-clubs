@@ -5,6 +5,13 @@
  *
  * Migrated to Drizzle ORM — uses db.execute(sql) and db.transaction().
  */
+
+import { resolveActiveSession, validateAndLockResource, recordResourceSelection } from '../checkin/sessionHelpers';
+import { computeWaitlistInfo, getRoomTier } from '../checkin/waitlist';
+import { insertAuditLogDrizzle } from '../audit/auditLog';
+import type { DrizzleTx } from '../db';
+import type { AssignmentCreatedPayload, AssignmentFailedPayload, CustomerConfirmationRequiredPayload } from '@the-clubs/shared';
+
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import {
@@ -378,4 +385,147 @@ export async function getLaneSessionSnapshot(laneId: string) {
   if (!sessionId) return { session: null as null | unknown };
   const { payload } = await buildFullSessionUpdatedPayload(sessionId);
   return { session: payload };
+}
+
+function toQueryable(tx: DrizzleTx) {
+  return {
+    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
+      const values = params ?? [];
+      let built = sql.empty();
+      const regex = /\$(\d+)/g;
+      let lastIndex = 0;
+      for (const match of queryText.matchAll(regex)) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
+        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        built = sql`${built}${values[paramIndex]}`;
+        lastIndex = match.index! + match[0].length;
+      }
+      if (lastIndex < queryText.length) {
+        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
+      }
+      const result = await tx.execute(built);
+      return { rows: result.rows as T[] };
+    },
+  };
+}
+
+export async function getLaneWaitlistInfo(laneId: string, desiredTier: string, currentTier?: string) {
+  return db.transaction(async (tx) => {
+    const qClient = toQueryable(tx);
+    await resolveActiveSession(qClient, laneId, {
+      statuses: `'ACTIVE', 'AWAITING_ASSIGNMENT'`,
+    });
+
+    const { position, estimatedReadyAt } = await computeWaitlistInfo(qClient, desiredTier);
+
+    let upgradeFee: number | null = null;
+    if (currentTier) {
+      const { getUpgradeFee } = await import('../pricing/engine');
+      upgradeFee = getUpgradeFee(currentTier as import('../pricing/engine').RentalType, desiredTier as import('../pricing/engine').RentalType) || null;
+    }
+
+    return { position, estimatedReadyAt: estimatedReadyAt ? estimatedReadyAt.toISOString() : null, upgradeFee };
+  });
+}
+
+export async function assignResourceToLane(
+  laneId: string,
+  resourceType: 'room' | 'locker',
+  resourceId: string,
+  staff: StaffContext,
+  broadcaster?: any
+) {
+  try {
+    const result = await db.transaction(async (tx) => {
+      const qClient = toQueryable(tx);
+
+      const session = await resolveActiveSession(qClient, laneId, {
+        statuses: `'ACTIVE', 'AWAITING_ASSIGNMENT', 'AWAITING_PAYMENT', 'AWAITING_SIGNATURE'`,
+      });
+
+      const { resourceRow } = await validateAndLockResource(qClient, {
+        resourceType,
+        resourceId,
+        sessionId: session.id,
+      });
+
+      let needsConfirmation = false;
+      let roomTier: string | undefined;
+      if (resourceType === 'room') {
+        roomTier = getRoomTier(resourceRow.number);
+        const desiredType = session.desired_rental_type || session.backup_rental_type;
+        needsConfirmation = !!(desiredType && roomTier !== desiredType);
+      }
+
+      await recordResourceSelection(qClient, { sessionId: session.id, resourceType, resourceId });
+
+      await insertAuditLogDrizzle(tx, {
+        staffId: staff.staffId,
+        action: 'ASSIGN',
+        entityType: resourceType,
+        entityId: resourceId,
+        oldValue: { assigned_to_customer_id: null },
+        newValue: { selected_for_session_id: session.id },
+      });
+
+      if (broadcaster) {
+        const assignmentPayload: AssignmentCreatedPayload = {
+          sessionId: session.id,
+          resourceId,
+          resourceNumber: resourceRow.number,
+          rentalType: resourceType === 'locker' ? 'LOCKER' : roomTier!,
+        };
+        broadcaster.broadcastAssignmentCreated(assignmentPayload, laneId);
+
+        if (needsConfirmation && resourceType === 'room') {
+          const desiredType = session.desired_rental_type || session.backup_rental_type;
+          if (desiredType) {
+            const confirmationPayload: CustomerConfirmationRequiredPayload = {
+              sessionId: session.id,
+              requestedType: desiredType,
+              selectedType: roomTier!,
+              selectedNumber: resourceRow.number,
+            };
+            broadcaster.broadcastCustomerConfirmationRequired(confirmationPayload, laneId);
+          }
+        }
+      }
+
+      return {
+        sessionId: session.id,
+        success: true,
+        resourceType,
+        resourceId,
+        ...(resourceType === 'room'
+          ? { roomNumber: resourceRow.number, needsConfirmation }
+          : { lockerNumber: resourceRow.number }),
+      };
+    }, { isolationLevel: 'serializable' });
+
+    if (broadcaster) {
+      const { payload } = await buildFullSessionUpdatedPayload(result.sessionId);
+      broadcaster.broadcastSessionUpdated(payload, laneId);
+    }
+
+    return result;
+  } catch (error: unknown) {
+    const httpErr = error as any;
+    if (httpErr?.statusCode === 409 && broadcaster) {
+      try {
+        const sessionResult = await db.execute<{ id: string }>(
+          sql`SELECT id FROM lane_sessions WHERE lane_id = ${laneId} AND status IN ('ACTIVE', 'AWAITING_ASSIGNMENT') ORDER BY created_at DESC LIMIT 1`
+        );
+        if (sessionResult.rows.length > 0) {
+          const failedPayload: AssignmentFailedPayload = {
+            sessionId: sessionResult.rows[0]!.id,
+            reason: httpErr.message ?? 'Resource already assigned',
+            requestedResourceId: resourceId,
+          };
+          broadcaster.broadcastAssignmentFailed(failedPayload, laneId);
+        }
+      } catch { /* ignore */ }
+      throw Object.assign(error as object, { raceLost: true });
+    }
+    throw error;
+  }
 }

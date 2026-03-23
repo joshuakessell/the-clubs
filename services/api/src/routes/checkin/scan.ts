@@ -44,8 +44,6 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
    * POST /v1/checkin/scan — Server-side scan normalization and customer matching.
    */
   fastify.post('/v1/checkin/scan', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
-    if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
     const parsed = CheckinScanBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
@@ -81,8 +79,6 @@ export function registerCheckinScanRoutes(fastify: FastifyInstance): void {
     '/v1/checkin/lane/:laneId/scan-id',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       const parsed = IdScanPayloadSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });

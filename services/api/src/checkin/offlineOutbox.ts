@@ -1,5 +1,5 @@
 import type { DrizzleTx } from '../db';
-import { offlineCommandOutbox } from '../db/schema/schema';
+import { offlineCommandOutbox } from '../db/schema/index';
 
 export async function writeOfflineOutboxRecord(
   tx: DrizzleTx,

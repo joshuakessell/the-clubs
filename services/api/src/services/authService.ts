@@ -1,5 +1,5 @@
 import { getDb } from '../db';
-import { staff, staffSessions, timeclockSessions } from '../db/schema/schema';
+import { staff, staffSessions, timeclockSessions } from '../db/schema/index';
 import { eq, and, isNull } from 'drizzle-orm';
 import { verifyPin, generateSessionToken, getSessionExpiry, hashSessionToken } from '../auth/utils';
 import { insertAuditLogDrizzle } from '../audit/auditLog';

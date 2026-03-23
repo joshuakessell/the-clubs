@@ -19,10 +19,6 @@ export function registerCheckinResetRoutes(fastify: FastifyInstance): void {
     '/v1/checkin/lane/:laneId/reset',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.staff) {
-        return reply.status(401).send({ error: 'Unauthorized' });
-      }
-
       const { laneId } = request.params;
       const isCancelled = !!(request.body)?.cancelled;
 

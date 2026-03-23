@@ -1,5 +1,5 @@
 import { type DrizzleTx } from '../db';
-import { customers } from '../db/schema/schema';
+import { customers } from '../db/schema/index';
 import { sql, eq } from 'drizzle-orm';
 
 /**

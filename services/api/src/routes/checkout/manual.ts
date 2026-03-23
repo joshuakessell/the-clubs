@@ -20,8 +20,6 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
     '/v1/checkout/manual-candidates',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       try {
         const candidates = await listManualCandidates();
         return reply.send({ candidates });
@@ -39,7 +37,6 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
     '/v1/checkout/renewal-eligibility',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const { occupancyId } = request.query;
       if (!occupancyId) return reply.status(400).send({ error: 'occupancyId is required' });
       try {
@@ -68,8 +65,6 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
     '/v1/checkout/manual-resolve',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       const body = request.body as z.infer<typeof ManualResolveSchema>;
 
       try {
@@ -96,8 +91,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
     '/v1/checkout/manual-complete',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-      const staffId = request.staff.staffId;
+      const staffId = request.staff!.staffId;
 
       const body = request.body as z.infer<typeof ManualCompleteSchema>;
 
@@ -106,7 +100,7 @@ export function registerCheckoutManualRoutes(fastify: FastifyInstance): void {
           body.occupancyId,
           body.payAtCheckout,
           body.paymentMethod,
-          { staffId, staffName: request.staff.name }
+          { staffId, staffName: request.staff!.name }
         );
 
         // Broadcast inventory updates

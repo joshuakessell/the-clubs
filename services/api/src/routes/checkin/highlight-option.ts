@@ -26,7 +26,6 @@ export function registerCheckinHighlightRoutes(fastify: FastifyInstance): void {
     '/v1/checkin/lane/:laneId/highlight-option',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const { laneId } = request.params;
 
       const parsed = HighlightOptionSchema.safeParse(request.body);

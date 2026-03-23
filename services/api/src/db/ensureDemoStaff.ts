@@ -7,7 +7,7 @@
 import { db } from './index';
 import { sql, notInArray } from 'drizzle-orm';
 import { hashQrToken, hashPin } from '../auth/utils';
-import { staff as staffTable } from './schema/schema';
+import { staff as staffTable } from './schema/index';
 
 const DEMO_STAFF = [
   { name: 'John Erikson',    role: 'STAFF', qrToken: 'STAFF-001', pin: '000000' },

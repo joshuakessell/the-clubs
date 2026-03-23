@@ -30,8 +30,6 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
     '/v1/checkin/lane/:laneId/add-retail-items',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       const { laneId } = request.params;
 
       const body = request.body as z.infer<typeof AddRetailItemsSchema>;
@@ -46,7 +44,7 @@ export function registerRetailLedgerRoutes(fastify: FastifyInstance): void {
             customerId: session.customer_id,
             metadataJson: { laneSessionId: session.id, laneId, addedToLedger: true },
           },
-          request.staff.staffId
+          request.staff!.staffId
         );
 
         // Add line items

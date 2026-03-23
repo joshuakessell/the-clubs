@@ -67,7 +67,6 @@ export function registerCheckinMembershipRoutes(fastify: FastifyInstance): void 
     '/v1/checkin/lane/:laneId/complete-membership-purchase',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
       const { laneId } = request.params;
       const parsed = CompleteMembershipPurchaseSchema.safeParse(request.body);
       if (!parsed.success) return reply.status(400).send({ error: 'Invalid request body' });

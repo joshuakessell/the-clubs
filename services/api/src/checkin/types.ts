@@ -1,7 +1,7 @@
 import type pg from 'pg';
 
-export type PoolClient = pg.PoolClient;
-
+export interface Queryable { query<T = any>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }>; }
+export type PoolClient = Queryable;
 export type RoomRentalType = 'STANDARD' | 'DOUBLE' | 'SPECIAL';
 
 export interface LaneSessionRow {

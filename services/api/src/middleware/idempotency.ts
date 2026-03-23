@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { db } from '../db';
 import { sql, and, eq, gt } from 'drizzle-orm';
-import { idempotencyKeys } from '../db/schema/schema';
+import { idempotencyKeys } from '../db/schema/index';
 
 /**
  * Idempotency-Key middleware for POST endpoints.

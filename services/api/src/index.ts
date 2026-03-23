@@ -232,7 +232,7 @@ function setupPeriodicJobs(fastify: FastifyInstance) {
       try {
         const { db: dbInstance } = await import('./db');
         const { sql: sqlTag, lt } = await import('drizzle-orm');
-        const { idempotencyKeys } = await import('./db/schema/schema');
+        const { idempotencyKeys } = await import('./db/schema/index');
         const result = await dbInstance.delete(idempotencyKeys).where(lt(idempotencyKeys.expiresAt, sqlTag`NOW()`));
         if (result.rowCount && result.rowCount > 0) fastify.log.info(`Cleaned up ${result.rowCount} expired idempotency key(s)`);
         recordBackgroundJob('cleanup_idempotency_keys', true, Date.now() - startTime);
@@ -369,7 +369,7 @@ async function bootstrapInitialAdmin(fastify: FastifyInstance) {
     const { db: dbInstance } = await import('./db');
     const { sql: sqlTag } = await import('drizzle-orm');
     const { hashPin } = await import('./auth/utils');
-    const { staff: staffTable } = await import('./db/schema/schema');
+    const { staff: staffTable } = await import('./db/schema/index');
 
     const countResult = await dbInstance.execute<{ cnt: string }>(
       sqlTag`SELECT COUNT(*)::text AS cnt FROM staff WHERE active = true`

@@ -20,10 +20,6 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
     '/v1/checkin/lane/:laneId/past-due/demo-payment',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.staff) {
-        return reply.status(401).send({ error: 'Unauthorized' });
-      }
-
       const { laneId } = request.params;
       const { outcome, declineReason } = request.body;
 
@@ -89,10 +85,6 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
     '/v1/checkin/lane/:laneId/past-due/bypass',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.staff) {
-        return reply.status(401).send({ error: 'Unauthorized' });
-      }
-
       const parsed = z.object({ pin: z.string().length(6) }).safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
@@ -100,8 +92,8 @@ export function registerCheckinPastDueRoutes(fastify: FastifyInstance): void {
 
       const { laneId } = request.params;
       const { pin } = parsed.data;
-      const staffId = request.staff.staffId;
-      const staffName = request.staff.name;
+      const staffId = request.staff!.staffId;
+      const staffName = request.staff!.name;
 
       try {
         const result = await db.transaction(async (tx) => {

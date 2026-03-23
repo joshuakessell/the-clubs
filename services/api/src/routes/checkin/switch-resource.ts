@@ -18,7 +18,6 @@ export function registerCheckinSwitchResourceRoutes(fastify: FastifyInstance): v
       declineReason?: string;
     };
   }>('/v1/checkin/visits/:visitId/switch-resource', { preHandler: [requireAuth] }, async (request, reply) => {
-    if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
     const { visitId } = request.params;
     const { targetResourceType, targetResourceId, previousRoomStatus, paymentOutcome, declineReason } = request.body;
 
@@ -28,10 +27,10 @@ export function registerCheckinSwitchResourceRoutes(fastify: FastifyInstance): v
     if (paymentOutcome && paymentOutcome !== 'CASH_SUCCESS' && paymentOutcome !== 'CREDIT_SUCCESS' && paymentOutcome !== 'CREDIT_DECLINE') return reply.status(400).send({ error: 'paymentOutcome is invalid' });
 
     try {
-      const result = await switchResource({ visitId, targetResourceType, targetResourceId, previousRoomStatus, paymentOutcome, declineReason, staffId: request.staff.staffId });
+      const result = await switchResource({ visitId, targetResourceType, targetResourceId, previousRoomStatus, paymentOutcome, declineReason, staffId: request.staff!.staffId });
 
       if (fastify.broadcaster) await broadcastInventoryUpdate(fastify.broadcaster);
-      await logResourceSwitch(result, { staffId: request.staff.staffId, staffName: request.staff.name }).catch((err) => request.log.warn(err, 'Failed to log resource switch activity'));
+      await logResourceSwitch(result, { staffId: request.staff!.staffId, staffName: request.staff!.name }).catch((err) => request.log.warn(err, 'Failed to log resource switch activity'));
 
       return reply.send({ success: true, ...result });
     } catch (error: unknown) {

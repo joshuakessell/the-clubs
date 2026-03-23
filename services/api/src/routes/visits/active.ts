@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db';
 import { sql, eq, isNull, ilike, or, and, desc } from 'drizzle-orm';
-import { visits, customers } from '../../db/schema/schema';
+import { visits, customers } from '../../db/schema/index';
 import type { CheckinBlockRow, VisitRow } from '../../visits/types';
 import { calculateTotalHoursWithExtension, getLatestBlockEnd } from '../../visits/utils';
 

@@ -4,7 +4,7 @@
  */
 import { db } from '../db';
 import { sql, eq, and, or, ilike, isNull, desc, asc, lt } from 'drizzle-orm';
-import { customers, customerNotes, checkinBlocks, visits } from '../db/schema/schema';
+import { customers, customerNotes, checkinBlocks, visits } from '../db/schema/index';
 import { insertCustomerActivityEventDrizzle, type CustomerActivitySourceApp } from '../activity/customerActivityLog';
 import { HttpError } from '../errors/HttpError';
 import {
