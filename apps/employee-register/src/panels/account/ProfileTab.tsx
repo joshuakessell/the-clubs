@@ -208,7 +208,7 @@ export function ProfileTab() {
     {/* Customer header */ }
     < div className = "flex items-center gap-3" >
       <div
-          className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold uppercase"
   style = {{
     backgroundColor: 'var(--color-accent-primary)',
       color: 'var(--color-text-inverse)',
@@ -220,7 +220,7 @@ export function ProfileTab() {
   </div>
   < div >
   <h2
-            className="text-sm font-bold"
+            className="text-sm font-bold uppercase"
 style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
           >
   { displayName }
@@ -243,13 +243,13 @@ style = {{
         }}
       >
   <Field label="Membership #" value = { membershipNumber } />
-    <Field label="Membership Exp." value = { membershipValidUntil ? new Date(membershipValidUntil).toLocaleDateString() : undefined } color = { isMembershipExpired ? 'var(--color-status-error)' : undefined } />
-    <Field label="DOB" value = { dob } />
+    <Field label="Membership Exp." value = { formatDateStr(membershipValidUntil) } color = { isMembershipExpired ? 'var(--color-status-error)' : undefined } />
+    <Field label="DOB" value = { formatDateStr(dob) } />
       <Field label="Language" value={primaryLanguage === 'ES' ? 'Español' : primaryLanguage || undefined} />
-      <Field label="Last Visit" value={lastVisitAt ? new Date(lastVisitAt).toLocaleDateString() : undefined} />
+      <Field label="Last Visit" value={formatDateStr(lastVisitAt)} />
       <Field label="ID Type" value={formatIdType(idType)} />
             < Field label = "ID #" value = { idNumber } />
-              <Field label="ID Exp." value = { idExpirationDate } />
+              <Field label="ID Exp." value = { formatDateStr(idExpirationDate) } />
                 <Field label="Past Due" value = { pastDueBalance? `$${pastDueBalance.toFixed(2)}` : '$0.00'} color = { pastDueBalance? 'var(--color-status-error)': undefined } />
                   </div>
 
@@ -317,6 +317,17 @@ style = {{
 
 // ── Helpers ──
 
+function formatDateStr(isoStr?: string | null): string | undefined {
+  if (!isoStr) return undefined;
+  // Splits ISO timestamp explicitly avoiding Javascript timezone drifting on raw casts
+  const dateOnly = isoStr.split('T')[0];
+  const parts = dateOnly?.split('-');
+  if (parts?.length === 3) {
+    return `${parts[1]}/${parts[2]}/${parts[0]}`; // MM/DD/YYYY
+  }
+  return isoStr;
+}
+
 const ID_TYPE_LABELS: Record<string, string> = {
   DRIVERS_LICENSE: 'DL',
   STATE_ID: 'State ID',
@@ -371,6 +382,20 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, orderS
 
   const customerName = useRegisterStore((s) => s.customerName);
 
+  let checkoutBtnBg = 'var(--color-status-warning)';
+  let checkoutBtnShadow = '0 0 20px color-mix(in oklch, var(--color-status-warning) 30%, transparent)';
+  let checkoutBtnText = 'Checkout';
+
+  if (checkingOut) {
+    checkoutBtnBg = 'var(--color-surface-overlay)';
+    checkoutBtnShadow = 'none';
+    checkoutBtnText = 'Checking out…';
+  } else if (confirmingCheckout) {
+    checkoutBtnBg = 'var(--color-status-error)';
+    checkoutBtnShadow = '0 0 20px color-mix(in oklch, var(--color-status-error) 30%, transparent)';
+    checkoutBtnText = 'Confirm Checkout?';
+  }
+
   return (
     <>
     <div className="flex gap-3">
@@ -387,19 +412,13 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, orderS
           disabled={checkingOut}
            className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition-colors"
           style={{
-            backgroundColor: checkingOut
-              ? 'var(--color-surface-overlay)'
-              : confirmingCheckout
-                ? 'var(--color-status-error)'
-                : 'var(--color-status-warning)',
+            backgroundColor: checkoutBtnBg,
             color: 'var(--color-text-inverse)',
-            boxShadow: checkingOut ? 'none' : confirmingCheckout
-              ? '0 0 20px color-mix(in oklch, var(--color-status-error) 30%, transparent)'
-              : '0 0 20px color-mix(in oklch, var(--color-status-warning) 30%, transparent)',
+            boxShadow: checkoutBtnShadow,
             opacity: checkingOut ? 0.6 : 1,
           }}
         >
-          {checkingOut ? 'Checking out…' : confirmingCheckout ? 'Confirm Checkout?' : 'Checkout'}
+          {checkoutBtnText}
         </button>
       )}
       {!currentSessionId && !activeCheckinInfo && customerId && (

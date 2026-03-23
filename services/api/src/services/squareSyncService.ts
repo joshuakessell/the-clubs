@@ -2,6 +2,7 @@
 
 import { db } from '../db';
 import { customers } from '../db/schema';
+import { normalizeToIsoDate } from '../checkin/utils';
 
 export interface SquareCustomer {
   id: string;
@@ -181,7 +182,7 @@ export async function executeSquareSync(resolutions: SyncResolution[]): Promise<
     const fullName = `${fName} ${lName}`.trim() || 'Unknown Customer';
     
     // PostgreSQL date() expects a string 'YYYY-MM-DD' natively via Drizzle unless mode: 'date'
-    const dobString = sc.birthday || null;
+    const dobString = normalizeToIsoDate(sc.birthday);
     const refId = sc.reference_id || null;
 
     if (!sc.id) continue;
