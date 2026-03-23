@@ -37,11 +37,13 @@ export function generateChallenge(): string {
   return crypto.randomBytes(32).toString('base64url');
 }
 
+type ChallengeType = 'registration' | 'authentication' | 'reauth';
+
 export async function storeChallenge(
   challenge: string,
   staffId: string | null,
   deviceId: string | null,
-  type: 'registration' | 'authentication' | 'reauth'
+  type: ChallengeType
 ): Promise<void> {
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + 2);
@@ -58,7 +60,7 @@ export async function storeChallenge(
 export async function consumeChallenge(challenge: string): Promise<{
   staffId: string | null;
   deviceId: string | null;
-  type: 'registration' | 'authentication' | 'reauth';
+  type: ChallengeType;
 } | null> {
   const result = await db
     .select({
@@ -79,14 +81,14 @@ export async function consumeChallenge(challenge: string): Promise<{
     return null;
   }
 
-  const row = result[0]!;
+  const row = result[0];
 
   await db.delete(webauthnChallenges).where(eq(webauthnChallenges.challenge, challenge));
 
   return {
     staffId: row.staffId,
     deviceId: row.deviceId,
-    type: row.type as 'registration' | 'authentication' | 'reauth',
+    type: row.type as ChallengeType,
   };
 }
 
@@ -138,7 +140,7 @@ export async function getCredentialByCredentialId(credentialId: string): Promise
     return null;
   }
 
-  const row = result[0]!;
+  const row = result[0];
 
   return {
     staffId: row.staffId,
@@ -193,14 +195,8 @@ export async function updateCredentialSignCount(
 export async function cleanupExpiredChallenges(): Promise<number> {
   const result = await db
     .delete(webauthnChallenges)
-    .where(gt(webauthnChallenges.expiresAt, sql`(NOW())`))
+    .where(gt(sql`(NOW())`, webauthnChallenges.expiresAt))
     .returning({ id: webauthnChallenges.id });
 
-  const deletedCount = result.length;
-
-  await db
-    .delete(webauthnChallenges)
-    .where(gt(sql`(NOW())`, webauthnChallenges.expiresAt));
-
-  return deletedCount;
+  return result.length;
 }
