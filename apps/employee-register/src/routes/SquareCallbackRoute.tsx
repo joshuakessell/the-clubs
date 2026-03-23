@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getApiUrl } from '@the-clubs/shared';
 import { useAuthStore } from '@the-clubs/ui';
+import { useRegisterStore } from '../stores/useRegisterStore';
 
 export function SquareCallbackRoute() {
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +74,12 @@ export function SquareCallbackRoute() {
         // Navigate back to the lane!
         globalThis.sessionStorage.removeItem('square_checkout_lane_id');
         globalThis.sessionStorage.removeItem('square_checkout_order_id');
+        
+        // Re-hydrate the transient Zustand memory explicitly before we attempt router navigation,
+        // because iOS Safari aggressively unloads the browser tab memory context during the Square POS 
+        // external intent lifecycle, which natively drops `useRegisterStore.laneId` to null.
+        useRegisterStore.getState().setLaneId(laneId);
+        
         navigate(`/${laneId}`);
         
       } catch (err: any) {

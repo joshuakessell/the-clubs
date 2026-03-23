@@ -88,6 +88,21 @@ export function ScanPanel() {
   /* ── Auto-focus the hidden input when the panel mounts ── */
   useEffect(() => {
     hiddenInputRef.current?.focus();
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Do not intercept if actively typing inside an open form modal or explicit input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Do not intercept if we are locked in transmission
+      if (useRegisterStore.getState().scanCaptureSubmitting) return;
+
+      hiddenInputRef.current?.focus();
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalKeyDown);
+    };
   }, []);
 
   /* ── Re-focus on click anywhere in the panel ── */
