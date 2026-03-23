@@ -108,11 +108,11 @@ async function mapOrderLineItems(tx: DrizzleTx, orderId: string, quote: any, isR
     if (quoteObj.length > 0) {
       for (const item of quoteObj) {
         const itemTotal = item.amount.toString();
-        await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, total)
+        await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price_cents, total_cents)
           VALUES (${orderId}, ${lineItemKind}, ${item.description}, 1, ${itemTotal}, ${itemTotal})`);
       }
     } else if (quote.total > 0) {
-      await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, total)
+      await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price_cents, total_cents)
         VALUES (${orderId}, ${lineItemKind}, ${isRenewal ? 'Renewal fee' : 'Check-in fee'}, 1, ${totalStr}, ${totalStr})`);
     }
 }
