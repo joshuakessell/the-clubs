@@ -61,6 +61,79 @@ function getTierFromRoomNumber(roomNumber: string): RentalTier {
   return getRoomTierFromNumber(parsed);
 }
 
+async function processSwitchUpcharge(
+  tx: any,
+  input: SwitchResourceInput,
+  blockId: string,
+  currentRentalType: string,
+  targetRentalType: string,
+  targetResourceNumber: string,
+  additionalFee: number
+): Promise<string> {
+  if (!input.paymentOutcome) {
+    const payErr = new HttpError(409, 'Additional payment required for this switch', { code: 'PAYMENT_REQUIRED' });
+    Object.assign(payErr, { additionalFee, currentRentalType, targetRentalType });
+    throw payErr;
+  }
+  if (input.paymentOutcome === 'CREDIT_DECLINE') {
+    const declineErr = new HttpError(402, input.declineReason ?? 'Credit declined', { code: 'PAYMENT_DECLINED' });
+    Object.assign(declineErr, {
+      additionalFee,
+      currentRentalType,
+      targetRentalType,
+      visitId: input.visitId,
+      checkinBlockId: blockId,
+      targetResourceType: input.targetResourceType,
+      targetResourceId: input.targetResourceId,
+      targetResourceNumber,
+    });
+    throw declineErr;
+  }
+
+  const feeCents = Math.round(additionalFee * 100);
+  const metadata = {
+    type: 'SWITCH_UPCHARGE',
+    method: input.paymentOutcome,
+    visitId: input.visitId,
+    checkinBlockId: blockId,
+    currentRentalType,
+    targetRentalType,
+    targetResourceType: input.targetResourceType,
+    targetResourceId: input.targetResourceId,
+    targetResourceNumber,
+  };
+
+  const [order] = await tx
+    .insert(orders)
+    .values({
+      createdByStaffId: input.staffId,
+      status: 'PAID',
+      subtotal: feeCents.toString(),
+      discount: '0',
+      tax: '0',
+      tip: '0',
+      total: feeCents.toString(),
+      currency: 'USD',
+      paidAt: new Date(),
+      metadataJson: metadata,
+      quoteJson: metadata,
+    })
+    .returning({ id: orders.id });
+
+  await tx.insert(orderLineItems).values({
+    orderId: order.id,
+    kind: 'UPGRADE',
+    name: 'Switch Upcharge',
+    quantity: 1,
+    unitPrice: feeCents.toString(),
+    discount: '0',
+    tax: '0',
+    total: feeCents.toString(),
+  });
+
+  return order.id;
+}
+
 export async function switchResource(input: SwitchResourceInput) {
   const previousRoomStatus: PreviousRoomStatus = input.previousRoomStatus ?? 'DIRTY';
 
@@ -135,68 +208,7 @@ export async function switchResource(input: SwitchResourceInput) {
     let orderId: string | null = null;
 
     if (additionalFee > 0) {
-      if (!input.paymentOutcome) {
-        const payErr = new HttpError(409, 'Additional payment required for this switch', { code: 'PAYMENT_REQUIRED' });
-        Object.assign(payErr, { additionalFee, currentRentalType, targetRentalType });
-        throw payErr;
-      }
-      if (input.paymentOutcome === 'CREDIT_DECLINE') {
-        const declineErr = new HttpError(402, input.declineReason ?? 'Credit declined', { code: 'PAYMENT_DECLINED' });
-        Object.assign(declineErr, {
-          additionalFee,
-          currentRentalType,
-          targetRentalType,
-          visitId: input.visitId,
-          checkinBlockId: block.id,
-          targetResourceType: input.targetResourceType,
-          targetResourceId: input.targetResourceId,
-          targetResourceNumber,
-        });
-        throw declineErr;
-      }
-
-      const feeCents = Math.round(additionalFee * 100);
-      const metadata = {
-        type: 'SWITCH_UPCHARGE',
-        method: input.paymentOutcome,
-        visitId: input.visitId,
-        checkinBlockId: block.id,
-        currentRentalType,
-        targetRentalType,
-        targetResourceType: input.targetResourceType,
-        targetResourceId: input.targetResourceId,
-        targetResourceNumber,
-      };
-
-      const [order] = await tx
-        .insert(orders)
-        .values({
-          createdByStaffId: input.staffId,
-          status: 'PAID',
-          subtotal: feeCents.toString(),
-          discount: '0',
-          tax: '0',
-          tip: '0',
-          total: feeCents.toString(),
-          currency: 'USD',
-          paidAt: new Date(),
-          metadataJson: metadata,
-          quoteJson: metadata,
-        })
-        .returning({ id: orders.id });
-
-      orderId = order.id;
-
-      await tx.insert(orderLineItems).values({
-        orderId: order.id,
-        kind: 'UPGRADE',
-        name: 'Switch Upcharge',
-        quantity: 1,
-        unitPrice: feeCents.toString(),
-        discount: '0',
-        tax: '0',
-        total: feeCents.toString(),
-      });
+      orderId = await processSwitchUpcharge(tx, input, block.id, currentRentalType, targetRentalType, targetResourceNumber, additionalFee);
     }
 
     await tx

@@ -396,7 +396,7 @@ function toQueryable(tx: DrizzleTx) {
       let lastIndex = 0;
       for (const match of queryText.matchAll(regex)) {
         built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        const paramIndex = Number.parseInt(match[1], 10) - 1;
         built = sql`${built}${values[paramIndex]}`;
         lastIndex = match.index! + match[0].length;
       }

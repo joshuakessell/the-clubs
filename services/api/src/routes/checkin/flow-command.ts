@@ -600,18 +600,18 @@ async function executeFlowCommandTransaction(
 ) {
   const { sessionId, commandId, actor, expectedFlowVersion, type, payload } = requestParams;
   return db.transaction(async (tx) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     if (!(await isFlowCommandsEnabled({ client: tx, laneId }))) {
       throw new FlowCommandError(404, 'NotFound', 'Not Found');
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const authority = await assertLaneWriteAuthority({ tx, laneId });
     if (!authority.allowed) {
       throw new FlowCommandError(409, 'LaneNotAuthoritative', authority.reason ?? 'Lane write not allowed');
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const lanMode = await isLanFallbackEnabledForLane({ client: tx, laneId });
     const locked = await tx.execute<Record<string, unknown>>(
       sql`SELECT ${sql.raw(LANE_SESSION_COLS)}
