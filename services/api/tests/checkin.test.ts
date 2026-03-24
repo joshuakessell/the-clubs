@@ -102,7 +102,7 @@ describe('Check-in Flow', () => {
        RETURNING id`,
       [pinHash]
     );
-    staffId = staffResult.rows[0]!.id;
+    staffId = staffResult.rows[0].id;
     staffToken = generateSessionToken();
 
     // Create staff session in database
@@ -149,7 +149,7 @@ describe('Check-in Flow', () => {
        VALUES ('Test Customer', '12345', 'EN')
        RETURNING id`
     );
-    customerId = customerResult.rows[0]!.id;
+    customerId = customerResult.rows[0].id;
 
     // Ensure an active agreement exists for signing flow
     await query(`UPDATE agreements SET active = false WHERE active = true`);
@@ -305,7 +305,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           [customerId]
         );
-        const roomId = roomResult.rows[0]!.id;
+        const roomId = roomResult.rows[0].id;
 
         // Start a lane session (authenticated) and then mark it as having a selected resource.
         const startRes = await app.inject({
@@ -351,7 +351,7 @@ describe('Check-in Flow', () => {
           `SELECT assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [roomId]
         );
-        expect(roomAfter.rows[0]!.assigned_to_customer_id).toBeNull();
+        expect(roomAfter.rows[0].assigned_to_customer_id).toBeNull();
 
         const sessionAfter = await query<{
           assigned_resource_id: string | null;
@@ -359,8 +359,8 @@ describe('Check-in Flow', () => {
         }>(`SELECT assigned_resource_id, assigned_resource_type FROM lane_sessions WHERE id = $1`, [
           startJson.sessionId,
         ]);
-        expect(sessionAfter.rows[0]!.assigned_resource_id).toBeNull();
-        expect(sessionAfter.rows[0]!.assigned_resource_type).toBeNull();
+        expect(sessionAfter.rows[0].assigned_resource_id).toBeNull();
+        expect(sessionAfter.rows[0].assigned_resource_type).toBeNull();
       })
     );
 
@@ -374,7 +374,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           [customerId]
         );
-        const roomId = roomResult.rows[0]!.id;
+        const roomId = roomResult.rows[0].id;
 
         // Start a lane session (authenticated) for the customer.
         const startRes = await app.inject({
@@ -508,7 +508,7 @@ describe('Check-in Flow', () => {
          VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
          RETURNING id, number`
         );
-        const roomId = roomResult.rows[0]!.id;
+        const roomId = roomResult.rows[0].id;
 
         // Start session and select rental
         await app.inject({
@@ -561,8 +561,8 @@ describe('Check-in Flow', () => {
           `SELECT assigned_to_customer_id, status FROM inventory_resources WHERE id = $1`,
           [roomId]
         );
-        expect(roomCheck.rows[0]!.assigned_to_customer_id).toBeNull();
-        expect(roomCheck.rows[0]!.status).toBe('CLEAN');
+        expect(roomCheck.rows[0].assigned_to_customer_id).toBeNull();
+        expect(roomCheck.rows[0].status).toBe('CLEAN');
 
         // Verify lane session snapshot points at this room
         const sessionCheck = await query<{
@@ -576,8 +576,8 @@ describe('Check-in Flow', () => {
          LIMIT 1`,
           [laneId]
         );
-        expect(sessionCheck.rows[0]!.assigned_resource_id).toBe(roomId);
-        expect(sessionCheck.rows[0]!.assigned_resource_type).toBe('room');
+        expect(sessionCheck.rows[0].assigned_resource_id).toBe(roomId);
+        expect(sessionCheck.rows[0].assigned_resource_type).toBe('room');
       })
     );
   });
@@ -592,14 +592,14 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           [customerId]
         );
-        const currentRoomId = currentRoomResult.rows[0]!.id;
+        const currentRoomId = currentRoomResult.rows[0].id;
 
         const targetRoomResult = await query<{ id: string }>(
           `INSERT INTO inventory_resources (kind, number, tier, status, floor)
            VALUES ('room', '201', 'SPECIAL', 'CLEAN', 1)
            RETURNING id`
         );
-        const targetRoomId = targetRoomResult.rows[0]!.id;
+        const targetRoomId = targetRoomResult.rows[0].id;
 
         const visitResult = await query<{ id: string }>(
           `INSERT INTO visits (customer_id, started_at, ended_at)
@@ -607,7 +607,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           [customerId]
         );
-        const visitId = visitResult.rows[0]!.id;
+        const visitId = visitResult.rows[0].id;
 
         const blockResult = await query<{ id: string }>(
           `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
@@ -615,7 +615,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           [visitId, currentRoomId]
         );
-        const blockId = blockResult.rows[0]!.id;
+        const blockId = blockResult.rows[0].id;
 
         const paymentRequiredRes = await app.inject({
           method: 'POST',
@@ -659,22 +659,22 @@ describe('Check-in Flow', () => {
           `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [currentRoomId]
         );
-        expect(oldRoomCheck.rows[0]!.status).toBe('DIRTY');
-        expect(oldRoomCheck.rows[0]!.assigned_to_customer_id).toBeNull();
+        expect(oldRoomCheck.rows[0].status).toBe('DIRTY');
+        expect(oldRoomCheck.rows[0].assigned_to_customer_id).toBeNull();
 
         const newRoomCheck = await query<{ status: string; assigned_to_customer_id: string | null }>(
           `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [targetRoomId]
         );
-        expect(newRoomCheck.rows[0]!.status).toBe('OCCUPIED');
-        expect(newRoomCheck.rows[0]!.assigned_to_customer_id).toBe(customerId);
+        expect(newRoomCheck.rows[0].status).toBe('OCCUPIED');
+        expect(newRoomCheck.rows[0].assigned_to_customer_id).toBe(customerId);
 
         const blockCheck = await query<{
           resource_id: string | null;
           rental_type: string;
         }>(`SELECT resource_id, rental_type::text FROM checkin_blocks WHERE id = $1`, [blockId]);
-        expect(blockCheck.rows[0]!.resource_id).toBe(targetRoomId);
-        expect(blockCheck.rows[0]!.rental_type).toBe('SPECIAL');
+        expect(blockCheck.rows[0].resource_id).toBe(targetRoomId);
+        expect(blockCheck.rows[0].rental_type).toBe('SPECIAL');
 
         const chargeCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
@@ -683,7 +683,7 @@ describe('Check-in Flow', () => {
            WHERE o.quote_json->>'checkinBlockId' = $1 AND oli.kind = 'UPGRADE'`,
           [blockId]
         );
-        expect(Number.parseInt(chargeCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(chargeCheck.rows[0].count, 10)).toBe(1);
 
         const paidIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
@@ -693,7 +693,7 @@ describe('Check-in Flow', () => {
              AND quote_json->>'checkinBlockId' = $1`,
           [blockId]
         );
-        expect(Number.parseInt(paidIntentCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(paidIntentCheck.rows[0].count, 10)).toBe(1);
       })
     );
 
@@ -706,14 +706,14 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           [customerId]
         );
-        const currentRoomId = currentRoomResult.rows[0]!.id;
+        const currentRoomId = currentRoomResult.rows[0].id;
 
         const targetRoomResult = await query<{ id: string }>(
           `INSERT INTO inventory_resources (kind, number, tier, status, floor)
            VALUES ('room', '201', 'SPECIAL', 'CLEAN', 1)
            RETURNING id`
         );
-        const targetRoomId = targetRoomResult.rows[0]!.id;
+        const targetRoomId = targetRoomResult.rows[0].id;
 
         const visitResult = await query<{ id: string }>(
           `INSERT INTO visits (customer_id, started_at, ended_at)
@@ -721,7 +721,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           [customerId]
         );
-        const visitId = visitResult.rows[0]!.id;
+        const visitId = visitResult.rows[0].id;
 
         const blockResult = await query<{ id: string }>(
           `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
@@ -729,7 +729,7 @@ describe('Check-in Flow', () => {
            RETURNING id`,
           [visitId, currentRoomId]
         );
-        const blockId = blockResult.rows[0]!.id;
+        const blockId = blockResult.rows[0].id;
 
         const declineRes = await app.inject({
           method: 'POST',
@@ -754,22 +754,22 @@ describe('Check-in Flow', () => {
           `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [currentRoomId]
         );
-        expect(oldRoomCheck.rows[0]!.status).toBe('OCCUPIED');
-        expect(oldRoomCheck.rows[0]!.assigned_to_customer_id).toBe(customerId);
+        expect(oldRoomCheck.rows[0].status).toBe('OCCUPIED');
+        expect(oldRoomCheck.rows[0].assigned_to_customer_id).toBe(customerId);
 
         const newRoomCheck = await query<{ status: string; assigned_to_customer_id: string | null }>(
           `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [targetRoomId]
         );
-        expect(newRoomCheck.rows[0]!.status).toBe('CLEAN');
-        expect(newRoomCheck.rows[0]!.assigned_to_customer_id).toBeNull();
+        expect(newRoomCheck.rows[0].status).toBe('CLEAN');
+        expect(newRoomCheck.rows[0].assigned_to_customer_id).toBeNull();
 
         const blockCheck = await query<{ resource_id: string | null; rental_type: string }>(
           `SELECT resource_id, rental_type::text FROM checkin_blocks WHERE id = $1`,
           [blockId]
         );
-        expect(blockCheck.rows[0]!.resource_id).toBe(currentRoomId);
-        expect(blockCheck.rows[0]!.rental_type).toBe('STANDARD');
+        expect(blockCheck.rows[0].resource_id).toBe(currentRoomId);
+        expect(blockCheck.rows[0].rental_type).toBe('STANDARD');
 
         const chargeCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
@@ -778,7 +778,7 @@ describe('Check-in Flow', () => {
            WHERE o.quote_json->>'checkinBlockId' = $1 AND oli.kind = 'UPGRADE'`,
           [blockId]
         );
-        expect(Number.parseInt(chargeCheck.rows[0]!.count, 10)).toBe(0);
+        expect(Number.parseInt(chargeCheck.rows[0].count, 10)).toBe(0);
 
         const cancelledIntentCheck = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count
@@ -788,7 +788,7 @@ describe('Check-in Flow', () => {
              AND quote_json->>'checkinBlockId' = $1`,
           [blockId]
         );
-        expect(Number.parseInt(cancelledIntentCheck.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(cancelledIntentCheck.rows[0].count, 10)).toBe(1);
       })
     );
   });
@@ -855,9 +855,9 @@ describe('Check-in Flow', () => {
         );
         const dueCount = await query<{ count: string }>(
           `SELECT COUNT(*)::text as count FROM orders WHERE lane_session_id = $1 AND status = 'OPEN'`,
-          [laneSession.rows[0]!.id]
+          [laneSession.rows[0].id]
         );
-        expect(Number.parseInt(dueCount.rows[0]!.count, 10)).toBe(1);
+        expect(Number.parseInt(dueCount.rows[0].count, 10)).toBe(1);
       })
     );
 
@@ -904,7 +904,8 @@ describe('Check-in Flow', () => {
             headers: { Authorization: `Bearer ${staffToken}` },
           });
 
-          const last = sessionUpdatedEvents.filter((e) => e.lane === laneId).at(-1)?.payload;
+          const lastEvent = [...sessionUpdatedEvents].reverse().find((e) => e.lane === laneId);
+          const last = lastEvent?.payload;
           expect(last).toBeTruthy();
           expect(last!.customerName).toBe('Test Customer');
           expect(last!.customerPrimaryLanguage).toBe('ES');
@@ -955,7 +956,7 @@ describe('Check-in Flow', () => {
          RETURNING id`,
           [laneId]
         );
-        const intentId = intentResult.rows[0]!.id;
+        const intentId = intentResult.rows[0].id;
 
         const response = await app.inject({
           method: 'POST',
@@ -975,7 +976,7 @@ describe('Check-in Flow', () => {
           `SELECT status FROM orders WHERE id = $1`,
           [intentId]
         );
-        expect(checkResult.rows[0]!.status).toBe('PAID');
+        expect(checkResult.rows[0].status).toBe('PAID');
       })
     );
   });
