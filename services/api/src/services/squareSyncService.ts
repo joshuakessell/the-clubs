@@ -300,15 +300,21 @@ export async function createSquareOrder(params: CreateSquareOrderParams): Promis
   // Note: We intentionally omit 'catalog_object_id' because our backend handles 
   // highly dynamic pricing (youth discounts, weekday discounts). Square POS inherently 
   // rejects 'base_price_money' overrides against 'FIXED_PRICING' catalog items.
-  const squareLineItems = params.lineItems.map(item => ({
-    name: item.name,
-    quantity: '1',
-    note: item.note,
-    base_price_money: {
-      amount: Math.round(item.amountCents),
-      currency: 'USD'
+  const squareLineItems = params.lineItems.map(item => {
+    const squareItem: any = {
+      name: item.name,
+      quantity: '1',
+      note: item.note,
+      base_price_money: {
+        amount: Math.round(item.amountCents),
+        currency: 'USD'
+      }
+    };
+    if (item.catalogObjectId) {
+      squareItem.catalog_object_id = item.catalogObjectId;
     }
-  }));
+    return squareItem;
+  });
 
   const payload: any = {
     idempotency_key: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).substring(7),

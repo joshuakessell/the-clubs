@@ -10,6 +10,18 @@ import { db, type DrizzleTx } from '../db';
 import { sql } from 'drizzle-orm';
 import { insertCustomerSpendLedgerEntryDrizzle } from '../ledger/customerSpendLedger';
 import { createSquareOrder } from './squareSyncService';
+import { SQUARE_CATALOG_MAP } from './squareCatalogMap';
+
+function resolveSquareCatalogVariation(rowName: string): string | undefined {
+  if (SQUARE_CATALOG_MAP[rowName]) return SQUARE_CATALOG_MAP[rowName].variationId;
+  if (rowName.startsWith('Renewal (6 Hours)')) return SQUARE_CATALOG_MAP['Renewal (6 Hours)']?.variationId;
+  if (rowName.startsWith('Renewal (2 Hours)')) return SQUARE_CATALOG_MAP['Renewal (2 Hours)']?.variationId;
+  if (rowName.endsWith('(waitlist)') || rowName.endsWith('(Waitlist)')) {
+    const base = rowName.replace(/\(Waitlist\)/i, '').trim();
+    if (SQUARE_CATALOG_MAP[base]) return SQUARE_CATALOG_MAP[base].variationId;
+  }
+  return undefined;
+}
 import {
   calculatePriceQuote,
   calculateRenewalQuote,
@@ -272,10 +284,13 @@ export async function createSquarePOSOrder(laneId: string) {
           membershipValidUntil
         });
 
+        const catalogObjectId = resolveSquareCatalogVariation(row.name);
+
         return {
            name: row.name,
            amountCents: Math.round(Number(row.total) * 100),
-           note: noteText
+           note: noteText,
+           catalogObjectId
         };
     });
 
@@ -507,10 +522,13 @@ export async function createGenericSquarePOSOrder(orderId: string) {
           membershipValidUntil
         });
 
+        const catalogObjectId = resolveSquareCatalogVariation(row.name);
+
         return {
            name: row.name,
            amountCents: Math.round(Number(row.total) * 100),
-           note: noteText
+           note: noteText,
+           catalogObjectId
         };
     });
 
