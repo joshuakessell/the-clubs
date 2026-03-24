@@ -732,7 +732,6 @@ describe('Check-in Flow', () => {
         expect(lookupData.extracted.lastName).toBe('DOE');
         expect(lookupData.extracted.dob).toBe('1992-01-02');
 
-        // Create customer from extracted payload
         const create = await app.inject({
           method: 'POST',
           url: '/v1/customers/create-from-scan',
@@ -746,6 +745,7 @@ describe('Check-in Flow', () => {
             fullName: lookupData.extracted.fullName,
           },
         });
+        if (create.statusCode !== 200) console.error("CREATE FROM SCAN FAILED WITH:", create.body);
         expect(create.statusCode).toBe(200);
         const createData = JSON.parse(create.body);
         expect(createData.customer?.id).toBeTruthy();

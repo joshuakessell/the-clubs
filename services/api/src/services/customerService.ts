@@ -517,7 +517,7 @@ export async function createFromScan(input: CreateFromScanInput) {
     .limit(1);
 
   if (existing.length > 0) {
-    const row = existing[0]!;
+    const row = existing[0];
     if (row.bannedUntil && row.bannedUntil > new Date()) throw new HttpError(403, 'Customer is banned');
 
     await updateExistingCustomerFromScan(

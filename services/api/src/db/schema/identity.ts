@@ -1,4 +1,4 @@
-import { pgTable, index, foreignKey, uuid, timestamp, check, varchar, date, text, numeric, unique, serial, boolean, integer, bigint, jsonb, uniqueIndex, inet, time, primaryKey, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, uuid, timestamp, check, varchar, date, text, numeric, unique, boolean, bigint, jsonb } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 import * as enums from './enums';
 

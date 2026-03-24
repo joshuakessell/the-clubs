@@ -10,7 +10,6 @@ import { db, type DrizzleTx } from '../db';
 import { sql } from 'drizzle-orm';
 import { insertCustomerSpendLedgerEntryDrizzle } from '../ledger/customerSpendLedger';
 import { createSquareOrder } from './squareSyncService';
-import { getCatalogIdForLineItem } from '../config/squareCatalog';
 import {
   calculatePriceQuote,
   calculateRenewalQuote,
@@ -263,8 +262,6 @@ export async function createSquarePOSOrder(laneId: string) {
     if (lineItemsResult.rows.length === 0) throw new HttpError(400, 'Order has no line items');
 
     const lineItems = lineItemsResult.rows.map((row) => {
-        const catalogObjectId = getCatalogIdForLineItem(row.name);
-        
         const noteText = buildSquareLineItemNote({
           rowName: row.name,
           customerName,
@@ -278,8 +275,7 @@ export async function createSquarePOSOrder(laneId: string) {
         return {
            name: row.name,
            amountCents: Math.round(Number(row.total) * 100),
-           note: noteText,
-           catalogObjectId
+           note: noteText
         };
     });
 
@@ -479,15 +475,18 @@ export async function createGenericSquarePOSOrder(orderId: string) {
     let customerDobStr: string | null = null;
     let membershipNumber: string | null = null;
 
+    let membershipValidUntil: Date | null = null;
+
     if (order.customer_id) {
-       const custResult = await tx.execute<{ square_customer_id: string | null, name: string | null, dob: string | null, membership_number: string | null }>(
-           sql`SELECT square_customer_id, name, dob, membership_number FROM customers WHERE id = ${order.customer_id}`
+       const custResult = await tx.execute<{ square_customer_id: string | null, name: string | null, dob: string | null, membership_number: string | null, membership_valid_until: string | null }>(
+           sql`SELECT square_customer_id, name, dob, membership_number, membership_valid_until FROM customers WHERE id = ${order.customer_id}`
        );
        if (custResult.rows.length > 0) {
          squareCustomerId = custResult.rows[0].square_customer_id;
          customerName = custResult.rows[0].name;
          customerDobStr = custResult.rows[0].dob;
          membershipNumber = custResult.rows[0].membership_number;
+         membershipValidUntil = toDate(custResult.rows[0].membership_valid_until) || null;
        }
     }
 
@@ -498,32 +497,20 @@ export async function createGenericSquarePOSOrder(orderId: string) {
     if (lineItemsResult.rows.length === 0) throw new HttpError(400, 'Order has no line items');
 
     const lineItems = lineItemsResult.rows.map((row) => {
-        const catalogObjectId = getCatalogIdForLineItem(row.name);
-
-        let noteText: string | undefined = undefined;
-        
-        const requiresNote = row.name.includes('Room') || 
-                             row.name.includes('Locker') || 
-                             row.name.includes('Fee') || 
-                             row.name.includes('Lost Key') ||
-                             row.name.includes('Retail') ||
-                             row.name.includes('Renewal');
-                             
-        const isYouth = row.name.includes('Youth');
-
-        if (requiresNote) {
-           const noteParts: string[] = [];
-           if (customerName) noteParts.push(customerName);
-           if (customerDobStr) noteParts.push(customerDobStr);
-           if (membershipNumber && !isYouth) noteParts.push(`Mem: ${membershipNumber}`);
-           if (noteParts.length > 0) noteText = noteParts.join(' | ');
-        }
+        const noteText = buildSquareLineItemNote({
+          rowName: row.name,
+          customerName,
+          customerDobStr,
+          resourceNumber: null,
+          resourceType: null,
+          membershipNumber,
+          membershipValidUntil
+        });
 
         return {
            name: row.name,
            amountCents: Math.round(Number(row.total) * 100),
-           note: noteText,
-           catalogObjectId
+           note: noteText
         };
     });
 

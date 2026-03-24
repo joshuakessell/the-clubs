@@ -61,7 +61,7 @@ export async function selectRoomForNewCheckin(
      WHERE status = 'CLEAN'
        AND assigned_to_customer_id IS NULL
        AND kind = 'room'
-       AND tier = ${rentalType}
+       AND tier::text = ${rentalType}
        AND NOT EXISTS (
          SELECT 1
          FROM lane_sessions ls

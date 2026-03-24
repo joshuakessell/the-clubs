@@ -81,14 +81,12 @@ describe('Square Integration Tests', () => {
           {
             name: 'Locker Rental',
             amountCents: 200,
-            note: 'Customer Name: John Doe\nDOB: 01/01/1990\nLocker #: 42\nMember Number: MEMB-999',
-            catalogObjectId: 'F3NEPKN5IY7GV2ZSWTTJFMQS'
+            note: 'Customer Name: John Doe\nDOB: 01/01/1990\nLocker #: 42\nMember Number: MEMB-999'
           },
           {
             name: 'Water Bottle',
             amountCents: 150,
-            note: undefined,
-            catalogObjectId: undefined
+            note: undefined
           }
         ]
       }));

@@ -297,9 +297,11 @@ export async function createSquareOrder(params: CreateSquareOrderParams): Promis
   }
 
   // Construct the Square LineItems
+  // Note: We intentionally omit 'catalog_object_id' because our backend handles 
+  // highly dynamic pricing (youth discounts, weekday discounts). Square POS inherently 
+  // rejects 'base_price_money' overrides against 'FIXED_PRICING' catalog items.
   const squareLineItems = params.lineItems.map(item => ({
     name: item.name,
-    catalog_object_id: item.catalogObjectId,
     quantity: '1',
     note: item.note,
     base_price_money: {
