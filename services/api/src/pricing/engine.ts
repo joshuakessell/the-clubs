@@ -91,11 +91,11 @@ function hasValidSixMonthMembership(
 function getBaseRoomPrice(rentalType: RentalType, isWeekdayDiscount: boolean): number {
   switch (rentalType) {
     case 'STANDARD':
-      return 30; // Demo Override: Locked to Square items
+      return 3000; // Demo Override: Locked to Square items
     case 'DOUBLE':
-      return 40;
+      return 4000;
     case 'SPECIAL':
-      return 50;
+      return 5000;
     case 'LOCKER':
     case 'GYM_LOCKER':
       return 0;
@@ -111,11 +111,11 @@ function getBaseRoomPrice(rentalType: RentalType, isWeekdayDiscount: boolean): n
 function getYouthRoomPrice(rentalType: RentalType): number {
   switch (rentalType) {
     case 'STANDARD':
-      return 30;
+      return 3000;
     case 'DOUBLE':
-      return 40; // Demo Override: Was 50, changed to 40 to match Square POS FIXED_PRICING
+      return 4000; // Demo Override: Was 50, changed to 40 to match Square POS FIXED_PRICING
     case 'SPECIAL':
-      return 50;
+      return 5000;
     default:
       return 0;
   }
@@ -139,7 +139,7 @@ function getLockerPrice(rentalType: RentalType, checkInTime: Date, isYouth: bool
     return 0; 
   }
 
-  return 19;
+  return 1900;
 }
 
 /**
@@ -163,7 +163,7 @@ function getMembershipFee(
   }
 
   // $13 for 25+ without valid membership
-  return 13;
+  return 1300;
 }
 
 /**
@@ -220,7 +220,7 @@ function calculateWaitlistItems(input: PricingInput): Array<{ description: strin
 }
 
 function calculateMembershipItems(input: PricingInput): { fee: number; items: Array<{ description: string; amount: number }> } {
-  const sixMonthFee = input.includeSixMonthMembershipPurchase ? 43 : 0;
+  const sixMonthFee = input.includeSixMonthMembershipPurchase ? 4300 : 0;
   const baseFee = input.includeSixMonthMembershipPurchase
     ? 0
     : getMembershipFee(input.checkInTime, input.customerAge, input.membershipCardType, input.membershipValidUntil);
@@ -274,7 +274,7 @@ export function calculateRenewalQuote(
   const hours = input.renewalHours ?? 6;
   
   if (hours === 6) {
-    const fee = 43;
+    const fee = 4300;
     const lineItems = [{ description: 'Renewal (6 Hours)', amount: fee }];
     return {
       rentalFee: fee,
@@ -287,7 +287,7 @@ export function calculateRenewalQuote(
   }
 
   // 2-hour renewal: flat $20
-  const renewalFee = 20;
+  const renewalFee = 2000;
   const lineItems = [{ description: 'Renewal (2 Hours)', amount: renewalFee }];
 
   return {
@@ -306,16 +306,16 @@ export function calculateRenewalQuote(
 export function getUpgradeFee(from: RentalType, to: RentalType): number | null {
   const upgradeFees: Record<string, Record<string, number>> = {
     LOCKER: {
-      STANDARD: 8,
-      DOUBLE: 17,
-      SPECIAL: 27,
+      STANDARD: 800,
+      DOUBLE: 1700,
+      SPECIAL: 2700,
     },
     STANDARD: {
-      DOUBLE: 9,
-      SPECIAL: 19,
+      DOUBLE: 900,
+      SPECIAL: 1900,
     },
     DOUBLE: {
-      SPECIAL: 9,
+      SPECIAL: 900,
     },
   };
 

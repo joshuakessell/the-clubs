@@ -55,7 +55,7 @@ export function ProductsView() {
     if (!newName || !newPrice) return;
     try {
       await dashboardMutate('/api/v1/admin/products', 'POST', {
-        name: newName, price: Number.parseFloat(newPrice), sku: autoSku(newName), category: 'RETAIL',
+        name: newName, price: Math.round(Number.parseFloat(newPrice) * 100), sku: autoSku(newName), category: 'RETAIL',
       });
       setNewName(''); setNewPrice(''); setShowCreate(false);
       refetch();
@@ -72,14 +72,14 @@ export function ProductsView() {
   const startEdit = (p: Product) => {
     setEditingId(p.id);
     setEditName(p.name);
-    setEditPrice(p.price.toString());
+    setEditPrice((p.price / 100).toString());
   };
 
   const handleSaveEdit = useCallback(async () => {
     if (!editingId || !editName || !editPrice) return;
     try {
       await dashboardMutate(`/api/v1/admin/products/${editingId}`, 'PATCH', {
-        name: editName, price: Number.parseFloat(editPrice),
+        name: editName, price: Math.round(Number.parseFloat(editPrice) * 100),
       });
       setEditingId(null);
       refetch();
@@ -187,7 +187,7 @@ export function ProductsView() {
                         type="number" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveEdit(); else if (e.key === 'Escape') setEditingId(null); }} />
                     ) : (
-                      <span className="text-sm font-bold tabular-nums text-(--color-accent-primary)">${p.price.toFixed(2)}</span>
+                      <span className="text-sm font-bold tabular-nums text-(--color-accent-primary)">${(p.price / 100).toFixed(2)}</span>
                     )}
                   </td>
                   <td className="px-4 py-3"><Badge color={p.isActive ? 'success' : 'gray'} variant="light" size="sm">{p.isActive ? 'Active' : 'Inactive'}</Badge></td>

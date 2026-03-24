@@ -632,7 +632,7 @@ describe('Check-in Flow', () => {
         expect(paymentRequiredRes.statusCode).toBe(409);
         const paymentRequiredBody = JSON.parse(paymentRequiredRes.body);
         expect(paymentRequiredBody.code).toBe('PAYMENT_REQUIRED');
-        expect(paymentRequiredBody.additionalFee).toBe(19);
+        expect(paymentRequiredBody.additionalFee).toBe(1900);
 
         const paidRes = await app.inject({
           method: 'POST',
@@ -651,7 +651,7 @@ describe('Check-in Flow', () => {
         expect(paidRes.statusCode).toBe(200);
         const paidBody = JSON.parse(paidRes.body);
         expect(paidBody.success).toBe(true);
-        expect(paidBody.additionalFee).toBe(19);
+        expect(paidBody.additionalFee).toBe(1900);
         expect(paidBody.newResourceType).toBe('room');
         expect(paidBody.newRentalType).toBe('SPECIAL');
 

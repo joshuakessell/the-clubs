@@ -310,6 +310,59 @@ export async function createSquarePOSOrder(laneId: string) {
   });
 }
 
+/**
+ * Creates a Square POS Order for an arbitrary local order (e.g. standalone Retail).
+ */
+export async function createSquarePOSOrderFromOrder(orderId: string) {
+  return db.transaction(async (tx) => {
+    const orderResult = await tx.execute<{ id: string, customer_id: string | null }>(
+      sql`SELECT id, customer_id FROM orders WHERE id = ${orderId} LIMIT 1`
+    );
+    if (orderResult.rows.length === 0) throw new HttpError(404, 'Order not found');
+    const order = orderResult.rows[0];
+
+    let squareCustomerId: string | null = null;
+    let customerName: string | null = null;
+    if (order.customer_id) {
+       const custResult = await tx.execute<Record<string, unknown>>(
+           sql`SELECT square_customer_id, name FROM customers WHERE id = ${order.customer_id}`
+       );
+       if (custResult.rows.length > 0) {
+         squareCustomerId = custResult.rows[0].square_customer_id as string | null;
+         customerName = custResult.rows[0].name as string | null;
+       }
+    }
+
+    const lineItemsResult = await tx.execute<{ name: string, total: string | number }>(
+      sql`SELECT name, total FROM order_line_items WHERE order_id = ${orderId}`
+    );
+
+    if (lineItemsResult.rows.length === 0) throw new HttpError(400, 'Order has no line items');
+
+    const lineItems = lineItemsResult.rows.map((row) => {
+        const catalogObjectId = resolveSquareCatalogVariation(row.name);
+
+        return {
+           name: row.name,
+           amountCents: Math.round(Number(row.total) * 100),
+           note: customerName ? `Customer Name: ${customerName}` : undefined,
+           catalogObjectId
+        };
+    });
+
+    let squareOrderId: string | null = null;
+    try {
+      squareOrderId = await createSquareOrder({ squareCustomerId, lineItems });
+    } catch (error: any) {
+      throw new HttpError(500, error.message || 'Failed to create Square Order natively');
+    }
+
+    if (!squareOrderId) throw new HttpError(500, 'Square Order ID was null');
+
+    return { squareOrderId, orderId: orderId };
+  });
+}
+
 
 export interface MarkPaidInput {
   orderId: string;

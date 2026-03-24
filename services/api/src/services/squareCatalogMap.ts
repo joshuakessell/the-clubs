@@ -111,5 +111,55 @@ export const SQUARE_CATALOG_MAP: Record<string, { itemId: string, variationId: s
     "itemId": "GAOQLB4XP42XBRRWNCWHSIKJ",
     "variationId": "5L5MSXWWZ3FYGRCF6PJR3FN2",
     "modifiers": {}
+  },
+  "Body Wash": {
+    "itemId": "L473SSR3X2HRFXLHA6PSKVF5",
+    "variationId": "NYIO4B3BIUPPF5RMES6INE6L",
+    "modifiers": {}
+  },
+  "Body Lotion": {
+    "itemId": "KR2LIRSZGKHS2JKHGTN4AVF6",
+    "variationId": "LCGTLU5PMG6JNMVHNU53ROUX",
+    "modifiers": {}
+  },
+  "Charcoal Face Mask": {
+    "itemId": "SRZHXQF2TI7DSL3XJMBCM2TJ",
+    "variationId": "W7JRZLBNLSI67D7OHJEX43LM",
+    "modifiers": {}
+  },
+  "Aroma Roll-On": {
+    "itemId": "KOFGIHN3CKSEFUPP33LPGPD4",
+    "variationId": "ZT52NDW5ZYNUWMMUUOE2JHDX",
+    "modifiers": {}
+  },
+  "Exfoliating Scrub": {
+    "itemId": "RKKPHLVHMGBE35GVNZVAKCRE",
+    "variationId": "GBH3LIJCDLC6ATDQSHFUD4O6",
+    "modifiers": {}
+  },
+  "Shampoo": {
+    "itemId": "DCT3GF5R7FXWINRD2USWHBIK",
+    "variationId": "GTL4JBVVTWJ32VO3ALBVJCQI",
+    "modifiers": {}
+  },
+  "Conditioner": {
+    "itemId": "ZCYBJ4IS5F3BVYFPS74GK4WG",
+    "variationId": "A3OTVM7RHL224GFGLMKNWPFE",
+    "modifiers": {}
+  },
+  "Lip Balm": {
+    "itemId": "YBZ2OFF5CSZE5JXIQXBXGJOK",
+    "variationId": "N5HS3DS4KEM4PNNDZSZU2NDN",
+    "modifiers": {}
+  },
+  "Aloe Vera Gel": {
+    "itemId": "RAYZAL67KDHETIJSJGTGMRH5",
+    "variationId": "T5PYX6XVM2KDDYPLFOVX6XEV",
+    "modifiers": {}
+  },
+  "Facial Toner": {
+    "itemId": "XICPH3WUAHMZZWRB3UZJE54Y",
+    "variationId": "A4TZYWLP676JTDC6GH7E7LEF",
+    "modifiers": {}
   }
 };

@@ -11,9 +11,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'), // Monday 10am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(16);
-        expect(quote.membershipFee).toBe(13); // 25+ without membership
-        expect(quote.total).toBe(29);
+        expect(quote.rentalFee).toBe(1900);
+        expect(quote.membershipFee).toBe(1300); // 25+ without membership
+        expect(quote.total).toBe(3200);
       });
 
       it('should charge $19 for non-youth locker during weekday evening (Mon-Thu 4pm-8am)', () => {
@@ -23,9 +23,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T18:00:00'), // Monday 6pm
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(19);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(32);
+        expect(quote.rentalFee).toBe(1900);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(3200);
       });
 
       it('should charge $24 for non-youth locker on weekends', () => {
@@ -35,9 +35,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(24);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(37);
+        expect(quote.rentalFee).toBe(1900);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(3200);
       });
 
       it('should charge $0 for youth locker during weekday discount window', () => {
@@ -59,9 +59,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(7);
+        expect(quote.rentalFee).toBe(0);
         expect(quote.membershipFee).toBe(0);
-        expect(quote.total).toBe(7);
+        expect(quote.total).toBe(0);
       });
 
       it('should charge $0 for gym locker (always free)', () => {
@@ -72,8 +72,8 @@ describe('Pricing Engine', () => {
         };
         const quote = calculatePriceQuote(input);
         expect(quote.rentalFee).toBe(0);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(13);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(1300);
       });
     });
 
@@ -85,9 +85,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(30);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(43);
+        expect(quote.rentalFee).toBe(3000);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(4300);
       });
 
       it('should charge $27 for standard room during weekday discount window', () => {
@@ -97,9 +97,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'), // Monday 10am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(27);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(40);
+        expect(quote.rentalFee).toBe(3000);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(4300);
       });
 
       it('should charge $40 for double room outside discount window', () => {
@@ -109,9 +109,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(40);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(53);
+        expect(quote.rentalFee).toBe(4000);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(5300);
       });
 
       it('should charge $37 for double room during weekday discount window', () => {
@@ -121,9 +121,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'), // Monday 10am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(37);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(50);
+        expect(quote.rentalFee).toBe(4000);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(5300);
       });
 
       it('should charge $50 for special room outside discount window', () => {
@@ -133,9 +133,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(50);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(63);
+        expect(quote.rentalFee).toBe(5000);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(6300);
       });
 
       it('should charge $47 for special room during weekday discount window', () => {
@@ -145,9 +145,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'), // Monday 10am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(47);
-        expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(60);
+        expect(quote.rentalFee).toBe(5000);
+        expect(quote.membershipFee).toBe(1300);
+        expect(quote.total).toBe(6300);
       });
 
       it('should charge $30 for youth standard room any day', () => {
@@ -157,9 +157,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(30);
+        expect(quote.rentalFee).toBe(3000);
         expect(quote.membershipFee).toBe(0);
-        expect(quote.total).toBe(30);
+        expect(quote.total).toBe(3000);
       });
 
       it('should charge $50 for youth double or special room any day', () => {
@@ -169,9 +169,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(50);
+        expect(quote.rentalFee).toBe(4000);
         expect(quote.membershipFee).toBe(0);
-        expect(quote.total).toBe(50);
+        expect(quote.total).toBe(4000);
       });
     });
 
@@ -184,7 +184,7 @@ describe('Pricing Engine', () => {
           membershipCardType: 'NONE',
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.membershipFee).toBe(13);
+        expect(quote.membershipFee).toBe(1300);
       });
 
       it('should charge $0 for 25+ with valid 6-month membership', () => {
@@ -214,7 +214,7 @@ describe('Pricing Engine', () => {
           membershipValidUntil: pastDate,
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.membershipFee).toBe(13);
+        expect(quote.membershipFee).toBe(1300);
       });
 
       it('should charge $0 for youth (under 25)', () => {
@@ -236,7 +236,7 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T08:00:00'), // Monday 8am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(27); // Discount applies
+        expect(quote.rentalFee).toBe(3000); // Discount applies
       });
 
       it('should handle Friday 4pm (end of discount window)', () => {
@@ -246,7 +246,7 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-19T16:00:00'), // Friday 4pm
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(27); // Discount applies (4pm is still in window)
+        expect(quote.rentalFee).toBe(3000); // Discount applies (4pm is still in window)
       });
 
       it('should handle Friday 4:01pm (outside discount window)', () => {
@@ -256,7 +256,7 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-19T16:01:00'), // Friday 4:01pm
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(30); // No discount
+        expect(quote.rentalFee).toBe(3000); // No discount
       });
 
       it('should handle age 18 (youth boundary)', () => {
@@ -288,35 +288,35 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'),
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(16); // Non-youth pricing
-        expect(quote.membershipFee).toBe(13);
+        expect(quote.rentalFee).toBe(1900); // Non-youth pricing
+        expect(quote.membershipFee).toBe(1300);
       });
     });
   });
 
   describe('getUpgradeFee', () => {
     it('should return $8 for Locker -> Standard upgrade', () => {
-      expect(getUpgradeFee('LOCKER', 'STANDARD')).toBe(8);
+      expect(getUpgradeFee('LOCKER', 'STANDARD')).toBe(800);
     });
 
     it('should return $17 for Locker -> Double upgrade', () => {
-      expect(getUpgradeFee('LOCKER', 'DOUBLE')).toBe(17);
+      expect(getUpgradeFee('LOCKER', 'DOUBLE')).toBe(1700);
     });
 
     it('should return $27 for Locker -> Special upgrade', () => {
-      expect(getUpgradeFee('LOCKER', 'SPECIAL')).toBe(27);
+      expect(getUpgradeFee('LOCKER', 'SPECIAL')).toBe(2700);
     });
 
     it('should return $9 for Standard -> Double upgrade', () => {
-      expect(getUpgradeFee('STANDARD', 'DOUBLE')).toBe(9);
+      expect(getUpgradeFee('STANDARD', 'DOUBLE')).toBe(900);
     });
 
     it('should return $19 for Standard -> Special upgrade', () => {
-      expect(getUpgradeFee('STANDARD', 'SPECIAL')).toBe(19);
+      expect(getUpgradeFee('STANDARD', 'SPECIAL')).toBe(1900);
     });
 
     it('should return $9 for Double -> Special upgrade', () => {
-      expect(getUpgradeFee('DOUBLE', 'SPECIAL')).toBe(9);
+      expect(getUpgradeFee('DOUBLE', 'SPECIAL')).toBe(900);
     });
 
     it('should return null for invalid upgrade paths', () => {

@@ -13,7 +13,7 @@ describe('pricing: membership purchase intent', () => {
     });
 
     expect(
-      quote.lineItems.some((li) => li.description === '6 Month Membership' && li.amount === 43)
+      quote.lineItems.some((li) => li.description === '6 Month Membership' && li.amount === 4300)
     ).toBe(true);
     expect(quote.lineItems.some((li) => li.description === 'Membership Fee')).toBe(false);
   });

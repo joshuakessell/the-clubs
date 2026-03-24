@@ -30,6 +30,99 @@ function formatPrice(dollars: number) {
   return `$${dollars.toFixed(2)}`;
 }
 
+function triggerAppSwitch(squareOrderId: string, orderId: string, cartTotal: number) {
+  globalThis.sessionStorage.setItem('square_checkout_order_id', orderId);
+  const amountCents = Math.round(cartTotal * 100);
+  const appSwitchData = {
+    amount_money: { amount: amountCents.toString(), currency_code: 'USD' },
+    callback_url: `${globalThis.location.origin}/checkout/square-callback`,
+    client_id: import.meta.env.VITE_SQUARE_APPLICATION_ID || 'sq0idp-undefined',
+    version: '1.3',
+    notes: `ORDER_ID:${squareOrderId}`,
+    options: { supported_tender_types: ['CREDIT_CARD', 'CASH', 'SQUARE_GIFT_CARD', 'CARD_ON_FILE'] }
+  };
+  globalThis.location.href = `square-commerce-v1://payment/create?data=${encodeURIComponent(JSON.stringify(appSwitchData))}`;
+}
+
+function useGuestsFilters(guests: ActiveGuest[], guestFilter: string, currentSessionId: string | null) {
+  const filteredGuests = useMemo(() => {
+    if (!guestFilter.trim()) return guests;
+    const q = guestFilter.toLowerCase();
+    return guests.filter((g) => g.number.toLowerCase().includes(q) || g.customerName.toLowerCase().includes(q));
+  }, [guests, guestFilter]);
+
+  const checkingInGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'CHECKING_IN' && g.laneSessionId === currentSessionId), [filteredGuests, currentSessionId]);
+  const roomGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'ROOM'), [filteredGuests]);
+  const lockerGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'LOCKER'), [filteredGuests]);
+
+  return { filteredGuests, checkingInGuests, roomGuests, lockerGuests };
+}
+
+function useRetailData(token: string | undefined) {
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [guests, setGuests] = useState<ActiveGuest[]>([]);
+  const [guestsLoading, setGuestsLoading] = useState(false);
+
+  const fetchCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(getApiUrl('/api/v1/admin/products'), { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const items: CatalogItem[] = (data.products ?? [])
+          .filter((p: { isActive?: boolean }) => p.isActive !== false)
+          .map((p: { id: string; name: string; price: number; category?: string; imageUrl?: string }) => ({
+            id: p.id,
+            name: p.name,
+            price: p.price / 100, // API returns CENTS, convert to dollars for UI
+            category: (p.category ?? 'RETAIL').toLowerCase(),
+            imageUrl: p.imageUrl ?? undefined,
+          }));
+        setCatalog(items);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [token]);
+
+  const fetchGuests = useCallback(async () => {
+    setGuestsLoading(true);
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(getApiUrl('/api/v1/retail/active-guests'), { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setGuests(data.guests ?? []);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setGuestsLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => { void fetchCatalog(); void fetchGuests(); }, [fetchCatalog, fetchGuests]);
+
+  const categories = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const item of catalog) {
+      if (!seen.has(item.category)) {
+        seen.set(item.category, item.category.charAt(0).toUpperCase() + item.category.slice(1));
+      }
+    }
+    return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
+  }, [catalog]);
+
+  return { catalog, catalogLoading, categories, guests, guestsLoading };
+}
+
+
 /* ─── Sub-components ────────────────────────────────── */
 
 function GuestSection({
@@ -90,9 +183,7 @@ export function RetailPanel() {
   const token = useAuthStore((s) => s.session?.sessionToken);
   const laneId = useRegisterStore((s) => s.laneId);
 
-  /* Product catalog from API */
-  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
-  const [catalogLoading, setCatalogLoading] = useState(true);
+  const { catalog, catalogLoading, categories, guests, guestsLoading } = useRetailData(token);
 
   /* Cart state */
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -101,70 +192,10 @@ export function RetailPanel() {
   const [error, setError] = useState<string | null>(null);
 
   /* Guest lookup state */
-  const [guests, setGuests] = useState<ActiveGuest[]>([]);
-  const [guestsLoading, setGuestsLoading] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<ActiveGuest | null>(null);
   const [guestFilter, setGuestFilter] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  /* Fetch product catalog */
-  const fetchCatalog = useCallback(async () => {
-    setCatalogLoading(true);
-    try {
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(getApiUrl('/api/v1/admin/products'), { headers });
-      if (res.ok) {
-        const data = await res.json();
-        const items: CatalogItem[] = (data.products ?? [])
-          .filter((p: { isActive?: boolean }) => p.isActive !== false)
-          .map((p: { id: string; name: string; price: number; category?: string; imageUrl?: string }) => ({
-            id: p.id,
-            name: p.name,
-            price: p.price,
-            category: (p.category ?? 'RETAIL').toLowerCase(),
-            imageUrl: p.imageUrl ?? undefined,
-          }));
-        setCatalog(items);
-      }
-    } catch {
-      // Silently fail — will show empty catalog
-    } finally {
-      setCatalogLoading(false);
-    }
-  }, [token]);
-
-  /* Fetch active guests */
-  const fetchGuests = useCallback(async () => {
-    setGuestsLoading(true);
-    try {
-      const headers: Record<string, string> = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-      const res = await fetch(getApiUrl('/api/v1/retail/active-guests'), { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setGuests(data.guests ?? []);
-      }
-    } catch {
-      // Silently fail — guest lookup is optional
-    } finally {
-      setGuestsLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => { void fetchCatalog(); void fetchGuests(); }, [fetchCatalog, fetchGuests]);
-
-  /* Derive categories dynamically from catalog */
-  const categories = useMemo(() => {
-    const seen = new Map<string, string>();
-    for (const item of catalog) {
-      if (!seen.has(item.category)) {
-        seen.set(item.category, item.category.charAt(0).toUpperCase() + item.category.slice(1));
-      }
-    }
-    return Array.from(seen.entries()).map(([key, label]) => ({ key, label }));
-  }, [catalog]);
 
   /* Close dropdown on outside click */
   useEffect(() => {
@@ -177,19 +208,8 @@ export function RetailPanel() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  /* Filtered guests */
-  const filteredGuests = useMemo(() => {
-    if (!guestFilter.trim()) return guests;
-    const q = guestFilter.toLowerCase();
-    return guests.filter(
-      (g) => g.number.toLowerCase().includes(q) || g.customerName.toLowerCase().includes(q)
-    );
-  }, [guests, guestFilter]);
-
   const currentSessionId = useRegisterStore((s) => s.currentSessionId);
-  const checkingInGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'CHECKING_IN' && g.laneSessionId === currentSessionId), [filteredGuests, currentSessionId]);
-  const roomGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'ROOM'), [filteredGuests]);
-  const lockerGuests = useMemo(() => filteredGuests.filter((g) => g.resourceType === 'LOCKER'), [filteredGuests]);
+  const { filteredGuests, checkingInGuests, roomGuests, lockerGuests } = useGuestsFilters(guests, guestFilter, currentSessionId);
 
   /* Cart helpers */
   const addItem = (id: string) => setCart((p) => ({ ...p, [id]: (p[id] ?? 0) + 1 }));
@@ -207,6 +227,76 @@ export function RetailPanel() {
   const cartTotal = cartLines.reduce((sum: number, i) => sum + i.price * i.qty, 0);
   const cartCount = cartLines.reduce((sum: number, i) => sum + i.qty, 0);
 
+  const handleAddToLedger = async () => {
+    if (!selectedGuest?.laneSessionId || !laneId) return;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch(
+      getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/add-retail-items`),
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          items: cartLines.map((i) => ({
+            sku: i.id,
+            name: i.name,
+            quantity: i.qty,
+            unitPrice: i.price,
+          })),
+        }),
+      }
+    );
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error ?? `Add to ledger failed: HTTP ${res.status}`);
+    }
+    clearCart();
+    setSuccess(`Items added to ${selectedGuest.customerName}'s ledger!`);
+    setTimeout(() => setSuccess(null), 4000);
+  };
+
+  const processStandaloneSale = async (headers: Record<string, string>) => {
+    if (!selectedGuest?.customerId) {
+      throw new Error('A customer must be selected to complete a standalone sale.');
+    }
+    const createRes = await fetch(getApiUrl('/api/v1/orders'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ customerId: selectedGuest.customerId, metadataJson: { visitId: selectedGuest.visitId, isStandaloneRetail: true } }),
+    });
+    if (!createRes.ok) {
+      const d = await createRes.json().catch(() => ({}));
+      throw new Error(d.error ?? `Create order failed: HTTP ${createRes.status}`);
+    }
+    const { orderId } = await createRes.json();
+
+    const itemsRes = await fetch(getApiUrl(`/api/v1/orders/${orderId}/line-items`), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        items: cartLines.map((i) => ({ kind: 'RETAIL', sku: i.id, name: i.name, quantity: i.qty, unitPrice: i.price })),
+      }),
+    });
+    if (!itemsRes.ok) {
+      const d = await itemsRes.json().catch(() => ({}));
+      throw new Error(d.error ?? `Add items failed: HTTP ${itemsRes.status}`);
+    }
+
+    const sqOrderRes = await fetch(getApiUrl(`/api/v1/orders/${orderId}/square-order`), { method: 'POST', headers });
+    if (!sqOrderRes.ok) {
+      const d = await sqOrderRes.json().catch(() => ({}));
+      throw new Error(d.error ?? `Square POS init failed: HTTP ${sqOrderRes.status}`);
+    }
+
+    const { squareOrderId } = await sqOrderRes.json();
+    if (squareOrderId) {
+      triggerAppSwitch(squareOrderId, orderId, cartTotal);
+      return true;
+    }
+    return false;
+  };
+
   /* Complete sale — 3-step order flow, or add-to-ledger for checking-in guests */
   const handleCompleteSale = async () => {
     if (cartLines.length === 0) return;
@@ -215,81 +305,18 @@ export function RetailPanel() {
     setSuccess(null);
 
     try {
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      // ── Add-to-Ledger mode: guest is being checked in on a lane ──
       if (selectedGuest?.laneSessionId && laneId) {
-        const res = await fetch(
-          getApiUrl(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/add-retail-items`),
-          {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              items: cartLines.map((i) => ({
-                sku: i.id,
-                name: i.name,
-                quantity: i.qty,
-                unitPrice: i.price,
-              })),
-            }),
-          }
-        );
-        if (!res.ok) {
-          const d = await res.json().catch(() => ({}));
-          throw new Error(d.error ?? `Add to ledger failed: HTTP ${res.status}`);
-        }
-        clearCart();
-        setSuccess(`Items added to ${selectedGuest.customerName}'s ledger!`);
-        setTimeout(() => setSuccess(null), 4000);
+        await handleAddToLedger();
         return;
       }
 
-      // ── Normal sale flow ──
-      // Step 1: Create order
-      const createRes = await fetch(getApiUrl('/api/v1/orders'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          customerId: selectedGuest?.customerId ?? null,
-          metadataJson: selectedGuest ? { visitId: selectedGuest.visitId } : null,
-        }),
-      });
-      if (!createRes.ok) {
-        const d = await createRes.json().catch(() => ({}));
-        throw new Error(d.error ?? `Create order failed: HTTP ${createRes.status}`);
-      }
-      const { orderId } = await createRes.json();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      // Step 2: Add line items
-      const itemsRes = await fetch(getApiUrl(`/api/v1/orders/${orderId}/line-items`), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          items: cartLines.map((i) => ({
-            kind: 'RETAIL',
-            sku: i.id,
-            name: i.name,
-            quantity: i.qty,
-            unitPrice: i.price,
-          })),
-        }),
-      });
-      if (!itemsRes.ok) {
-        const d = await itemsRes.json().catch(() => ({}));
-        throw new Error(d.error ?? `Add items failed: HTTP ${itemsRes.status}`);
-      }
+      const backgrounded = await processStandaloneSale(headers);
+      if (backgrounded) return;
 
-      // Step 3: Mark paid
-      const paidRes = await fetch(getApiUrl(`/api/v1/orders/${orderId}/mark-paid`), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({}),
-      });
-      if (!paidRes.ok) {
-        const d = await paidRes.json().catch(() => ({}));
-        throw new Error(d.error ?? `Mark paid failed: HTTP ${paidRes.status}`);
-      }
+
 
       clearCart();
       const label = selectedGuest
@@ -584,13 +611,14 @@ export function RetailPanel() {
 
             <Button
               fullWidth
-              disabled={cartLines.length === 0 || submitting}
+              disabled={cartLines.length === 0 || submitting || (!selectedGuest?.laneSessionId && !selectedGuest?.customerId)}
               onClick={() => void handleCompleteSale()}
             >
               {(() => {
                 if (submitting) return 'Processing…';
                 if (selectedGuest?.laneSessionId) return '📋 Add to Ledger';
-                return 'Complete Sale';
+                if (!selectedGuest?.customerId) return 'Select Customer First';
+                return 'Charge with Square POS';
               })()}
             </Button>
 
