@@ -5,6 +5,7 @@ import { useRegisterStore, type ActiveCheckinInfo } from '../../stores/useRegist
 import { LateFeeModal, type LateFeeDetails } from '../../components/LateFeeModal';
 import { RenewalModal, type RenewalEligibility } from '../../components/RenewalModal';
 import { executeManualCheckout, resolveLateFee } from '../../utils/checkoutApi';
+import { CustomerNotesBar } from './CustomerNotesBar';
 
 /**
  * Fetched customer profile from the API (used as fallback when no sessionPayload from SSE).
@@ -299,6 +300,11 @@ style = {{
   onStartCheckin={handleStartCheckin}
   onCancel={() => void cancelSession()}
 />
+{cid && (
+  <div className="mt-1">
+    <CustomerNotesBar customerId={cid} />
+  </div>
+)}
 </div>
 
       {/* Late fee modal — shown when checkout detects a late fee */}

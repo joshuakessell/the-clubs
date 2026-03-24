@@ -586,7 +586,7 @@ async function acquirePaymentReservationLock(
   return { id: assigned.id, type: assigned.type };
 }
 
-async function executeFlowCommandTransaction(
+export async function executeFlowCommandTransaction(
   laneId: string,
   requestParams: {
     sessionId: string;

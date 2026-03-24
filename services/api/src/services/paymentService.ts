@@ -169,6 +169,57 @@ export async function createCheckoutOrder(laneId: string) {
   });
 }
 
+interface SquareItemNoteProps {
+  rowName: string;
+  customerName: string | null;
+  customerDobStr: string | null;
+  resourceNumber: string | null;
+  resourceType: string | null;
+  membershipNumber: string | null;
+  membershipValidUntil: Date | null;
+}
+
+function buildSquareLineItemNote(props: SquareItemNoteProps): string | undefined {
+  const { rowName, customerName, customerDobStr, resourceNumber, resourceType, membershipNumber, membershipValidUntil } = props;
+  const isRoomOrLocker = rowName.includes('Room') || rowName.includes('Locker');
+  const isMembership = rowName.includes('6 Month Membership') || rowName.includes('One Time Membership');
+  const requiresNote = isRoomOrLocker || isMembership || rowName.includes('Fee') || rowName.includes('Lost Key') || rowName.includes('Renewal');
+  const isYouth = rowName.includes('Youth');
+
+  if (!requiresNote) return undefined;
+
+  const noteParts: string[] = [];
+
+  if (customerName) {
+    noteParts.push(`Customer Name: ${customerName}`);
+  }
+  if (customerDobStr) {
+    const d = new Date(customerDobStr);
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const yyyy = d.getUTCFullYear();
+    noteParts.push(`DOB: ${mm}/${dd}/${yyyy}`);
+  }
+
+  if (isRoomOrLocker && resourceNumber) {
+    const typeStr = resourceType === 'locker' ? 'Locker' : 'Room';
+    noteParts.push(`${typeStr} #: ${resourceNumber}`);
+  }
+
+  if (membershipNumber && (!isYouth || isMembership)) {
+    noteParts.push(`Member Number: ${membershipNumber}`);
+  }
+
+  if (isMembership && rowName.includes('6 Month') && membershipValidUntil) {
+    const d = membershipValidUntil;
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    const yyyy = d.getUTCFullYear();
+    noteParts.push(`Expiration Date: ${mm}/${dd}/${yyyy}`);
+  }
+
+  return noteParts.length > 0 ? noteParts.join('\n') : undefined;
+}
 
 export async function createSquarePOSOrder(laneId: string) {
   return db.transaction(async (tx) => {
@@ -213,49 +264,16 @@ export async function createSquarePOSOrder(laneId: string) {
 
     const lineItems = lineItemsResult.rows.map((row) => {
         const catalogObjectId = getCatalogIdForLineItem(row.name);
-
-        let noteText: string | undefined = undefined;
         
-        const isRoomOrLocker = row.name.includes('Room') || row.name.includes('Locker');
-        const isMembership = row.name.includes('6 Month Membership') || row.name.includes('One Time Membership');
-        const requiresNote = isRoomOrLocker || isMembership || row.name.includes('Fee') || row.name.includes('Lost Key') || row.name.includes('Renewal');
-        const isYouth = row.name.includes('Youth');
-
-        if (requiresNote) {
-           const noteParts: string[] = [];
-           
-           if (customerName) {
-             noteParts.push(`Customer Name: ${customerName}`);
-           }
-           if (customerDobStr) {
-             const d = new Date(customerDobStr);
-             const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-             const dd = String(d.getUTCDate()).padStart(2, '0');
-             const yyyy = d.getUTCFullYear();
-             noteParts.push(`DOB: ${mm}/${dd}/${yyyy}`);
-           }
-           
-           if (isRoomOrLocker && resourceNumber) {
-             const typeStr = session.assigned_resource_type === 'locker' ? 'Locker' : 'Room';
-             noteParts.push(`${typeStr} #: ${resourceNumber}`);
-           }
-           
-           if (membershipNumber && (!isYouth || isMembership)) {
-             noteParts.push(`Member Number: ${membershipNumber}`);
-           }
-           
-           if (isMembership && row.name.includes('6 Month') && membershipValidUntil) {
-             const d = membershipValidUntil;
-             const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
-             const dd = String(d.getUTCDate()).padStart(2, '0');
-             const yyyy = d.getUTCFullYear();
-             noteParts.push(`Expiration Date: ${mm}/${dd}/${yyyy}`);
-           }
-           
-           if (noteParts.length > 0) {
-             noteText = noteParts.join('\n'); // Crucial: newline separator for clean Square UI reading
-           }
-        }
+        const noteText = buildSquareLineItemNote({
+          rowName: row.name,
+          customerName,
+          customerDobStr,
+          resourceNumber,
+          resourceType: session.assigned_resource_type,
+          membershipNumber,
+          membershipValidUntil
+        });
 
         return {
            name: row.name,
@@ -265,12 +283,17 @@ export async function createSquarePOSOrder(laneId: string) {
         };
     });
 
-    const squareOrderId = await createSquareOrder({
-      squareCustomerId,
-      lineItems
-    });
+    let squareOrderId: string | null = null;
+    try {
+      squareOrderId = await createSquareOrder({
+        squareCustomerId,
+        lineItems
+      });
+    } catch (error: any) {
+      throw new HttpError(500, error.message || 'Failed to create Square Order natively');
+    }
 
-    if (!squareOrderId) throw new HttpError(500, 'Failed to create Square Order');
+    if (!squareOrderId) throw new HttpError(500, 'Square Order ID was null');
 
     return { squareOrderId, orderId: session.order_id };
   });

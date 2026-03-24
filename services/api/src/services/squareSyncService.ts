@@ -291,8 +291,9 @@ export async function createSquareOrder(params: CreateSquareOrderParams): Promis
     : 'https://connect.squareup.com';
 
   if (!token || !locationId) {
-    console.warn('[SquareSync] Missing SQUARE_ACCESS_TOKEN or SQUARE_LOCATION_ID. Skipping order creation.');
-    return null;
+    const msg = '[SquareSync] Missing SQUARE_ACCESS_TOKEN or SQUARE_LOCATION_ID. Skipping order creation.';
+    console.warn(msg);
+    throw new Error(msg);
   }
 
   // Construct the Square LineItems
@@ -331,14 +332,15 @@ export async function createSquareOrder(params: CreateSquareOrderParams): Promis
     });
 
     if (!res.ok) {
-      console.error(`[SquareSync] Failed to create order in Square:`, await res.text());
-      return null;
+      const errorText = await res.text();
+      console.error(`[SquareSync] Failed to create order in Square:`, errorText);
+      throw new Error(`[SquareSync] API Error: ${res.status} - ${errorText}`);
     }
 
     const data: any = await res.json();
     return data.order?.id || null;
-  } catch (err) {
+  } catch (err: any) {
     console.error('[SquareSync] Exception creating order in Square:', err);
-    return null;
+    throw new Error(err.message || 'Failed communicating with Square API');
   }
 }
