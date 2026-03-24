@@ -5,6 +5,10 @@ on:
     branches: [dev]
   workflow_dispatch:  # Manual trigger
 
+concurrency:
+  group: deploy-demo-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   NODE_VERSION: "24"
   AWS_REGION: us-east-1
@@ -214,9 +218,7 @@ jobs:
         run: |
           docker build -t the-clubs-api:latest -f services/api/Dockerfile .
           docker save the-clubs-api:latest | gzip > api-image.tar.gz
-          ls -la
-          echo "Checking infra/nginx:"
-          ls -la infra/nginx/
+          ls -lh api-image.tar.gz
 
       - name: Copy to EC2
         uses: appleboy/scp-action@v0.1.7
