@@ -13,7 +13,7 @@ export function useBarcodeScanner(
   options: Options = {}
 ) {
   const {
-    timeoutMs = 50,
+    timeoutMs = 200,      // wait 200ms between typing bursts before considering scan complete
     minLength = 10,
     dedupeWindowMs = 2000,
   } = options;
