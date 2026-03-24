@@ -17,8 +17,7 @@ interface UpgradePaymentModalProps {
   orderStatus: 'OPEN' | 'PAID' | null;
   isSubmitting: boolean;
   canComplete: boolean;
-  onPayCredit: () => void;
-  onPayCash: () => void;
+  onPaySquare: () => void;
   onComplete: () => void;
 }
 
@@ -33,8 +32,7 @@ export function UpgradePaymentModal({
   orderStatus,
   isSubmitting,
   canComplete,
-  onPayCredit,
-  onPayCash,
+  onPaySquare,
   onComplete,
 }: UpgradePaymentModalProps) {
   if (!isOpen) return null;
@@ -122,22 +120,20 @@ export function UpgradePaymentModal({
 
         {/* Payment buttons */}
         {orderStatus !== 'PAID' && (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex gap-2">
             <button
-              onClick={onPayCredit}
+              onClick={onPaySquare}
               disabled={isSubmitting}
-              className="rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
+              className="w-full flex justify-center items-center gap-2 rounded-lg py-2.5 text-sm font-bold transition-colors"
               style={{ backgroundColor: 'var(--color-accent-primary)', color: 'var(--color-text-inverse)' }}
             >
-              Credit
-            </button>
-            <button
-              onClick={onPayCash}
-              disabled={isSubmitting}
-              className="rounded-lg px-4 py-2.5 text-sm font-bold transition-colors"
-              style={{ backgroundColor: 'var(--color-status-success)', color: '#000' }}
-            >
-              💵 Cash
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <line x1="2" y1="10" x2="22" y2="10" />
+              </svg>
+              Pay with Square
             </button>
           </div>
         )}

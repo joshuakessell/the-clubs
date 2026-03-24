@@ -41,6 +41,15 @@
 }
 
 /* ── Base ────────────────────────────────────────────── */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 html {
   font-family: var(--font-body);
   font-size: 20px;
@@ -50,9 +59,8 @@ html {
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
   background-color: var(--color-surface-base);
+  touch-action: manipulation;
 }
 
 h1, h2, h3, h4 {

@@ -10,6 +10,14 @@ interface NavItem {
   icon: React.ReactNode;
 }
 
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className || "w-4 h-4 shrink-0 text-(--color-text-muted)"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="8" /> <path d="m21 21-4.35-4.35" />
+    </svg>
+  );
+}
+
 const NAV_ITEMS: NavItem[] = [
   { tab: 'scan', label: 'Scan', fKey: 'F1', icon: <ScanIcon /> },
   { tab: 'inventory', label: 'Rentals', fKey: 'F2', icon: <KeyIcon /> },
@@ -69,124 +77,121 @@ export function TopNavbar({ activeTab, onNavigate, employeeName, onSignOut }: To
   const isLightTheme = ['theme-arctic-bloom', 'theme-solar-flare'].includes(activeTheme);
 
   return (
-    <div className= "flex flex-col shrink-0" >
-    {/* ── Top toolbar: Logo + Search + Session ── */ }
-    < div
-  className = "flex items-center gap-4 border-b px-4"
-  style = {{
-    backgroundColor: 'var(--color-surface-raised)',
-      borderColor: 'var(--color-border-default)',
-        height: '48px',
-          minHeight: '48px',
-        }
-}
+    <div className="flex flex-col shrink-0">
+      {/* ── Top toolbar: Logo + Search + Session ── */}
+      <div
+        className="relative flex items-center justify-between border-b px-8"
+        style={{
+          backgroundColor: 'var(--color-surface-raised)',
+          borderColor: 'var(--color-border-default)',
+          height: '96px',
+          minHeight: '96px',
+        }}
       >
-  {/* Brand */ }
-  < div className = "flex items-center gap-2 shrink-0" >
-    <div className="flex h-7 w-7 items-center justify-center overflow-hidden shrink-0" >
-      <img
-              src={ isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg' }
-alt = "Club Dallas"
-width = "28"
-height = "28"
-  />
-  </div>
-  <span className="text-sm font-bold uppercase font-(--font-brand) text-(--color-text-primary)">
-    Club Dallas — Register #{laneId?.replaceAll(/\D/g, '') || '1'}
-</span>
-  </div>
+        {/* Brand */}
+        <div className="flex items-center gap-4 shrink-0 relative z-10 w-1/3">
+          <div className="flex h-14 w-14 items-center justify-center overflow-hidden shrink-0">
+            <img
+              src={isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg'}
+              alt="Club Dallas"
+              width="56"
+              height="56"
+            />
+          </div>
+          <span className="text-2xl font-bold uppercase font-(--font-brand) text-(--color-text-primary)">
+            Club Dallas — Register #{laneId?.replaceAll(/\D/g, '') || '1'}
+          </span>
+        </div>
 
-{/* Search field */ }
-<div ref={ searchRef } className = "relative flex-1 max-w-xs" >
-  <div
-            className="flex items-center gap-2 rounded-lg border px-3"
-style = {{
-  backgroundColor: 'var(--color-surface-input)',
-    borderColor: searchFocused ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
-      transition: 'border-color 150ms',
+        {/* Search field */}
+        <div ref={searchRef} className="absolute left-1/2 -translate-x-1/2 w-[700px] max-w-[50vw] z-50">
+          <div
+            className="flex items-center gap-3 rounded-xl border px-5"
+            style={{
+              height: '64px',
+              backgroundColor: 'var(--color-surface-input)',
+              borderColor: searchFocused ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
+              transition: 'border-color 150ms',
             }}
           >
-  <SearchIcon />
-  < input
-type = "text"
-className = "h-8 flex-1 bg-transparent outline-none"
-style = {{ color: 'var(--color-text-primary)', outline: 'none', fontSize: '14px' }}
-placeholder = "Search customer…"
-aria-label="Search customer"
-autoComplete = "off"
-value = { customerSearch }
-onChange = {(e) => setCustomerSearch(e.target.value, authToken)}
-onFocus = {() => setSearchFocused(true)}
-disabled = { isSubmitting }
-  />
-  { customerSearchLoading && <Spinner size="sm" />}
-</div>
+            <SearchIcon className="w-7 h-7 shrink-0 text-(--color-text-muted)" />
+            <input
+              type="text"
+              className="flex-1 h-full bg-transparent outline-none"
+              style={{ color: 'var(--color-text-primary)', outline: 'none', fontSize: '14px' }}
+              placeholder="Search customer…"
+              aria-label="Search customer"
+              autoComplete="off"
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value, authToken)}
+              onFocus={() => setSearchFocused(true)}
+              disabled={isSubmitting}
+            />
+            {customerSearchLoading && <Spinner size="md" />}
+          </div>
 
-{/* Search dropdown */ }
-{
-  showDropdown && (
-    <div
-              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg"
-  style = {{
-    backgroundColor: 'var(--color-surface-overlay)',
-      borderColor: 'var(--color-border-default)',
-              }
-}
+          {/* Search dropdown */}
+          {showDropdown && (
+            <div
+              className="absolute left-0 right-0 top-full mt-2 max-h-96 overflow-y-auto rounded-xl border shadow-2xl"
+              style={{
+                backgroundColor: 'var(--color-surface-overlay)',
+                borderColor: 'var(--color-border-default)',
+              }}
             >
-{
-  customerSuggestions.map((s) => {
-    const label = `${s.lastName}, ${s.firstName}`;
-    return (
-      <button
-                    key= { s.id }
-    type = "button"
-                    className="flex w-full items-center justify-between gap-3 border-b px-4 py-2.5 text-left transition-colors hover:bg-[var(--color-surface-raised)] bg-transparent"
-onClick = {() => {
-  openCustomerAccount(s.id, label, {
-    authToken,
-    summary: {
-      name: `${s.firstName} ${s.lastName}`.trim(),
-      dobMonthDay: s.dobMonthDay,
-      membershipNumber: s.membershipNumber,
-    },
-  });
-  setCustomerSearch('');
-  setCustomerSuggestions([]);
-  setSearchFocused(false);
-}}
+              {customerSuggestions.map((s) => {
+                const label = `${s.lastName}, ${s.firstName}`;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className="flex w-full items-center justify-between gap-4 border-b px-5 py-4 text-left transition-colors hover:bg-[var(--color-surface-raised)] bg-transparent"
+                    onClick={() => {
+                      openCustomerAccount(s.id, label, {
+                        authToken,
+                        summary: {
+                          name: `${s.firstName} ${s.lastName}`.trim(),
+                          dobMonthDay: s.dobMonthDay,
+                          membershipNumber: s.membershipNumber,
+                        },
+                      });
+                      setCustomerSearch('');
+                      setCustomerSuggestions([]);
+                      setSearchFocused(false);
+                    }}
                   >
-  <span className="text-sm font-semibold text-(--color-text-primary)">
-    { label }
-    </span>
-     < span className = "flex flex-wrap gap-3 text-xs text-(--color-text-muted)">
-      { s.dobMonthDay && <span>DOB: { s.dobMonthDay } </span>}
-{ s.membershipNumber && <span>#{ s.membershipNumber } </span> }
-</span>
-  </button>
+                    <span className="text-lg font-semibold text-(--color-text-primary)">
+                      {label}
+                    </span>
+                    <span className="flex flex-wrap gap-4 text-sm text-(--color-text-muted)">
+                      {s.dobMonthDay && <span>DOB: {s.dobMonthDay}</span>}
+                      {s.membershipNumber && <span>#{s.membershipNumber}</span>}
+                    </span>
+                  </button>
                 );
               })}
-</div>
+            </div>
           )}
-</div>
+        </div>
 
-{/* Session info + sign out */ }
-<div className="ml-auto flex items-center gap-3 shrink-0" >
-  <span className="text-xs text-(--color-text-secondary)">
-    { employeeName }
-    </span>
-    < button
-onClick = { onSignOut }
-className = "rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-style = {{
-  color: 'var(--color-status-error)',
-    border: '1px solid color-mix(in oklch, var(--color-status-error) 25%, transparent)',
-      backgroundColor: 'color-mix(in oklch, var(--color-status-error) 12%, transparent)',
+        {/* Session info + sign out */}
+        <div className="flex items-center justify-end gap-6 shrink-0 relative z-10 w-1/3">
+          <span className="text-xl font-medium text-(--color-text-secondary)">
+            {employeeName}
+          </span>
+          <button
+            onClick={onSignOut}
+            className="rounded-lg px-5 py-2.5 text-lg font-bold transition-colors"
+            style={{
+              color: 'var(--color-status-error)',
+              border: '2px solid color-mix(in oklch, var(--color-status-error) 30%, transparent)',
+              backgroundColor: 'color-mix(in oklch, var(--color-status-error) 15%, transparent)',
             }}
           >
-  Sign Out
-    </button>
-    </div>
-    </div>
+            Sign Out
+          </button>
+        </div>
+      </div>
 
 {/* ── Tab bar ── */ }
 <nav
@@ -233,18 +238,10 @@ style = {{
 
 function ScanIcon() {
   return (
-    <svg viewBox= "0 0 24 24" fill = "none" stroke = "currentColor" strokeWidth = "2" strokeLinecap = "round" strokeLinejoin = "round" aria-hidden="true" >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M3 7V5a2 2 0 0 1 2-2h2" /> <path d="M17 3h2a2 2 0 0 1 2 2v2" />
-        <path d="M21 17v2a2 2 0 0 1-2 2h-2" /> <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
-          <line x1="7" y1 = "12" x2 = "17" y2 = "12" />
-            </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg className= "w-4 h-4 shrink-0 text-(--color-text-muted)" viewBox = "0 0 24 24" fill = "none" stroke = "currentColor" strokeWidth = "2" strokeLinecap = "round" strokeLinejoin = "round" aria-hidden="true" >
-  <circle cx="11" cy = "11" r = "8" /> <path d="m21 21-4.35-4.35" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" /> <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <line x1="7" y1="12" x2="17" y2="12" />
     </svg>
   );
 }

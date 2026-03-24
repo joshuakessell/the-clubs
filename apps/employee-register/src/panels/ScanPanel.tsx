@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Badge, Spinner, useAuthStore } from '@the-clubs/ui';
 import { getApiUrl } from '@the-clubs/shared';
 import { useRegisterStore } from '../stores/useRegisterStore';
@@ -7,7 +7,6 @@ import { PanelHeader } from '../views/PanelHeader';
 import { PanelShell } from '../views/PanelShell';
 import { BarcodeIcon } from '../components/BarcodeIcon';
 import { useBarcodeScanner } from '../hooks/useBarcodeScanner';
-import { HiddenScannerInput } from '../components/HiddenScannerInput';
 import { parseAAMVAPdf417 } from '../utils/pdf417';
 
 /* Convert ISO date (YYYY-MM-DD) to MMDDYYYY digits for the manual entry form */
@@ -64,7 +63,6 @@ export function ScanPanel() {
     laneId,
     scanReady,
     scanBlockedReason,
-    scanInputEnabled,
     scanCaptureSubmitting,
     setScanCaptureSubmitting,
     openCustomerAccount,
@@ -83,10 +81,19 @@ export function ScanPanel() {
   const [pendingScanData, setPendingScanData] = useState<{ extracted?: Record<string, string> } | null>(null);
   const [isReceiving, setIsReceiving] = useState(false);
 
-  /* ── Re-focus on click anywhere in the panel ── */
+  /* ── Auto-focus search bar on mount ── */
+  useEffect(() => {
+    // Focus global search bar when mounting ScanPanel
+    const searchEl = document.querySelector<HTMLInputElement>('input[placeholder="Search customer…"]');
+    if (searchEl) {
+      // small delay to allow animation / layout to finish
+      setTimeout(() => searchEl.focus(), 100);
+    }
+  }, []);
+
+  /* ── Manual fallback panel click (optional since scanner intercepts globally now) ── */
   const handlePanelClick = useCallback(() => {
-    // HiddenScannerInput automatically re-attaches focus when necessary,
-    // but we can provide a manual trigger target just in case.
+    // With pure $$ and ## prefixes, we don't strictly *need* to focus an invisible input anymore!
   }, []);
 
   /** Prefill the manual entry form and navigate to firstTime tab */
@@ -199,12 +206,19 @@ export function ScanPanel() {
     }
   }, [token, laneId, setScanCaptureSubmitting, processScanResult]);
 
-  /* ── Idempotent barcode hook ── */
+  /* ── Global Barcode Listener ── */
   useBarcodeScanner((data) => {
     // Prevent overlapping scans if currently transmitting
     if (useRegisterStore.getState().scanCaptureSubmitting) return;
 
     void handleScanSubmit(data);
+  }, {
+    onStartScan: () => {
+      setIsReceiving(true);
+    },
+    onCancelScan: () => {
+      setIsReceiving(false);
+    }
   });
 
   /** Handle candidate selection from the fuzzy match modal */
@@ -261,9 +275,6 @@ export function ScanPanel() {
         <div className="mt-6 flex justify-center opacity-60">
           <BarcodeIcon />
         </div>
-
-        {/* Hidden input — rigidly captures scanner keystrokes */}
-        {scanInputEnabled && !scanCaptureSubmitting && <HiddenScannerInput />}
 
         {/* Error message */}
         {scanError && (

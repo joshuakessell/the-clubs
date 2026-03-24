@@ -20,20 +20,11 @@ export function LateFeeModal({
   /** Display label (e.g. "John Doe" or "John Doe · ROOM 12") */
   customerLabel: string;
   resolved: LateFeeDetails;
-  onSettle: (payAtCheckout: boolean, paymentMethod?: 'CREDIT' | 'CASH') => void;
+  onSettle: (payAtCheckout: boolean) => void;
   onDismiss: () => void;
   isProcessing: boolean;
 }>) {
   const feeDollars = resolved.fee.toFixed(2);
-
-  const greenBtn = {
-    backgroundColor: 'color-mix(in oklch, var(--color-status-success) 10%, transparent)',
-    color: 'var(--color-status-success)',
-    border: '1px solid color-mix(in oklch, var(--color-status-success) 25%, transparent)',
-    cursor: isProcessing ? 'not-allowed' : 'pointer',
-    transition: 'opacity 0.15s ease',
-    opacity: isProcessing ? 0.5 : 1,
-  } as const;
 
   return (
     <div
@@ -109,32 +100,22 @@ export function LateFeeModal({
           <div className="flex gap-3">
             <button
               disabled={isProcessing}
-              onClick={() => onSettle(true, 'CREDIT')}
-              className="flex-1 rounded-lg py-3 text-sm font-bold flex flex-col items-center gap-1"
-              style={greenBtn}
+              onClick={() => onSettle(true)}
+              className="flex-1 rounded-lg py-3 text-sm font-bold flex flex-col items-center gap-1 transition-all shadow-sm"
+              style={{
+                backgroundColor: 'var(--color-accent-primary)',
+                color: 'var(--color-on-accent)',
+                cursor: isProcessing ? 'not-allowed' : 'pointer',
+                opacity: isProcessing ? 0.5 : 1,
+              }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
               >
-                <rect x="1" y="4" width="22" height="16" rx="2" />
-                <line x1="1" y1="10" x2="23" y2="10" />
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <line x1="2" y1="10" x2="22" y2="10" />
               </svg>
-              Pay by Card
-            </button>
-            <button
-              disabled={isProcessing}
-              onClick={() => onSettle(true, 'CASH')}
-              className="flex-1 rounded-lg py-3 text-sm font-bold flex flex-col items-center gap-1"
-              style={greenBtn}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              >
-                <rect x="2" y="6" width="20" height="12" rx="2" />
-                <circle cx="12" cy="12" r="2" />
-                <path d="M6 12h.01M18 12h.01" />
-              </svg>
-              Pay by Cash
+              Pay with Square
             </button>
           </div>
 

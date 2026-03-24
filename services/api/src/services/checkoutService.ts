@@ -604,8 +604,8 @@ export async function completeManualCheckout(
         const feeAmountCents = Math.round(feeAmount * 100);
         const metadata = { type: 'LATE_FEE', total: feeAmount, paymentMethod: paymentMethod ?? null, occupancyId: row.occupancy_id };
         const existingOrder = await tx.execute<{ id: string }>(
-          sql`INSERT INTO orders (customer_id, created_by_staff_id, status, subtotal, discount, tax, tip, total, currency, metadata_json, payment_method, paid_at, quote_json)
-           VALUES (${row.customer_id}, ${staff.staffId}, 'PAID', ${feeAmountCents}, 0, 0, 0, ${feeAmountCents}, 'USD', ${JSON.stringify(metadata)}::jsonb, ${paymentMethod ?? null}, NOW(), ${JSON.stringify(metadata)}::jsonb) RETURNING id`
+          sql`INSERT INTO orders (customer_id, created_by_staff_id, status, subtotal, discount, tax, tip, total, currency, metadata_json, quote_json)
+           VALUES (${row.customer_id}, ${staff.staffId}, 'OPEN', ${feeAmountCents}, 0, 0, 0, ${feeAmountCents}, 'USD', ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(metadata)}::jsonb) RETURNING id`
         );
         generatedOrderId = existingOrder.rows[0].id;
         const orderId = generatedOrderId;

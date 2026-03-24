@@ -38,6 +38,15 @@
   --color-text-inverse: var(--foreground-inverse);
 }
 
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 html {
   font-family: var(--font-body);
   background-color: var(--color-surface-base);
@@ -46,11 +55,8 @@ html {
 }
 
 body {
-  margin: 0;
-  min-height: 100vh;
   background-color: var(--color-surface-base);
   touch-action: manipulation;
-  overscroll-behavior: none;
 }
 
 /* ── Kiosk: deeper dark-blue background ─────────── */
