@@ -110,7 +110,7 @@ export function ScanPanel() {
   /** Decoupled NO_MATCH handler to keep Cognitive Complexity below 15 */
   const handleNoMatch = useCallback((scanType?: string, extracted?: Record<string, string>, passportNumber?: string) => {
     if (scanType === 'STATE_ID' && extracted) {
-      setScanError('No exact match found. Prefilling Manual Entry with scanned ID info.');
+      setScanError('No match found. Prefilling Manual Entry with scanned ID info.');
       setTimeout(() => prefillAndNavigate({
         firstName: extracted.firstName,
         lastName: extracted.lastName,
@@ -123,16 +123,13 @@ export function ScanPanel() {
     }
 
     if (scanType === 'PASSPORT' && passportNumber) {
-      setScanError('No passport match found. Prefilling Manual Entry.');
-      setTimeout(() => prefillAndNavigate({
-        idType: 'PASSPORT',
-        idNumber: passportNumber,
-      }), 1200);
+      setScanError("Barcode not recognized. If this is a Passport, please use the scanner to scan the passport number (MRZ text) instead. Otherwise, ensure you scan the 2D PDF417 barcode.");
+      setTimeout(() => selectNavTab('firstTime'), 4000);
       return;
     }
 
-    setScanError('No matching customer found. Try Manual Entry.');
-    setTimeout(() => selectNavTab('firstTime'), 1500);
+    setScanError('Barcode not recognized. Please scan the 2D PDF417 barcode on the back of the ID, or try again.');
+    setTimeout(() => selectNavTab('firstTime'), 3000);
   }, [prefillAndNavigate, selectNavTab]);
 
   /** Dispatch scan result — flat early-return style to avoid nested if/else */

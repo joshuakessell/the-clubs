@@ -71,15 +71,12 @@ export function useBarcodeScanner(
 
       if (e.key === "Enter") {
         e.preventDefault();
-        flush();
-        return;
-      }
-
-      if (e.key.length === 1) {
+        bufferRef.current += "\n";
+      } else if (e.key.length === 1) {
         bufferRef.current += e.key;
       }
 
-      // fallback timeout flush (in case no Enter suffix)
+      // fallback timeout flush (in case no Enter suffix, or to wait for scanner burst to finish)
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(flush, timeoutMs);
     };
