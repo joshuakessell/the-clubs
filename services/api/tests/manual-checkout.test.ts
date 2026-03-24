@@ -18,9 +18,9 @@ vi.mock('../src/auth/middleware.js', async () => {
     );
     if (existing.rows.length > 0) {
       return {
-        staffId: existing.rows[0]!.id,
-        name: existing.rows[0]!.name,
-        role: existing.rows[0]!.role,
+        staffId: existing.rows[0].id,
+        name: existing.rows[0].name,
+        role: existing.rows[0].role,
       };
     }
     const created = await query<{ id: string; name: string; role: 'STAFF' | 'ADMIN' }>(
@@ -28,7 +28,7 @@ vi.mock('../src/auth/middleware.js', async () => {
        VALUES ('Test Staff', 'STAFF', 'test-hash', true)
        RETURNING id, name, role`
     );
-    const row = created.rows[0]!;
+    const row = created.rows[0];
     return { staffId: row.id, name: row.name, role: row.role };
   }
   return {
@@ -52,7 +52,7 @@ vi.mock('../src/auth/middleware.js', async () => {
           [tokenHash]
         );
         if (sessionResult.rows.length > 0) {
-          const session = sessionResult.rows[0]!;
+          const session = sessionResult.rows[0];
           request.staff = {
             staffId: session.staff_id,
             name: session.name,
@@ -131,7 +131,7 @@ describe('Manual Checkout APIs', () => {
        VALUES ('Late Customer', '900001', 0)
        RETURNING id`
     );
-    testCustomerId = customerResult.rows[0]!.id;
+    testCustomerId = customerResult.rows[0].id;
 
     const roomResult = await pool.query(
       `INSERT INTO inventory_resources (kind, number, tier, status, floor, assigned_to_customer_id)
@@ -139,14 +139,14 @@ describe('Manual Checkout APIs', () => {
        RETURNING id`,
       [testCustomerId]
     );
-    testRoomId = roomResult.rows[0]!.id;
+    testRoomId = roomResult.rows[0].id;
 
     const staffResult = await pool.query(
       `INSERT INTO staff (name, role, active)
        VALUES ('Test Staff', 'STAFF', true)
        RETURNING id`
     );
-    testStaffId = staffResult.rows[0]!.id;
+    testStaffId = staffResult.rows[0].id;
     testStaffToken = `test-token-${Date.now()}`;
     const { hashSessionToken } = await import('../src/auth/utils.js');
     await pool.query(
@@ -161,7 +161,7 @@ describe('Manual Checkout APIs', () => {
        RETURNING id`,
       [testCustomerId]
     );
-    testVisitId = visitResult.rows[0]!.id;
+    testVisitId = visitResult.rows[0].id;
 
     // Make scheduled checkout ~95 minutes in the past (90+ => $35 + ban)
     const blockResult = await pool.query(
@@ -170,7 +170,7 @@ describe('Manual Checkout APIs', () => {
        RETURNING id`,
       [testVisitId, testRoomId]
     );
-    testBlockId = blockResult.rows[0]!.id;
+    testBlockId = blockResult.rows[0].id;
 
     const waitlistResult = await pool.query(
       `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status)
@@ -178,7 +178,7 @@ describe('Manual Checkout APIs', () => {
        RETURNING id`,
       [testVisitId, testBlockId]
     );
-    testWaitlistId = waitlistResult.rows[0]!.id;
+    testWaitlistId = waitlistResult.rows[0].id;
   });
 
   afterAll(async () => {
@@ -276,36 +276,36 @@ describe('Manual Checkout APIs', () => {
       `SELECT ended_at FROM visits WHERE id = $1`,
       [testVisitId]
     );
-    expect(visit.rows[0]!.ended_at).not.toBeNull();
+    expect(visit.rows[0].ended_at).not.toBeNull();
 
     const room = await pool.query<{ status: string; assigned_to_customer_id: string | null }>(
       `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
       [testRoomId]
     );
-    expect(room.rows[0]!.status).toBe('DIRTY');
-    expect(room.rows[0]!.assigned_to_customer_id).toBeNull();
+    expect(room.rows[0].status).toBe('DIRTY');
+    expect(room.rows[0].assigned_to_customer_id).toBeNull();
 
     const customer = await pool.query<{
       past_due_balance: string;
       banned_until: Date | null;
     }>(`SELECT past_due_balance, banned_until FROM customers WHERE id = $1`, [testCustomerId]);
-    expect(Number.parseFloat(String(customer.rows[0]!.past_due_balance))).toBe(30);
+    expect(Number.parseFloat(String(customer.rows[0].past_due_balance))).toBe(30);
     // Ban is applied immediately for 90+ minutes late; manager may later lift/adjust it.
-    expect(customer.rows[0]!.banned_until).not.toBeNull();
+    expect(customer.rows[0].banned_until).not.toBeNull();
 
     const waitlist = await pool.query<{ status: string }>(
       `SELECT status FROM waitlist WHERE id = $1`,
       [testWaitlistId]
     );
-    expect(waitlist.rows[0]!.status).toBe('CANCELLED');
+    expect(waitlist.rows[0].status).toBe('CANCELLED');
 
     const lateEvents = await pool.query<{ checkout_request_id: string | null; fee_amount: string }>(
       `SELECT checkout_request_id, fee_amount FROM late_checkout_events WHERE occupancy_id = $1`,
       [testBlockId]
     );
     expect(lateEvents.rows.length).toBe(1);
-    expect(lateEvents.rows[0]!.checkout_request_id).toBeNull();
-    expect(Number.parseFloat(String(lateEvents.rows[0]!.fee_amount))).toBe(30);
+    expect(lateEvents.rows[0].checkout_request_id).toBeNull();
+    expect(Number.parseFloat(String(lateEvents.rows[0].fee_amount))).toBe(30);
 
     const second = await fastify.inject({
       method: 'POST',
@@ -321,7 +321,7 @@ describe('Manual Checkout APIs', () => {
       `SELECT past_due_balance FROM customers WHERE id = $1`,
       [testCustomerId]
     );
-    expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
+    expect(Number.parseFloat(String(customerAfter.rows[0].past_due_balance))).toBe(30);
 
     const lateEventsAfter = await pool.query<{ id: string }>(
       `SELECT id FROM late_checkout_events WHERE occupancy_id = $1`,

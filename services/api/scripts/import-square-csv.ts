@@ -140,10 +140,10 @@ async function main() {
     body: JSON.stringify(payload)
   });
 
-  if (!res.ok) {
-    console.error('Batch upsert failed:', await res.text());
-  } else {
+  if (res.ok) {
     console.log('Successfully created items with text modifiers in Square!');
+  } else {
+    console.error('Batch upsert failed:', await res.text());
   }
 }
 

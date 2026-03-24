@@ -9,8 +9,8 @@ const records = lines.slice(1).map(line => {
   const matches: string[] = [];
   let inQuotes = false;
   let currentWord = '';
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
+  for (const element of line) {
+    const char = element;
     if (char === '"') {
       inQuotes = !inQuotes;
     } else if (char === ',' && !inQuotes) {

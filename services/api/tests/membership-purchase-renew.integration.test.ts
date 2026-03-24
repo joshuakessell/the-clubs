@@ -15,7 +15,7 @@ vi.mock('../src/auth/middleware.js', () => ({
   },
   optionalAuth: async (request: any, _reply: any) => {
     // optionalAuth is a no-op: keep request.staff as-is (may be undefined for kiosk)
-    void request.staff;
+    request.staff; // optionalAuth is a no-op // no-op
   },
   requireAdmin: async (_request: any, _reply: any) => {},
   requireReauth: async (request: any, _reply: any) => {
@@ -35,7 +35,7 @@ describe('Membership purchase/renew integration', () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
     const dbConfig = {
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -87,7 +87,7 @@ describe('Membership purchase/renew integration', () => {
     const res = await pool.query<{ expected: string }>(
       `SELECT ((CURRENT_DATE + INTERVAL '6 months')::date)::text as expected`
     );
-    return res.rows[0]!.expected;
+    return res.rows[0].expected;
   }
 
   it(
@@ -129,7 +129,7 @@ describe('Membership purchase/renew integration', () => {
       };
       expect(
         createBody.quote.lineItems.some(
-          (li) => li.description === '6 Month Membership' && li.amount === 43
+          (li) => li.description === '6 Month Membership' && li.amount === 4300
         )
       ).toBe(true);
       expect(createBody.quote.lineItems.some((li) => li.description === 'Membership Fee')).toBe(
@@ -162,15 +162,15 @@ describe('Membership purchase/renew integration', () => {
         `SELECT membership_number, membership_card_type, membership_valid_until::text FROM customers WHERE id = $1`,
         [customerId]
       );
-      expect(customer.rows[0]!.membership_number).toBe('NEW-123');
-      expect(customer.rows[0]!.membership_card_type).toBe('SIX_MONTH');
-      expect(customer.rows[0]!.membership_valid_until).toBe(await expectedValidUntil());
+      expect(customer.rows[0].membership_number).toBe('NEW-123');
+      expect(customer.rows[0].membership_card_type).toBe('SIX_MONTH');
+      expect(customer.rows[0].membership_valid_until).toBe(await expectedValidUntil());
 
       const session = await pool.query<{ membership_purchase_intent: string | null }>(
         `SELECT membership_purchase_intent FROM lane_sessions WHERE id = $1`,
         [sessionId]
       );
-      expect(session.rows[0]!.membership_purchase_intent).toBeNull();
+      expect(session.rows[0].membership_purchase_intent).toBeNull();
     })
   );
 
@@ -230,8 +230,8 @@ describe('Membership purchase/renew integration', () => {
       }>(`SELECT membership_number, membership_valid_until::text FROM customers WHERE id = $1`, [
         customerId,
       ]);
-      expect(customer.rows[0]!.membership_number).toBe('OLD-1');
-      expect(customer.rows[0]!.membership_valid_until).toBe(await expectedValidUntil());
+      expect(customer.rows[0].membership_number).toBe('OLD-1');
+      expect(customer.rows[0].membership_valid_until).toBe(await expectedValidUntil());
     })
   );
 
@@ -291,8 +291,8 @@ describe('Membership purchase/renew integration', () => {
       }>(`SELECT membership_number, membership_valid_until::text FROM customers WHERE id = $1`, [
         customerId,
       ]);
-      expect(customer.rows[0]!.membership_number).toBe('NEW-2');
-      expect(customer.rows[0]!.membership_valid_until).toBe(await expectedValidUntil());
+      expect(customer.rows[0].membership_number).toBe('NEW-2');
+      expect(customer.rows[0].membership_valid_until).toBe(await expectedValidUntil());
     })
   );
 });

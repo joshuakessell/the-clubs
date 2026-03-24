@@ -19,11 +19,11 @@ vi.mock('../src/auth/middleware.js', async () => {
     const existing = await query<{ id: string; name: string; role: string }>(
       `SELECT id, name, role FROM staff WHERE active = true ORDER BY created_at ASC LIMIT 1`
     );
-    if (existing.rows.length > 0) return { staffId: existing.rows[0]!.id, name: existing.rows[0]!.name, role: existing.rows[0]!.role };
+    if (existing.rows.length > 0) return { staffId: existing.rows[0].id, name: existing.rows[0].name, role: existing.rows[0].role };
     const created = await query<{ id: string; name: string; role: string }>(
       `INSERT INTO staff (name, role, pin_hash, active) VALUES ('Test Admin', 'ADMIN', 'test-hash', true) RETURNING id, name, role`
     );
-    return { staffId: created.rows[0]!.id, name: created.rows[0]!.name, role: created.rows[0]!.role };
+    return { staffId: created.rows[0].id, name: created.rows[0].name, role: created.rows[0].role };
   }
   return {
     requireAuth: async (request: any) => { request.staff = await ensureStaff(); },
@@ -88,7 +88,7 @@ describe('Staff scheduling smoke tests', () => {
       );
       const res = await app.inject({
         method: 'POST', url: '/v1/admin/shifts',
-        payload: { employee_id: staff.rows[0]!.id, starts_at: '2026-03-15T09:00:00.000Z', ends_at: '2026-03-15T17:00:00.000Z' },
+        payload: { employee_id: staff.rows[0].id, starts_at: '2026-03-15T09:00:00.000Z', ends_at: '2026-03-15T17:00:00.000Z' },
       });
       expect([200, 201, 400]).toContain(res.statusCode);
     });

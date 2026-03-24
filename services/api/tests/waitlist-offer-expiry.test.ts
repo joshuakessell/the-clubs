@@ -18,9 +18,9 @@ vi.mock('../src/auth/middleware.js', async () => {
     );
     if (existing.rows.length > 0) {
       return {
-        staffId: existing.rows[0]!.id,
-        name: existing.rows[0]!.name,
-        role: existing.rows[0]!.role,
+        staffId: existing.rows[0].id,
+        name: existing.rows[0].name,
+        role: existing.rows[0].role,
       };
     }
     const created = await query<{ id: string; name: string; role: 'STAFF' | 'ADMIN' }>(
@@ -28,7 +28,7 @@ vi.mock('../src/auth/middleware.js', async () => {
        VALUES ('Test Staff', 'STAFF', 'test-hash', true)
        RETURNING id, name, role`
     );
-    const row = created.rows[0]!;
+    const row = created.rows[0];
     return { staffId: row.id, name: row.name, role: row.role };
   }
   return {
@@ -63,7 +63,7 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
   beforeAll(async () => {
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -112,62 +112,62 @@ describe('POST /v1/waitlist/:id/offer (timed expiry semantics)', () => {
       `INSERT INTO visits (customer_id, started_at, ended_at)
        VALUES ($1, NOW() - INTERVAL '5 minutes', NULL)
        RETURNING id`,
-      [customer.rows[0]!.id]
+      [customer.rows[0].id]
     );
     const block = await pool.query<{ id: string }>(
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '5 minutes', NOW() + INTERVAL '60 minutes', 'LOCKER')
        RETURNING id`,
-      [visit.rows[0]!.id]
+      [visit.rows[0].id]
     );
     const waitlist = await pool.query<{ id: string }>(
       `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status)
        VALUES ($1, $2, 'STANDARD', 'LOCKER', 'ACTIVE')
        RETURNING id`,
-      [visit.rows[0]!.id, block.rows[0]!.id]
+      [visit.rows[0].id, block.rows[0].id]
     );
 
     const first = await app.inject({
       method: 'POST',
-      url: `/v1/waitlist/${waitlist.rows[0]!.id}/offer`,
-      payload: { resourceId: room.rows[0]!.id },
+      url: `/v1/waitlist/${waitlist.rows[0].id}/offer`,
+      payload: { resourceId: room.rows[0].id },
     });
     expect(first.statusCode).toBe(200);
 
     const afterFirst = await pool.query<{
       status: string;
       offer_expires_at: Date | null;
-    }>(`SELECT status, offer_expires_at FROM waitlist WHERE id = $1`, [waitlist.rows[0]!.id]);
-    expect(afterFirst.rows[0]!.status).toBe('OFFERED');
-    expect(afterFirst.rows[0]!.offer_expires_at).toBeTruthy();
+    }>(`SELECT status, offer_expires_at FROM waitlist WHERE id = $1`, [waitlist.rows[0].id]);
+    expect(afterFirst.rows[0].status).toBe('OFFERED');
+    expect(afterFirst.rows[0].offer_expires_at).toBeTruthy();
 
     const reservation = await pool.query<{ expires_at: Date | null }>(
       `SELECT expires_at
        FROM inventory_reservations
        WHERE released_at IS NULL AND kind = 'UPGRADE_HOLD' AND waitlist_id = $1
        LIMIT 1`,
-      [waitlist.rows[0]!.id]
+      [waitlist.rows[0].id]
     );
     expect(reservation.rows.length).toBe(1);
 
     // Force expiry to be soon, then confirm/extend.
     await pool.query(
       `UPDATE waitlist SET offer_expires_at = NOW() + INTERVAL '2 minutes' WHERE id = $1`,
-      [waitlist.rows[0]!.id]
+      [waitlist.rows[0].id]
     );
 
     const second = await app.inject({
       method: 'POST',
-      url: `/v1/waitlist/${waitlist.rows[0]!.id}/offer`,
-      payload: { resourceId: room.rows[0]!.id },
+      url: `/v1/waitlist/${waitlist.rows[0].id}/offer`,
+      payload: { resourceId: room.rows[0].id },
     });
     expect(second.statusCode).toBe(200);
 
     const afterSecond = await pool.query<{ offer_expires_at: Date | null }>(
       `SELECT offer_expires_at FROM waitlist WHERE id = $1`,
-      [waitlist.rows[0]!.id]
+      [waitlist.rows[0].id]
     );
-    const expiresAt = afterSecond.rows[0]!.offer_expires_at!;
+    const expiresAt = afterSecond.rows[0].offer_expires_at!;
     expect(expiresAt.getTime()).toBeGreaterThan(Date.now() + 9 * 60 * 1000);
   });
 });

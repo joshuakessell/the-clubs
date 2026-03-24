@@ -13,7 +13,7 @@ describe('demo seed (simulator) database assertions', () => {
     } else {
       poolConfig = {
         host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
+        port: Number.parseInt(process.env.DB_PORT || '5432', 10),
         database: process.env.DB_NAME || 'club_operations',
         user: process.env.DB_USER || 'clubops',
         password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -48,8 +48,8 @@ describe('demo seed (simulator) database assertions', () => {
         `SELECT COUNT(*)::text as count FROM customers WHERE membership_number IS NOT NULL`
       );
       // Simulator seeds 100 members + 200 guests initially; more are created during the 14-day simulation
-      expect(parseInt(membershipCustomers.rows[0]!.count, 10)).toBeGreaterThanOrEqual(100);
-      expect(parseInt(customers.rows[0]!.count, 10)).toBeGreaterThanOrEqual(300);
+      expect(Number.parseInt(membershipCustomers.rows[0].count, 10)).toBeGreaterThanOrEqual(100);
+      expect(Number.parseInt(customers.rows[0].count, 10)).toBeGreaterThanOrEqual(300);
 
       // ---------- Inventory Contract ----------
       const rooms = await pool.query<{
@@ -63,7 +63,7 @@ describe('demo seed (simulator) database assertions', () => {
        WHERE kind = 'room'
        ORDER BY number`
       );
-      const roomNumbers = rooms.rows.map((r) => parseInt(r.number, 10));
+      const roomNumbers = rooms.rows.map((r) => Number.parseInt(r.number, 10));
       expect(rooms.rows.length).toBe(55);
 
       // Ensure inventory is exactly the contract set (no extras, no missing)
@@ -83,7 +83,7 @@ describe('demo seed (simulator) database assertions', () => {
       const bothInBlocks = await pool.query<{ count: string }>(
         `SELECT COUNT(*)::text as count FROM checkin_blocks WHERE resource_id IS NULL`
       );
-      expect(parseInt(bothInBlocks.rows[0]!.count, 10)).toBe(0);
+      expect(Number.parseInt(bothInBlocks.rows[0].count, 10)).toBe(0);
 
       // ---------- Current Occupancy ----------
       // Simulator targets near-full rooms at peak Saturday night
@@ -93,8 +93,8 @@ describe('demo seed (simulator) database assertions', () => {
       const lockersAssigned = await pool.query<{ count: string }>(
         `SELECT COUNT(*)::text as count FROM inventory_resources WHERE kind = 'locker' AND assigned_to_customer_id IS NOT NULL`
       );
-      const roomsAssignedNow = parseInt(roomsAssigned.rows[0]!.count, 10);
-      const lockersAssignedNow = parseInt(lockersAssigned.rows[0]!.count, 10);
+      const roomsAssignedNow = Number.parseInt(roomsAssigned.rows[0].count, 10);
+      const lockersAssignedNow = Number.parseInt(lockersAssigned.rows[0].count, 10);
 
       // Peak night: most rooms should be occupied
       expect(roomsAssignedNow).toBeGreaterThanOrEqual(45);
@@ -104,14 +104,14 @@ describe('demo seed (simulator) database assertions', () => {
       const activeVisits = await pool.query<{ count: string }>(
         `SELECT COUNT(*)::text as count FROM visits WHERE ended_at IS NULL`
       );
-      const activeVisitsNow = parseInt(activeVisits.rows[0]!.count, 10);
+      const activeVisitsNow = Number.parseInt(activeVisits.rows[0].count, 10);
       expect(activeVisitsNow).toBeGreaterThanOrEqual(50);
 
       // ---------- Waitlist (peak demand) ----------
       const waitlist = await pool.query<{ count: string }>(
         `SELECT COUNT(*)::text as count FROM waitlist WHERE status = 'PENDING'`
       );
-      const waitlistCount = parseInt(waitlist.rows[0]!.count, 10);
+      const waitlistCount = Number.parseInt(waitlist.rows[0].count, 10);
       // Simulator targets ~6 pending waitlist entries at peak
       expect(waitlistCount).toBeGreaterThanOrEqual(3);
 
@@ -120,19 +120,19 @@ describe('demo seed (simulator) database assertions', () => {
       const totalVisits = await pool.query<{ count: string }>(
         `SELECT COUNT(*)::text as count FROM visits`
       );
-      expect(parseInt(totalVisits.rows[0]!.count, 10)).toBeGreaterThanOrEqual(200);
+      expect(Number.parseInt(totalVisits.rows[0].count, 10)).toBeGreaterThanOrEqual(200);
 
       // ---------- Activity Events ----------
       const activityEvents = await pool.query<{ count: string }>(
         `SELECT COUNT(*)::text as count FROM customer_activity_events`
       );
-      expect(parseInt(activityEvents.rows[0]!.count, 10)).toBeGreaterThanOrEqual(100);
+      expect(Number.parseInt(activityEvents.rows[0].count, 10)).toBeGreaterThanOrEqual(100);
 
       // ---------- Employee Shifts ----------
       const shifts = await pool.query<{ count: string }>(
         `SELECT COUNT(*)::text as count FROM employee_shifts`
       );
-      expect(parseInt(shifts.rows[0]!.count, 10)).toBeGreaterThanOrEqual(50);
+      expect(Number.parseInt(shifts.rows[0].count, 10)).toBeGreaterThanOrEqual(50);
     },
     120000 // 2 minute timeout for full simulation
   );

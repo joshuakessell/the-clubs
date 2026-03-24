@@ -39,7 +39,7 @@ describe('Visit and Renewal Flows', () => {
   beforeAll(async () => {
     const dbConfig = {
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -186,7 +186,7 @@ describe('Visit and Renewal Flows', () => {
         `SELECT ends_at FROM checkin_blocks WHERE visit_id = $1 ORDER BY ends_at DESC LIMIT 1`,
         [visitId]
       );
-      const adjustedEnd = adjustedBlocks.rows[0]!.ends_at;
+      const adjustedEnd = adjustedBlocks.rows[0].ends_at;
 
       // Wait a bit to ensure "now" is different from initial checkout
       await new Promise((resolve) => setTimeout(resolve, 100));

@@ -88,12 +88,12 @@ describe('Time off requests', () => {
     const adminRes = await query<{ id: string }>(
       `INSERT INTO staff (name, role, active) VALUES ('Admin User', 'ADMIN', true) RETURNING id`
     );
-    adminId = adminRes.rows[0]!.id;
+    adminId = adminRes.rows[0].id;
 
     const staffRes = await query<{ id: string }>(
       `INSERT INTO staff (name, role, active) VALUES ('Staff User', 'STAFF', true) RETURNING id`
     );
-    staffId = staffRes.rows[0]!.id;
+    staffId = staffRes.rows[0].id;
 
     adminToken = generateSessionToken();
     staffToken = generateSessionToken();
@@ -170,6 +170,6 @@ describe('Time off requests', () => {
       `SELECT status FROM time_off_requests WHERE id = $1`,
       [requestId]
     );
-    expect(after.rows[0]!.status).toBe('APPROVED');
+    expect(after.rows[0].status).toBe('APPROVED');
   });
 });

@@ -23,7 +23,7 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
   beforeAll(async () => {
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -62,7 +62,7 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
     const cust = await pool.query<{ id: string }>(
       `INSERT INTO customers (name) VALUES ('Anthony Lopez') RETURNING id`
     );
-    const customerId = cust.rows[0]!.id;
+    const customerId = cust.rows[0].id;
 
     const locker = await pool.query<{ id: string }>(
       `INSERT INTO inventory_resources (kind, number, tier, status, assigned_to_customer_id)
@@ -70,7 +70,7 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
        RETURNING id`,
       [customerId]
     );
-    const lockerId = locker.rows[0]!.id;
+    const lockerId = locker.rows[0].id;
 
     const visit = await pool.query<{ id: string }>(
       `INSERT INTO visits (customer_id, started_at, ended_at)
@@ -78,7 +78,7 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
        RETURNING id`,
       [customerId]
     );
-    const visitId = visit.rows[0]!.id;
+    const visitId = visit.rows[0].id;
 
     // Overdue scheduled checkout (ended 1 hour ago) on the active visit.
     const block = await pool.query<{ id: string; starts_at: Date; ends_at: Date }>(
@@ -108,12 +108,12 @@ describe('GET /v1/inventory/detailed (includes overdue active stays)', () => {
 
     const row = (body.lockers ?? []).find((l) => l.number === '040');
     expect(row).toBeDefined();
-    expect(row!.occupancyId).toBe(block.rows[0]!.id);
+    expect(row!.occupancyId).toBe(block.rows[0].id);
     expect(typeof row!.checkinAt).toBe('string');
     expect(typeof row!.checkoutAt).toBe('string');
 
     // Sanity: API values should match what we wrote (ISO strings, tolerate minor precision differences).
-    expect(new Date(row!.checkinAt!).getTime()).toBeCloseTo(block.rows[0]!.starts_at.getTime(), -2);
-    expect(new Date(row!.checkoutAt!).getTime()).toBeCloseTo(block.rows[0]!.ends_at.getTime(), -2);
+    expect(new Date(row!.checkinAt!).getTime()).toBeCloseTo(block.rows[0].starts_at.getTime(), -2);
+    expect(new Date(row!.checkoutAt!).getTime()).toBeCloseTo(block.rows[0].ends_at.getTime(), -2);
   });
 });

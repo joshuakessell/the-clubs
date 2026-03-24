@@ -5,7 +5,7 @@ async function createStaff() {
   await initializeDatabase();
 
   const existing = await query<{ count: string }>('SELECT COUNT(*) as count FROM staff');
-  if (parseInt(existing.rows[0]?.count || '0', 10) > 0) {
+  if (Number.parseInt(existing.rows[0]?.count || '0', 10) > 0) {
     console.log('Staff already exists');
     await closeDatabase();
     return;
@@ -29,4 +29,4 @@ async function createStaff() {
   await closeDatabase();
 }
 
-createStaff().catch(console.error);
+await createStaff();

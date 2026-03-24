@@ -19,9 +19,9 @@ vi.mock('../src/auth/middleware.js', async () => {
     );
     if (existing.rows.length > 0) {
       return {
-        staffId: existing.rows[0]!.id,
-        name: existing.rows[0]!.name,
-        role: existing.rows[0]!.role,
+        staffId: existing.rows[0].id,
+        name: existing.rows[0].name,
+        role: existing.rows[0].role,
       };
     }
     const created = await query<{ id: string; name: string; role: 'STAFF' | 'ADMIN' }>(
@@ -29,7 +29,7 @@ vi.mock('../src/auth/middleware.js', async () => {
        VALUES ('Test Staff', 'STAFF', 'test-hash', true)
        RETURNING id, name, role`
     );
-    const row = created.rows[0]!;
+    const row = created.rows[0];
     return { staffId: row.id, name: row.name, role: row.role };
   }
   return {
@@ -64,7 +64,7 @@ describe('GET /v1/waitlist (offered room details)', () => {
   beforeAll(async () => {
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -129,20 +129,20 @@ describe('GET /v1/waitlist (offered room details)', () => {
       `INSERT INTO visits (customer_id, started_at, ended_at)
        VALUES ($1, NOW() - INTERVAL '30 minutes', NULL)
        RETURNING id`,
-      [customer.rows[0]!.id]
+      [customer.rows[0].id]
     );
 
     const block = await pool.query<{ id: string }>(
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '30 minutes', NOW() + INTERVAL '90 minutes', 'STANDARD', $2)
        RETURNING id`,
-      [visit.rows[0]!.id, locker.rows[0]!.id]
+      [visit.rows[0].id, locker.rows[0].id]
     );
 
     await pool.query(
       `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, resource_id)
        VALUES ($1, $2, 'DOUBLE', 'STANDARD', 'OFFERED', NOW(), $3)`,
-      [visit.rows[0]!.id, block.rows[0]!.id, offeredRoom.rows[0]!.id]
+      [visit.rows[0].id, block.rows[0].id, offeredRoom.rows[0].id]
     );
 
     const res = await app.inject({ method: 'GET', url: '/v1/waitlist?status=OFFERED' });
@@ -153,7 +153,7 @@ describe('GET /v1/waitlist (offered room details)', () => {
     expect(body.entries).toHaveLength(1);
     const entry = body.entries[0];
 
-    expect(entry.resourceId).toBe(offeredRoom.rows[0]!.id);
+    expect(entry.resourceId).toBe(offeredRoom.rows[0].id);
     expect(entry.offeredRoomNumber).toBe('305');
     // displayIdentifier should use the current assignment (locker) not the offered room
     expect(entry.displayIdentifier).toBe('L05');

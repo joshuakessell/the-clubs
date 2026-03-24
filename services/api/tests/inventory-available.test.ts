@@ -26,7 +26,7 @@ describe('GET /v1/inventory/available (effective availability subtracts waitlist
   beforeAll(async () => {
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -67,7 +67,7 @@ describe('GET /v1/inventory/available (effective availability subtracts waitlist
     const cust = await pool.query<{ id: string }>(
       `INSERT INTO customers (name) VALUES ('Waitlist Customer') RETURNING id`
     );
-    customerId = cust.rows[0]!.id;
+    customerId = cust.rows[0].id;
 
     const visit = await pool.query<{ id: string }>(
       `INSERT INTO visits (customer_id, started_at, ended_at)
@@ -75,7 +75,7 @@ describe('GET /v1/inventory/available (effective availability subtracts waitlist
        RETURNING id`,
       [customerId]
     );
-    visitId = visit.rows[0]!.id;
+    visitId = visit.rows[0].id;
 
     const block = await pool.query<{ id: string }>(
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type)
@@ -83,7 +83,7 @@ describe('GET /v1/inventory/available (effective availability subtracts waitlist
        RETURNING id`,
       [visitId]
     );
-    blockId = block.rows[0]!.id;
+    blockId = block.rows[0].id;
 
     app = Fastify({ logger: false, ajv: { customOptions: { strict: false, allowUnionTypes: true } } });
     await app.register(inventoryRoutes);
@@ -134,14 +134,14 @@ describe('GET /v1/inventory/available (effective availability subtracts waitlist
        RETURNING id`,
       [customerId]
     );
-    const endedVisitId = endedVisit.rows[0]!.id;
+    const endedVisitId = endedVisit.rows[0].id;
     const endedBlock = await pool.query<{ id: string }>(
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '2 hours', NOW() - INTERVAL '1 minute', 'STANDARD')
        RETURNING id`,
       [endedVisitId]
     );
-    const endedBlockId = endedBlock.rows[0]!.id;
+    const endedBlockId = endedBlock.rows[0].id;
 
     await pool.query(
       `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status)

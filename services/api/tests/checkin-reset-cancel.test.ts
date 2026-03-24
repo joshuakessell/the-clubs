@@ -21,7 +21,7 @@ vi.mock('../src/auth/middleware.js', () => ({
   requireAuth: async (request: any, _reply: any) => {
     request.staff = { staffId: testStaffId, role: 'STAFF', name: 'Test Staff' };
   },
-  optionalAuth: async (request: any, _reply: any) => { void request.staff; },
+  optionalAuth: async (request: any, _reply: any) => { request.staff; // no-op },
   requireAdmin: async (_request: any, _reply: any) => {},
   requireReauth: async (request: any, _reply: any) => {
     request.staff = { staffId: testStaffId, role: 'STAFF', name: 'Test Staff' };
@@ -44,7 +44,7 @@ describe('POST /v1/checkin/lane/:laneId/reset — cancel broadcast', () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
     const dbConfig = {
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -179,7 +179,7 @@ describe('POST /v1/checkin/lane/:laneId/reset — cancel broadcast', () => {
       );
 
       expect(dbResult.rows.length).toBe(1);
-      const row = dbResult.rows[0]!;
+      const row = dbResult.rows[0];
       expect(row.status).toBe('CANCELLED');
       expect(row.customer_id).toBeNull();
       expect(row.customer_display_name).toBeNull();

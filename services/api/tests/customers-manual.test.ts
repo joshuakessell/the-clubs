@@ -24,7 +24,7 @@ describe('Customers manual identity endpoints', () => {
   beforeAll(async () => {
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -77,7 +77,7 @@ describe('Customers manual identity endpoints', () => {
       bestMatch?: { id?: string; name?: string } | null;
     };
     expect(body.matchCount).toBe(1);
-    expect(body.bestMatch?.id).toBe(inserted.rows[0]!.id);
+    expect(body.bestMatch?.id).toBe(inserted.rows[0].id);
     expect(body.bestMatch?.name).toBe('John Smith');
   });
 
