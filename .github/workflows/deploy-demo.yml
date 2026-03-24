@@ -214,7 +214,9 @@ jobs:
         run: |
           docker build -t the-clubs-api:latest -f services/api/Dockerfile .
           docker save the-clubs-api:latest | gzip > api-image.tar.gz
-          ls -lh api-image.tar.gz
+          ls -la
+          echo "Checking infra/nginx:"
+          ls -la infra/nginx/
 
       - name: Copy to EC2
         uses: appleboy/scp-action@v0.1.7
