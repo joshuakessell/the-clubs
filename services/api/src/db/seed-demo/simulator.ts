@@ -147,66 +147,13 @@ function ceilTo15Min(d: Date): Date {
   return new Date(Math.ceil(ms / (15 * 60 * 1000)) * 15 * 60 * 1000);
 }
 
-function samplePoisson(rng: () => number, lambda: number): number {
-  const L = Math.exp(-lambda);
-  let k = 0;
-  let p = 1;
-  do { k += 1; p *= rng(); } while (p > L);
-  return k - 1;
-}
-
-// ---------------------------------------------------------------------------
-// Traffic Curve (phase-shifted so "now" = Saturday 11 PM peak)
-// ---------------------------------------------------------------------------
-
-/**
- * Returns the simulated day-of-week (0=Sun..6=Sat) and hour for a given
- * real timestamp, phase-shifted so that `anchorTime` maps to Saturday 23:00.
- */
-function getSimulatedDayHour(realTime: Date, anchorTime: Date): { day: number; hour: number } {
-  // anchorTime should map to Saturday (day=6) at hour 23
-  const TARGET_DAY = 6;
-  const TARGET_HOUR = 23;
-
-  const realDay = anchorTime.getDay();
-  const realHour = anchorTime.getHours();
-
-  // Calculate the offset in hours between what the anchor IS and what it SHOULD BE
-  const realTotalHours = realDay * 24 + realHour;
-  const targetTotalHours = TARGET_DAY * 24 + TARGET_HOUR;
-  const offsetHours = targetTotalHours - realTotalHours;
-
-  // Apply the same offset to the realTime
-  const shiftedTime = new Date(realTime.getTime() + offsetHours * 60 * 60 * 1000);
-  return { day: shiftedTime.getDay(), hour: shiftedTime.getHours() };
-}
-
-function isFridayOrSaturdayPeak(day: number, hour: number): boolean {
-  const isFriNight = day === 5 && hour >= 20;
-  const isSatEarly = day === 6 && hour <= 4;
-  const isSatNight = day === 6 && hour >= 20;
-  const isSunEarly = day === 0 && hour <= 4;
-  return isFriNight || isSatEarly || isSatNight || isSunEarly;
-}
-
-/**
- * Arrival rate per hour, driven by the phase-shifted day/hour.
- * 55 rooms + 108 lockers = 163 resources, ~27 customers/hour at capacity.
- */
-function visitRatePerHour(day: number, hour: number): number {
-  const isWeekend = day === 0 || day === 5 || day === 6;
-  if (isFridayOrSaturdayPeak(day, hour)) return 27;
-  let rate: number;
-  if (hour >= 12 && hour <= 16) rate = 8;
-  else if (hour >= 17 && hour <= 19) rate = 18;
-  else if (hour >= 20 && hour <= 23) rate = 24;
-  else if (hour >= 0 && hour <= 3) rate = 27;
-  else rate = 20;
-  return isWeekend ? rate : Math.round(rate / 2);
-}
-
-/** Fixed checkout window: always 6 hours from checkin */
-const STAY_DURATION_MINUTES = 360;
+const RETAIL_CATALOG = [
+  { name: 'Bottled Water', sku: 'WATER', price: 3 },
+  { name: 'Energy Drink', sku: 'ENERGY_DRINK', price: 5 },
+  { name: 'Towel Rental', sku: 'TOWEL_RENTAL', price: 5 },
+  { name: 'Swiss Navy', sku: 'SWISS_NAVY', price: 12 },
+  { name: 'Snack Bar', sku: 'SNACK_BAR', price: 4 },
+];
 
 /** Minutes early departure (positive = leaves early, 0 = stays full 6 hours).
  *  Account checkout time always shows the full 6-hour mark. */
@@ -249,84 +196,6 @@ function nightKey(d: Date): string {
   return adj.toISOString().slice(0, 10);
 }
 
-// ---------------------------------------------------------------------------
-// Male Name Pool (all male — this is an all-male club)
-// ---------------------------------------------------------------------------
-
-const FIRST_NAMES = [
-  'James', 'Robert', 'Michael', 'William', 'David', 'Richard', 'Joseph', 'Thomas',
-  'Christopher', 'Daniel', 'Matthew', 'Andrew', 'Joshua', 'Anthony', 'Kevin',
-  'Brian', 'George', 'Edward', 'Ronald', 'Timothy', 'Jason', 'Jeffrey', 'Ryan',
-  'Jacob', 'Nicholas', 'Eric', 'Stephen', 'Larry', 'Justin', 'Scott',
-  'Brandon', 'Benjamin', 'Samuel', 'Raymond', 'Gregory', 'Frank', 'Patrick',
-  'Alexander', 'Jack', 'Dennis', 'Jerry', 'Tyler', 'Aaron', 'Nathan', 'Henry',
-  'Peter', 'Kyle', 'Noah', 'Ethan', 'Jeremy', 'Walter', 'Christian', 'Keith',
-  'Roger', 'Terry', 'Austin', 'Sean', 'Gerald', 'Carl', 'Harold', 'Dylan',
-  'Arthur', 'Lawrence', 'Jordan', 'Jesse', 'Bryan', 'Billy', 'Bruce', 'Gabriel',
-];
-
-const LAST_NAMES = [
-  'Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis',
-  'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson',
-  'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin', 'Lee', 'Perez', 'Thompson',
-  'White', 'Harris', 'Sanchez', 'Clark', 'Ramirez', 'Lewis', 'Robinson',
-  'Walker', 'Young', 'Allen', 'King', 'Wright', 'Scott', 'Torres', 'Nguyen',
-  'Hill', 'Flores', 'Green', 'Adams', 'Nelson', 'Baker', 'Hall', 'Rivera',
-  'Campbell', 'Mitchell', 'Carter', 'Roberts', 'Gomez', 'Phillips', 'Evans',
-  'Turner', 'Diaz', 'Parker', 'Cruz', 'Edwards', 'Collins', 'Reyes',
-];
-
-const ID_STATES = ['TX', 'OK', 'LA', 'NM', 'AR', 'CA', 'FL', 'NY'];
-
-const RETAIL_CATALOG = [
-  { name: 'Bottled Water', sku: 'WATER', price: 3 },
-  { name: 'Energy Drink', sku: 'ENERGY_DRINK', price: 5 },
-  { name: 'Towel Rental', sku: 'TOWEL_RENTAL', price: 5 },
-  { name: 'Swiss Navy', sku: 'SWISS_NAVY', price: 12 },
-  { name: 'Snack Bar', sku: 'SNACK_BAR', price: 4 },
-];
-
-const GENERAL_NOTES = [
-  'Guest requested extra towels',
-  'Regular customer — VIP treatment',
-  'First-time visitor, gave new member orientation',
-  'Customer asked about membership upgrade options',
-  'Reminded about locker policy',
-  'Guest mentioned they were referred by a friend',
-  'Customer left personal items — placed in lost and found',
-  'Quiet room preference noted for next visit',
-];
-
-const FEEDBACK_NOTES = [
-  'Feedback: Great experience today!',
-  'Feedback: Room could use better lighting',
-  'Feedback: Staff was very helpful',
-  'Feedback: Would love more towels available',
-  'Feedback: Clean and comfortable, will return!',
-];
-
-let newCustomerSeq = 0;
-
-function generateNewCustomer(rng: () => number, now: Date): {
-  id: string; name: string; dob: Date;
-  membershipNumber: string | null; membership_valid_until: Date | null;
-  idNumber: string; idType: string; idState: string; idExpirationDate: Date;
-} {
-  const seq = ++newCustomerSeq;
-  const firstName = FIRST_NAMES[Math.floor(rng() * FIRST_NAMES.length)];
-  const lastName = LAST_NAMES[Math.floor(rng() * LAST_NAMES.length)];
-  return {
-    id: randomUUID(),
-    name: `${firstName} ${lastName}`,
-    dob: new Date(1970 + Math.floor(rng() * 35), Math.floor(rng() * 12), 1 + Math.floor(rng() * 27)),
-    membershipNumber: null,
-    membership_valid_until: null,
-    idNumber: `D${String(seq + 50000000).padStart(8, '0')}`,
-    idType: 'DRIVERS_LICENSE',
-    idState: ID_STATES[Math.floor(rng() * ID_STATES.length)],
-    idExpirationDate: new Date(now.getFullYear() + 2 + Math.floor(rng() * 4), Math.floor(rng() * 12), 1 + Math.floor(rng() * 27)),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // State table helpers (tracks where the simulation left off)
@@ -351,6 +220,44 @@ async function loadSimState(): Promise<{ lastSimulatedIso: string; anchorIso: st
   return res.rows.length > 0
     ? { lastSimulatedIso: res.rows[0].last_simulated_iso, anchorIso: res.rows[0].anchor_iso }
     : null;
+}
+
+/**
+ * Clears all activity/transactional data while preserving customers,
+ * staff, inventory, and agreements. Used on subsequent deploys to
+ * regenerate a fresh 60-day simulation with the same customer base.
+ */
+async function clearActivityData(): Promise<void> {
+  const tables = [
+    'demo_sim_state',
+    'inventory_reservations',
+    'waitlist',
+    'checkout_requests',
+    'late_checkout_events',
+    'cleaning_events',
+    'receipts',
+    'order_line_items',
+    'orders',
+    'agreement_signatures',
+    'checkin_blocks',
+    'visits',
+    'customer_activity_events',
+    'customer_spend_ledger_entries',
+    'club_events',
+    'customer_notes',
+    'lane_sessions',
+    'lane_session_commands',
+    'employee_shifts',
+    'employee_timeclock',
+    'register_sessions',
+  ];
+  for (const table of tables) {
+    await query(`DELETE FROM ${table}`);
+  }
+  // Reset inventory to clean/unassigned
+  await query(`UPDATE inventory_resources SET assigned_to_customer_id = NULL, status = 'CLEAN', updated_at = NOW()`);
+  // Reset customer transient fields (keep name, dob, membership, square_customer_id)
+  await query(`UPDATE customers SET past_due_balance = 0, banned_until = NULL, updated_at = NOW()`);
 }
 
 async function saveSimState(lastSimulated: Date, anchor: Date): Promise<void> {
@@ -781,294 +688,6 @@ function getOnShiftStaff(
   return allStaff[Math.floor(rng() * allStaff.length)];
 }
 
-// ---------------------------------------------------------------------------
-// Core Visit Simulation
-// ---------------------------------------------------------------------------
-
-async function simulateVisits(params: {
-  client: DbClient;
-  from: Date;
-  to: Date;
-  anchor: Date;           // "now" — the phase-shift reference point
-  agreement: SimAgreement;
-  customers: SimCustomer[];
-  lockers: SimLocker[];
-  rooms: SimRoom[];
-  staff: SimStaff[];
-  shifts: SimShift[];
-  registerSessions: SimRegisterSession[];
-}): Promise<number> {
-  const { client, from, to, anchor, agreement, customers, lockers, rooms, staff, shifts, registerSessions } = params;
-  const windowMs = to.getTime() - from.getTime();
-  if (windowMs <= 0) return 0;
-
-  const rngSeed = Math.floor(from.getTime() / 60000) ^ Math.floor(windowMs / 60000);
-  const rng = seededRng(rngSeed);
-  const HOUR_MS = 60 * 60 * 1000;
-  const intervals = Math.max(1, Math.ceil(windowMs / HOUR_MS));
-  const maxVisits = Math.min(30000, intervals * 70);
-
-  let lockerIdx = 0;
-  let roomIdx = 0;
-  let created = 0;
-  let orderSeed = Math.floor(from.getTime() / 60000) % 100000;
-
-  // Track when each customer's latest visit ends to prevent overlapping visits
-  const activeVisitEnd = new Map<string, number>();
-
-  for (let i = 0; i < intervals && created < maxVisits; i++) {
-    const slotStart = new Date(from.getTime() + i * HOUR_MS);
-    const slotEnd = new Date(Math.min(slotStart.getTime() + HOUR_MS, to.getTime()));
-    const { day, hour } = getSimulatedDayHour(slotStart, anchor);
-    const lambda = visitRatePerHour(day, hour);
-    const visitCount = clamp(samplePoisson(rng, lambda), 0, 70);
-
-    for (let j = 0; j < visitCount && created < maxVisits; j++) {
-      const offsetMs = Math.floor(rng() * Math.max(1, slotEnd.getTime() - slotStart.getTime()));
-      const start = ceilTo15Min(new Date(slotStart.getTime() + offsetMs));
-      if (start > to) continue;
-
-      // Scheduled checkout: always 6 hours from checkin, rounded up to nearest 15 min
-      const scheduledEnd = ceilTo15Min(new Date(start.getTime() + STAY_DURATION_MINUTES * 60 * 1000));
-      if (scheduledEnd <= start) continue;
-      // Some guests leave early; actual departure may be before the scheduled checkout
-      const earlyMins = sampleEarlyDepartureMinutes(rng);
-      const end = earlyMins > 0 ? new Date(scheduledEnd.getTime() - earlyMins * 60 * 1000) : scheduledEnd;
-      if (end <= start || end > to) continue;
-
-      // --- Pick customer (80% returning, 20% new) ---
-      // Retry up to 5 times if the picked customer has an overlapping visit
-      let customer: SimCustomer | null = null;
-      for (let attempt = 0; attempt < 5 && !customer; attempt++) {
-        let candidate: SimCustomer;
-        if (rng() < 0.8 && customers.length > 0) {
-          candidate = customers[Math.floor(rng() * customers.length)];
-        } else {
-          const nc = generateNewCustomer(rng, to);
-          await client.query(
-            `INSERT INTO customers (id, name, dob, membership_number, id_number, id_type, id_state, id_expiration_date, primary_language, past_due_balance, created_at, updated_at)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'EN',0,$9,$9)`,
-            [nc.id, nc.name, nc.dob, nc.membershipNumber, nc.idNumber, nc.idType, nc.idState, nc.idExpirationDate, start]
-          );
-          candidate = { id: nc.id, name: nc.name, membership_number: null, membership_valid_until: null, dob: nc.dob };
-          customers.push(candidate);
-        }
-        // Check for overlapping visit
-        const prevEnd = activeVisitEnd.get(candidate.id) ?? 0;
-        if (start.getTime() >= prevEnd) {
-          customer = candidate;
-        }
-      }
-      if (!customer) continue; // All attempts had overlap — skip this visit
-
-      // Record this customer's visit window
-      activeVisitEnd.set(customer.id, end.getTime());
-
-      // Pick the employee who is on-shift at this visit's check-in time
-      const emp = getOnShiftStaff(shifts, staff, start, rng);
-      // Check-ins go to register 1 or 2; upgrades/retail to register 3
-      const checkinRegs = registerSessions.filter(r => r.register_number <= 2);
-      const reg = checkinRegs.length > 0
-        ? checkinRegs[j % checkinRegs.length]
-        : registerSessions[0];
-      const paymentMethod = rng() < 0.3 ? 'CASH' : 'CREDIT';
-
-      // --- Choose resource (62% locker, 38% room) ---
-      let resourceId: string | null = null;
-      let rentalType = 'LOCKER';
-      if (rng() < 0.62 && lockers.length > 0) {
-        resourceId = lockers[lockerIdx++ % lockers.length].id;
-      } else if (rooms.length > 0) {
-        const room = rooms[roomIdx++ % rooms.length];
-        resourceId = room.id;
-        rentalType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(room.tier) ? room.tier : 'STANDARD';
-      } else if (lockers.length > 0) {
-        resourceId = lockers[lockerIdx++ % lockers.length].id;
-      }
-      const isRoom = rentalType !== 'LOCKER';
-
-      const visitId = randomUUID();
-      const blockId = randomUUID();
-      const signedAt = new Date(start.getTime() + 3 * 60 * 1000);
-
-      // --- Visit + Checkin Block ---
-      await client.query(
-        `INSERT INTO visits (id, started_at, ended_at, customer_id, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,NOW(),NOW())`,
-        [visitId, start, end, customer.id]
-      );
-      await client.query(
-        `INSERT INTO checkin_blocks (id, visit_id, block_type, starts_at, ends_at, resource_id, agreement_signed, agreement_signed_at, rental_type)
-         VALUES ($1,$2,'INITIAL',$3,$4,$5,true,$6,$7)`,
-        [blockId, visitId, start, scheduledEnd, resourceId, signedAt, rentalType]
-      );
-      await client.query(
-        `INSERT INTO agreement_signatures (id, agreement_id, customer_name, membership_number, signed_at, signature_png_base64, agreement_text_snapshot, agreement_version, checkin_block_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [randomUUID(), agreement.id, customer.name, customer.membership_number, signedAt, DEMO_SIGNATURE_PNG_BASE64, agreement.body_text, agreement.version, blockId]
-      );
-
-      // --- Activity Events: CHECKIN_STARTED + CHECKIN_COMPLETED ---
-      const checkinStartedAt = new Date(start.getTime() - 3 * 60 * 1000);
-      await insertActivityEvent(client, {
-        at: checkinStartedAt, customerId: customer.id, action: 'CHECKIN_STARTED', category: 'CHECKIN',
-        staffId: emp.id, staffName: emp.name,
-        summary: 'Check-in started',
-        metadata: { visitId, rentalType, registerNumber: reg.register_number, registerSessionId: reg.id },
-        searchBlob: `Check-in started ${customer.name} ${rentalType} ${visitId} ${emp.name}`,
-        dedupeKey: `ACT:SIM:CHECKIN_STARTED:${visitId}`,
-      });
-      await insertActivityEvent(client, {
-        at: start, customerId: customer.id, action: 'CHECKIN_COMPLETED', category: 'CHECKIN',
-        staffId: emp.id, staffName: emp.name,
-        summary: 'Checked in',
-        metadata: { visitId, blockId, rentalType, registerNumber: reg.register_number, registerSessionId: reg.id },
-        searchBlob: `Checked in ${customer.name} ${rentalType} ${visitId} ${blockId} ${emp.name}`,
-        dedupeKey: `ACT:SIM:CHECKIN_COMPLETED:${blockId}`,
-      });
-
-      // --- Spend Ledger: Rental Fee ---
-      const price = checkinPrice(rentalType);
-      await insertLedgerEntry(client, {
-        at: signedAt, customerId: customer.id, visitId, type: 'RENTAL_FEE', amount: price,
-        staffId: emp.id, staffName: emp.name, summary: rentalLabel(rentalType),
-        metadata: { rentalType, price },
-        dedupeKey: `LEDGER:SIM:RENTAL_FEE:${blockId}`,
-      });
-
-      // --- Spend Ledger: Membership Fee ($13) for non-members ---
-      const hasValidMembership = customer.membership_valid_until && new Date(customer.membership_valid_until) >= start;
-      if (!hasValidMembership) {
-        await insertLedgerEntry(client, {
-          at: signedAt, customerId: customer.id, visitId, type: 'MEMBERSHIP_FEE', amount: 13,
-          staffId: emp.id, staffName: emp.name, summary: 'Non-Member Fee',
-          metadata: { membershipPrice: 13 },
-          dedupeKey: `LEDGER:SIM:MEMBERSHIP_FEE:${blockId}`,
-        });
-      }
-
-      // --- Payment Intent + Charge ---
-      const piId = randomUUID();
-      let orderTotal = price;
-      const lines = [{ name: rentalLabel(rentalType), price }];
-      if (!hasValidMembership) {
-        orderTotal += 13;
-        lines.push({ name: 'Membership Fee', price: 13 });
-      }
-
-      await client.query(
-        `INSERT INTO orders (id, visit_id, subtotal, discount, tax, tip, total, currency, status, payment_method, register_session_id, register_number, created_by_staff_id, paid_by_staff_id, quote_json, paid_at, created_at, updated_at)
-         VALUES ($1,$2,$3,0,0,0,$3,'USD','PAID',$4,$5,$6,$7,$7,$8,$9,$9,$9)`,
-        [piId, visitId, orderTotal, paymentMethod, reg.id, reg.register_number, emp.id, { type: 'CHECKIN', rentalType, total: orderTotal, lines }, signedAt]
-      );
-      
-      const chargeId = randomUUID();
-      await client.query(
-        `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
-         VALUES ($1,$2,'CHECKIN_FEE',$3,1,$4,0,0,$4)`,
-        [chargeId, piId, rentalLabel(rentalType), price]
-      );
-      
-      if (!hasValidMembership) {
-        await client.query(
-          `INSERT INTO order_line_items (id, order_id, kind, name, quantity, unit_price, discount, tax, total)
-           VALUES ($1,$2,'ADDON','Membership Fee',1,13,0,0,13)`,
-          [randomUUID(), piId]
-        );
-      }
-
-      // --- Checkout Activity Event ---
-      await insertActivityEvent(client, {
-        at: end, customerId: customer.id, action: 'CHECKOUT_COMPLETED', category: 'CHECKOUT',
-        staffId: emp.id, staffName: emp.name, summary: 'Checked out',
-        metadata: { visitId, blockId, rentalType },
-        searchBlob: `Checked out ${customer.name} ${visitId} ${blockId} ${emp.name}`,
-        dedupeKey: `ACT:SIM:CHECKOUT_COMPLETED:${visitId}`,
-      });
-
-      // --- Cleaning Events for room visits ---
-      if (isRoom && resourceId) {
-        const cleanStart = new Date(end.getTime() + (3 + Math.floor(rng() * 6)) * 60 * 1000);
-        const cleanEnd = new Date(cleanStart.getTime() + (8 + Math.floor(rng() * 8)) * 60 * 1000);
-        if (cleanEnd <= to) {
-          const cleaner = staff[(roomIdx + j) % staff.length];
-          const ev1 = randomUUID(), ev2 = randomUUID();
-          await client.query(
-            `INSERT INTO cleaning_events (id, resource_id, staff_id, started_at, completed_at, from_status, to_status, override_flag, device_id, created_at)
-             VALUES ($1,$2::uuid,$3::uuid,$4,NULL,'DIRTY','CLEANING',false,'demo-cleaning',$4),
-                    ($5,$2::uuid,$3::uuid,$4,$6,'CLEANING','CLEAN',false,'demo-cleaning',$6)`,
-            [ev1, resourceId, cleaner.id, cleanStart, ev2, cleanEnd]
-          );
-        }
-      }
-
-      // --- Waitlist (~8% of room visits) ---
-      if (isRoom && resourceId && rng() < 0.08) {
-        const wlCreated = new Date(start.getTime() - Math.floor(15 + rng() * 30) * 60 * 1000);
-        const wlOffered = new Date(wlCreated.getTime() + Math.floor(15 + rng() * 30) * 60 * 1000);
-        const wlCompleted = new Date(wlOffered.getTime() + Math.floor(2 + rng() * 3) * 60 * 1000);
-        const wlId = randomUUID();
-        await client.query(
-          `INSERT INTO waitlist (id, visit_id, checkin_block_id, desired_tier, backup_tier, resource_id, status, created_at, updated_at, offered_at, offer_expires_at, last_offered_at, offer_attempts, completed_at)
-           VALUES ($1,$2,$3,$4::rental_type,'LOCKER'::rental_type,$5,'COMPLETED',$6,$7,$8,$9,$8,1,$7)`,
-          [wlId, visitId, blockId, rentalType, resourceId, wlCreated, wlCompleted, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000)]
-        );
-        await client.query(`UPDATE checkin_blocks SET waitlist_id = $1 WHERE id = $2`, [wlId, blockId]);
-        await client.query(
-          `INSERT INTO inventory_reservations (id, resource_type, resource_id, kind, waitlist_id, created_at, expires_at, released_at, release_reason)
-           VALUES ($1,'room'::inventory_resource_type,$2,'UPGRADE_HOLD'::inventory_reservation_kind,$3,$4,$5,$6,'waitlist_completed')`,
-          [randomUUID(), resourceId, wlId, wlOffered, new Date(wlOffered.getTime() + 10 * 60 * 1000), wlCompleted]
-        );
-      }
-
-      // --- Room Upgrade (~4% of locker visits) ---
-      if (!isRoom && resourceId && rooms.length > 0 && rng() < 0.04) {
-        const ugRoom = rooms[Math.floor(rng() * rooms.length)];
-        const ugMinIn = 30 + Math.floor(rng() * 90);
-        const ugAt = new Date(start.getTime() + ugMinIn * 60 * 1000);
-        if (ugAt < end) {
-          const ugType = ['STANDARD', 'DOUBLE', 'SPECIAL'].includes(ugRoom.tier) ? ugRoom.tier : 'STANDARD';
-          await insertUpgrade(client, { visitId, blockId, customerId: customer.id, roomId: ugRoom.id, roomType: ugType, lockerId: resourceId, ugAt, ugEnd: scheduledEnd, staffId: emp.id, staff, to, rng });
-        }
-      }
-
-      // --- Checkout Request for room visits ---
-      if (isRoom) {
-        // With a fixed 6-hour checkout window, guests are never late
-        await insertCheckoutRequest(client, { blockId, customerId: customer.id, lateMins: 0, lateFee: 0, at: end });
-      }
-
-      // --- Customer Notes (~10% general, ~6% late checkout, ~5% feedback) ---
-      if (rng() < 0.1) {
-        const noteText = GENERAL_NOTES[Math.floor(rng() * GENERAL_NOTES.length)];
-        const noteAt = new Date(end.getTime() - Math.floor(rng() * 60) * 60 * 1000);
-        await insertNote(client, { customerId: customer.id, staffId: emp.id, staffName: emp.name, note: noteText, at: noteAt, visitId, important: false, dedupeKey: `ACT:SIM:NOTE:GEN:${visitId}:${noteAt.getTime()}` });
-      }
-      if (rng() < 0.05) {
-        const fb = FEEDBACK_NOTES[Math.floor(rng() * FEEDBACK_NOTES.length)];
-        const fbAt = new Date(end.getTime() + 60 * 1000);
-        await insertActivityEvent(client, { at: fbAt, customerId: customer.id, action: 'NOTE_ADDED', category: 'NOTE', sourceApp: 'CUSTOMER_KIOSK', actorType: 'CUSTOMER', summary: fb, metadata: { visitId, noteType: 'customer_feedback' }, searchBlob: `${fb} ${customer.name}`, dedupeKey: `ACT:SIM:NOTE:FEEDBACK:${visitId}` });
-      }
-
-      // --- Retail Orders (~24% customer-linked, ~55% anonymous) ---
-      // Retail during check-in uses the same register (R1/R2); standalone retail uses R3
-      if (rng() < 0.24) {
-        orderSeed++;
-        await insertOrder(client, { at: new Date(start.getTime() + (10 + Math.floor(rng() * 30)) * 60 * 1000), regSessionId: reg.id, regNumber: reg.register_number, staffId: emp.id, customerId: customer.id, visitId, seed: orderSeed, rng, to });
-      }
-      if (rng() < 0.55) {
-        orderSeed++;
-        const retailReg = registerSessions.find(r => r.register_number === 3) ?? reg;
-        await insertOrder(client, { at: new Date(start.getTime() + (45 + Math.floor(rng() * 120)) * 60 * 1000), regSessionId: retailReg.id, regNumber: retailReg.register_number, staffId: emp.id, customerId: null, visitId: null, seed: orderSeed, rng, to });
-      }
-
-      created++;
-    }
-  }
-  return created;
-}
-
-// ---------------------------------------------------------------------------
 // Helper: Insert activity event
 // ---------------------------------------------------------------------------
 
@@ -1537,7 +1156,15 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
     let anchor = now;
     const SIM_DAYS = 60;
 
-    if (!options.forceReseed && state) {
+    // Always ensure staff + base entities (idempotent — skips if already present)
+    progress.log('🌱 Ensuring demo staff...');
+    const staffCount = await ensureDemoStaff();
+    progress.log(`✅ Ensured ${staffCount} demo staff with valid PINs`);
+    progress.log('🏗️  Seeding base entities (rooms, lockers, customers)...');
+    await seedBaseEntities(now, progress);
+    await syncCustomersToSquare(progress);
+
+    if (state && !options.forceReseed) {
       // Incremental mode: continue from where we left off
       from = new Date(state.lastSimulatedIso);
       anchor = new Date(state.anchorIso);
@@ -1547,13 +1174,11 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       }
       progress.log(`🔄 Incremental simulation from ${from.toISOString()} to ${now.toISOString()}`);
     } else {
-      // Full seed: staff, base entities, shifts + 60-day simulation
-      progress.log('🌱 First-time simulation — ensuring demo staff...');
-      const staffCount = await ensureDemoStaff();
-      progress.log(`✅ Ensured ${staffCount} demo staff with valid PINs`);
-      progress.log('🏗️  Seeding base entities (rooms, lockers, customers)...');
-      await seedBaseEntities(now, progress);
-      await syncCustomersToSquare(progress);
+      // Full (re)seed: clear activity data but keep customers, then simulate 60 days
+      if (state) {
+        progress.log('🧹 Clearing activity data for fresh 60-day simulation (keeping customers)...');
+        await clearActivityData();
+      }
       await seedShifts(now, progress);
       from = new Date(now.getTime() - SIM_DAYS * 24 * 60 * 60 * 1000);
       progress.log(`📊 Simulating ${SIM_DAYS} days of club activity...`);
