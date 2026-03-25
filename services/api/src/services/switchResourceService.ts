@@ -125,10 +125,10 @@ async function processSwitchUpcharge(
     kind: 'UPGRADE',
     name: 'Switch Upcharge',
     quantity: 1,
-    unitPrice: feeCents.toString(),
+    unitPrice: feeInt.toString(),
     discount: '0',
     tax: '0',
-    total: feeCents.toString(),
+    total: feeInt.toString(),
   });
 
   return order.id;
