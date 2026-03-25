@@ -25,6 +25,7 @@ import { sql } from 'drizzle-orm';
 import { SeedProgress } from './progress';
 import { ensureDemoStaff } from '../ensureDemoStaff';
 import { generateFixedCustomers } from './customer-fixture';
+import { simulateVisitsV2 } from './simulation-engine';
 
 /**
  * Minimal valid 1x1 PNG used as a placeholder for demo signature images.
@@ -1608,7 +1609,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       const orphaned = await closeOrphanedVisits(client, now);
       if (orphaned > 0) progress.log(`🧹 Cleaned up ${orphaned} orphaned visit(s)`);
 
-      const visitCount = await simulateVisits({
+      const visitCount = await simulateVisitsV2({
         client, from, to: now, anchor,
         agreement,
         customers: customersRes.rows,
@@ -1617,6 +1618,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
         staff: staffRes.rows,
         shifts,
         registerSessions,
+        progress,
       });
 
       // Create active waitlist entries at present moment (peak demand)
