@@ -2,18 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import { KioskMirrorView } from './KioskMirrorView';
 import { useRegisterStore } from '../stores/useRegisterStore';
 
-const NAVBAR_HEIGHT = 90;
+const NAVBAR_HEIGHT = 92;
 const DRAWER_WIDTH = 400;
 const TAB_WIDTH = 48;
+const TAB_VISIBLE_STRIP = 6;
 
 /**
  * KioskDrawer — right-side slide-out showing a centered mirror of the customer kiosk.
+ * Tab is mostly hidden until the cursor approaches the right edge.
  */
 export function KioskDrawer() {
   const sessionPayload = useRegisterStore((s) => s.sessionPayload);
   const laneId = useRegisterStore((s) => s.laneId);
   const [open, setOpen] = useState(false);
+  const [tabRevealed, setTabRevealed] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Close on outside click
   useEffect(() => {
@@ -36,22 +40,60 @@ export function KioskDrawer() {
     return () => document.removeEventListener('keydown', handler);
   }, []);
 
+  // Reveal tab when cursor is near the right edge of the viewport
+  useEffect(() => {
+    if (open) return;
+    const handler = (e: MouseEvent) => {
+      const distanceFromEdge = window.innerWidth - e.clientX;
+      if (distanceFromEdge <= 32) {
+        if (hideTimerRef.current) {
+          clearTimeout(hideTimerRef.current);
+          hideTimerRef.current = null;
+        }
+        setTabRevealed(true);
+      } else if (distanceFromEdge > 80) {
+        if (!hideTimerRef.current) {
+          hideTimerRef.current = setTimeout(() => {
+            setTabRevealed(false);
+            hideTimerRef.current = null;
+          }, 400);
+        }
+      }
+    };
+    document.addEventListener('mousemove', handler);
+    return () => {
+      document.removeEventListener('mousemove', handler);
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, [open]);
+
+  // When drawer opens, reset revealed state
+  useEffect(() => {
+    if (open) setTabRevealed(false);
+  }, [open]);
+
+  const tabOffset = open
+    ? 0
+    : tabRevealed
+      ? 0
+      : TAB_WIDTH - TAB_VISIBLE_STRIP;
+
   return (
     <div
       ref={drawerRef}
       className="fixed right-0 bottom-0 z-[9000] flex flex-col items-end pointer-events-none"
       style={{ top: NAVBAR_HEIGHT }}
     >
-      {/* Drawer panel — fills entire viewport when open */}
+      {/* Drawer panel */}
       <div
-        className={`absolute top-0 flex flex-col overflow-hidden border-l border-t border-[var(--color-border-default)] bg-[var(--color-surface-raised)] rounded-tl-xl shadow-[-8px_0_32px_rgba(0,0,0,0.35)] transition-transform duration-[280ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
-          open ? 'translate-x-0 pointer-events-auto' : 'pointer-events-none'
+        className={`absolute top-0 flex flex-col overflow-hidden border-l border-t border-[var(--color-border-default)] bg-[var(--color-surface-raised)] rounded-tl-xl shadow-[-8px_0_32px_rgba(0,0,0,0.35)] transition-all duration-[280ms] ease-[cubic-bezier(0.4,0,0.2,1)] ${
+          open ? 'pointer-events-auto' : 'pointer-events-none'
         }`}
         style={{
-          right: TAB_WIDTH,
+          right: 0,
           width: DRAWER_WIDTH,
           height: `calc(100vh - ${NAVBAR_HEIGHT}px)`,
-          transform: open ? 'translateX(0)' : `translateX(${DRAWER_WIDTH + TAB_WIDTH}px)`,
+          transform: open ? 'translateX(0)' : `translateX(${DRAWER_WIDTH}px)`,
         }}
       >
         {/* Drawer header */}
@@ -73,31 +115,55 @@ export function KioskDrawer() {
 
         {/* Body: full-size mirror */}
         <div className="flex-1 flex flex-col items-center justify-center overflow-auto">
-          <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId} />
+          <KioskMirrorView sessionPayload={sessionPayload ?? null} laneId={laneId ?? undefined} />
         </div>
+
+        {/* Tab — attached to left edge of drawer when open */}
+        {open && (
+          <button
+            onClick={() => setOpen(false)}
+            aria-label="Close customer kiosk"
+            className="absolute top-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-2.5 border cursor-pointer shadow-[-6px_0_16px_rgba(0,0,0,0.2)] pointer-events-auto bg-[var(--color-accent-glow)] text-[var(--color-accent-primary)] rounded-l-xl border-r-0 border-[var(--color-border-default)]"
+            style={{ width: TAB_WIDTH, height: 140, left: -TAB_WIDTH }}
+          >
+            <MonitorIcon size={18} />
+            <span className="text-[11px] font-extrabold tracking-widest uppercase [writing-mode:vertical-rl] rotate-180">
+              Kiosk
+            </span>
+          </button>
+        )}
       </div>
 
-      {/* Pull tab — rounding inverts based on open state */}
-      <button
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? 'Close customer kiosk' : 'Open customer kiosk'}
-        className={`absolute top-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-2.5 border cursor-pointer shadow-[-6px_0_16px_rgba(0,0,0,0.2)] transition-all duration-[280ms] pointer-events-auto ${
-          open
-            ? 'bg-[var(--color-accent-glow)] text-[var(--color-accent-primary)] rounded-r-xl border-l-0 border-[var(--color-border-default)]'
-            : 'bg-[var(--color-surface-raised)] text-[var(--color-text-secondary)] rounded-l-xl border-r-0 border-[var(--color-border-default)]'
-        }`}
-        style={{ width: TAB_WIDTH, height: 180, right: 0 }}
-      >
-        <MonitorIcon size={20} />
-        <span className="text-[13px] font-extrabold tracking-widest uppercase [writing-mode:vertical-rl] rotate-180">
-          Kiosk
-        </span>
-      </button>
+      {/* Pull tab on right edge — mostly hidden until hover */}
+      {!open && (
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Open customer kiosk"
+          className="absolute top-1/2 -translate-y-1/2 flex flex-col items-center justify-center gap-2.5 border cursor-pointer shadow-[-6px_0_16px_rgba(0,0,0,0.2)] pointer-events-auto bg-[var(--color-surface-raised)] text-[var(--color-text-secondary)] rounded-l-xl border-r-0 border-[var(--color-border-default)]"
+          style={{
+            width: TAB_WIDTH,
+            height: 140,
+            right: -tabOffset,
+            opacity: tabRevealed ? 1 : 0.3,
+            transition: 'right 250ms cubic-bezier(0.4,0,0.2,1), opacity 250ms ease',
+          }}
+          onMouseEnter={() => setTabRevealed(true)}
+          onMouseLeave={() => {
+            hideTimerRef.current = setTimeout(() => {
+              setTabRevealed(false);
+              hideTimerRef.current = null;
+            }, 600);
+          }}
+        >
+          <MonitorIcon size={18} />
+          <span className="text-[11px] font-extrabold tracking-widest uppercase [writing-mode:vertical-rl] rotate-180">
+            Kiosk
+          </span>
+        </button>
+      )}
     </div>
   );
 }
-
-
 
 function MonitorIcon({ size = 16 }: { readonly size?: number }) {
   return (

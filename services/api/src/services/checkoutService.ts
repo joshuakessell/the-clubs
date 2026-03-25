@@ -9,14 +9,19 @@
 import { RoomStatus } from '@the-clubs/shared';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import type { Broadcaster } from '../realtime/broadcaster';
 import type {
   ManualCheckoutCandidateRow,
   ManualResolveRow,
   CheckoutRequestRow,
   CheckinBlockRow,
   WaitlistStatusRow,
+  CustomerRow,
+  KeyTagRow,
+  ResourceRow,
 } from '../checkout/types';
-import type { MarkFeePaidInput } from '../checkout/schemas';
+import type { MarkFeePaidInput, CreateCheckoutRequestInput } from '../checkout/schemas';
+import type { CheckoutRequestSummary, ResolvedCheckoutKey } from '@the-clubs/shared';
 import { calculateLateFee, looksLikeUuid } from '../checkout/utils';
 import { insertAuditLogDrizzle } from '../audit/auditLog';
 import { insertCustomerActivityEventDrizzle } from '../activity/customerActivityLog';
@@ -27,37 +32,6 @@ import { HttpError } from '../errors/HttpError';
 import { type DrizzleTx } from '../db';
 import { calculateRenewalQuote, type RentalType } from '../pricing/engine';
 
-
-
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the Queryable interface
- * expected by ensureOrderWithReceipt.
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      // Use matchAll to find $N placeholders and their positions
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        // Append the literal text before this placeholder
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        // Parse the placeholder number and map to the correct param
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
-      }
-      // Append any trailing literal text
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await (tx as any).execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
 
 // ── Shared context (passed from route layer) ──
 
@@ -106,6 +80,7 @@ export interface ManualCompleteResult {
   resourceId?: string | null;
   cancelledWaitlistIds: string[];
   visitId: string;
+  orderId?: string | null;
 }
 
 export interface ClaimResult {
@@ -133,6 +108,154 @@ export interface CompleteCheckoutResult {
   visitId: string;
   kioskDeviceId: string | null;
   cancelledWaitlistIds: string[];
+}
+
+// ── Kiosk Checkout Flow ──
+
+export async function resolveCheckoutKeyLogic(token: string): Promise<ResolvedCheckoutKey> {
+  const tagResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT id, resource_id, tag_code, is_active FROM key_tags WHERE tag_code = ${token} AND is_active = true`
+  );
+  if (tagResult.rows.length === 0) throw new HttpError(404, 'Key tag not found or inactive');
+  const tag = tagResult.rows[0] as unknown as KeyTagRow;
+  if (!tag.resource_id) throw new HttpError(404, 'Key tag is not associated with a resource');
+
+  const blockResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
+            cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote
+     FROM checkin_blocks cb JOIN visits v ON cb.visit_id = v.id
+     WHERE cb.resource_id = ${tag.resource_id} AND v.ended_at IS NULL ORDER BY cb.ends_at DESC LIMIT 1`
+  );
+  if (blockResult.rows.length === 0) throw new HttpError(404, 'No active occupancy found for this key');
+  const block = blockResult.rows[0] as unknown as CheckinBlockRow;
+
+  const visitResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT customer_id FROM visits WHERE id = ${block.visit_id}`
+  );
+  if (visitResult.rows.length === 0) throw new HttpError(404, 'Visit not found');
+  const customerId = (visitResult.rows[0] as unknown as { customer_id: string }).customer_id;
+
+  const customerResult = await db.execute<Record<string, unknown>>(
+    sql`SELECT id, name, membership_number, banned_until FROM customers WHERE id = ${customerId}`
+  );
+  if (customerResult.rows.length === 0) throw new HttpError(404, 'Customer not found');
+  const customer = customerResult.rows[0] as unknown as CustomerRow;
+
+  let resourceNumber: string | undefined;
+  if (block.resource_id) {
+    const resourceResult = await db.execute<Record<string, unknown>>(
+      sql`SELECT id, number, kind, tier FROM inventory_resources WHERE id = ${block.resource_id}`
+    );
+    if (resourceResult.rows.length > 0) {
+      resourceNumber = (resourceResult.rows[0] as unknown as ResourceRow).number;
+    }
+  }
+
+  const now = new Date();
+  const scheduledCheckoutAt = block.ends_at instanceof Date ? block.ends_at : new Date(block.ends_at);
+  const lateMinutes = Math.max(0, Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
+  const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
+
+  return {
+    keyTagId: tag.id,
+    occupancyId: block.id,
+    customerId: customer.id,
+    customerName: customer.name,
+    membershipNumber: customer.membership_number || undefined,
+    rentalType: block.rental_type,
+    resourceId: block.resource_id || undefined,
+    resourceNumber,
+    scheduledCheckoutAt,
+    hasTvRemote: block.has_tv_remote,
+    lateMinutes,
+    lateFeeAmount: feeAmount,
+    banApplied,
+  };
+}
+
+export async function createCheckoutRequestLogic(body: CreateCheckoutRequestInput, broadcaster?: Broadcaster): Promise<string> {
+  const result = await db.transaction(async (tx) => {
+    const blockResult = await tx.execute<Record<string, unknown>>(
+      sql`SELECT cb.id, cb.visit_id, cb.block_type, cb.starts_at, cb.ends_at,
+            cb.rental_type::text as rental_type, cb.resource_id, cb.session_id, cb.has_tv_remote,
+            v.customer_id
+     FROM checkin_blocks cb JOIN visits v ON cb.visit_id = v.id
+     WHERE cb.id = ${body.occupancyId} AND v.ended_at IS NULL`
+    );
+    if (blockResult.rows.length === 0) throw new HttpError(404, 'Active occupancy not found');
+    const block = blockResult.rows[0] as unknown as CheckinBlockRow & { customer_id: string };
+
+    const existingRequest = await tx.execute<Record<string, unknown>>(
+      sql`SELECT id FROM checkout_requests WHERE occupancy_id = ${body.occupancyId} AND status IN ('SUBMITTED', 'CLAIMED')`
+    );
+    if (existingRequest.rows.length > 0) throw new HttpError(409, 'Checkout request already exists for this occupancy');
+
+    const now = new Date();
+    const scheduledCheckoutAt = block.ends_at instanceof Date ? block.ends_at : new Date(block.ends_at);
+    const lateMinutes = Math.max(0, Math.floor((now.getTime() - scheduledCheckoutAt.getTime()) / (1000 * 60)));
+    const { feeAmount, banApplied } = calculateLateFee(lateMinutes);
+
+    let keyTagId: string | null = null;
+    let resourceNumber: string | undefined;
+
+    if (block.resource_id) {
+      const keyResult = await tx.execute<Record<string, unknown>>(sql`SELECT id FROM key_tags WHERE resource_id = ${block.resource_id} AND is_active = true LIMIT 1`);
+      if (keyResult.rows.length > 0) keyTagId = (keyResult.rows[0] as unknown as { id: string }).id;
+
+      const resourceResult = await tx.execute<Record<string, unknown>>(sql`SELECT number, kind FROM inventory_resources WHERE id = ${block.resource_id}`);
+      if (resourceResult.rows.length > 0) resourceNumber = (resourceResult.rows[0] as unknown as ResourceRow).number;
+    }
+
+    const customerResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, name, membership_number FROM customers WHERE id = ${block.customer_id}`);
+    if (customerResult.rows.length === 0) throw new HttpError(404, 'Customer not found');
+    const customer = customerResult.rows[0] as unknown as CustomerRow;
+
+    const requestResult = await tx.execute<Record<string, unknown>>(
+      sql`INSERT INTO checkout_requests (
+      occupancy_id, customer_id, key_tag_id, kiosk_device_id, customer_checklist_json, late_minutes, late_fee_amount, ban_applied
+    ) VALUES (${body.occupancyId}, ${block.customer_id}, ${keyTagId}, ${body.kioskDeviceId}, ${JSON.stringify(body.checklist)}, ${lateMinutes}, ${feeAmount}, ${banApplied}) RETURNING id, occupancy_id, customer_id, key_tag_id, kiosk_device_id, created_at, claimed_by_staff_id, claimed_at, claim_expires_at, customer_checklist_json, status, late_minutes, late_fee_amount, ban_applied, items_confirmed, fee_paid, completed_at`
+    );
+    const checkoutReq = requestResult.rows[0] as unknown as CheckoutRequestRow;
+
+    if (broadcaster) {
+      const summary: CheckoutRequestSummary = {
+        requestId: checkoutReq.id,
+        customerId: customer.id,
+        customerName: customer.name,
+        membershipNumber: customer.membership_number || undefined,
+        rentalType: block.rental_type,
+        roomNumber: resourceNumber,
+        lockerNumber: undefined,
+        scheduledCheckoutAt: block.ends_at,
+        currentTime: new Date(),
+        lateMinutes: checkoutReq.late_minutes,
+        lateFeeAmount: checkoutReq.late_fee_amount,
+        banApplied: checkoutReq.ban_applied,
+      };
+      broadcaster.broadcast({ type: 'CHECKOUT_REQUESTED', payload: { request: summary }, timestamp: new Date().toISOString() });
+    }
+
+    let resourceLabel = '';
+    if (resourceNumber) {
+      const typeLabel = block.rental_type === 'LOCKER' ? 'Locker' : 'Room';
+      resourceLabel = ` (${typeLabel} ${resourceNumber})`;
+    }
+    await insertClubEventDrizzle(tx, {
+      eventType: 'CHECKOUT_REQUESTED',
+      eventDomain: 'CHECKOUT',
+      sourceApp: 'CUSTOMER_KIOSK',
+      customerId: customer.id,
+      customerName: customer.name,
+      visitId: block.visit_id,
+      summary: `Checkout requested — ${customer.name}${resourceLabel}`,
+      metadata: { checkoutRequestId: checkoutReq.id, occupancyId: body.occupancyId, resourceNumber: resourceNumber ?? null, lateMinutes: checkoutReq.late_minutes, lateFeeAmount: checkoutReq.late_fee_amount, banApplied: checkoutReq.ban_applied },
+      dedupeKey: `CLUB:CHECKOUT_REQUESTED:${checkoutReq.id}`,
+    });
+
+    return checkoutReq.id;
+  }, { isolationLevel: 'serializable' });
+
+  return result;
 }
 
 // ── Manual Checkout ──
@@ -196,7 +319,7 @@ export interface RenewalEligibilityResult {
 
 /**
  * Check if a customer is eligible for stay renewal based on their occupancy.
- * Eligible: < 45 min before checkout AND < 29 min past checkout, total stay < 14h.
+ * Eligible: < 60 min before checkout AND < 15 min past checkout, total stay < 14h.
  */
 export async function checkRenewalEligibility(
   occupancyId: string,
@@ -242,11 +365,11 @@ export async function checkRenewalEligibility(
   const nowMs = Date.now();
   const minutesUntilCheckout = (checkoutMs - nowMs) / (1000 * 60);
 
-  if (minutesUntilCheckout > 45) {
-    return { eligible: false, reason: 'More than 45 minutes until checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
+  if (minutesUntilCheckout > 60) {
+    return { eligible: false, reason: 'More than 60 minutes until checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
   }
-  if (minutesUntilCheckout < -29) {
-    return { eligible: false, reason: 'More than 29 minutes past checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
+  if (minutesUntilCheckout < -15) {
+    return { eligible: false, reason: 'More than 15 minutes past checkout', canExtend2h: false, canExtend6h: false, currentTotalHours, maxHours: 14 };
   }
 
   // Check if remaining time to 14h cap allows renewal
@@ -473,19 +596,22 @@ export async function completeManualCheckout(
        ON CONFLICT (occupancy_id) WHERE checkout_request_id IS NULL DO NOTHING`);
     }
 
+    let generatedOrderId: string | undefined;
+
     // Late fee bookkeeping
     if (feeAmount > 0) {
       if (payAtCheckout) {
-        const feeAmountCents = Math.round(feeAmount * 100);
+        const feeInt = Math.round(feeAmount);
         const metadata = { type: 'LATE_FEE', total: feeAmount, paymentMethod: paymentMethod ?? null, occupancyId: row.occupancy_id };
         const existingOrder = await tx.execute<{ id: string }>(
-          sql`INSERT INTO orders (customer_id, created_by_staff_id, status, subtotal, discount, tax, tip, total, currency, metadata_json, payment_method, paid_at, quote_json)
-           VALUES (${row.customer_id}, ${staff.staffId}, 'PAID', ${feeAmountCents}, 0, 0, 0, ${feeAmountCents}, 'USD', ${JSON.stringify(metadata)}::jsonb, ${paymentMethod ?? null}, NOW(), ${JSON.stringify(metadata)}::jsonb) RETURNING id`
+          sql`INSERT INTO orders (customer_id, created_by_staff_id, status, subtotal, discount, tax, tip, total, currency, metadata_json, quote_json)
+           VALUES (${row.customer_id}, ${staff.staffId}, 'OPEN', ${feeInt}, 0, 0, 0, ${feeInt}, 'USD', ${JSON.stringify(metadata)}::jsonb, ${JSON.stringify(metadata)}::jsonb) RETURNING id`
         );
-        const orderId = existingOrder.rows[0]!.id;
+        generatedOrderId = existingOrder.rows[0].id;
+        const orderId = generatedOrderId;
         const existingLate = await tx.execute<{ id: string }>(sql`SELECT id FROM order_line_items WHERE order_id = ${orderId} AND kind = 'LATE_FEE' LIMIT 1`);
         if (existingLate.rows.length === 0) {
-          await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, discount, tax, total) VALUES (${orderId}, 'LATE_FEE', 'Late Fee', 1, ${feeAmountCents}, 0, 0, ${feeAmountCents})`);
+          await tx.execute(sql`INSERT INTO order_line_items (order_id, kind, name, quantity, unit_price, discount, tax, total) VALUES (${orderId}, 'LATE_FEE', 'Late Fee', 1, ${feeInt}, 0, 0, ${feeInt})`);
         }
       } else {
         await tx.execute(sql`UPDATE customers SET past_due_balance = past_due_balance + ${feeAmount}, updated_at = NOW() WHERE id = ${row.customer_id}`);
@@ -606,6 +732,7 @@ export async function completeManualCheckout(
       resourceId: row.resource_id,
       cancelledWaitlistIds: waitlistRows.map((r) => r.id),
       visitId: row.visit_id,
+      orderId: generatedOrderId,
     };
   }, { isolationLevel: 'serializable' });
 
@@ -726,7 +853,7 @@ export async function markFeePaid(
         const lineItems = [{ kind: 'LATE_FEE' as const, name: 'Late Fee', quantity: 1, unitPrice: feeAmount, total: feeAmount }];
         const totals = computeOrderTotals(lineItems, feeAmount, intent.tip ?? 0);
 
-        const ensured = await ensureOrderWithReceipt(toQueryable(tx), {
+        const ensured = await ensureOrderWithReceipt(tx, {
           dedupeKey: { field: 'checkoutRequestId', value: requestId },
           customerId: checkoutRequest.customer_id ?? null,
           registerSessionId: activeRegister?.id ?? null,

@@ -18,8 +18,6 @@ export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void
     '/v1/checkin/lane/:laneId/start',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       const parsed = StartLaneSessionBodySchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: 'Validation failed', details: parsed.error.flatten() });
@@ -27,16 +25,16 @@ export function registerCheckinLaneSessionRoutes(fastify: FastifyInstance): void
       const body = parsed.data;
 
       const { laneId } = request.params;
-      const staffId = request.staff.staffId;
+      const staffId = request.staff!.staffId;
 
       try {
         const result = await startLaneSession(
           { laneId, customerId: body.customerId, idScanValue: body.idScanValue, membershipScanValue: body.membershipScanValue, visitId: body.visitId, renewalHours: body.renewalHours },
-          { staffId, staffName: request.staff.name }
+          { staffId, staffName: request.staff!.name }
         );
 
         if (result.sessionId && result.customerId) {
-          await logCheckinStarted(result.sessionId, result.customerId, result.customerName, result.mode, result.visitId, laneId, { staffId, staffName: request.staff.name }).catch((err) => request.log.error(err, 'Failed to log checkin activity'));
+          await logCheckinStarted(result.sessionId, result.customerId, result.customerName, result.mode, result.visitId, laneId, { staffId, staffName: request.staff!.name }).catch((err) => request.log.error(err, 'Failed to log checkin activity'));
         }
 
         // Broadcast full session update

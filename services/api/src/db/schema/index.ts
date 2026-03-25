@@ -1,10 +1,8 @@
-/**
- * Barrel export for all Drizzle schema definitions.
- *
- * Usage:
- *   import { customers, staff, inventoryResources } from '../db/schema';
- *   import { db } from '../db';
- *   const result = await db.select().from(customers).where(eq(customers.name, 'John'));
- */
-export * from './schema';
-export * from './relations';
+export * from './enums';
+export * from './identity';
+export * from './inventory';
+export * from './scheduling';
+export * from './visits';
+export * from './commerce';
+export * from './telemetry';
+export * from './system';

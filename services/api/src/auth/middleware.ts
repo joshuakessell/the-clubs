@@ -13,6 +13,7 @@ declare module 'fastify' {
       name: string;
       role: string;
       sessionId: string;
+      reauthOkUntil: Date | null;
     };
   }
 }
@@ -27,7 +28,7 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
     // Defensive: some test/inject clients may pass non-normalized header keys
     ((request.headers as Record<string, unknown>)['Authorization'] as string | undefined) ??
     ((request.headers as Record<string, unknown>)['AUTHORIZATION'] as string | undefined);
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (!authHeader?.startsWith('Bearer ')) {
     request.log.debug({ hasAuth: !!authHeader, url: request.url }, 'auth_reject: no Bearer header');
     return false;
   }
@@ -41,12 +42,14 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
       id: string;
       name: string;
       role: string;
+      reauth_ok_until: Date | null;
     }>(
       sql`SELECT 
         ss.staff_id,
         ss.id,
         s.name,
-        s.role
+        s.role,
+        ss.reauth_ok_until
       FROM staff_sessions ss
       JOIN staff s ON s.id = ss.staff_id
       WHERE ss.session_token = ${tokenHash} 
@@ -64,27 +67,29 @@ async function extractStaffFromToken(request: FastifyRequest): Promise<boolean> 
       return false;
     }
 
-    const row = sessionResult.rows[0]!;
+    const row = sessionResult.rows[0];
     request.staff = {
       staffId: row.staff_id,
       name: row.name,
       role: row.role,
       sessionId: row.id,
+      reauthOkUntil: row.reauth_ok_until,
     };
 
     // Sliding window: extend session expiry on each authenticated request.
-    // Only fires if less than 23h remain (throttles to ~1 write/hour max).
+    // Only fires if less than 6 days remain (throttles to ~1 write/day max).
     db.execute(
       sql`UPDATE staff_sessions
-       SET expires_at = NOW() + INTERVAL '24 hours'
+       SET expires_at = NOW() + INTERVAL '7 days'
        WHERE session_token = ${tokenHash}
-         AND expires_at - NOW() < INTERVAL '23 hours'`
+         AND expires_at - NOW() < INTERVAL '6 days'`
     ).catch(() => {}); // fire-and-forget, non-blocking
 
     return true;
   } catch (error) {
     request.log.error({ err: error, url: request.url }, 'auth_reject: DB error validating session token');
-    return false;
+    // Important: Throw 500 so the client doesn't wipe its Bearer token on transient DB faults
+    throw error;
   }
 }
 
@@ -99,7 +104,6 @@ export async function requireAuth(request: FastifyRequest, reply: FastifyReply):
       error: 'Unauthorized',
       message: 'Valid session token required',
     });
-    return;
   }
 }
 
@@ -116,15 +120,13 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
     return;
   }
 
-  // In DEMO_MODE, allow any authenticated user to access admin endpoints
-  if (process.env.DEMO_MODE === 'true') return;
+  // PIN validation is always enforced — no DEMO_MODE bypass
 
   if (request.staff.role !== 'ADMIN') {
     reply.status(403).send({
       error: 'Forbidden',
       message: 'Admin role required',
     });
-    return;
   }
 }
 
@@ -135,6 +137,7 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
  */
 export async function requireReauth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (!request.staff) {
+    // If request.staff is missing, then either requireAuth wasn't called or failed.
     reply.status(401).send({
       error: 'Unauthorized',
       message: 'Authentication required',
@@ -142,64 +145,23 @@ export async function requireReauth(request: FastifyRequest, reply: FastifyReply
     return;
   }
 
-  const authHeader =
-    request.headers.authorization ??
-    // Defensive: some test/inject clients may pass non-normalized header keys
-    ((request.headers as Record<string, unknown>)['Authorization'] as string | undefined) ??
-    ((request.headers as Record<string, unknown>)['AUTHORIZATION'] as string | undefined);
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    reply.status(401).send({
-      error: 'Unauthorized',
-      message: 'Valid session token required',
+  const { reauthOkUntil } = request.staff;
+
+  if (!reauthOkUntil) {
+    reply.status(403).send({
+      error: 'Re-authentication required',
+      code: 'REAUTH_REQUIRED',
+      message: 'This action requires recent re-authentication',
     });
     return;
   }
 
-  const token = authHeader.substring(7);
-  const tokenHash = hashSessionToken(token);
-
-  try {
-    const sessionResult = await db.execute<{ reauth_ok_until: Date | null }>(
-      sql`SELECT reauth_ok_until
-       FROM staff_sessions
-       WHERE session_token = ${tokenHash}
-         AND revoked_at IS NULL
-         AND expires_at > NOW()`
-    );
-
-    if (sessionResult.rows.length === 0) {
-      reply.status(401).send({
-        error: 'Unauthorized',
-        message: 'Invalid session',
-      });
-      return;
-    }
-
-    const reauthOkUntil = sessionResult.rows[0]!.reauth_ok_until;
-    if (!reauthOkUntil) {
-      reply.status(403).send({
-        error: 'Re-authentication required',
-        code: 'REAUTH_REQUIRED',
-        message: 'This action requires recent re-authentication',
-      });
-      return;
-    }
-
-    if (new Date(reauthOkUntil) < new Date()) {
-      reply.status(403).send({
-        error: 'Re-authentication required',
-        code: 'REAUTH_EXPIRED',
-        message: 'Re-authentication expired; please re-authenticate',
-      });
-      return;
-    }
-  } catch (error) {
-    request.log.error(error, 'Error checking re-authentication status');
-    reply.status(500).send({
-      error: 'Internal server error',
-      message: 'Failed to verify re-authentication',
+  if (new Date(reauthOkUntil) < new Date()) {
+    reply.status(403).send({
+      error: 'Re-authentication required',
+      code: 'REAUTH_EXPIRED',
+      message: 'Re-authentication expired; please re-authenticate',
     });
-    return;
   }
 }
 

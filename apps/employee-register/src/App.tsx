@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ErrorBoundary, LockScreen, ChangePinScreen, ValidatingScreen, useAuthStore, useSessionGuard } from '@the-clubs/ui';
 import { getApiUrl, useSessionPollingFallback, type SessionUpdatedPayload } from '@the-clubs/shared';
 import { AppLayout } from './layout/AppLayout';
+import { RegisterSelectScreen } from './screens/RegisterSelectScreen';
 import { useRegisterSSE } from './hooks/useRegisterSSE';
 import { useRegisterStore } from './stores/useRegisterStore';
 import { RouteLogger } from './components/RouteLogger';
+import { SquareCallbackRoute } from './routes/SquareCallbackRoute';
 
 const kioskToken = (import.meta.env.VITE_KIOSK_TOKEN as string) || null;
 
@@ -114,19 +116,64 @@ export default function App() {
     },
   });
 
-  function renderScreen() {
-    if (isValidating) return <ValidatingScreen />;
-    if (!session) return <LockScreen appTitle="Employee Register" />;
-    if (session.mustChangePin) return <ChangePinScreen />;
-    return <AppLayout />;
-  }
+  // ── Route-based rendering ──────────────────────────────────────
+  // "/" → LockScreen / ValidatingScreen / ChangePinScreen
+  // "/register" → RegisterSelectScreen (must be authed)
+  // "/lane-*" → AppLayout (must be authed + lane selected)
 
   return (
     <ErrorBoundary>
       <BrowserRouter>
         <RouteLogger />
-        {renderScreen()}
+        <AppRoutes
+          session={session}
+          isValidating={isValidating}
+          laneId={laneId}
+        />
       </BrowserRouter>
     </ErrorBoundary>
+  );
+}
+
+
+/* ── Route dispatcher (extracted to reduce cognitive complexity) ─── */
+
+interface AppRoutesProps {
+  session: { sessionToken: string; name?: string; role: string; mustChangePin?: boolean } | null;
+  isValidating: boolean;
+  laneId: string | null;
+}
+
+function AppRoutes({ session, isValidating, laneId }: Readonly<AppRoutesProps>) {
+  const location = useLocation();
+  const isLanePath = location.pathname.startsWith('/lane-');
+
+  // Global guards: validating / auth / pin change
+  if (isValidating) return <ValidatingScreen />;
+
+  // Not authed → show LockScreen on "/" or redirect there from other paths
+  if (!session) {
+    if (location.pathname !== '/') return <Navigate to="/" replace />;
+    return <LockScreen appTitle="Employee Register" />;
+  }
+
+  if (session.mustChangePin) return <ChangePinScreen />;
+
+  // Authed but on "/" → redirect to /register
+  if (location.pathname === '/') return <Navigate to="/register" replace />;
+
+  // Lane-based screen
+  if (isLanePath && laneId) return <AppLayout />;
+
+  if (location.pathname.startsWith('/checkout/square-callback')) {
+    return <SquareCallbackRoute />;
+  }
+
+  // /register or any other non-lane path → show register selection
+  return (
+    <Routes>
+      <Route path="/register" element={<RegisterSelectScreen />} />
+      <Route path="*" element={<Navigate to="/register" replace />} />
+    </Routes>
   );
 }

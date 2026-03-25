@@ -80,7 +80,7 @@ describe('Check-in Flow Commands', () => {
        RETURNING id`,
       [laneId]
     );
-    sessionId = sessionResult.rows[0]!.id;
+    sessionId = sessionResult.rows[0].id;
 
     // Create a customer + attach to session so selection commands can pass language gating.
     const customer = await query<{ id: string }>(
@@ -88,7 +88,7 @@ describe('Check-in Flow Commands', () => {
        VALUES ('Flow Customer', 'EN')
        RETURNING id`
     );
-    await query(`UPDATE lane_sessions SET customer_id = $1 WHERE id = $2`, [customer.rows[0]!.id, sessionId]);
+    await query(`UPDATE lane_sessions SET customer_id = $1 WHERE id = $2`, [customer.rows[0].id, sessionId]);
 
     // Create dummy payment intents for tests that need them
     await query(
@@ -177,7 +177,7 @@ describe('Check-in Flow Commands', () => {
       `SELECT flow_version FROM lane_sessions WHERE id = $1`,
       [sessionId]
     );
-    expect(db.rows[0]!.flow_version).toBe(1);
+    expect(db.rows[0].flow_version).toBe(1);
   });
 
   it('rejects stale expectedFlowVersion with 409', async () => {
@@ -350,10 +350,10 @@ describe('Check-in Flow Commands', () => {
       [sessionId]
     );
 
-    expect(session.rows[0]!.waitlist_desired_type).toBe('DOUBLE');
-    expect(session.rows[0]!.backup_rental_type).toBe('STANDARD');
-    expect(session.rows[0]!.waitlist_requested_resource_number).toBe('101');
-    expect(session.rows[0]!.waitlist_requested_resource_type).toBe('room');
+    expect(session.rows[0].waitlist_desired_type).toBe('DOUBLE');
+    expect(session.rows[0].backup_rental_type).toBe('STANDARD');
+    expect(session.rows[0].waitlist_requested_resource_number).toBe('101');
+    expect(session.rows[0].waitlist_requested_resource_type).toBe('room');
   });
 
   it('CONFIRM_SELECTION sets selection_confirmed and bumps step when needed', async () => {
@@ -402,12 +402,12 @@ describe('Check-in Flow Commands', () => {
       [sessionId]
     );
 
-    expect(updated.rows[0]!.selection_confirmed).toBe(true);
-    expect(updated.rows[0]!.selection_confirmed_by).toBe('CUSTOMER');
-    expect(updated.rows[0]!.desired_rental_type).toBe('STANDARD');
+    expect(updated.rows[0].selection_confirmed).toBe(true);
+    expect(updated.rows[0].selection_confirmed_by).toBe('CUSTOMER');
+    expect(updated.rows[0].desired_rental_type).toBe('STANDARD');
     // CONFIRM_SELECTION stays on the current step (RENTAL) — employee advances explicitly
-    expect(updated.rows[0]!.flow_step).toBe('RENTAL');
-    expect(updated.rows[0]!.flow_version).toBe(3);
+    expect(updated.rows[0].flow_step).toBe('RENTAL');
+    expect(updated.rows[0].flow_version).toBe(3);
   });
 
   it('PROPOSE_SELECTION dedupes repeated commandId and does not double-apply', async () => {
@@ -434,8 +434,8 @@ describe('Check-in Flow Commands', () => {
       `SELECT proposed_rental_type, flow_version FROM lane_sessions WHERE id = $1`,
       [sessionId]
     );
-    expect(sessionAfterFirst.rows[0]!.proposed_rental_type).toBe('STANDARD');
-    expect(sessionAfterFirst.rows[0]!.flow_version).toBe(1);
+    expect(sessionAfterFirst.rows[0].proposed_rental_type).toBe('STANDARD');
+    expect(sessionAfterFirst.rows[0].flow_version).toBe(1);
 
     const second = await app.inject({
       method: 'POST',
@@ -451,8 +451,8 @@ describe('Check-in Flow Commands', () => {
       `SELECT proposed_rental_type, flow_version FROM lane_sessions WHERE id = $1`,
       [sessionId]
     );
-    expect(sessionAfterSecond.rows[0]!.proposed_rental_type).toBe('STANDARD');
-    expect(sessionAfterSecond.rows[0]!.flow_version).toBe(1);
+    expect(sessionAfterSecond.rows[0].proposed_rental_type).toBe('STANDARD');
+    expect(sessionAfterSecond.rows[0].flow_version).toBe(1);
   });
 
   it('CONFIRM_SELECTION locks selection and rejects version mismatch', async () => {
@@ -506,8 +506,8 @@ describe('Check-in Flow Commands', () => {
       `SELECT selection_confirmed, selection_confirmed_by FROM lane_sessions WHERE id = $1`,
       [sessionId]
     );
-    expect(locked.rows[0]!.selection_confirmed).toBe(true);
-    expect(locked.rows[0]!.selection_confirmed_by).toBe('CUSTOMER');
+    expect(locked.rows[0].selection_confirmed).toBe(true);
+    expect(locked.rows[0].selection_confirmed_by).toBe('CUSTOMER');
   });
 
   it('WAITLIST_UPDATE updates waitlist draft fields', async () => {
@@ -552,10 +552,10 @@ describe('Check-in Flow Commands', () => {
       [sessionId]
     );
 
-    expect(session.rows[0]!.waitlist_desired_type).toBe('DOUBLE');
-    expect(session.rows[0]!.backup_rental_type).toBe('STANDARD');
-    expect(session.rows[0]!.waitlist_requested_resource_number).toBe('101');
-    expect(session.rows[0]!.waitlist_requested_resource_type).toBe('room');
+    expect(session.rows[0].waitlist_desired_type).toBe('DOUBLE');
+    expect(session.rows[0].backup_rental_type).toBe('STANDARD');
+    expect(session.rows[0].waitlist_requested_resource_number).toBe('101');
+    expect(session.rows[0].waitlist_requested_resource_type).toBe('room');
   });
 
   it('BACK_STEP from PAYMENT clears payment + agreement state', async () => {
@@ -605,11 +605,11 @@ describe('Check-in Flow Commands', () => {
       [sessionId]
     );
 
-    expect(updated.rows[0]!.flow_step).toBe('WAITLIST_DISCLAIMER');
-    expect(updated.rows[0]!.order_id).toBeNull();
-    expect(updated.rows[0]!.price_quote_json).toBeNull();
-    expect(updated.rows[0]!.disclaimers_ack_json).toBeNull();
-    expect(updated.rows[0]!.agreement_bypass_pending).toBe(false);
+    expect(updated.rows[0].flow_step).toBe('WAITLIST_DISCLAIMER');
+    expect(updated.rows[0].order_id).toBeNull();
+    expect(updated.rows[0].price_quote_json).toBeNull();
+    expect(updated.rows[0].disclaimers_ack_json).toBeNull();
+    expect(updated.rows[0].agreement_bypass_pending).toBe(false);
   });
 
   it('SET_STEP jump back to RENTAL clears selection + waitlist + payment + agreement', async () => {
@@ -677,14 +677,14 @@ describe('Check-in Flow Commands', () => {
       [sessionId]
     );
 
-    expect(updated.rows[0]!.flow_step).toBe('RENTAL');
-    expect(updated.rows[0]!.desired_rental_type).toBeNull();
-    expect(updated.rows[0]!.proposed_rental_type).toBeNull();
-    expect(updated.rows[0]!.selection_confirmed).toBe(false);
-    expect(updated.rows[0]!.waitlist_desired_type).toBeNull();
-    expect(updated.rows[0]!.backup_rental_type).toBeNull();
-    expect(updated.rows[0]!.order_id).toBeNull();
-    expect(updated.rows[0]!.agreement_bypass_pending).toBe(false);
+    expect(updated.rows[0].flow_step).toBe('RENTAL');
+    expect(updated.rows[0].desired_rental_type).toBeNull();
+    expect(updated.rows[0].proposed_rental_type).toBeNull();
+    expect(updated.rows[0].selection_confirmed).toBe(false);
+    expect(updated.rows[0].waitlist_desired_type).toBeNull();
+    expect(updated.rows[0].backup_rental_type).toBeNull();
+    expect(updated.rows[0].order_id).toBeNull();
+    expect(updated.rows[0].agreement_bypass_pending).toBe(false);
   });
 
   it('SET_STEP to finalize PAYMENT clears customer past_due_balance', async () => {
@@ -694,14 +694,14 @@ describe('Check-in Flow Commands', () => {
     const customerIdRes = await query<{
       customer_id: string;
     }>(`SELECT customer_id FROM lane_sessions WHERE id = $1`, [sessionId]);
-    const cid = customerIdRes.rows[0]!.customer_id;
+    const cid = customerIdRes.rows[0].customer_id;
 
     await query(`UPDATE customers SET past_due_balance = 50.00 WHERE id = $1`, [cid]);
 
-    // Stage session at AGREEMENT step with an OPEN order
+    // Stage session at PAYMENT step with an OPEN order
     await query(
       `UPDATE lane_sessions
-       SET flow_step = 'AGREEMENT',
+       SET flow_step = 'PAYMENT',
            flow_version = 1,
            order_id = '11111111-1111-1111-1111-111111111111'
        WHERE id = $1`,
@@ -729,7 +729,7 @@ describe('Check-in Flow Commands', () => {
     }>(`SELECT past_due_balance FROM customers WHERE id = $1`, [cid]);
 
     // past_due_balance should be cleared to 0
-    expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(0);
+    expect(Number.parseFloat(String(customerAfter.rows[0].past_due_balance))).toBe(0);
 
     // Verify customer activity event was logged
     const events = await query<{ action_type: string }>(

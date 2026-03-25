@@ -17,12 +17,17 @@ function stripQuotes(value: string): string {
  * - Supports basic `KEY=VALUE` lines and comments
  */
 export function loadEnvFromDotEnvIfPresent(): void {
-  const envPath = path.resolve(process.cwd(), '.env');
-  if (!fs.existsSync(envPath)) return;
+  const envPaths = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), '../../.env')
+  ];
 
-  try {
-    const raw = fs.readFileSync(envPath, 'utf8');
-    const lines = raw.split(/\r?\n/);
+  for (const envPath of envPaths) {
+    if (!fs.existsSync(envPath)) continue;
+
+    try {
+      const raw = fs.readFileSync(envPath, 'utf8');
+      const lines = raw.split(/\r?\n/);
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
@@ -39,7 +44,8 @@ export function loadEnvFromDotEnvIfPresent(): void {
       if (process.env[key] != null) continue;
       process.env[key] = value;
     }
-  } catch {
-    // If the .env is unreadable/malformed, fail "soft" and let normal env lookup continue.
+    } catch {
+      // If the .env is unreadable/malformed, fail "soft" and let normal env lookup continue.
+    }
   }
 }

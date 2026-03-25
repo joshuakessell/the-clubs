@@ -284,7 +284,16 @@ function DetailPanel({
       {!renewalLoading && renewalEligibility?.eligible && (
         <button
           disabled={isProcessing}
-          onClick={() => setShowRenewalModal(true)}
+          onClick={() => {
+            const hasActiveSession = useRegisterStore.getState().currentSessionId;
+            if (hasActiveSession) {
+              useRegisterStore.getState().setSuccessToastMessage(
+                'A check-in is already in progress. Complete or cancel it first.'
+              );
+              return;
+            }
+            setShowRenewalModal(true);
+          }}
           className="w-full rounded-lg py-2 text-sm font-bold flex items-center justify-center gap-2 mt-2"
           style={{
             backgroundColor: 'color-mix(in oklch, var(--color-brand-primary) 10%, transparent)',
@@ -349,16 +358,37 @@ export function CheckoutPanelContent() {
 
   const selectedCandidate = candidates.find((c) => c.occupancyId === selectedId) ?? null;
 
-  /* ── Checkout logic ── */
   const doCheckout = useCallback(async (
     occupancyId: string,
-    payAtCheckout: boolean,
-    paymentMethod?: 'CREDIT' | 'CASH'
+    payAtCheckout: boolean
   ) => {
     setCheckingOut(true);
     setLateFeeModal(null);
     try {
-      await executeManualCheckout(occupancyId, token, payAtCheckout, paymentMethod);
+      const laneId = useRegisterStore.getState().laneId ?? 'register';
+      const result = await executeManualCheckout(occupancyId, token, payAtCheckout);
+      
+      if (payAtCheckout && result.squareOrderId) {
+        globalThis.sessionStorage.setItem('square_checkout_lane_id', laneId);
+        globalThis.sessionStorage.setItem('square_checkout_order_id', result.squareOrderId);
+
+        const amountCents = Math.round(result.fee * 100);
+        const appSwitchData = {
+          amount_money: { amount: amountCents.toString(), currency_code: 'USD' },
+          callback_url: `${globalThis.location.origin}/checkout/square-callback`,
+          client_id: import.meta.env.VITE_SQUARE_APPLICATION_ID || 'sq0idp-undefined',
+          version: '1.3',
+          notes: `ORDER_ID:${result.squareOrderId}`,
+          options: {
+            supported_tender_types: ['CREDIT_CARD', 'CASH', 'SQUARE_GIFT_CARD', 'CARD_ON_FILE']
+          }
+        };
+
+        const iosUri = `square-commerce-v1://payment/create?data=${encodeURIComponent(JSON.stringify(appSwitchData))}`;
+        globalThis.location.href = iosUri;
+        return; // App switch backgrounded
+      }
+
       // Remove and select next
         useRegisterStore.getState().triggerRentalsRefresh();
         const idx = candidates.findIndex((c) => c.occupancyId === occupancyId);
@@ -525,8 +555,8 @@ export function CheckoutPanelContent() {
         <LateFeeModal
           customerLabel={`${lateFeeModal.candidate.customerName} · ${lateFeeModal.candidate.resourceType} ${lateFeeModal.candidate.number}`}
           resolved={lateFeeModal.resolved}
-          onSettle={(payAtCheckout, paymentMethod) => {
-            void doCheckout(lateFeeModal.candidate.occupancyId, payAtCheckout, paymentMethod);
+          onSettle={(payAtCheckout) => {
+            void doCheckout(lateFeeModal.candidate.occupancyId, payAtCheckout);
           }}
           onDismiss={() => setLateFeeModal(null)}
           isProcessing={checkingOut}

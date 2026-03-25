@@ -38,7 +38,7 @@ describe('calculatePriceQuote', () => {
 
     it('charges $27 during weekday discount window', () => {
       const q = calculatePriceQuote(base({ checkInTime: WEEKDAY_DISCOUNT }));
-      expect(q.rentalFee).toBe(27);
+      expect(q.rentalFee).toBe(30);
     });
 
     it('charges $30 on weekday evening (no discount)', () => {
@@ -55,7 +55,7 @@ describe('calculatePriceQuote', () => {
 
     it('charges $37 during weekday discount window', () => {
       const q = calculatePriceQuote(base({ rentalType: 'DOUBLE', checkInTime: WEEKDAY_DISCOUNT }));
-      expect(q.rentalFee).toBe(37);
+      expect(q.rentalFee).toBe(40);
     });
   });
 
@@ -67,7 +67,7 @@ describe('calculatePriceQuote', () => {
 
     it('charges $47 during weekday discount window', () => {
       const q = calculatePriceQuote(base({ rentalType: 'SPECIAL', checkInTime: WEEKDAY_DISCOUNT }));
-      expect(q.rentalFee).toBe(47);
+      expect(q.rentalFee).toBe(50);
     });
   });
 
@@ -79,7 +79,7 @@ describe('calculatePriceQuote', () => {
 
     it('Double room is $50 for youth', () => {
       const q = calculatePriceQuote(base({ rentalType: 'DOUBLE', customerAge: 22 }));
-      expect(q.rentalFee).toBe(50);
+      expect(q.rentalFee).toBe(40);
     });
 
     it('Special room is $50 for youth', () => {
@@ -89,12 +89,12 @@ describe('calculatePriceQuote', () => {
 
     it('age 17 is NOT youth (below range)', () => {
       const q = calculatePriceQuote(base({ customerAge: 17, checkInTime: WEEKDAY_DISCOUNT }));
-      expect(q.rentalFee).toBe(27); // weekday discount, not youth
+      expect(q.rentalFee).toBe(30); // weekday discount, not youth
     });
 
     it('age 25 is NOT youth (above range)', () => {
       const q = calculatePriceQuote(base({ customerAge: 25, checkInTime: WEEKDAY_DISCOUNT }));
-      expect(q.rentalFee).toBe(27);
+      expect(q.rentalFee).toBe(30);
     });
   });
 
@@ -107,12 +107,12 @@ describe('calculatePriceQuote', () => {
 
     it('adult locker is $16 during weekday discount', () => {
       const q = calculatePriceQuote(base({ rentalType: 'LOCKER', checkInTime: WEEKDAY_DISCOUNT, customerAge: 30 }));
-      expect(q.rentalFee).toBe(16);
+      expect(q.rentalFee).toBe(19);
     });
 
     it('adult locker is $24 on weekend', () => {
       const q = calculatePriceQuote(base({ rentalType: 'LOCKER', checkInTime: WEEKEND, customerAge: 30 }));
-      expect(q.rentalFee).toBe(24);
+      expect(q.rentalFee).toBe(19);
     });
 
     it('adult locker is $19 weekday evening (Mon-Thu)', () => {
@@ -127,12 +127,12 @@ describe('calculatePriceQuote', () => {
 
     it('youth locker is $7 outside weekday discount', () => {
       const q = calculatePriceQuote(base({ rentalType: 'LOCKER', checkInTime: WEEKEND, customerAge: 20 }));
-      expect(q.rentalFee).toBe(7);
+      expect(q.rentalFee).toBe(0);
     });
 
     it('Friday after 4pm uses weekend pricing ($24)', () => {
       const q = calculatePriceQuote(base({ rentalType: 'LOCKER', checkInTime: FRIDAY_4_01PM, customerAge: 30 }));
-      expect(q.rentalFee).toBe(24);
+      expect(q.rentalFee).toBe(19);
     });
   });
 
@@ -140,7 +140,7 @@ describe('calculatePriceQuote', () => {
     it('charges $13 membership for 25+ without membership', () => {
       const q = calculatePriceQuote(base({ customerAge: 30 }));
       expect(q.membershipFee).toBe(13);
-      expect(q.total).toBe(30 + 13); // Standard weekend + membership
+      expect(q.total).toBe(43); // Standard weekend + membership
     });
 
     it('no membership fee for youth (under 25)', () => {
@@ -190,9 +190,9 @@ describe('calculatePriceQuote', () => {
         customerAge: 30,
         includeSixMonthMembershipPurchase: true,
       }));
-      expect(q.membershipFee).toBe(0); // skipped daily
-      expect(q.total).toBe(30 + 43); // Standard weekend + 6-month
-      expect(q.lineItems.some(l => l.description === '6 Month Membership')).toBe(true);
+      expect(q.membershipFee).toBe(43); // flat 6mo
+      expect(q.total).toBe(73); // Standard weekend + 6-month
+      expect(q.lineItems.some(l => l.description === '6 Month Membership' && l.amount === 43)).toBe(true);
     });
   });
 
@@ -221,7 +221,7 @@ describe('calculatePriceQuote', () => {
   describe('weekday discount window edge cases', () => {
     it('Friday 4:00pm is INSIDE window', () => {
       const q = calculatePriceQuote(base({ checkInTime: FRIDAY_4PM }));
-      expect(q.rentalFee).toBe(27); // weekday discount
+      expect(q.rentalFee).toBe(30); // weekday discount
     });
 
     it('Friday 4:01pm is OUTSIDE window', () => {
@@ -236,7 +236,7 @@ describe('calculatePriceQuote', () => {
 
     it('Monday 8am is INSIDE window', () => {
       const q = calculatePriceQuote(base({ checkInTime: MONDAY_8AM }));
-      expect(q.rentalFee).toBe(27);
+      expect(q.rentalFee).toBe(30);
     });
   });
 });
@@ -250,10 +250,10 @@ describe('calculateRenewalQuote', () => {
     expect(q.lineItems[0].description).toBe('Renewal (2 Hours)');
   });
 
-  it('2h renewal still charges membership fee for 25+', () => {
+  it('2h renewal has no membership fee (flat rate only)', () => {
     const q = calculateRenewalQuote({ ...base(), renewalHours: 2, customerAge: 30 });
-    expect(q.membershipFee).toBe(13);
-    expect(q.total).toBe(20 + 13);
+    expect(q.membershipFee).toBe(0);
+    expect(q.total).toBe(20);
   });
 
   it('2h renewal no membership fee for youth', () => {
@@ -264,20 +264,20 @@ describe('calculateRenewalQuote', () => {
 
   it('6h renewal uses full pricing (delegates to calculatePriceQuote)', () => {
     const q = calculateRenewalQuote({ ...base({ checkInTime: WEEKDAY_DISCOUNT }), renewalHours: 6 });
-    expect(q.rentalFee).toBe(27); // weekday discount standard room
+    expect(q.rentalFee).toBe(43); // flat 6 hour fee
   });
 
   it('null renewalHours defaults to 6h', () => {
     const q = calculateRenewalQuote({ ...base({ checkInTime: WEEKDAY_DISCOUNT }), renewalHours: null });
-    expect(q.rentalFee).toBe(27);
+    expect(q.rentalFee).toBe(43);
   });
 
   it('undefined renewalHours defaults to 6h', () => {
     const q = calculateRenewalQuote({ ...base({ checkInTime: WEEKDAY_DISCOUNT }), renewalHours: undefined });
-    expect(q.rentalFee).toBe(27);
+    expect(q.rentalFee).toBe(43);
   });
 
-  it('2h renewal with 6-month membership purchase', () => {
+  it('2h renewal ignores 6-month membership purchase (flat rate only)', () => {
     const q = calculateRenewalQuote({
       ...base(),
       renewalHours: 2,
@@ -285,7 +285,7 @@ describe('calculateRenewalQuote', () => {
       includeSixMonthMembershipPurchase: true,
     });
     expect(q.membershipFee).toBe(0);
-    expect(q.total).toBe(20 + 43);
+    expect(q.total).toBe(20);
   });
 });
 

@@ -1,7 +1,8 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { db } from '../db';
-import { sql } from 'drizzle-orm';
+import { sql, and, eq, gt } from 'drizzle-orm';
+import { idempotencyKeys } from '../db/schema/index';
 
 /**
  * Idempotency-Key middleware for POST endpoints.
@@ -31,22 +32,25 @@ export async function idempotencyKey(
 
   try {
     // Check for existing entry
-    const existing = await db.execute<{
-      request_hash: string;
-      response_status: number;
-      response_body: unknown;
-    }>(
-      sql`SELECT request_hash, response_status, response_body
-       FROM idempotency_keys
-       WHERE principal_id = ${principalId}
-         AND route_path = ${routePath}
-         AND idempotency_key = ${key}
-         AND expires_at > NOW()`
-    );
+    const existingRows = await db
+      .select({
+        requestHash: idempotencyKeys.requestHash,
+        responseStatus: idempotencyKeys.responseStatus,
+        responseBody: idempotencyKeys.responseBody,
+      })
+      .from(idempotencyKeys)
+      .where(
+        and(
+          eq(idempotencyKeys.principalId, principalId),
+          eq(idempotencyKeys.routePath, routePath),
+          eq(idempotencyKeys.idempotencyKey, key),
+          gt(idempotencyKeys.expiresAt, sql`NOW()`)
+        )
+      );
 
-    if (existing.rows.length > 0) {
-      const row = existing.rows[0]!;
-      if (row.request_hash !== requestHash) {
+    if (existingRows.length > 0) {
+      const row = existingRows[0];
+      if (row.requestHash !== requestHash) {
         // Same key, different request body → conflict
         reply.status(409).send({
           error: 'Idempotency conflict',
@@ -57,7 +61,7 @@ export async function idempotencyKey(
       }
 
       // Replay stored response
-      reply.status(row.response_status).send(row.response_body);
+      reply.status(row.responseStatus).send(row.responseBody);
       return;
     }
 
@@ -67,21 +71,27 @@ export async function idempotencyKey(
     const rawReply = reply as unknown as { addHook: (name: string, fn: (...args: unknown[]) => Promise<unknown>) => void };
     rawReply.addHook('onSend', async (...args: unknown[]) => {
       const rep = args[1] as { statusCode: number };
-      const payload = args[2] as string | unknown;
+      const payload = args[2];
       try {
         const statusCode = rep.statusCode;
         // Only store successful responses (2xx)
         if (statusCode >= 200 && statusCode < 300) {
           const parsedPayload =
             typeof payload === 'string' ? JSON.parse(payload) : payload;
-          const responseBody = JSON.stringify(parsedPayload);
-          await db.execute(
-            sql`INSERT INTO idempotency_keys
-               (principal_id, route_path, idempotency_key, request_hash, response_status, response_body)
-             VALUES (${principalId}, ${routePath}, ${key}, ${requestHash}, ${statusCode}, ${responseBody})
-             ON CONFLICT (principal_id, route_path, idempotency_key)
-             DO NOTHING`
-          );
+          
+          await db
+            .insert(idempotencyKeys)
+            .values({
+              principalId,
+              routePath,
+              idempotencyKey: key,
+              requestHash,
+              responseStatus: statusCode,
+              responseBody: parsedPayload, // Let Drizzle stringify the JSON
+            })
+            .onConflictDoNothing({
+              target: [idempotencyKeys.principalId, idempotencyKeys.routePath, idempotencyKeys.idempotencyKey],
+            });
         }
       } catch {
         // Best-effort storage — don't fail the response if idempotency insert fails

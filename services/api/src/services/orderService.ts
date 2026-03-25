@@ -132,24 +132,43 @@ export async function markOrderPaid(orderId: string, staff: StaffContext) {
     const updated = await tx.update(orders).set({ status: 'PAID', subtotal: subtotal.toString(), discount: discount.toString(), tax: tax.toString(), tip: tip.toString(), total: total.toString() }).where(eq(orders.id, order.id)).returning();
     const paidOrder = updated[0]!;
 
+    const lineItemsResult = await tx.select().from(orderLineItems).where(eq(orderLineItems.orderId, paidOrder.id));
+
     if (paidOrder.customerId) {
-      const ledger = await insertCustomerSpendLedgerEntryDrizzle(tx, {
-        customerId: paidOrder.customerId, visitId: (paidOrder.metadataJson as any)?.visitId ?? null,
-        entryType: 'ORDER_PAID', amount: toNumber(paidOrder.total), sourceApp: 'EMPLOYEE_REGISTER',
-        actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
-        summary: 'Retail purchase', metadata: { orderId: paidOrder.id, registerSessionId: paidOrder.registerSessionId, total: paidOrder.total },
-        dedupeKey: `LEDGER:ORDER_PAID:${paidOrder.id}`,
-      });
+      for (const item of lineItemsResult) {
+        if (toNumber(item.total) === 0 && item.kind !== 'MANUAL') continue;
+        const entryType = item.kind === 'LATE_FEE' ? 'LATE_FEE' : item.kind === 'ADDON' ? 'ADDON' : item.kind === 'UPGRADE' ? 'UPGRADE' : 'RETAIL';
+        const ledger = await insertCustomerSpendLedgerEntryDrizzle(tx, {
+          customerId: paidOrder.customerId, visitId: (paidOrder.metadataJson as any)?.visitId ?? null,
+          entryType, amount: toNumber(item.total), sourceApp: 'EMPLOYEE_REGISTER',
+          actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
+          summary: `${item.name} ($${toNumber(item.total).toFixed(2)} ${paidOrder.paymentMethod || 'Paid'})`,
+          metadata: { orderId: paidOrder.id, registerSessionId: paidOrder.registerSessionId, lineItemId: item.id },
+          dedupeKey: `LEDGER:ORDER_LINE:${item.id}`,
+        });
+      }
+      
+      const tipNum = toNumber(paidOrder.tip);
+      if (tipNum > 0) {
+        await insertCustomerSpendLedgerEntryDrizzle(tx, {
+          customerId: paidOrder.customerId, visitId: (paidOrder.metadataJson as any)?.visitId ?? null,
+          entryType: 'TIP', amount: tipNum, sourceApp: 'EMPLOYEE_REGISTER',
+          actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
+          summary: `Tip ($${tipNum.toFixed(2)} ${paidOrder.paymentMethod || 'Paid'})`,
+          metadata: { orderId: paidOrder.id, registerSessionId: paidOrder.registerSessionId },
+          dedupeKey: `LEDGER:ORDER_TIP:${paidOrder.id}`,
+        });
+      }
+
       await insertCustomerActivityEventDrizzle(tx, {
         customerId: paidOrder.customerId, actionType: 'ORDER_PAID', actionCategory: 'PURCHASE', sourceApp: 'EMPLOYEE_REGISTER',
         actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
-        summary: `Retail purchase ($${Number(paidOrder.total).toFixed(2)})`,
-        metadata: { orderId: paidOrder.id, total: paidOrder.total, spendLedgerEntryId: ledger.id },
+        summary: `Retail purchase ($${toNumber(paidOrder.total).toFixed(2)})`,
+        metadata: { orderId: paidOrder.id, total: paidOrder.total },
         dedupeKey: `ACT:ORDER_PAID:${paidOrder.id}`, searchParts: [paidOrder.id],
       });
     }
 
-    const lineItemsResult = await tx.select().from(orderLineItems).where(eq(orderLineItems.orderId, paidOrder.id));
     const kinds = new Set(lineItemsResult.map((li) => li.kind));
     let saleEventType: 'SALE_COMPLETED' | 'ADDON_SOLD' | 'UPGRADE_PAID' = 'SALE_COMPLETED';
     if (kinds.size === 1 && kinds.has('ADDON')) saleEventType = 'ADDON_SOLD';

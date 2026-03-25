@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { requireAdmin, requireAuth } from '../../auth/middleware';
-import { getCashTotals, getDailySummary, getRevenueTrend, getStaffProductivity, getStaffProductivityHourly, getOperationsSummary, getHourlyHeatmap, getRevenueBreakdown, getLaborCost } from '../../services/reportService';
+import { getCashTotals, getDailySummary, getRevenueTrend, getStaffProductivity, getStaffProductivityHourly, getOperationsSummary, getHourlyHeatmap, getRevenueBreakdown, getLaborCost, getWeekOverWeekComparison } from '../../services/reportService';
 
 export function registerAdminReportRoutes(fastify: FastifyInstance): void {
   fastify.get('/v1/admin/reports/cash-totals', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
@@ -9,18 +9,20 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
   });
 
   fastify.get<{ Querystring: { date?: string } }>('/v1/admin/reports/daily-summary', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
-    try { return reply.send(await getDailySummary(request.query.date ?? new Date().toISOString().split('T')[0]!)); }
+    try { return reply.send(await getDailySummary(request.query.date ?? new Date().toISOString().split('T')[0])); }
     catch (e) { request.log.error(e, 'Failed to build daily summary'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
-  fastify.get<{ Querystring: { days?: string } }>('/v1/admin/reports/revenue-trend', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
-    try { return reply.send(await getRevenueTrend(Number.parseInt(request.query.days ?? '30', 10))); }
-    catch (e) { request.log.error(e, 'Failed to build revenue trend'); return reply.status(500).send({ error: 'Internal server error' }); }
+  fastify.get<{ Querystring: { from?: string; to?: string } }>('/v1/admin/reports/revenue-trend', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      return reply.send(await getRevenueTrend(request.query.from ?? today, request.query.to ?? today));
+    } catch (e) { request.log.error(e, 'Failed to build revenue trend'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
   fastify.get<{ Querystring: { from?: string; to?: string; staffId?: string } }>('/v1/admin/reports/staff-productivity', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     try {
-      const today = new Date().toISOString().split('T')[0]!;
+      const today = new Date().toISOString().split('T')[0];
       return reply.send(await getStaffProductivity(request.query.from ?? today, request.query.to ?? today, request.query.staffId));
     } catch (e) { request.log.error(e, 'Failed to build staff productivity'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
@@ -33,7 +35,7 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
 
   fastify.get<{ Querystring: { from?: string; to?: string } }>('/v1/admin/reports/operations-summary', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     try {
-      const today = new Date().toISOString().split('T')[0]!;
+      const today = new Date().toISOString().split('T')[0];
       return reply.send(await getOperationsSummary(request.query.from ?? today, request.query.to ?? today));
     } catch (e) { request.log.error(e, 'Failed to build operations summary'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
@@ -45,15 +47,20 @@ export function registerAdminReportRoutes(fastify: FastifyInstance): void {
 
   fastify.get<{ Querystring: { from?: string; to?: string } }>('/v1/admin/reports/revenue-breakdown', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     try {
-      const today = new Date().toISOString().split('T')[0]!;
+      const today = new Date().toISOString().split('T')[0];
       return reply.send(await getRevenueBreakdown(request.query.from ?? today, request.query.to ?? today));
     } catch (e) { request.log.error(e, 'Failed to build revenue breakdown'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 
   fastify.get<{ Querystring: { from?: string; to?: string; hourlyRate?: string } }>('/v1/admin/reports/labor-cost', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
     try {
-      const today = new Date().toISOString().split('T')[0]!;
+      const today = new Date().toISOString().split('T')[0];
       return reply.send(await getLaborCost(request.query.from ?? today, request.query.to ?? today, Number.parseFloat(request.query.hourlyRate ?? '15')));
     } catch (e) { request.log.error(e, 'Failed to build labor cost report'); return reply.status(500).send({ error: 'Internal server error' }); }
+  });
+
+  fastify.get('/v1/admin/reports/week-over-week', { preHandler: [requireAuth, requireAdmin] }, async (request, reply) => {
+    try { return reply.send(await getWeekOverWeekComparison()); }
+    catch (e) { request.log.error(e, 'Failed to build week-over-week comparison'); return reply.status(500).send({ error: 'Internal server error' }); }
   });
 }

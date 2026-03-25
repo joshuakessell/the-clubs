@@ -12,9 +12,8 @@ vi.mock('../src/auth/middleware.js', () => ({
   requireAuth: async (request: any, _reply: any) => {
     request.staff = { staffId: testStaffId, role: 'STAFF' };
   },
-  optionalAuth: async (request: any, _reply: any) => {
-    // optionalAuth is a no-op: keep request.staff as-is (may be undefined for kiosk)
-    void request.staff;
+  optionalAuth: async (_request: any, _reply: any) => {
+    // optionalAuth is a no-op
   },
   requireAdmin: async (_request: any, _reply: any) => {},
   requireReauth: async (request: any, _reply: any) => {
@@ -34,7 +33,7 @@ describe('Lane session lifecycle: kiosk-ack must not end session', () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
     const dbConfig = {
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -120,9 +119,9 @@ describe('Lane session lifecycle: kiosk-ack must not end session', () => {
          FROM lane_sessions WHERE id = $1`,
         [sessionId]
       );
-      expect(afterAck.rows[0]!.status).not.toBe('COMPLETED');
-      expect(afterAck.rows[0]!.customer_id).toBe(customerId);
-      expect(afterAck.rows[0]!.kiosk_acknowledged_at).toBeTruthy();
+      expect(afterAck.rows[0].status).not.toBe('COMPLETED');
+      expect(afterAck.rows[0].customer_id).toBe(customerId);
+      expect(afterAck.rows[0].kiosk_acknowledged_at).toBeTruthy();
 
       // Employee register completes transaction (reset)
       const resetRes = await fastify.inject({
@@ -136,8 +135,8 @@ describe('Lane session lifecycle: kiosk-ack must not end session', () => {
         `SELECT status::text as status, customer_id::text FROM lane_sessions WHERE id = $1`,
         [sessionId]
       );
-      expect(afterReset.rows[0]!.status).toBe('COMPLETED');
-      expect(afterReset.rows[0]!.customer_id).toBeNull();
+      expect(afterReset.rows[0].status).toBe('COMPLETED');
+      expect(afterReset.rows[0].customer_id).toBeNull();
     })
   );
 });

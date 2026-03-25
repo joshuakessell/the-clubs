@@ -12,6 +12,10 @@ import { sql } from 'drizzle-orm';
 import { getSquareClient, getSquareLocationId } from './squareClient';
 import { logSquareEvent } from './squareLogger';
 import { mapSquarePayment } from './squarePaymentMapper';
+import {
+  globalCircuitBreakerRegistry,
+  CircuitBreakerOpenError,
+} from '../../resilience/circuitBreaker';
 
 function buildIdempotencyKey(params: CreateCardPaymentParams, internalPaymentId?: string): string {
   if (internalPaymentId) {
@@ -84,6 +88,12 @@ function matchesFilters(record: PaymentRecord, filters?: PaymentFilters): boolea
   return true;
 }
 
+const squareCircuitBreaker = globalCircuitBreakerRegistry.register('square-payments', {
+  failureThreshold: 5,
+  resetTimeoutMs: 30_000,
+  halfOpenRequests: 3,
+});
+
 export class SquarePaymentsProvider implements PaymentsProvider {
   async createCardPayment(params: CreateCardPaymentParams): Promise<PaymentRecord> {
     if (!params.sourceToken) {
@@ -109,47 +119,60 @@ export class SquarePaymentsProvider implements PaymentsProvider {
     });
 
     try {
-      const client = getSquareClient();
-      const response = await client.paymentsApi.createPayment({
-        idempotencyKey,
-        sourceId: params.sourceToken,
-        amountMoney: {
-          amount: BigInt(Math.trunc(params.amount.amount)),
-          currency: params.amount.currency,
-        },
-        locationId,
-        orderId: params.orderExternalId ?? undefined,
-        customerId: params.customerExternalId ?? undefined,
-        autocomplete: true,
-      });
+      const paymentRecord = await squareCircuitBreaker.execute(async () => {
+        const client = getSquareClient();
+        const response = await client.paymentsApi.createPayment({
+          idempotencyKey: idempotencyKey as string,
+          sourceId: params.sourceToken!,
+          amountMoney: {
+            amount: BigInt(Math.trunc(params.amount.amount)),
+            currency: params.amount.currency,
+          },
+          locationId,
+          orderId: params.orderExternalId ?? undefined,
+          customerId: params.customerExternalId ?? undefined,
+          autocomplete: true,
+        });
 
-      const payment = response.result?.payment;
-      if (!payment || !payment.id) {
-        throw new Error('Square payment missing from response');
-      }
+        const payment = response.result?.payment;
+        if (!payment || !payment.id) {
+          throw new Error('Square payment missing from response');
+        }
 
-      const mapped = mapSquarePayment(payment);
-      if (mapped.status === 'PAID' || mapped.status === 'AUTHORIZED') {
-        await persistExternalRef(internalPaymentId, payment.id);
-      }
-      if (!internalPaymentId) {
-        logSquareEvent('warn', 'payments.create.missing_internal_id', {
+        const mapped = mapSquarePayment(payment);
+        if (mapped.status === 'PAID' || mapped.status === 'AUTHORIZED') {
+          await persistExternalRef(internalPaymentId, payment.id);
+        }
+        if (!internalPaymentId) {
+          logSquareEvent('warn', 'payments.create.missing_internal_id', {
+            squarePaymentId: payment.id,
+            orderExternalId: params.orderExternalId ?? null,
+            customerExternalId: params.customerExternalId ?? null,
+          });
+        }
+
+        logSquareEvent('info', 'payments.create.succeeded', {
           squarePaymentId: payment.id,
+          status: mapped.status,
           orderExternalId: params.orderExternalId ?? null,
           customerExternalId: params.customerExternalId ?? null,
+          internalPaymentId: internalPaymentId ?? null,
         });
-      }
 
-      logSquareEvent('info', 'payments.create.succeeded', {
-        squarePaymentId: payment.id,
-        status: mapped.status,
-        orderExternalId: params.orderExternalId ?? null,
-        customerExternalId: params.customerExternalId ?? null,
-        internalPaymentId: internalPaymentId ?? null,
+        return mapped;
       });
 
-      return mapped;
+      return paymentRecord;
     } catch (error) {
+      if (error instanceof CircuitBreakerOpenError) {
+        logSquareEvent('error', 'payments.create.circuit_open', {
+          circuitName: error.circuitName,
+          timeUntilResetMs: error.timeUntilResetMs,
+          orderExternalId: params.orderExternalId ?? null,
+          customerExternalId: params.customerExternalId ?? null,
+          internalPaymentId: params.internalPaymentId ?? null,
+        });
+      }
       logSquareEvent('error', 'payments.create.failed', {
         orderExternalId: params.orderExternalId ?? null,
         customerExternalId: params.customerExternalId ?? null,
@@ -168,7 +191,6 @@ export class SquarePaymentsProvider implements PaymentsProvider {
     range: { from: Date | string; to: Date | string },
     filters?: PaymentFilters
   ): Promise<PaymentRecord[]> {
-    const client = getSquareClient();
     const locationId = getSquareLocationId();
     const beginTime = new Date(range.from).toISOString();
     const endTime = new Date(range.to).toISOString();
@@ -176,25 +198,40 @@ export class SquarePaymentsProvider implements PaymentsProvider {
     const results: PaymentRecord[] = [];
     let cursor: string | undefined;
 
-    do {
-      const response = await client.paymentsApi.listPayments(
-        beginTime,
-        endTime,
-        undefined,
-        cursor,
-        locationId
-      );
+    try {
+      await squareCircuitBreaker.execute(async () => {
+        const client = getSquareClient();
+        do {
+          const response = await client.paymentsApi.listPayments(
+            beginTime,
+            endTime,
+            undefined,
+            cursor,
+            locationId
+          );
 
-      const payments = response.result?.payments ?? [];
-      for (const payment of payments) {
-        const mapped = mapSquarePayment(payment);
-        if (matchesFilters(mapped, filters)) {
-          results.push(mapped);
-        }
+          const payments = response.result?.payments ?? [];
+          for (const payment of payments) {
+            const mapped = mapSquarePayment(payment);
+            if (matchesFilters(mapped, filters)) {
+              results.push(mapped);
+            }
+          }
+
+          cursor = response.result?.cursor ?? undefined;
+        } while (cursor);
+      });
+    } catch (error) {
+      if (error instanceof CircuitBreakerOpenError) {
+        logSquareEvent('error', 'payments.list.circuit_open', {
+          circuitName: error.circuitName,
+          timeUntilResetMs: error.timeUntilResetMs,
+          rangeFrom: beginTime,
+          rangeTo: endTime,
+        });
       }
-
-      cursor = response.result?.cursor ?? undefined;
-    } while (cursor);
+      throw error;
+    }
 
     return results;
   }

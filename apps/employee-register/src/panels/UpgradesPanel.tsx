@@ -37,6 +37,7 @@ interface RoomAvailability {
 interface FulfillResult {
   waitlistId: string;
   orderId: string;
+  squareOrderId?: string;
   upgradeFee: number;
   newResourceId: string;
   newRoomNumber: string;
@@ -350,7 +351,7 @@ function WaitlistTableRow({
             size="sm"
           />
         </div>
-        {/* Subheader: [X mins ago] · [Current] => [Upgrade Target] */}
+        {/* Subheader: [X mins ago] · [Current] */}
         <div className="flex items-center gap-1 mt-0.5 flex-wrap">
           <span className="text-xs text-(--color-text-muted)">
             {timeAgo(entry.createdAt)}
@@ -358,17 +359,6 @@ function WaitlistTableRow({
           <span className="text-xs text-(--color-text-muted)">·</span>
           <span className="text-xs text-(--color-text-muted)">
             {currentLabel}
-          </span>
-          <span className="text-xs font-bold text-(--color-text-muted)">⇒</span>
-          <span
-            className="text-xs font-semibold"
-            style={{
-              color: firstAvail
-                ? 'var(--color-accent-secondary, #a78bfa)'
-                : TIER_COLORS[getPrimaryTier(entry)] ?? 'var(--color-text-primary)',
-            }}
-          >
-            {upgradeTarget}
           </span>
           {isOffered && entry.offeredRoomNumber ? (
             <>
@@ -383,6 +373,18 @@ function WaitlistTableRow({
           ) : null}
         </div>
       </div>
+
+      {/* Upgrade target — right-aligned badge */}
+      <span
+        className="text-sm font-semibold whitespace-nowrap shrink-0 self-center"
+        style={{
+          color: firstAvail
+            ? 'var(--color-accent-secondary, #a78bfa)'
+            : TIER_COLORS[getPrimaryTier(entry)] ?? 'var(--color-text-primary)',
+        }}
+      >
+        {upgradeTarget}
+      </span>
 
       {/* Action buttons — side by side for touch */}
       <div className="flex flex-row gap-2 shrink-0 ml-auto">
@@ -633,27 +635,34 @@ export function UpgradesPanel() {
   }, [headers]);
 
   /* ── Payment ── */
-  const handlePay = useCallback(async (method: 'CREDIT' | 'CASH') => {
-    if (!paymentModal.fulfill) return;
+  const handlePay = useCallback(async () => {
+    if (!paymentModal.fulfill?.squareOrderId) return;
     setSubmitting(true);
     try {
-      const h = headers();
-      const payRes = await fetch(
-        getApiUrl(`/api/v1/payments/${paymentModal.fulfill.orderId}/mark-paid`),
-        {
-          method: 'POST',
-          headers: { ...h, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paymentMethod: method }),
+      const laneId = useRegisterStore.getState().laneId ?? 'register';
+      globalThis.sessionStorage.setItem('square_checkout_lane_id', laneId);
+      globalThis.sessionStorage.setItem('square_checkout_order_id', paymentModal.fulfill.orderId);
+
+      const appSwitchData = {
+        amount_money: { amount: Math.round(paymentModal.fulfill.upgradeFee).toString(), currency_code: 'USD' },
+        callback_url: `${globalThis.location.origin}/checkout/square-callback`,
+        client_id: import.meta.env.VITE_SQUARE_APPLICATION_ID || 'sq0idp-undefined',
+        version: '1.3',
+        notes: `ORDER_ID:${paymentModal.fulfill.squareOrderId}`,
+        options: {
+          supported_tender_types: ['CREDIT_CARD', 'CASH', 'SQUARE_GIFT_CARD', 'CARD_ON_FILE']
         }
-      );
-      if (!payRes.ok) throw new Error('Payment failed');
-      setPaymentModal((prev) => ({ ...prev, orderStatus: 'PAID' }));
+      };
+
+      const iosUri = `square-commerce-v1://payment/create?data=${encodeURIComponent(JSON.stringify(appSwitchData))}`;
+      globalThis.location.href = iosUri;
+      return; 
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Payment failed');
+      setError(err instanceof Error ? err.message : 'Payment App-Switch failed');
     } finally {
       setSubmitting(false);
     }
-  }, [headers, paymentModal.fulfill]);
+  }, [paymentModal.fulfill]);
 
   /* ── Complete upgrade ── */
   const handleComplete = useCallback(async () => {
@@ -849,8 +858,7 @@ export function UpgradesPanel() {
           orderStatus={paymentModal.orderStatus}
           isSubmitting={submitting}
           canComplete={paymentModal.orderStatus === 'PAID'}
-          onPayCredit={() => void handlePay('CREDIT')}
-          onPayCash={() => void handlePay('CASH')}
+          onPaySquare={() => void handlePay()}
           onComplete={() => void handleComplete()}
         />
       ) : null}

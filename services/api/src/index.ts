@@ -17,6 +17,7 @@ import {
   orderRoutes, retailRoutes, customerSpendLedgerRoutes,
 } from './routes';
 import { errorHandlerPlugin } from './plugins/errorHandler';
+import { correlationIdPlugin } from './routes/health';
 import { createBroadcaster, type Broadcaster } from './realtime/broadcaster';
 import { LocalLaneSockets } from './realtime/localSockets';
 import { LocalLaneSSEClients } from './realtime/localSSE';
@@ -27,8 +28,19 @@ import { seedDemoData } from './db/seed-demo';
 import { expireWaitlistEntries } from './waitlist/expireWaitlist';
 import { startAutoReplayOutbox } from './checkin/autoReplayOutbox';
 import { processUpgradeHoldsTick } from './waitlist/upgradeHolds';
+import { initTelemetry, shutdownTelemetry, getCurrentTraceId } from './telemetry';
+import { recordBackgroundJob } from './telemetry/metrics';
 
 loadEnvFromDotEnvIfPresent();
+
+// Initialize OpenTelemetry (must be done early)
+if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
+  try {
+    initTelemetry();
+  } catch (error) {
+    console.error('[Telemetry] Failed to initialize:', error);
+  }
+}
 
 // Fallback defaults for local dev (matching docker-compose.yml: 5433->5432)
 if (!process.env.DATABASE_URL && !process.env.DB_HOST) {
@@ -187,34 +199,43 @@ const isDbConfigured = () => {
 
 function setupPeriodicJobs(fastify: FastifyInstance) {
   const i1 = setInterval(() => {
+    const startTime = Date.now();
     void (async () => {
       try {
         const cleaned = await cleanupAbandonedRegisterSessions(fastify);
         if (cleaned > 0) fastify.log.info(`Cleaned up ${cleaned} abandoned register session(s)`);
+        recordBackgroundJob('cleanup_register_sessions', true, Date.now() - startTime);
       } catch (error) {
         fastify.log.error(error, 'Error during register session cleanup');
+        recordBackgroundJob('cleanup_register_sessions', false, Date.now() - startTime);
       }
     })();
   }, 30000);
 
   const i2 = setInterval(() => {
+    const startTime = Date.now();
     void (async () => {
       try {
         const expired = await expireWaitlistEntries(fastify);
         if (expired > 0) fastify.log.info(`Expired ${expired} waitlist entr${expired === 1 ? 'y' : 'ies'}`);
+        recordBackgroundJob('expire_waitlist_entries', true, Date.now() - startTime);
       } catch (error) {
         fastify.log.error(error, 'Error during waitlist expiry');
+        recordBackgroundJob('expire_waitlist_entries', false, Date.now() - startTime);
       }
     })();
   }, 60000);
 
   const i3 = setInterval(() => {
+    const startTime = Date.now();
     void (async () => {
       try {
         const { db: dbInstance } = await import('./db');
-        const { sql: sqlTag } = await import('drizzle-orm');
-        const result = await dbInstance.execute(sqlTag`DELETE FROM idempotency_keys WHERE expires_at < NOW()`);
+        const { sql: sqlTag, lt } = await import('drizzle-orm');
+        const { idempotencyKeys } = await import('./db/schema/index');
+        const result = await dbInstance.delete(idempotencyKeys).where(lt(idempotencyKeys.expiresAt, sqlTag`NOW()`));
         if (result.rowCount && result.rowCount > 0) fastify.log.info(`Cleaned up ${result.rowCount} expired idempotency key(s)`);
+        recordBackgroundJob('cleanup_idempotency_keys', true, Date.now() - startTime);
       } catch { /* ignore */ }
     })();
   }, 5 * 60 * 1000);
@@ -223,12 +244,15 @@ function setupPeriodicJobs(fastify: FastifyInstance) {
 
   if (isDbConfigured()) {
     const i4 = setInterval(() => {
+      const startTime = Date.now();
       void (async () => {
         try {
           const { expired } = await processUpgradeHoldsTick(fastify);
           if (expired > 0) fastify.log.info({ expired }, 'Processed upgrade hold expirations');
+          recordBackgroundJob('process_upgrade_holds', true, Date.now() - startTime);
         } catch (error) {
           fastify.log.error(error, 'Error during upgrade hold processing');
+          recordBackgroundJob('process_upgrade_holds', false, Date.now() - startTime);
         }
       })();
     }, 5000);
@@ -322,13 +346,52 @@ async function handleDemoSeeding(fastify: FastifyInstance) {
     if (process.env.SKIP_DEMO_SEED === 'true') {
       fastify.log.info('DEMO_MODE enabled; skipping startup seed.');
     } else {
-      fastify.log.info(`DEMO_MODE enabled, seeding demo data (SEED_ON_STARTUP=${process.env.SEED_ON_STARTUP === 'true'})...`);
+      const forceReseed = process.env.FORCE_RESEED === 'true';
+      fastify.log.info(`DEMO_MODE enabled, running simulator (forceReseed=${forceReseed})...`);
       try {
-        await seedDemoData({ forceReseed: false });
+        await seedDemoData({ forceReseed });
       } catch (err) {
         fastify.log.error(err, '❌ Demo seed failed');
       }
     }
+  }
+}
+
+/**
+ * Bootstrap an initial admin when the staff table is empty.
+ *
+ * Solves the chicken-and-egg problem: the admin panel requires login,
+ * but login requires at least one staff member with a PIN.
+ * Creates "Admin" with default PIN 000000 and forces a PIN change on first login.
+ */
+async function bootstrapInitialAdmin(fastify: FastifyInstance) {
+  try {
+    const { db: dbInstance } = await import('./db');
+    const { sql: sqlTag } = await import('drizzle-orm');
+    const { hashPin } = await import('./auth/utils');
+    const { staff: staffTable } = await import('./db/schema/index');
+
+    const countResult = await dbInstance.execute<{ cnt: string }>(
+      sqlTag`SELECT COUNT(*)::text AS cnt FROM staff WHERE active = true`
+    );
+    const activeCount = Number.parseInt((countResult.rows[0] as { cnt: string })?.cnt ?? '0', 10);
+
+    if (activeCount > 0) return;
+
+    fastify.log.warn('⚠️  No active staff found — bootstrapping initial admin (PIN: 000000, force change on login)');
+    const pinHash = await hashPin('000000');
+
+    await dbInstance.insert(staffTable).values({
+      name: 'Admin',
+      role: 'ADMIN',
+      pinHash,
+      active: true,
+      forcePinChange: true,
+    });
+
+    fastify.log.info('✅ Initial admin "Admin" created. Sign in with PIN 000000 — you will be prompted to change it.');
+  } catch (err) {
+    fastify.log.error(err, 'Failed to bootstrap initial admin');
   }
 }
 
@@ -365,6 +428,7 @@ async function initializeDbAndSeed(fastify: FastifyInstance, abortSignal: AbortS
   await verifyDatabaseHealth(fastify);
   startSubsystems(fastify, abortSignal);
   await handleDemoSeeding(fastify);
+  await bootstrapInitialAdmin(fastify);
 }
 
 async function main() {
@@ -384,6 +448,9 @@ async function main() {
         allowUnionTypes: true,
       },
     },
+    bodyLimit: 1 * 1024 * 1024, // 1MB max request body
+    onProtoPoisoning: 'remove',
+    onConstructorPoisoning: 'remove',
   });
 
   await setupSecurityAndCors(fastify);
@@ -392,6 +459,7 @@ async function main() {
 
   await fastify.register(errorHandlerPlugin);
   await fastify.register(websocket);
+  correlationIdPlugin(fastify);
 
   const localLaneSockets = new LocalLaneSockets();
   const localLaneSSE = new LocalLaneSSEClients();
@@ -413,6 +481,7 @@ async function main() {
     activeIntervals.forEach(clearInterval);
     await fastify.close();
     if (!SKIP_DB) await closeDatabase();
+    await shutdownTelemetry();
     process.exit(0);
   };
 

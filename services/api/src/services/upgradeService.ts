@@ -150,9 +150,9 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
     if (!validTiers.includes(newRoomTier)) throw new HttpError(400, `Room ${newRoom.number} is ${newRoomTier}, but waitlist accepts ${validTiers.join(', ')}`);
 
     const upgradeFee = calculateUpgradeFee(block.rental_type, newRoomTier);
-    const upgradeFeeCents = Math.round(upgradeFee * 100);
+    const upgradeFeeInt = Math.round(upgradeFee);
     const quoteJson = JSON.stringify({ type: 'UPGRADE', fromTier: block.rental_type, toTier: newRoomTier, amount: upgradeFee, waitlistId, newRoomId: roomId, newRoomNumber: newRoom.number });
-    const intentResult = await tx.execute<{ id: string; total: number | string }>(sql`INSERT INTO orders (status, subtotal, discount, tax, tip, total, currency, metadata_json, quote_json) VALUES ('OPEN', ${upgradeFeeCents}, 0, 0, 0, ${upgradeFeeCents}, 'USD', ${quoteJson}::jsonb, ${quoteJson}::jsonb) RETURNING id, total`);
+    const intentResult = await tx.execute<{ id: string; total: number | string }>(sql`INSERT INTO orders (status, subtotal, discount, tax, tip, total, currency, metadata_json, quote_json) VALUES ('OPEN', ${upgradeFeeInt}, 0, 0, 0, ${upgradeFeeInt}, 'USD', ${quoteJson}::jsonb, ${quoteJson}::jsonb) RETURNING id, total`);
     const pendingOrder = intentResult.rows[0];
 
     await insertAuditLogDrizzle(tx, {
@@ -165,7 +165,7 @@ export async function fulfillUpgrade(waitlistId: string, roomId: string, staff: 
 
     return {
       waitlistId, orderId: pendingOrder.id,
-      upgradeFee: typeof pendingOrder.total === 'string' ? Number.parseFloat(pendingOrder.total) / 100 : pendingOrder.total / 100,
+      upgradeFee: typeof pendingOrder.total === 'string' ? Number.parseFloat(pendingOrder.total) : pendingOrder.total,
       newRoomId: roomId, newRoomNumber: newRoom.number, newRoomTier, fromTier: block.rental_type,
       originalCharges: originalLineItems || [], originalTotal: originalTotal ?? null,
       visitId: waitlist.visit_id, customerId,
@@ -207,7 +207,7 @@ export async function completeUpgrade(waitlistId: string, orderId: string, staff
     const block = blockResult.rows[0];
 
     const rawTotal = toNumber(intent.total);
-    const upgradeAmount = rawTotal === undefined ? undefined : (rawTotal / 100);
+    const upgradeAmount = rawTotal === undefined ? undefined : rawTotal;
     const quote = (typeof intent.metadata_json === 'string' ? JSON.parse(intent.metadata_json) : intent.metadata_json) as { newRoomId?: string; newRoomNumber?: string; newRoomTier?: string; waitlistId?: string };
     if (!quote.newRoomId) throw new HttpError(400, 'Room ID not found in payment intent (upgrade must be fulfilled first)');
 

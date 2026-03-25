@@ -1,10 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { generateAgreementPdf } from '../src/utils/pdf-generator.js';
 
 describe('Agreement PDF generation', () => {
-  it('writes a valid, multi-page PDF and a parser can open it (no raw HTML tags)', async () => {
+  it('generates a valid, multi-page PDF in memory (no raw HTML tags)', async () => {
     const signatureBase64 =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
 
@@ -25,12 +23,7 @@ describe('Agreement PDF generation', () => {
       signatureImageBase64: signatureBase64,
     });
 
-    const outDir = path.resolve(process.cwd(), 'services/api/tests/_artifacts');
-    await fs.mkdir(outDir, { recursive: true });
-    const outPath = path.join(outDir, 'test-agreement.pdf');
-    await fs.writeFile(outPath, pdf);
-
-    // Parse with a different library than the generator to confirm the PDF is readable.
+    // Parse in memory — no file written to disk.
     const mod = await import('pdf-parse');
     const pdfParse = (mod as any).default ?? mod;
     const parsed = await pdfParse(pdf);

@@ -4,6 +4,7 @@ import { idempotencyKey } from '../../middleware/idempotency';
 import { getHttpError } from '../../checkin/utils';
 import {
   createCheckoutOrder,
+  createSquarePOSOrder,
   markOrderPaid,
   getSessionPayload,
 } from '../../services/paymentService';
@@ -14,8 +15,6 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
     '/v1/checkin/lane/:laneId/create-payment-intent',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       try {
         const result = await createCheckoutOrder(request.params.laneId);
         const { payload } = await getSessionPayload(result.sessionId);
@@ -30,17 +29,32 @@ export function registerCheckinPaymentIntentRoutes(fastify: FastifyInstance): vo
     }
   );
 
+  // POST /v1/checkin/lane/:laneId/square-order
+  fastify.post<{ Params: { laneId: string } }>(
+    '/v1/checkin/lane/:laneId/square-order',
+    { preHandler: [requireAuth, idempotencyKey] },
+    async (request, reply) => {
+      try {
+        const result = await createSquarePOSOrder(request.params.laneId);
+        return reply.send({ squareOrderId: result.squareOrderId, orderId: result.orderId });
+      } catch (error: unknown) {
+        request.log.error(error, 'Failed to create Square Order');
+        const httpErr = getHttpError(error);
+        if (httpErr) return reply.status(httpErr.statusCode).send({ error: httpErr.message ?? 'Failed to create Square Order' });
+        return reply.status(500).send({ error: 'Internal Server Error', message: 'Failed to create Square Order' });
+      }
+    }
+  );
+
   // POST /v1/payments/:id/mark-paid
   fastify.post<{
     Params: { id: string };
     Body: { squareTransactionId?: string; paymentMethod?: 'CASH' | 'CREDIT'; registerNumber?: number; tip?: number };
   }>('/v1/payments/:id/mark-paid', { preHandler: [requireAuth, idempotencyKey] }, async (request, reply) => {
-    if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
     try {
       const result = await markOrderPaid({
         orderId: request.params.id,
-        staffId: request.staff.staffId,
+        staffId: request.staff!.staffId,
         ...request.body,
       });
 

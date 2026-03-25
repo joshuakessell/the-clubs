@@ -1,8 +1,6 @@
-import type pg from 'pg';
-
-type Queryable = {
-  query<T>(text: string, params?: unknown[]): Promise<{ rows: T[] }>;
-};
+import { type DrizzleTx } from '../db';
+import { customers } from '../db/schema/index';
+import { sql, eq } from 'drizzle-orm';
 
 /**
  * Parameters for enriching a customer's identity fields from a scan.
@@ -20,13 +18,13 @@ export interface EnrichmentFields {
  * Enrich a customer record with identity fields extracted from an ID scan.
  *
  * This replaces the identical UPDATE query that was copy-pasted 5 times
- * in routes/checkin/scan.ts. Uses COALESCE / CASE to avoid overwriting
+ * in routes/checkin/scan.ts. Uses conditional Drizzle sets to avoid overwriting
  * existing data with NULL.
  *
  * No-ops if all enrichment fields are empty.
  */
 export async function enrichCustomerIdentity(
-  client: Queryable,
+  tx: DrizzleTx,
   customerId: string,
   fields: EnrichmentFields
 ): Promise<void> {
@@ -38,26 +36,18 @@ export async function enrichCustomerIdentity(
     idTypeOther,
   } = fields;
 
-  // Skip if nothing to update
-  const hasUpdate = idExpirationDate || idNumber || idState || idType || idTypeOther;
-  if (!hasUpdate) return;
+  const setValues: Record<string, unknown> = {};
 
-  await client.query(
-    `UPDATE customers
-     SET id_expiration_date = COALESCE($1::date, id_expiration_date),
-         id_number = CASE WHEN $2::text IS NOT NULL THEN $2 ELSE id_number END,
-         id_state = CASE WHEN $3::text IS NOT NULL THEN $3 ELSE id_state END,
-         id_type = CASE WHEN $4::text IS NOT NULL THEN $4 ELSE id_type END,
-         id_type_other = CASE WHEN $5::text IS NOT NULL THEN $5 ELSE id_type_other END,
-         updated_at = NOW()
-     WHERE id = $6`,
-    [
-      idExpirationDate || null,
-      idNumber || null,
-      idState || null,
-      idType || null,
-      idTypeOther || null,
-      customerId,
-    ]
-  );
+  if (idExpirationDate) setValues.idExpirationDate = sql`${idExpirationDate}::date`;
+  if (idNumber) setValues.idNumber = idNumber;
+  if (idState) setValues.idState = idState;
+  if (idType) setValues.idType = idType;
+  if (idTypeOther) setValues.idTypeOther = idTypeOther;
+
+  // Skip if nothing to update
+  if (Object.keys(setValues).length === 0) return;
+
+  setValues.updatedAt = sql`NOW()`;
+
+  await tx.update(customers).set(setValues).where(eq(customers.id, customerId));
 }

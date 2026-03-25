@@ -22,40 +22,12 @@ import {
   selectRoomForNewCheckin,
 } from '../checkin/helpers';
 import { getRoomTier } from '../checkin/waitlist';
-import { generateAgreementPdf } from '../utils/pdf-generator';
 import { roundUpToQuarterHour } from '../time/rounding';
 import { insertCustomerActivityEventDrizzle } from '../activity/customerActivityLog';
 import { insertClubEventDrizzle } from '../activity/clubEventLog';
 import { AGREEMENT_LEGAL_BODY_HTML_BY_LANG } from '@the-clubs/shared';
 import { HttpError } from '../errors/HttpError';
 
-
-
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the Queryable/PoolClient interface
- * expected by external helpers (selectRoomForNewCheckin, assertAssignedResourcePersistedAndUnavailable).
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
-      }
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await (tx as any).execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
 
 // ── Types ──
 
@@ -315,12 +287,12 @@ async function computeRenewalTimeBlock(
   const latestBlock = blocksResult.rows[0];
   const latestBlockEnd = new Date(latestBlock.ends_at);
   const minutesUntilCheckout = (latestBlockEnd.getTime() - Date.now()) / (1000 * 60);
-  // Eligible: < 45 min before checkout AND < 29 min past checkout
-  if (minutesUntilCheckout > 45) {
-    throw new HttpError(400, 'Renewal is only available within 45 minutes of checkout');
+  // Eligible: < 60 min before checkout AND < 15 min past checkout
+  if (minutesUntilCheckout > 60) {
+    throw new HttpError(400, 'Renewal is only available within 60 minutes of checkout');
   }
-  if (minutesUntilCheckout < -29) {
-    throw new HttpError(400, 'Renewal window has expired (more than 29 minutes past checkout)');
+  if (minutesUntilCheckout < -15) {
+    throw new HttpError(400, 'Renewal window has expired (more than 15 minutes past checkout)');
   }
 
   if (currentTotalHours + renewalHours > 14) {
@@ -360,7 +332,7 @@ async function resolveRenewalResource(
   return { assignedResourceId: resource.id, assignedResourceType: resourceType, assignedResourceNumber: resource.number };
 }
 
-async function resolvePreAssignedResource(
+export async function resolvePreAssignedResource(
   tx: DrizzleTx,
   session: LaneSessionRow,
   assignedResourceId: string,
@@ -388,7 +360,7 @@ async function resolvePreAssignedResource(
   return resource.number;
 }
 
-async function autoAssignResource(
+export async function autoAssignResource(
   tx: DrizzleTx,
   rentalType: string,
 ): Promise<{ id: string; type: 'room' | 'locker'; number: string }> {
@@ -410,8 +382,7 @@ async function autoAssignResource(
     return { id: locker.id, type: 'locker', number: locker.number };
   }
 
-  // Use toQueryable() adapter for external helper that expects PoolClient
-  const room = await selectRoomForNewCheckin(toQueryable(tx) as any, rentalType as RoomRentalType);
+  const room = await selectRoomForNewCheckin(tx, rentalType as RoomRentalType);
   if (!room) throw new HttpError(409, 'No available rooms');
   return { id: room.id, type: 'room', number: room.number };
 }
@@ -466,7 +437,6 @@ interface BlockInsertParams {
   resourceType: 'room' | 'locker';
   resourceId: string;
   sessionId: string;
-  pdfBuffer: Buffer;
   signedAt: Date;
 }
 
@@ -481,12 +451,12 @@ async function createVisitAndBlock(params: BlockInsertParams): Promise<{ visitId
 
   const blockResult = await params.tx.execute<{ id: string }>(
     sql`INSERT INTO checkin_blocks
-     (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, session_id, agreement_signed, agreement_pdf, agreement_signed_at)
-     VALUES (${visitId}, ${params.blockType}, ${params.startsAt}, ${params.endsAt}, ${params.rentalType}, ${params.resourceId}, ${params.sessionId}, true, ${params.pdfBuffer}, ${params.signedAt})
+     (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, session_id, agreement_signed, agreement_signed_at)
+     VALUES (${visitId}, ${params.blockType}, ${params.startsAt}, ${params.endsAt}, ${params.rentalType}, ${params.resourceId}, ${params.sessionId}, true, ${params.signedAt})
      RETURNING id`
   );
 
-  return { visitId: visitId!, checkinBlockId: blockResult.rows[0].id };
+  return { visitId, checkinBlockId: blockResult.rows[0].id };
 }
 
 async function maybeCreateWaitlist(
@@ -681,10 +651,82 @@ function buildAgreementTextSnapshot(
 // ── Service Methods ──
 
 /**
+ * Finalizes a checkin when the customer has bypassed the agreement (e.g., returning member or 2hr renewal).
+ * Creates the visit, time block, marks the resource occupied, and logs the activity.
+ */
+export async function finalizeCheckinWithoutAgreement(tx: DrizzleTx, session: LaneSessionRow): Promise<void> {
+  const signedAt = new Date();
+
+  if (!session.customer_id) {
+    throw new HttpError(400, 'Session has no customer; cannot complete check-in');
+  }
+
+  const timeBlock = await resolveTimeBlock(tx, session, signedAt);
+  const rentalType = (session.desired_rental_type || session.backup_rental_type || 'LOCKER') as
+    'LOCKER' | 'STANDARD' | 'DOUBLE' | 'SPECIAL' | 'GYM_LOCKER';
+  const resource = await resolveResourceAssignment(tx, session, timeBlock, rentalType);
+
+  await markResourceOccupied(tx, timeBlock.isRenewal, resource.type, session.customer_id, resource.id);
+
+  // Update lane session snapshot
+  await tx.execute(sql`UPDATE lane_sessions
+     SET assigned_resource_id = ${resource.id},
+         assigned_resource_type = ${resource.type},
+         agreement_bypass_pending = false,
+         updated_at = NOW()
+     WHERE id = ${session.id}`);
+
+  const { visitId, checkinBlockId } = await createVisitAndBlock({
+    tx, visitId: timeBlock.visitId, customerId: session.customer_id,
+    blockType: timeBlock.blockType, startsAt: timeBlock.startsAt, endsAt: timeBlock.endsAt,
+    rentalType, resourceType: resource.type, resourceId: resource.id,
+    sessionId: session.id, signedAt,
+  });
+
+  // Backfill visit_id into spend ledger entries
+  await tx.execute(sql`UPDATE customer_spend_ledger_entries
+     SET visit_id = ${visitId}
+     WHERE customer_id = ${session.customer_id}
+       AND visit_id IS NULL
+       AND metadata->>'laneSessionId' = ${session.id}`);
+
+  await maybeCreateWaitlist(tx, session, visitId, checkinBlockId, resource.id);
+
+  await assertAssignedResourcePersistedAndUnavailable({
+    tx, sessionId: session.id, customerId: session.customer_id,
+    resourceType: resource.type, resourceId: resource.id, resourceNumber: resource.number,
+  });
+
+  if (session.order_id) {
+    await tx.execute(
+      sql`UPDATE customer_spend_ledger_entries
+          SET visit_id = ${visitId}
+          WHERE customer_id = ${session.customer_id}
+            AND visit_id IS NULL
+            AND dedupe_key LIKE ${'LEDGER:CHECKIN:' + session.order_id + '%'}`
+    );
+  }
+
+  await insertCustomerActivityEventDrizzle(tx, {
+    customerId: session.customer_id,
+    actionType: 'CHECK_IN',
+    actionCategory: 'VISIT_HISTORY',
+    sourceApp: 'CUSTOMER_KIOSK',
+    actorType: 'SYSTEM',
+    summary: 'Check-in completed without new agreement signing',
+    metadata: {
+      laneSessionId: session.id, visitId, checkinBlockId,
+      assignedResourceType: resource.type, assignedResourceNumber: resource.number,
+      rentalType,
+    },
+  });
+}
+
+/**
  * Unified agreement signing flow.
  *
  * Covers both customer digital signature AND employee manual override.
- * When `signaturePayload === 'MANUAL_OVERRIDE'`, generates PDF with override text instead of signature image.
+ * When \`signaturePayload === 'MANUAL_OVERRIDE'\`, generates PDF with override text instead of signature image.
  */
 export async function processAgreementSigning(
   input: SigningInput
@@ -695,7 +737,7 @@ export async function processAgreementSigning(
     const session = await findActiveSession(tx, input.laneId, input.sessionId);
     await validatePrerequisites(tx, session);
 
-    const { customerName, customerDob, membershipNumber, customerLang } =
+    const { customerName, membershipNumber, customerLang } =
       await fetchCustomerInfo(tx, session);
 
     const agreement = await fetchActiveAgreement(tx);
@@ -724,37 +766,29 @@ export async function processAgreementSigning(
 
     await maybeInsertFlowCommand(tx, session.id);
 
-    // Build agreement text + PDF
+    // Build agreement text snapshot (stored for on-demand PDF reconstruction)
     const agreementTextSnapshot = buildAgreementTextSnapshot(
       timeBlock.startsAt, timeBlock.endsAt, customerLang, agreement.body_text,
     );
-    const agreementTitleForPdf = customerLang === 'ES' ? 'Acuerdo del Club' : agreement.title;
-
-    const pdfBuffer = await generateAgreementPdf({
-      agreementTitle: agreementTitleForPdf,
-      agreementVersion: agreement.version,
-      agreementText: agreementTextSnapshot,
-      customerName,
-      customerDob,
-      membershipNumber,
-      checkinAt: timeBlock.startsAt,
-      signedAt,
-      ...(isManualOverride
-        ? { signatureText: 'Manual Signature Override' }
-        : { signatureImageBase64: signatureData }),
-    });
 
     const { visitId, checkinBlockId } = await createVisitAndBlock({
       tx, visitId: timeBlock.visitId, customerId: session.customer_id,
       blockType: timeBlock.blockType, startsAt: timeBlock.startsAt, endsAt: timeBlock.endsAt,
       rentalType, resourceType: resource.type, resourceId: resource.id,
-      sessionId: session.id, pdfBuffer, signedAt,
+      sessionId: session.id, signedAt,
     });
+
+    // Backfill visit_id into spend ledger entries created during checkin payment
+    await tx.execute(sql`UPDATE customer_spend_ledger_entries
+       SET visit_id = ${visitId}
+       WHERE customer_id = ${session.customer_id}
+         AND visit_id IS NULL
+         AND metadata->>'laneSessionId' = ${session.id}`);
 
     const waitlistInfo = await maybeCreateWaitlist(tx, session, visitId, checkinBlockId, resource.id);
 
     await assertAssignedResourcePersistedAndUnavailable({
-      client: toQueryable(tx) as any, sessionId: session.id, customerId: session.customer_id,
+    tx, sessionId: session.id, customerId: session.customer_id,
       resourceType: resource.type, resourceId: resource.id, resourceNumber: resource.number,
     });
 
@@ -765,6 +799,19 @@ export async function processAgreementSigning(
         agreementVersion: agreement.version,
         userAgent: input.ctx.userAgent, ipAddress: input.ctx.ipAddress,
       });
+    }
+
+    // ── Bind pre-paid ledger entries to the new visit ──
+    // During PAYMENT step, markOrderPaid created spend ledger entries with visit_id = NULL
+    // because the visit wasn't created yet. Now that we have the visitId, we associate them.
+    if (session.order_id) {
+      await tx.execute(
+        sql`UPDATE customer_spend_ledger_entries
+            SET visit_id = ${visitId}
+            WHERE customer_id = ${session.customer_id}
+              AND visit_id IS NULL
+              AND dedupe_key LIKE ${'LEDGER:CHECKIN:' + session.order_id + '%'}`
+      );
     }
 
     await maybeCompleteSession(tx, session.id);

@@ -3,6 +3,7 @@ import { Badge, Button, useAuthStore } from '@the-clubs/ui';
 import { getApiUrl } from '@the-clubs/shared';
 import { useDashboardFetch, dashboardMutate } from '../hooks/useDashboardFetch';
 import { ViewSpinner } from '../components/ViewSpinner';
+import { CustomerSyncWizard } from '../components/CustomerSyncWizard';
 
 /* ── Types ─────────────────────────────────────────────────────── */
 
@@ -78,7 +79,7 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
   );
   const visits = data?.visits ?? [];
   const membership = formatMembership(customer.membershipCardType, customer.membershipValidUntil);
-  const lifetimeSpend = visits.reduce((sum, v) => sum + v.checkinBlocks.reduce((bs, b) => bs + (b.paymentTotal ?? 0), 0), 0);
+  const lifetimeSpend = visits.reduce((sum, v) => sum + (v.checkinBlocks[0]?.paymentTotal ?? 0), 0);
 
   // Notes
   const { data: notesData, loading: notesLoading, refetch: refetchNotes } = useDashboardFetch<{ notes: CustomerNote[] }>(
@@ -343,6 +344,7 @@ function CustomerDetail({ customer }: Readonly<{ customer: Customer }>) {
 /* ── Main View ─────────────────────────────────────────────────── */
 
 export function CustomersView() {
+  const [showSyncWizard, setShowSyncWizard] = useState(false);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -366,8 +368,19 @@ export function CustomersView() {
 
   return (
     <div className="flex flex-col gap-6">
+      {showSyncWizard && (
+        <CustomerSyncWizard 
+          onClose={() => setShowSyncWizard(false)} 
+          onComplete={() => { setShowSyncWizard(false); refetch(); }} 
+        />
+      )}
       <div className="rounded-xl border p-6" style={{ backgroundColor: 'var(--color-surface-raised)', borderColor: 'var(--color-border-default)' }}>
-        <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Customer Lookup</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold font-(--font-display) text-(--color-text-primary)">Customer Lookup</h2>
+          <Button size="sm" onClick={() => setShowSyncWizard(true)} variant="primary">
+            Sync Square DB
+          </Button>
+        </div>
         <div className="mt-3 flex gap-2">
           <input
             className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none"
@@ -413,48 +426,43 @@ export function CustomersView() {
                   const isExpanded = expandedId === c.id;
                   const membership = formatMembership(c.membershipCardType, c.membershipValidUntil);
                   return (
-                    <tr key={c.id} className="group" style={{ verticalAlign: 'top' }}>
-                      <td colSpan={6} className="p-0">
-                        {/* Summary row */}
-                        <button
-                          type="button"
-                          className="flex w-full cursor-pointer items-center border-b text-left transition"
-                          style={{ borderColor: 'var(--color-border-subtle)', background: 'none' }}
-                          onClick={() => setExpandedId(isExpanded ? null : c.id)}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
-                        >
-                          <div className="flex-1 px-4 py-3 text-sm font-semibold text-(--color-accent-primary)">{c.name}</div>
-                          <div className="w-[100px] px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">{c.dob ?? '—'}</div>
-                          <div className="w-[120px] px-4 py-3 text-sm font-mono text-(--color-text-secondary)">{c.membershipNumber ?? '—'}</div>
-                          <div className="w-[120px] px-4 py-3"><Badge color={membership.color} variant="light" size="sm">{membership.label}</Badge></div>
-                          <div className="w-[110px] px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">
-                            {c.lastVisit ? formatDate(c.lastVisit) : '—'}
+                    <>
+                      <tr key={c.id}
+                        className="group cursor-pointer border-b transition"
+                        style={{ borderColor: 'var(--color-border-subtle)' }}
+                        onClick={() => setExpandedId(isExpanded ? null : c.id)}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--color-surface-overlay)'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                      >
+                        <td className="px-4 py-3 text-sm font-semibold text-(--color-accent-primary)">{c.name}</td>
+                        <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">{c.dob ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm font-mono text-(--color-text-secondary)">{c.membershipNumber ?? '—'}</td>
+                        <td className="px-4 py-3"><Badge color={membership.color} variant="light" size="sm">{membership.label}</Badge></td>
+                        <td className="px-4 py-3 text-sm tabular-nums text-(--color-text-muted)">
+                          {c.lastVisit ? formatDate(c.lastVisit) : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            {c.pastDueBalance > 0 && <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); void handleWaive(c.id); }}>Waive</Button>}
+                            <svg
+                              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                              style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
+                            >
+                              <polyline points="6 9 12 15 18 9" />
+                            </svg>
                           </div>
-                          <div className="w-[110px] px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              {c.pastDueBalance > 0 && <Button size="sm" variant="primary" onClick={(e) => { e.stopPropagation(); void handleWaive(c.id); }}>Waive</Button>}
-                              <svg
-                                width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                                style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
-                              >
-                                <polyline points="6 9 12 15 18 9" />
-                              </svg>
-                            </div>
-                          </div>
-                        </button>
-
-                        {/* Expanded detail */}
-                        {isExpanded && (
-                          <div
-                            className="border-b px-4 py-4"
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr key={`${c.id}-detail`}>
+                          <td colSpan={6} className="px-4 py-4 border-b"
                             style={{ borderColor: 'var(--color-border-subtle)', backgroundColor: 'var(--color-surface-base)' }}
                           >
                             <CustomerDetail customer={c} />
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+                          </td>
+                        </tr>
+                      )}
+                    </>
                   );
                 })}
                 {customers.length === 0 && (

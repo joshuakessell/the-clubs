@@ -31,6 +31,7 @@ jobs:
       environment: ${{ steps.env.outputs.environment }}
       demo_mode: ${{ steps.env.outputs.demo_mode }}
       seed_on_startup: ${{ steps.env.outputs.seed_on_startup }}
+      force_reseed: ${{ steps.env.outputs.force_reseed }}
       host_port: ${{ steps.env.outputs.host_port }}
       project_name: ${{ steps.env.outputs.project_name }}
     steps:
@@ -49,11 +50,13 @@ jobs:
           if [ "$ENV" = "production" ]; then
             echo "demo_mode=false"        >> "$GITHUB_OUTPUT"
             echo "seed_on_startup=false"   >> "$GITHUB_OUTPUT"
+            echo "force_reseed=false"      >> "$GITHUB_OUTPUT"
             echo "host_port=3000"          >> "$GITHUB_OUTPUT"
             echo "project_name=prod"       >> "$GITHUB_OUTPUT"
           else
             echo "demo_mode=true"          >> "$GITHUB_OUTPUT"
             echo "seed_on_startup=true"    >> "$GITHUB_OUTPUT"
+            echo "force_reseed=true"       >> "$GITHUB_OUTPUT"
             echo "host_port=3001"          >> "$GITHUB_OUTPUT"
             echo "project_name=demo"       >> "$GITHUB_OUTPUT"
           fi
@@ -83,6 +86,7 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
           VITE_KIOSK_TOKEN: ${{ secrets.VITE_KIOSK_TOKEN }}
+          VITE_SQUARE_APPLICATION_ID: ${{ vars.VITE_SQUARE_APPLICATION_ID }}
         run: pnpm run build
 
       - name: Typecheck
@@ -228,6 +232,7 @@ jobs:
           KIOSK_TOKEN: ${{ secrets.KIOSK_TOKEN }}
           DEMO_MODE: ${{ needs.resolve-env.outputs.demo_mode }}
           SEED_ON_STARTUP: ${{ needs.resolve-env.outputs.seed_on_startup }}
+          FORCE_RESEED: ${{ needs.resolve-env.outputs.force_reseed }}
           HOST_PORT: ${{ needs.resolve-env.outputs.host_port }}
           PROJECT_NAME: ${{ needs.resolve-env.outputs.project_name }}
           ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS }}
@@ -237,8 +242,8 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP,HOST_PORT,PROJECT_NAME,ALLOWED_ORIGINS,CLOUDFLARE_CERT_PEM,CLOUDFLARE_CERT_KEY
-          command_timeout: 10m
+          envs: DB_PASSWORD,KIOSK_TOKEN,DEMO_MODE,SEED_ON_STARTUP,FORCE_RESEED,HOST_PORT,PROJECT_NAME,ALLOWED_ORIGINS,CLOUDFLARE_CERT_PEM,CLOUDFLARE_CERT_KEY
+          command_timeout: 15m
           script: |
             set -e
 
@@ -267,6 +272,7 @@ jobs:
               'FLOW_COMMANDS=true' \
               "DEMO_MODE=${DEMO_MODE}" \
               "SEED_ON_STARTUP=${SEED_ON_STARTUP}" \
+              "FORCE_RESEED=${FORCE_RESEED}" \
               "DB_PASSWORD=${DB_PASSWORD}" \
               "KIOSK_TOKEN=${KIOSK_TOKEN}" \
               "HOST_PORT=${HOST_PORT}" \
@@ -313,6 +319,16 @@ jobs:
               nginx:alpine
             echo "✓ nginx reverse proxy started on ports 80 and 443"
 
+            # For demo: wipe DB volume for clean 60-day reseed
+            if [ "${FORCE_RESEED}" = "true" ]; then
+              echo "🗑️  Wiping database for fresh simulation..."
+              docker compose -f docker-compose.prod.yml \
+                --project-name "${PROJECT_NAME}" \
+                --env-file "$ENV_FILE" \
+                down -v 2>/dev/null || true
+              echo "✓ Database volume removed"
+            fi
+
             # Start/restart this environment's stack (isolated by project name)
             docker compose -f docker-compose.prod.yml \
               --project-name "${PROJECT_NAME}" \
@@ -325,8 +341,13 @@ jobs:
             for i in $(seq 1 30); do
               if curl -sf http://localhost:${HOST_PORT}/health > /dev/null 2>&1; then
                 echo "✓ API is healthy on port ${HOST_PORT}!"
-                echo "⏳ Waiting 30s for DB init + seed to complete..."
-                sleep 30
+                if [ "${FORCE_RESEED}" = "true" ]; then
+                  echo "⏳ Waiting 120s for 60-day simulation to complete..."
+                  sleep 120
+                else
+                  echo "⏳ Waiting 30s for DB init to complete..."
+                  sleep 30
+                fi
                 echo "── Container logs (last 80 lines) ──"
                 docker compose -f docker-compose.prod.yml \
                   --project-name "${PROJECT_NAME}" \

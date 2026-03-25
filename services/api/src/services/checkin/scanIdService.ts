@@ -10,7 +10,7 @@ import {
   calculateAge,
 } from '../../checkin/identity';
 import { getAllowedRentals } from '../../checkin/payload';
-import { toDate } from '../../checkin/utils';
+import { toDate, normalizeToIsoDate } from '../../checkin/utils';
 import type { IdScanPayload } from '@the-clubs/shared';
 import { HttpError } from '../../errors/HttpError';
 
@@ -113,21 +113,11 @@ export async function processScanId(
   }
 
   // ── Step 3: Parse dates ──
-  let dob: Date | null = null;
-  if (body.dob) {
-    const parsedDob = new Date(body.dob);
-    if (!isNaN(parsedDob.getTime())) {
-      dob = parsedDob;
-    }
-  }
+  const dobStr = normalizeToIsoDate(body.dob);
+  const dob: Date | null = dobStr ? new Date(`${dobStr}T00:00:00Z`) : null;
 
-  let idExpirationDate: Date | null = null;
-  if (body.idExpirationDate) {
-    const parsedExpiration = new Date(`${body.idExpirationDate}T00:00:00Z`);
-    if (!isNaN(parsedExpiration.getTime())) {
-      idExpirationDate = parsedExpiration;
-    }
-  }
+  const idExpStr = normalizeToIsoDate(body.idExpirationDate);
+  const idExpirationDate: Date | null = idExpStr ? new Date(`${idExpStr}T00:00:00Z`) : null;
 
   const idScanIssue = getIdScanIssue({
     dob: dob ?? body.dob,

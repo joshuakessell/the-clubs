@@ -94,7 +94,7 @@ describe('Check-in Flow', () => {
        RETURNING id`,
       [pinHash]
     );
-    staffId = staffResult.rows[0]!.id;
+    staffId = staffResult.rows[0].id;
     staffToken = generateSessionToken();
 
     // Create staff session in database
@@ -141,7 +141,7 @@ describe('Check-in Flow', () => {
        VALUES ('Test Customer', '12345', 'EN')
        RETURNING id`
     );
-    customerId = customerResult.rows[0]!.id;
+    customerId = customerResult.rows[0].id;
 
     // Ensure an active agreement exists for signing flow
     await query(`UPDATE agreements SET active = false WHERE active = true`);
@@ -251,7 +251,7 @@ describe('Check-in Flow', () => {
           VALUES ('room', '200', 'STANDARD', 'CLEAN', 2)
           RETURNING id`
           );
-          const roomId = roomResult.rows[0]!.id;
+          const roomId = roomResult.rows[0].id;
 
           // Sanity: room 200 is available before check-in completion
           const beforeAvail = await app.inject({ method: 'GET', url: '/v1/inventory/available' });
@@ -304,8 +304,8 @@ describe('Check-in Flow', () => {
             status: string;
             assigned_to_customer_id: string | null;
           }>(`SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`, [roomId]);
-          expect(roomPreCheck.rows[0]!.status).toBe('CLEAN');
-          expect(roomPreCheck.rows[0]!.assigned_to_customer_id).toBeNull();
+          expect(roomPreCheck.rows[0].status).toBe('CLEAN');
+          expect(roomPreCheck.rows[0].assigned_to_customer_id).toBeNull();
 
           await app.inject({
             method: 'POST',
@@ -365,10 +365,10 @@ describe('Check-in Flow', () => {
           WHERE visit_id = $1
           ORDER BY created_at DESC
           LIMIT 1`,
-            [visitResult.rows[0]!.id]
+            [visitResult.rows[0].id]
           );
-          expect(blockResult.rows[0]!.session_id).toBe(startData.sessionId);
-          expect(blockResult.rows[0]!.agreement_signed).toBe(true);
+          expect(blockResult.rows[0].session_id).toBe(startData.sessionId);
+          expect(blockResult.rows[0].agreement_signed).toBe(true);
 
           // Agreement completion sync: ensure the server broadcast SESSION_UPDATED includes agreementSigned=true
           const matchingEvents = sessionUpdatedEvents.filter(
@@ -383,14 +383,14 @@ describe('Check-in Flow', () => {
             `SELECT status FROM inventory_resources WHERE id = $1`,
             [roomId]
           );
-          expect(roomStatusResult.rows[0]!.status).toBe('OCCUPIED');
+          expect(roomStatusResult.rows[0].status).toBe('OCCUPIED');
 
           // Verify room is assigned to the customer
           const roomAssignedResult = await query<{ assigned_to_customer_id: string | null }>(
             `SELECT assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
             [roomId]
           );
-          expect(roomAssignedResult.rows[0]!.assigned_to_customer_id).toBe(customerId);
+          expect(roomAssignedResult.rows[0].assigned_to_customer_id).toBe(customerId);
 
           // Expected outcome: /v1/inventory/available must no longer count room 200 immediately after completion
           const afterAvail = await app.inject({ method: 'GET', url: '/v1/inventory/available' });
@@ -445,20 +445,20 @@ describe('Check-in Flow', () => {
         );
         const wlVisit = await query<{ id: string }>(
           `INSERT INTO visits (customer_id, started_at) VALUES ($1, NOW() - INTERVAL '1 hour') RETURNING id`,
-          [wlCustomer.rows[0]!.id]
+          [wlCustomer.rows[0].id]
         );
         const wlBlock = await query<{ id: string }>(
           `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type)
            VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '2 hours', 'STANDARD')
            RETURNING id`,
-          [wlVisit.rows[0]!.id]
+          [wlVisit.rows[0].id]
         );
         await query(
           `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status)
            VALUES
              ($1, $2, 'STANDARD', 'STANDARD', 'ACTIVE'),
              ($1, $2, 'STANDARD', 'STANDARD', 'ACTIVE')`,
-          [wlVisit.rows[0]!.id, wlBlock.rows[0]!.id]
+          [wlVisit.rows[0].id, wlBlock.rows[0].id]
         );
 
         // Create session, lock selection, create payment intent, demo-take-payment, then sign agreement (no preselected room)
@@ -520,7 +520,7 @@ describe('Check-in Flow', () => {
            VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
            RETURNING id, number`
         );
-        const offeredRoomId = r1.rows[0]!.id;
+        const offeredRoomId = r1.rows[0].id;
         await query(
           `INSERT INTO inventory_resources (kind, number, tier, status, floor)
            VALUES ('room', '202', 'STANDARD', 'CLEAN', 1)`
@@ -532,18 +532,18 @@ describe('Check-in Flow', () => {
         );
         const wlVisit = await query<{ id: string }>(
           `INSERT INTO visits (customer_id, started_at) VALUES ($1, NOW() - INTERVAL '1 hour') RETURNING id`,
-          [wlCustomer.rows[0]!.id]
+          [wlCustomer.rows[0].id]
         );
         const wlBlock = await query<{ id: string }>(
           `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type)
            VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '2 hours', 'STANDARD')
            RETURNING id`,
-          [wlVisit.rows[0]!.id]
+          [wlVisit.rows[0].id]
         );
         await query(
           `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, resource_id)
            VALUES ($1, $2, 'STANDARD', 'STANDARD', 'OFFERED', NOW(), $3)`,
-          [wlVisit.rows[0]!.id, wlBlock.rows[0]!.id, offeredRoomId]
+          [wlVisit.rows[0].id, wlBlock.rows[0].id, offeredRoomId]
         );
 
         // New check-in should skip offered room 101 and assign room 102
@@ -600,14 +600,14 @@ describe('Check-in Flow', () => {
            LIMIT 1`,
           [customerId]
         );
-        expect(assignedRoom.rows[0]!.number).toBe('202');
+        expect(assignedRoom.rows[0].number).toBe('202');
 
         const offeredRoom = await query<{ status: string; assigned_to_customer_id: string | null }>(
           `SELECT status, assigned_to_customer_id FROM inventory_resources WHERE id = $1`,
           [offeredRoomId]
         );
-        expect(offeredRoom.rows[0]!.status).toBe('CLEAN');
-        expect(offeredRoom.rows[0]!.assigned_to_customer_id).toBeNull();
+        expect(offeredRoom.rows[0].status).toBe('CLEAN');
+        expect(offeredRoom.rows[0].assigned_to_customer_id).toBeNull();
       })
     );
 

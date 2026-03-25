@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { db } from '../../db';
-import { sql } from 'drizzle-orm';
+import { sql, eq, isNull, ilike, or, and, desc } from 'drizzle-orm';
+import { visits, customers } from '../../db/schema/index';
 import type { CheckinBlockRow, VisitRow } from '../../visits/types';
 import { calculateTotalHoursWithExtension, getLatestBlockEnd } from '../../visits/utils';
 
@@ -12,46 +13,50 @@ export function registerVisitActiveRoutes(fastify: FastifyInstance): void {
       const { query: searchQuery, membershipNumber, customerName } = request.query;
 
       type VisitSearchRow = VisitRow & { customer_name: string; membership_number: string | null };
-      let visitsResult: { rows: VisitSearchRow[] };
-
-      if (membershipNumber) {
-        const raw = await db.execute<Record<string, unknown>>(
-          sql`SELECT v.id, v.customer_id, v.started_at, v.ended_at, v.created_at, v.updated_at,
-                  c.name as customer_name, c.membership_number
-           FROM visits v
-           JOIN customers c ON v.customer_id = c.id
-           WHERE v.ended_at IS NULL AND c.membership_number = ${membershipNumber}
-           ORDER BY v.started_at DESC`
-        );
-        visitsResult = { rows: raw.rows as unknown as VisitSearchRow[] };
-      } else if (customerName) {
-        const raw = await db.execute<Record<string, unknown>>(
-          sql`SELECT v.id, v.customer_id, v.started_at, v.ended_at, v.created_at, v.updated_at,
-                  c.name as customer_name, c.membership_number
-           FROM visits v
-           JOIN customers c ON v.customer_id = c.id
-           WHERE v.ended_at IS NULL AND c.name ILIKE ${'%' + customerName + '%'}
-           ORDER BY v.started_at DESC
-           LIMIT 20`
-        );
-        visitsResult = { rows: raw.rows as unknown as VisitSearchRow[] };
-      } else if (searchQuery) {
-        const raw = await db.execute<Record<string, unknown>>(
-          sql`SELECT v.id, v.customer_id, v.started_at, v.ended_at, v.created_at, v.updated_at,
-                  c.name as customer_name, c.membership_number
-           FROM visits v
-           JOIN customers c ON v.customer_id = c.id
-           WHERE v.ended_at IS NULL 
-             AND (c.membership_number = ${searchQuery} OR c.name ILIKE ${'%' + searchQuery + '%'})
-           ORDER BY v.started_at DESC
-           LIMIT 20`
-        );
-        visitsResult = { rows: raw.rows as unknown as VisitSearchRow[] };
-      } else {
+      if (!membershipNumber && !customerName && !searchQuery) {
         return reply
           .status(400)
           .send({ error: 'Must provide query, membershipNumber, or customerName parameter' });
       }
+
+      let condition: any = isNull(visits.endedAt);
+
+      if (membershipNumber) {
+        condition = and(condition, eq(customers.membershipNumber, String(membershipNumber)));
+      } else if (customerName) {
+        condition = and(condition, ilike(customers.name, `%${customerName}%`));
+      } else if (searchQuery) {
+        condition = and(
+          condition,
+          or(
+            eq(customers.membershipNumber, String(searchQuery)),
+            ilike(customers.name, `%${searchQuery}%`)
+          )
+        );
+      }
+
+      let query = db
+        .select({
+          id: visits.id,
+          customer_id: visits.customerId,
+          started_at: visits.startedAt,
+          ended_at: visits.endedAt,
+          created_at: visits.createdAt,
+          updated_at: visits.updatedAt,
+          customer_name: customers.name,
+          membership_number: customers.membershipNumber,
+        })
+        .from(visits)
+        .innerJoin(customers, eq(visits.customerId, customers.id))
+        .where(condition)
+        .orderBy(desc(visits.startedAt));
+
+      if (!membershipNumber) {
+        query = query.limit(20) as any;
+      }
+
+      const rawRows = await query;
+      const visitsResult = { rows: rawRows as unknown as VisitSearchRow[] };
 
       const activeVisits = await Promise.all(
         visitsResult.rows.map(async (visit) => {

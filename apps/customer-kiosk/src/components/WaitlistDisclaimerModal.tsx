@@ -2,6 +2,61 @@ import { useState } from 'react';
 import { useKioskSession } from '../KioskSessionContext';
 import { getApiUrl } from '@the-clubs/shared';
 
+/** Format an ISO timestamp as a relative wait duration string (e.g., "~45 minutes") */
+function formatWaitDuration(isoString: string): string {
+  const diffMs = new Date(isoString).getTime() - Date.now();
+  const totalMinutes = Math.max(0, Math.round(diffMs / 60_000));
+  if (totalMinutes < 60) return `~${totalMinutes} minutes`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  if (mins === 0) return `~${hours} hour${hours > 1 ? 's' : ''}`;
+  return `~${hours} hour${hours > 1 ? 's' : ''} ${mins} minutes`;
+}
+
+function WaitTimeCallout({
+  estimatedReadyAt,
+  standbyOnly,
+}: Readonly<{ estimatedReadyAt?: string; standbyOnly?: boolean }>) {
+  if (standbyOnly) {
+    return (
+      <div
+        className="mx-6 mt-2 rounded-xl px-5 py-4 text-center"
+        style={{
+          backgroundColor: 'color-mix(in oklch, var(--color-status-warning) 10%, transparent)',
+          border: '1px solid color-mix(in oklch, var(--color-status-warning) 25%, transparent)',
+        }}
+      >
+        <p className="text-lg font-bold text-(--color-status-warning)">
+          Waitlist full, stand-by only
+        </p>
+        <p className="text-sm mt-1 text-(--color-text-muted)">
+          You will be notified if a room becomes available
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mx-6 mt-2 rounded-xl px-5 py-4 text-center"
+      style={{
+        backgroundColor: 'color-mix(in oklch, var(--color-status-success) 8%, transparent)',
+        border: '1px solid color-mix(in oklch, var(--color-status-success) 20%, transparent)',
+      }}
+    >
+      <p className="text-sm font-medium text-(--color-text-muted)">
+        Estimated room availability
+      </p>
+      <p
+        className="text-2xl font-bold mt-1"
+        style={{ color: 'var(--color-status-success)' }}
+      >
+        {estimatedReadyAt ? formatWaitDuration(estimatedReadyAt) : 'Calculating...'}
+      </p>
+    </div>
+  );
+}
+
 const WAITLIST_PROCEDURES = [
   'You will be given the backup rental you selected while you wait for your desired room.',
   'When your desired room type becomes available, an attendant will notify you.',
@@ -18,6 +73,7 @@ export function WaitlistDisclaimerModal() {
   const handleAgree = async () => {
     if (loading) return;
     setLoading(true);
+    let commandSuccess = false;
     try {
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (kioskToken) headers['x-kiosk-token'] = kioskToken;
@@ -40,12 +96,22 @@ export function WaitlistDisclaimerModal() {
       if (!res.ok) {
         console.error('Disclaimer command failed', res.status, await res.text());
         setLoading(false);
+      } else {
+        commandSuccess = true;
       }
       // On success the SSE will push a SESSION_UPDATED event which unmounts this modal.
       // We intentionally leave loading=true so the button stays disabled until the modal disappears.
     } catch (err) {
       console.error('Failed to accept waitlist disclaimer', err);
       setLoading(false);
+    }
+    
+    // Safety Fallback: If the API succeeded but the SSE stream is stalled or dropped (preventing unmount),
+    // we forcibly re-enable the UI after 5 seconds instead of remaining permanently frozen.
+    if (commandSuccess) {
+      setTimeout(() => {
+        setLoading((prev) => (prev ? false : prev));
+      }, 5000);
     }
   };
 
@@ -79,10 +145,16 @@ export function WaitlistDisclaimerModal() {
           </p>
         </div>
 
+        {/* Estimated wait time callout */}
+        <WaitTimeCallout
+          estimatedReadyAt={sessionPayload?.waitlistEstimatedReadyAt}
+          standbyOnly={sessionPayload?.waitlistStandbyOnly}
+        />
+
         {/* Body */}
         <div className="p-6 flex flex-col gap-4">
           {WAITLIST_PROCEDURES.map((text, i) => (
-            <div key={i} className="flex gap-4 items-start">
+            <div key={text.substring(0, 15)} className="flex gap-4 items-start">
               <div
                 className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs"
                 style={{

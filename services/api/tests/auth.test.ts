@@ -105,7 +105,7 @@ describe('Auth Tests', () => {
        RETURNING id`,
       [adminPinHash]
     );
-    adminStaffId = adminResult.rows[0]!.id;
+    adminStaffId = adminResult.rows[0].id;
 
     const staffResult = await query<{ id: string }>(
       `INSERT INTO staff (name, role, pin_hash, active)
@@ -113,7 +113,7 @@ describe('Auth Tests', () => {
        RETURNING id`,
       [staffPinHash]
     );
-    staffStaffId = staffResult.rows[0]!.id;
+    staffStaffId = staffResult.rows[0].id;
 
     // Create admin session for testing
     adminToken = generateSessionToken();
@@ -132,6 +132,7 @@ describe('Auth Tests', () => {
     await query('DELETE FROM staff_webauthn_credentials');
     await query('DELETE FROM webauthn_challenges');
     await query('DELETE FROM audit_log');
+    await query('DELETE FROM customer_spend_ledger_entries');
     await query('DELETE FROM staff');
   });
 
@@ -244,7 +245,7 @@ describe('PIN Login', () => {
         `SELECT id FROM staff_sessions WHERE session_token = $1`,
         [hashSessionToken(body.sessionToken)]
       );
-      const sessionId = sessionResult.rows[0]!.id;
+      const sessionId = sessionResult.rows[0].id;
 
       // Check audit log
       const auditResult = await query(
@@ -620,7 +621,7 @@ describe('PIN Login', () => {
       );
       expect(sessionResult.rows[0]?.reauth_ok_until).not.toBeNull();
 
-      const reauthOkUntil = new Date(sessionResult.rows[0]!.reauth_ok_until);
+      const reauthOkUntil = new Date(sessionResult.rows[0].reauth_ok_until);
       const now = new Date();
       // Should be approximately 5 minutes from now (within 10 seconds tolerance)
       const diffMinutes = (reauthOkUntil.getTime() - now.getTime()) / (1000 * 60);
@@ -699,7 +700,7 @@ describe('PIN Login', () => {
 
       // Verify PIN was actually changed
       const staffResult = await query(`SELECT pin_hash FROM staff WHERE id = $1`, [staffStaffId]);
-      const newPinHash = staffResult.rows[0]!.pin_hash;
+      const newPinHash = staffResult.rows[0].pin_hash;
 
       // Try to login with reset PIN (resetStaffPin always resets to '000000')
       const loginResponse = await fastify.inject({

@@ -103,3 +103,76 @@ button, a, [role="button"], input, select, textarea, label {
     scroll-behavior: auto !important;
   }
 }
+
+/* ── FullCalendar dashboard theme ────────────────────── */
+.fc-dashboard {
+  --fc-border-color: var(--color-border-subtle);
+  --fc-today-bg-color: color-mix(in oklch, var(--color-accent-primary) 8%, transparent);
+  --fc-neutral-bg-color: var(--color-surface-input);
+  --fc-page-bg-color: transparent;
+  --fc-event-border-color: transparent;
+}
+
+.fc-dashboard .fc-toolbar-title {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.fc-dashboard .fc-button {
+  background: var(--color-surface-input);
+  border: 1px solid var(--color-border-default);
+  color: var(--color-text-primary);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  transition: background 150ms;
+}
+
+.fc-dashboard .fc-button:hover {
+  background: var(--color-surface-overlay);
+}
+
+.fc-dashboard .fc-button-active {
+  background: var(--color-accent-primary);
+  color: #fff;
+  border-color: var(--color-accent-primary);
+}
+
+.fc-dashboard .fc-col-header-cell-cushion,
+.fc-dashboard .fc-daygrid-day-number {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.fc-dashboard .fc-daygrid-day-number {
+  padding: 4px 8px;
+}
+
+.fc-dashboard .fc-day-today .fc-daygrid-day-number {
+  color: var(--color-accent-primary);
+  font-weight: 700;
+}
+
+.fc-dashboard .fc-daygrid-event {
+  border-radius: 4px;
+  font-size: 0.7rem;
+  padding: 1px 4px;
+  cursor: pointer;
+}
+
+.fc-dashboard .fc-daygrid-day:hover {
+  background: color-mix(in oklch, var(--color-accent-primary) 4%, transparent);
+  cursor: pointer;
+}
+
+.fc-dashboard .fc-scrollgrid {
+  border: none;
+}
+
+.fc-dashboard td,
+.fc-dashboard th {
+  border-color: var(--color-border-subtle);
+}

@@ -1,4 +1,4 @@
-import type { PoolClient } from 'pg';
+import type { DrizzleTx } from '../db';
 
 import { getLaneFeatureFlags } from './laneFeatureFlags';
 
@@ -8,7 +8,7 @@ export type LaneAuthority = {
 };
 
 export async function assertLaneWriteAuthority(params: {
-  client: PoolClient;
+  tx: DrizzleTx;
   laneId: string;
 }): Promise<LaneAuthority> {
   const globalLanFallback = process.env.LAN_FALLBACK === 'true';
@@ -18,7 +18,7 @@ export async function assertLaneWriteAuthority(params: {
     return { allowed: true };
   }
 
-  const flags = await getLaneFeatureFlags(params.client, params.laneId);
+  const flags = await getLaneFeatureFlags(params.tx, params.laneId);
 
   // If a lane isn't participating in LAN fallback, don't apply authority checks.
   if (!flags.lanFallbackEnabled) {

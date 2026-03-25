@@ -57,7 +57,7 @@ function toQueryable() {
       let lastIndex = 0;
       for (const match of queryText.matchAll(regex)) {
         built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
+        const paramIndex = Number.parseInt(match[1] as string, 10) - 1;
         built = sql`${built}${values[paramIndex]}`;
         lastIndex = match.index! + match[0].length;
       }
@@ -96,7 +96,7 @@ export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
         let paramIdx = 1;
 
         if (cursor) {
-          conditions.push(`ce.occurred_at <= (SELECT occurred_at FROM club_events WHERE id = $${paramIdx}) AND ce.id != $${paramIdx}`);
+          conditions.push(`(ce.occurred_at, ce.id) < ((SELECT occurred_at FROM club_events WHERE id = $${paramIdx}), $${paramIdx})`);
           params.push(cursor);
           paramIdx++;
         }
@@ -112,45 +112,23 @@ export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
           paramIdx++;
         }
 
-        if (domain) {
-          conditions.push(`ce.event_domain = $${paramIdx}`);
-          params.push(domain);
-          paramIdx++;
-        }
-        if (eventType) {
-          conditions.push(`ce.event_type = $${paramIdx}`);
-          params.push(eventType);
-          paramIdx++;
-        }
-        if (staffId) {
-          conditions.push(`ce.staff_id = $${paramIdx}::uuid`);
-          params.push(staffId);
-          paramIdx++;
-        }
-        if (customerId) {
-          conditions.push(`ce.customer_id = $${paramIdx}::uuid`);
-          params.push(customerId);
-          paramIdx++;
-        }
-        if (registerId) {
-          conditions.push(`ce.register_id = $${paramIdx}`);
-          params.push(registerId);
-          paramIdx++;
-        }
-        if (orderId) {
-          conditions.push(`ce.order_id = $${paramIdx}::uuid`);
-          params.push(orderId);
-          paramIdx++;
-        }
-        if (visitId) {
-          conditions.push(`ce.visit_id = $${paramIdx}::uuid`);
-          params.push(visitId);
-          paramIdx++;
-        }
-        if (search) {
-          conditions.push(`ce.search_blob ILIKE '%' || $${paramIdx} || '%'`);
-          params.push(search);
-          paramIdx++;
+        const filters: Array<[value: unknown, clause: string]> = [
+          [domain, `ce.event_domain = $#`],
+          [eventType, `ce.event_type = $#`],
+          [staffId, `ce.staff_id = $#::uuid`],
+          [customerId, `ce.customer_id = $#::uuid`],
+          [registerId, `ce.register_id = $#`],
+          [orderId, `ce.order_id = $#::uuid`],
+          [visitId, `ce.visit_id = $#::uuid`],
+          [search, `ce.search_blob ILIKE '%' || $# || '%'`]
+        ];
+
+        for (const [val, clause] of filters) {
+          if (val) {
+            conditions.push(clause.replace('$#', `$${paramIdx}`));
+            params.push(val);
+            paramIdx++;
+          }
         }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -174,7 +152,7 @@ export function registerAdminClubLogRoutes(fastify: FastifyInstance): void {
 
         const hasMore = result.rows.length > limit;
         const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
-        const nextCursor = hasMore && rows.length > 0 ? rows[rows.length - 1]!.id : null;
+        const nextCursor = hasMore && rows.length > 0 ? rows.at(-1)!.id : null;
 
         const events = rows.map((r) => ({
           id: r.id,

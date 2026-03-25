@@ -4,34 +4,9 @@ import { requireKioskTokenOrStaff } from '../auth/kioskToken';
 import { optionalAuth } from '../auth/middleware';
 import type { LocalLaneSockets } from '../realtime/localSockets';
 import { db, type DrizzleTx } from '../db';
-import { sql } from 'drizzle-orm';
-import { getLaneFeatureFlags } from '../checkin/laneFeatureFlags';
 
-/**
- * Adapter: wraps a Drizzle transaction to satisfy the PoolClient interface
- * expected by getLaneFeatureFlags.
- */
-function toQueryable(tx: DrizzleTx) {
-  return {
-    async query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }> {
-      const values = params ?? [];
-      let built = sql.empty();
-      const regex = /\$(\d+)/g;
-      let lastIndex = 0;
-      for (const match of queryText.matchAll(regex)) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex, match.index))}`;
-        const paramIndex = Number.parseInt(match[1]!, 10) - 1;
-        built = sql`${built}${values[paramIndex]}`;
-        lastIndex = match.index! + match[0].length;
-      }
-      if (lastIndex < queryText.length) {
-        built = sql`${built}${sql.raw(queryText.slice(lastIndex))}`;
-      }
-      const result = await tx.execute(built);
-      return { rows: result.rows as T[] };
-    },
-  };
-}
+import { getLaneFeatureFlags } from '../checkin/laneFeatureFlags';
+import { ConnectionLimiter, type ConnectionLimits } from '../security/connectionLimiter';
 
 function isLanFallbackEnabled(): boolean {
   return process.env.LAN_FALLBACK === 'true';
@@ -39,7 +14,7 @@ function isLanFallbackEnabled(): boolean {
 
 async function isLanFallbackEnabledForLane(laneId: string): Promise<boolean> {
   try {
-    const flags = await db.transaction(async (tx) => getLaneFeatureFlags(toQueryable(tx) as any, laneId));
+    const flags = await db.transaction(async (tx) => getLaneFeatureFlags(tx, laneId));
     return flags.lanFallbackEnabled;
   } catch {
     return false;
@@ -52,6 +27,12 @@ declare module 'fastify' {
   }
 }
 
+const DEFAULT_LAN_CONNECTION_LIMITS: ConnectionLimits = {
+  maxPerLane: 50,
+  maxTotal: 500,
+  maxPerIp: 20,
+};
+
 export async function realtimeLanRoutes(fastify: FastifyInstance): Promise<void> {
   if (!isLanFallbackEnabled()) {
     return;
@@ -60,6 +41,13 @@ export async function realtimeLanRoutes(fastify: FastifyInstance): Promise<void>
   if (!fastify.websocketServer) {
     throw new Error('LAN realtime websocket routes require @fastify/websocket to be registered');
   }
+
+  const limits: ConnectionLimits = {
+    maxPerLane: Number.parseInt(process.env.LAN_MAX_PER_LANE ?? String(DEFAULT_LAN_CONNECTION_LIMITS.maxPerLane), 10),
+    maxTotal: Number.parseInt(process.env.LAN_MAX_TOTAL ?? String(DEFAULT_LAN_CONNECTION_LIMITS.maxTotal), 10),
+    maxPerIp: Number.parseInt(process.env.LAN_MAX_PER_IP ?? String(DEFAULT_LAN_CONNECTION_LIMITS.maxPerIp), 10),
+  };
+  const limiter = new ConnectionLimiter(limits);
 
   fastify.get<{
     Params: { laneId: string };
@@ -71,29 +59,49 @@ export async function realtimeLanRoutes(fastify: FastifyInstance): Promise<void>
     },
     async (connection, request) => {
       const laneId = request.params.laneId;
+      const clientIp = (request.ip ?? 'unknown').replace(/^::ffff:/, '');
+
+      const attempt = limiter.attempt(laneId, clientIp);
+      if (!attempt.allowed) {
+        request.log.warn({ laneId, clientIp, reason: attempt.reason }, 'LAN connection rejected');
+        const socket = (connection as unknown as { socket: WebSocket }).socket;
+        socket.close(1013, attempt.reason);
+        return;
+      }
+
+      const clientId = attempt.clientId!;
 
       const socket = (connection as unknown as { socket: WebSocket }).socket;
 
       if (!(await isLanFallbackEnabledForLane(laneId))) {
+        limiter.unregister(clientId);
         socket.close();
         return;
       }
 
       const sockets = fastify.localLaneSockets;
       if (!sockets) {
+        limiter.unregister(clientId);
         socket.close();
         return;
       }
 
       sockets.add(laneId, socket);
+      limiter.register(laneId, clientId, clientIp);
+
       socket.on('error', (error: unknown) => {
-        request.log.error({ error }, 'LAN realtime socket error');
+        request.log.error({ error, clientId }, 'LAN realtime socket error');
+      });
+
+      socket.on('close', () => {
+        limiter.unregister(clientId);
+        sockets.remove(laneId, socket);
       });
 
       socket.send(
         JSON.stringify({
           type: 'LAN_SOCKET_READY',
-          payload: { laneId },
+          payload: { laneId, clientId },
           timestamp: new Date().toISOString(),
         })
       );

@@ -8,7 +8,7 @@ export interface UseSessionPollingFallbackOptions {
   /** True when there is an active session that polling should protect. */
   hasActiveSession: boolean;
   /** Lane identifier (e.g. "register-1"). */
-  laneId: string;
+  laneId: string | null;
   /** Auth headers to include in snapshot requests. */
   authHeaders: Record<string, string>;
   /** Called with the latest session payload when a snapshot is fetched. Null if no session. */

@@ -5,7 +5,7 @@
  * Rewritten with Drizzle ORM.
  */
 import { getDb } from '../db';
-import { staff, employeeShifts, timeclockSessions } from '../db/schema/schema';
+import { staff, employeeShifts, timeclockSessions } from '../db/schema/index';
 import { eq, and, sql, desc, asc, gte, lte, lt, gt } from 'drizzle-orm';
 import { insertAuditLogDrizzle } from '../audit/auditLog';
 import { computeCompliance } from '../services/compliance';

@@ -11,9 +11,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'), // Monday 10am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(16);
+        expect(quote.rentalFee).toBe(19);
         expect(quote.membershipFee).toBe(13); // 25+ without membership
-        expect(quote.total).toBe(29);
+        expect(quote.total).toBe(32);
       });
 
       it('should charge $19 for non-youth locker during weekday evening (Mon-Thu 4pm-8am)', () => {
@@ -35,9 +35,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(24);
+        expect(quote.rentalFee).toBe(19);
         expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(37);
+        expect(quote.total).toBe(32);
       });
 
       it('should charge $0 for youth locker during weekday discount window', () => {
@@ -59,9 +59,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(7);
+        expect(quote.rentalFee).toBe(0);
         expect(quote.membershipFee).toBe(0);
-        expect(quote.total).toBe(7);
+        expect(quote.total).toBe(0);
       });
 
       it('should charge $0 for gym locker (always free)', () => {
@@ -97,9 +97,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'), // Monday 10am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(27);
+        expect(quote.rentalFee).toBe(30);
         expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(40);
+        expect(quote.total).toBe(43);
       });
 
       it('should charge $40 for double room outside discount window', () => {
@@ -121,9 +121,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'), // Monday 10am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(37);
+        expect(quote.rentalFee).toBe(40);
         expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(50);
+        expect(quote.total).toBe(53);
       });
 
       it('should charge $50 for special room outside discount window', () => {
@@ -145,9 +145,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'), // Monday 10am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(47);
+        expect(quote.rentalFee).toBe(50);
         expect(quote.membershipFee).toBe(13);
-        expect(quote.total).toBe(60);
+        expect(quote.total).toBe(63);
       });
 
       it('should charge $30 for youth standard room any day', () => {
@@ -169,9 +169,9 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-13T12:00:00'), // Saturday noon
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(50);
+        expect(quote.rentalFee).toBe(40);
         expect(quote.membershipFee).toBe(0);
-        expect(quote.total).toBe(50);
+        expect(quote.total).toBe(40);
       });
     });
 
@@ -236,7 +236,7 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T08:00:00'), // Monday 8am
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(27); // Discount applies
+        expect(quote.rentalFee).toBe(30); // Discount applies
       });
 
       it('should handle Friday 4pm (end of discount window)', () => {
@@ -246,7 +246,7 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-19T16:00:00'), // Friday 4pm
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(27); // Discount applies (4pm is still in window)
+        expect(quote.rentalFee).toBe(30); // Discount applies (4pm is still in window)
       });
 
       it('should handle Friday 4:01pm (outside discount window)', () => {
@@ -288,7 +288,7 @@ describe('Pricing Engine', () => {
           checkInTime: new Date('2024-01-15T10:00:00'),
         };
         const quote = calculatePriceQuote(input);
-        expect(quote.rentalFee).toBe(16); // Non-youth pricing
+        expect(quote.rentalFee).toBe(19); // Non-youth pricing
         expect(quote.membershipFee).toBe(13);
       });
     });

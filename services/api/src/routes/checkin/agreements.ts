@@ -132,8 +132,6 @@ export function registerCheckinAgreementRoutes(fastify: FastifyInstance): void {
     '/v1/checkin/lane/:laneId/agreement-bypass',
     { preHandler: [requireAuth] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       try {
         const result = await requestAgreementBypass({
           laneId: request.params.laneId,

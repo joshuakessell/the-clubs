@@ -17,3 +17,16 @@ terraform.tfvars
 
 # SSH keys
 *.pem
+
+# IDE
+.vscode/settings.json
+.continue/
+
+# Claude Code
+.claude/
+
+# Skills (managed locally, not committed)
+skills/
+
+# Generated artifacts
+*.pdf

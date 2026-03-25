@@ -22,9 +22,9 @@ vi.mock('../src/auth/middleware.js', async () => {
     );
     if (existing.rows.length > 0) {
       return {
-        staffId: existing.rows[0]!.id,
-        name: existing.rows[0]!.name,
-        role: existing.rows[0]!.role,
+        staffId: existing.rows[0].id,
+        name: existing.rows[0].name,
+        role: existing.rows[0].role,
       };
     }
     const created = await query<{ id: string; name: string; role: 'STAFF' | 'ADMIN' }>(
@@ -32,7 +32,7 @@ vi.mock('../src/auth/middleware.js', async () => {
        VALUES ('Test Staff', 'STAFF', 'test-hash', true)
        RETURNING id, name, role`
     );
-    const row = created.rows[0]!;
+    const row = created.rows[0];
     return { staffId: row.id, name: row.name, role: row.role };
   }
   return {
@@ -59,7 +59,7 @@ vi.mock('../src/auth/middleware.js', async () => {
         );
 
         if (sessionResult.rows.length > 0) {
-          const session = sessionResult.rows[0]!;
+          const session = sessionResult.rows[0];
           request.staff = {
             staffId: session.staff_id,
             name: session.name,
@@ -148,21 +148,21 @@ describe('Checkout Flow', () => {
        VALUES ('Test Customer', '12345')
        RETURNING id`
     );
-    testCustomerId = customerResult.rows[0]!.id;
+    testCustomerId = customerResult.rows[0].id;
 
     const roomResult = await pool.query(
       `INSERT INTO inventory_resources (kind, number, tier, status, floor)
        VALUES ('room', '200', 'STANDARD', 'CLEAN', 1)
        RETURNING id`
     );
-    testRoomId = roomResult.rows[0]!.id;
+    testRoomId = roomResult.rows[0].id;
 
     const lockerResult = await pool.query(
       `INSERT INTO inventory_resources (kind, number, tier, status)
        VALUES ('locker', 'L01', 'LOCKER', 'CLEAN')
        RETURNING id`
     );
-    testLockerId = lockerResult.rows[0]!.id;
+    testLockerId = lockerResult.rows[0].id;
 
     const keyTagResult = await pool.query(
       `INSERT INTO key_tags (resource_id, tag_code, tag_type, is_active)
@@ -170,14 +170,14 @@ describe('Checkout Flow', () => {
        RETURNING id`,
       [testRoomId]
     );
-    testKeyTagId = keyTagResult.rows[0]!.id;
+    testKeyTagId = keyTagResult.rows[0].id;
 
     const staffResult = await pool.query(
       `INSERT INTO staff (name, role, active)
        VALUES ('Test Staff', 'STAFF', true)
        RETURNING id`
     );
-    testStaffId = staffResult.rows[0]!.id;
+    testStaffId = staffResult.rows[0].id;
 
     const { hashSessionToken } = await import('../src/auth/utils.js');
     const sessionToken = `test-token-${Date.now()}`;
@@ -195,7 +195,7 @@ describe('Checkout Flow', () => {
        RETURNING id`,
       [testCustomerId]
     );
-    testVisitId = visitResult.rows[0]!.id;
+    testVisitId = visitResult.rows[0].id;
 
     const blockResult = await pool.query(
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, resource_id, has_tv_remote)
@@ -203,7 +203,7 @@ describe('Checkout Flow', () => {
        RETURNING id`,
       [testVisitId, testRoomId]
     );
-    testBlockId = blockResult.rows[0]!.id;
+    testBlockId = blockResult.rows[0].id;
 
     await pool.query(`UPDATE inventory_resources SET assigned_to_customer_id = $1 WHERE id = $2`, [
       testCustomerId,
@@ -436,9 +436,9 @@ describe('Checkout Flow', () => {
         data.requestId,
       ]);
       expect(requestResult.rows.length).toBe(1);
-      expect(requestResult.rows[0]!.late_minutes).toBeGreaterThanOrEqual(30);
+      expect(requestResult.rows[0].late_minutes).toBeGreaterThanOrEqual(30);
       // late_fee_amount is DECIMAL in DB, returned as string, so parse it
-      expect(Number.parseFloat(requestResult.rows[0]!.late_fee_amount as string)).toBe(15);
+      expect(Number.parseFloat(requestResult.rows[0].late_fee_amount as string)).toBe(15);
 
       // Clean up
       await pool.query('DELETE FROM checkout_requests WHERE id = $1', [data.requestId]);
@@ -453,7 +453,7 @@ describe('Checkout Flow', () => {
          RETURNING id`,
         [testBlockId, testCustomerId]
       );
-      const requestId = requestResult.rows[0]!.id;
+      const requestId = requestResult.rows[0].id;
 
       const response = await fastify.inject({
         method: 'POST',
@@ -487,7 +487,7 @@ describe('Checkout Flow', () => {
          RETURNING id`,
         [testVisitId, testBlockId]
       );
-      const waitlistIds = [waitlistActive.rows[0]!.id, waitlistOffered.rows[0]!.id];
+      const waitlistIds = [waitlistActive.rows[0].id, waitlistOffered.rows[0].id];
 
       // Create a checkout request
       const requestResult = await pool.query(
@@ -496,7 +496,7 @@ describe('Checkout Flow', () => {
          RETURNING id`,
         [testBlockId, testCustomerId, testStaffId]
       );
-      const requestId = requestResult.rows[0]!.id;
+      const requestId = requestResult.rows[0].id;
 
       const response = await fastify.inject({
         method: 'POST',
@@ -512,13 +512,13 @@ describe('Checkout Flow', () => {
 
       // Verify room status was updated
       const roomResult = await pool.query('SELECT status FROM inventory_resources WHERE id = $1', [testRoomId]);
-      expect(roomResult.rows[0]!.status).toBe(RoomStatus.DIRTY);
+      expect(roomResult.rows[0].status).toBe(RoomStatus.DIRTY);
 
       // Verify visit was ended
       const visitResult = await pool.query('SELECT ended_at FROM visits WHERE id = $1', [
         testVisitId,
       ]);
-      expect(visitResult.rows[0]!.ended_at).not.toBeNull();
+      expect(visitResult.rows[0].ended_at).not.toBeNull();
 
       // Verify waitlist entries were cancelled
       const waitlistResult = await pool.query(
@@ -541,8 +541,8 @@ describe('Checkout Flow', () => {
           [waitlistId]
         );
         expect(auditResult.rows.length).toBe(1);
-        expect(auditResult.rows[0]!.staff_id).toBe(testStaffId);
-        const rawNewValue = auditResult.rows[0]!.new_value as unknown;
+        expect(auditResult.rows[0].staff_id).toBe(testStaffId);
+        const rawNewValue = auditResult.rows[0].new_value as unknown;
         const newValue =
           typeof rawNewValue === 'string'
             ? (JSON.parse(rawNewValue) as Record<string, unknown>)
@@ -592,7 +592,7 @@ describe('Checkout Flow', () => {
          RETURNING id`,
         [testVisitId, testBlockId]
       );
-      const waitlistId = waitlistRes.rows[0]!.id;
+      const waitlistId = waitlistRes.rows[0].id;
 
       const response = await fastify.inject({
         method: 'GET',
@@ -608,7 +608,7 @@ describe('Checkout Flow', () => {
       expect(body.entries.some((e: any) => e.id === waitlistId)).toBe(false);
 
       const dbRow = await pool.query(`SELECT status FROM waitlist WHERE id = $1`, [waitlistId]);
-      expect(dbRow.rows[0]!.status).toBe('EXPIRED');
+      expect(dbRow.rows[0].status).toBe('EXPIRED');
 
       const expiredEvents = broadcastEvents.filter(
         (e) => e?.type === 'WAITLIST_UPDATED' && e?.payload?.status === 'EXPIRED'
@@ -646,7 +646,7 @@ describe('Checkout Flow', () => {
          RETURNING id`,
         [testBlockId, testCustomerId, testStaffId]
       );
-      const requestId = requestResult.rows[0]!.id;
+      const requestId = requestResult.rows[0].id;
 
       const response = await fastify.inject({
         method: 'POST',
@@ -665,7 +665,7 @@ describe('Checkout Flow', () => {
         `SELECT past_due_balance FROM customers WHERE id = $1`,
         [testCustomerId]
       );
-      expect(Number.parseFloat(String(customerAfter.rows[0]!.past_due_balance))).toBe(30);
+      expect(Number.parseFloat(String(customerAfter.rows[0].past_due_balance))).toBe(30);
 
       const chargesRes = await pool.query<{
         entry_type: string;

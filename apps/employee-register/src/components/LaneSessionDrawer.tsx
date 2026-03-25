@@ -11,7 +11,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useRegisterStore } from '../stores/useRegisterStore';
 import { AccountPanel } from '../panels/AccountPanel';
 
-const NAVBAR_HEIGHT = 90;
+const NAVBAR_HEIGHT = 92;
 const TAB_HEIGHT = 48;
 
 export function LaneSessionDrawer() {

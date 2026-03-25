@@ -24,12 +24,10 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
     '/v1/checkout/:requestId/claim',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       try {
         const result = await claimCheckoutRequest(request.params.requestId, {
-          staffId: request.staff.staffId,
-          staffName: request.staff.name,
+          staffId: request.staff!.staffId,
+          staffName: request.staff!.name,
         });
 
         if (fastify.broadcaster) {
@@ -63,14 +61,12 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
     '/v1/checkout/:requestId/mark-fee-paid',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       const body = request.body as MarkFeePaidInput;
 
       try {
         const result = await markFeePaid(request.params.requestId, body, {
-          staffId: request.staff.staffId,
-          staffName: request.staff.name,
+          staffId: request.staff!.staffId,
+          staffName: request.staff!.name,
         });
 
         if (fastify.broadcaster) {
@@ -105,12 +101,10 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
     '/v1/checkout/:requestId/confirm-items',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       try {
         const result = await confirmItems(request.params.requestId, {
-          staffId: request.staff.staffId,
-          staffName: request.staff.name,
+          staffId: request.staff!.staffId,
+          staffName: request.staff!.name,
         });
 
         if (fastify.broadcaster) {
@@ -145,12 +139,10 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
     '/v1/checkout/:requestId/complete',
     { preHandler: [requireAuth, idempotencyKey] },
     async (request, reply) => {
-      if (!request.staff) return reply.status(401).send({ error: 'Unauthorized' });
-
       try {
         const result = await completeStaffCheckout(request.params.requestId, {
-          staffId: request.staff.staffId,
-          staffName: request.staff.name,
+          staffId: request.staff!.staffId,
+          staffName: request.staff!.name,
         });
 
         // Broadcast inventory updates
@@ -162,7 +154,7 @@ export function registerCheckoutStaffRoutes(fastify: FastifyInstance): void {
               roomId: result.resourceId,
               previousStatus: RoomStatus.CLEAN,
               newStatus: RoomStatus.DIRTY,
-              changedBy: request.staff.staffId,
+              changedBy: request.staff!.staffId,
               override: false,
             });
           }

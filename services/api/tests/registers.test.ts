@@ -39,7 +39,7 @@ describe('Register Routes', () => {
        RETURNING id`,
       [pinHash]
     );
-    employeeId = result.rows[0]!.id;
+    employeeId = result.rows[0].id;
   });
 
   afterEach(async () => {
@@ -77,7 +77,7 @@ describe('Register Routes', () => {
       [deviceId]
     );
     expect(device.rows.length).toBe(1);
-    expect(device.rows[0]!.enabled).toBe(true);
+    expect(device.rows[0].enabled).toBe(true);
   });
 
   it('rejects disabled devices during verify-pin', async () => {

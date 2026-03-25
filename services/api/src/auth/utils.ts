@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import bcrypt from 'bcrypt';
 
 /**
@@ -38,9 +38,9 @@ export function hashSessionToken(token: string): string {
 }
 
 /**
- * Session expiration time (24 hours).
+ * Session expiration time (7 days).
  */
-export const SESSION_EXPIRY_HOURS = 24;
+export const SESSION_EXPIRY_HOURS = 168;
 
 /**
  * Calculate session expiration timestamp.

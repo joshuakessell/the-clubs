@@ -44,7 +44,8 @@ export interface ActiveCheckinInfo {
 
 interface RegisterState {
   /* ── Lane ──────────────────────────────────── */
-  laneId: string;
+  laneId: string | null;
+  setLaneId: (laneId: string | null) => void;
 
   /* ── Scan ─────────────────────────────────── */
   scanReady: boolean;
@@ -145,13 +146,16 @@ function dobDigitsToIso(digits: string): string | null {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/** Derive lane ID from the URL pathname. e.g. /register-1 → register-1 */
-function deriveLaneIdFromUrl(): string {
+/** Derive lane ID from the URL pathname. e.g. /lane-1 → register-1, /register-2 → register-2 */
+function deriveLaneIdFromUrl(): string | null {
   const path = globalThis.location.pathname.replace(/^\//, '').replace(/\/$/, '');
+  // lane-N → register-N
+  const laneMatch = /^lane-(\d+)$/.exec(path);
+  if (laneMatch) return `register-${laneMatch[1]}`;
   // If path looks like "register-N", use it directly
   if (/^register-\d+$/.test(path)) return path;
-  // Fallback: use VITE_LANE_ID or default
-  return import.meta.env?.VITE_LANE_ID || 'register-1';
+  // No valid lane selected → return null to trigger register selection
+  return null;
 }
 
 /* ── Search debounce ────────────────────────── */
@@ -161,6 +165,7 @@ let searchTimer: ReturnType<typeof setTimeout> | null = null;
 export const useRegisterStore = create<RegisterState>((set, get) => ({
   /* Lane */
   laneId: deriveLaneIdFromUrl(),
+  setLaneId: (laneId) => set({ laneId }),
 
   /* Scan */
   scanReady: true,
@@ -215,6 +220,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
 
   openCustomerAccount: (id, label, opts) => {
     const { laneId } = get();
+    if (!laneId) return;
 
     // Always set customer info for UI immediately
     set({ customerId: id, customerName: label, activeCheckinInfo: opts?.activeCheckin ?? null, returnTab: opts?.returnTab ?? null, isSubmitting: true, accountDrawerOpen: true });
@@ -466,6 +472,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
     const sp = state.sessionPayload;
     if (!sp?.sessionId) return;
     const { laneId } = state;
+    if (!laneId) return;
 
     const token = globalThis.__authToken;
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -545,6 +552,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
       sessionPayload: null,
       successToastMessage: 'Check-in cancelled',
     });
+    if (!laneId) return;
     try {
       await apiFetch(`/api/v1/checkin/lane/${encodeURIComponent(laneId)}/reset`, {
         method: 'POST', body: JSON.stringify({ cancelled: true }),
@@ -556,6 +564,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
 
   completeTransaction: async () => {
     const { laneId, customerId, customerName, sessionPayload } = get();
+    if (!laneId) return;
 
     let optimisticCheckin;
     if (sessionPayload?.assignedResourceNumber) {
@@ -565,7 +574,7 @@ export const useRegisterStore = create<RegisterState>((set, get) => ({
         resourceType: sessionPayload.assignedResourceType ?? 'room',
         resourceNumber: sessionPayload.assignedResourceNumber,
         checkinAt: new Date().toISOString(),
-        checkoutAt: null,
+        checkoutAt: sessionPayload.checkoutAt ?? null,
         overdue: false,
       };
     }

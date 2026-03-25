@@ -19,9 +19,9 @@ vi.mock('../src/auth/middleware.js', async () => {
     );
     if (existing.rows.length > 0) {
       return {
-        staffId: existing.rows[0]!.id,
-        name: existing.rows[0]!.name,
-        role: existing.rows[0]!.role,
+        staffId: existing.rows[0].id,
+        name: existing.rows[0].name,
+        role: existing.rows[0].role,
       };
     }
     const created = await query<{ id: string; name: string; role: 'STAFF' | 'ADMIN' }>(
@@ -29,7 +29,7 @@ vi.mock('../src/auth/middleware.js', async () => {
        VALUES ('Test Staff', 'STAFF', 'test-hash', true)
        RETURNING id, name, role`
     );
-    const row = created.rows[0]!;
+    const row = created.rows[0];
     return { staffId: row.id, name: row.name, role: row.role };
   }
   return {
@@ -65,7 +65,7 @@ describe('Offer Upgrade API flow', () => {
   beforeAll(async () => {
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -129,20 +129,20 @@ describe('Offer Upgrade API flow', () => {
       `INSERT INTO visits (customer_id, started_at, ended_at)
        VALUES ($1, NOW() - INTERVAL '1 hour', NULL)
        RETURNING id`,
-      [cust.rows[0]!.id]
+      [cust.rows[0].id]
     );
     const block = await pool.query<{ id: string }>(
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '2 hours', 'STANDARD')
        RETURNING id`,
-      [visit.rows[0]!.id]
+      [visit.rows[0].id]
     );
 
     // Reserve room 216 with OFFERED waitlist entry
     await pool.query(
       `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, offered_at, resource_id)
        VALUES ($1, $2, 'DOUBLE', 'STANDARD', 'OFFERED', NOW(), $3)`,
-      [visit.rows[0]!.id, block.rows[0]!.id, r216.rows[0]!.id]
+      [visit.rows[0].id, block.rows[0].id, r216.rows[0].id]
     );
 
     const res = await app.inject({ method: 'GET', url: '/v1/rooms/offerable?tier=DOUBLE' });
@@ -175,33 +175,33 @@ describe('Offer Upgrade API flow', () => {
       `INSERT INTO visits (customer_id, started_at, ended_at)
        VALUES ($1, NOW() - INTERVAL '1 hour', NULL)
        RETURNING id`,
-      [cust.rows[0]!.id]
+      [cust.rows[0].id]
     );
     const block = await pool.query<{ id: string }>(
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '2 hours', 'STANDARD')
        RETURNING id`,
-      [visit.rows[0]!.id]
+      [visit.rows[0].id]
     );
 
     const w1 = await pool.query<{ id: string }>(
       `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status)
        VALUES ($1, $2, 'DOUBLE', 'STANDARD', 'ACTIVE')
        RETURNING id`,
-      [visit.rows[0]!.id, block.rows[0]!.id]
+      [visit.rows[0].id, block.rows[0].id]
     );
     const w2 = await pool.query<{ id: string }>(
       `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status)
        VALUES ($1, $2, 'DOUBLE', 'STANDARD', 'ACTIVE')
        RETURNING id`,
-      [visit.rows[0]!.id, block.rows[0]!.id]
+      [visit.rows[0].id, block.rows[0].id]
     );
 
     // Offer waitlist 1 -> room 218
     const offer1 = await app.inject({
       method: 'POST',
-      url: `/v1/waitlist/${w1.rows[0]!.id}/offer`,
-      payload: { resourceId: r218.rows[0]!.id },
+      url: `/v1/waitlist/${w1.rows[0].id}/offer`,
+      payload: { resourceId: r218.rows[0].id },
     });
     expect(offer1.statusCode).toBe(200);
     const offerBody = JSON.parse(offer1.body);
@@ -216,16 +216,16 @@ describe('Offer Upgrade API flow', () => {
     // Offering same room to waitlist 2 should fail
     const offer2 = await app.inject({
       method: 'POST',
-      url: `/v1/waitlist/${w2.rows[0]!.id}/offer`,
-      payload: { resourceId: r218.rows[0]!.id },
+      url: `/v1/waitlist/${w2.rows[0].id}/offer`,
+      payload: { resourceId: r218.rows[0].id },
     });
     expect(offer2.statusCode).toBe(409);
 
     // Offering other room should succeed
     const offer3 = await app.inject({
       method: 'POST',
-      url: `/v1/waitlist/${w2.rows[0]!.id}/offer`,
-      payload: { resourceId: r216.rows[0]!.id },
+      url: `/v1/waitlist/${w2.rows[0].id}/offer`,
+      payload: { resourceId: r216.rows[0].id },
     });
     expect(offer3.statusCode).toBe(200);
     const offer3Body = JSON.parse(offer3.body);

@@ -35,3 +35,4 @@ export { cashDrawerRoutes } from './cash-drawers';
 export { breakRoutes } from './breaks';
 export { orderRoutes } from './orders';
 export { retailRoutes } from './retail';
+export { telemetryRoutes } from './telemetry/crash';

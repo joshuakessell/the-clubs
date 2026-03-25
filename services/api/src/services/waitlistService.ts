@@ -11,7 +11,7 @@ import { insertAuditLogDrizzle } from '../audit/auditLog';
 import type { FastifyInstance } from 'fastify';
 import { expireWaitlistEntries } from '../waitlist/expireWaitlist';
 import { HttpError } from '../errors/HttpError';
-
+import type { Broadcaster } from '../realtime/broadcaster';
 // ── Types ──
 
 interface WaitlistRow {
@@ -77,23 +77,29 @@ export async function listWaitlistEntries(status?: string, fastifyInstance?: Fas
   }));
 }
 
-export async function offerUpgrade(waitlistId: string, roomId: string, staffId: string) {
+function assertWaitlistValidForOffer(waitlist: any, room: any, roomId: string) {
+  if (waitlist.status !== 'ACTIVE' && waitlist.status !== 'OFFERED') throw new HttpError(409, `Waitlist entry must be ACTIVE or OFFERED (current: ${waitlist.status})`);
+  if (waitlist.status === 'OFFERED' && waitlist.resource_id && waitlist.resource_id !== roomId) throw new HttpError(409, 'Waitlist entry already has an active hold for a different resource');
+  if (waitlist.visit_ended_at) throw new HttpError(409, 'Waitlist entry is no longer valid (visit ended)');
+  if (new Date(waitlist.block_ends_at).getTime() <= Date.now()) throw new HttpError(409, 'Waitlist entry is no longer valid (block ended)');
+
+  if (room.status !== 'CLEAN') throw new HttpError(409, `Resource ${room.number} is not available (status: ${room.status})`);
+  if (room.assigned_to_customer_id) throw new HttpError(409, `Resource ${room.number} is already assigned`);
+}
+
+export async function offerUpgrade(waitlistId: string, roomId: string, staffId: string, broadcaster?: Broadcaster) {
   return db.transaction(async (tx) => {
     const waitlistResult = await tx.execute<Record<string, unknown>>(
       sql`SELECT w.*, v.ended_at as visit_ended_at, cb.ends_at as block_ends_at FROM waitlist w JOIN visits v ON v.id = w.visit_id JOIN checkin_blocks cb ON cb.id = w.checkin_block_id WHERE w.id = ${waitlistId} FOR UPDATE`
     );
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
-    const waitlist = waitlistResult.rows[0] as unknown as WaitlistRow & { visit_ended_at: Date | null; block_ends_at: Date };
-    if (waitlist.status !== 'ACTIVE' && waitlist.status !== 'OFFERED') throw new HttpError(409, `Waitlist entry must be ACTIVE or OFFERED (current status: ${waitlist.status})`);
-    if (waitlist.status === 'OFFERED' && waitlist.resource_id && waitlist.resource_id !== roomId) throw new HttpError(409, 'Waitlist entry already has an active hold for a different resource');
-    if (waitlist.visit_ended_at) throw new HttpError(409, 'Waitlist entry is no longer valid (visit ended)');
-    if (new Date(waitlist.block_ends_at).getTime() <= Date.now()) throw new HttpError(409, 'Waitlist entry is no longer valid (block ended)');
+    const waitlist = waitlistResult.rows[0];
 
     const roomResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, number, kind, tier, status, assigned_to_customer_id FROM inventory_resources WHERE id = ${roomId} FOR UPDATE`);
     if (roomResult.rows.length === 0) throw new HttpError(404, 'Resource not found');
-    const room = roomResult.rows[0] as unknown as ResourceRow;
-    if (room.status !== 'CLEAN') throw new HttpError(409, `Resource ${room.number} is not available (status: ${room.status})`);
-    if (room.assigned_to_customer_id) throw new HttpError(409, `Resource ${room.number} is already assigned`);
+    const room = roomResult.rows[0];
+
+    assertWaitlistValidForOffer(waitlist, room, roomId);
 
     const reservationConflict = await tx.execute<{ id: string }>(sql`SELECT id FROM inventory_reservations WHERE resource_type = 'room' AND resource_id = ${roomId} AND released_at IS NULL AND (waitlist_id IS NULL OR waitlist_id <> ${waitlistId}) LIMIT 1`);
     if (reservationConflict.rows.length > 0) throw new HttpError(409, `Room ${room.number} is reserved`);
@@ -116,11 +122,19 @@ export async function offerUpgrade(waitlistId: string, roomId: string, staffId: 
 
     await insertAuditLogDrizzle(tx, { staffId, action: 'WAITLIST_OFFERED', entityType: 'waitlist', entityId: waitlistId, oldValue: { status: 'ACTIVE' }, newValue: { status: 'OFFERED', resource_id: roomId, resource_number: room.number } });
 
+    if (broadcaster) {
+      broadcaster.broadcast({
+        type: 'WAITLIST_UPDATED',
+        payload: { waitlistId, status: 'OFFERED', resourceId: roomId, roomNumber: room.number },
+        timestamp: new Date().toISOString()
+      });
+    }
+
     return { waitlistId, status: 'OFFERED' as const, resourceId: roomId, roomNumber: room.number };
   }, { isolationLevel: 'serializable' });
 }
 
-export async function cancelWaitlistEntry(waitlistId: string, staffId: string, reason?: string) {
+export async function cancelWaitlistEntry(waitlistId: string, staffId: string, reason?: string, broadcaster?: Broadcaster) {
   return db.transaction(async (tx) => {
     const waitlistResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, desired_tiers, backup_tier, resource_id, status, created_at, offered_at, completed_at FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
@@ -130,6 +144,14 @@ export async function cancelWaitlistEntry(waitlistId: string, staffId: string, r
     await tx.execute(sql`UPDATE waitlist SET status = 'CANCELLED', cancelled_at = NOW(), cancelled_by_staff_id = ${staffId}, updated_at = NOW() WHERE id = ${waitlistId}`);
     await insertAuditLogDrizzle(tx, { staffId, action: 'WAITLIST_CANCELLED', entityType: 'waitlist', entityId: waitlistId, oldValue: { status: waitlist.status }, newValue: { status: 'CANCELLED', reason: reason || 'Cancelled by staff' } });
 
+    if (broadcaster) {
+      broadcaster.broadcast({
+        type: 'WAITLIST_UPDATED',
+        payload: { waitlistId, status: 'CANCELLED' },
+        timestamp: new Date().toISOString()
+      });
+    }
+
     return { waitlistId, status: 'CANCELLED' as const };
   });
 }
@@ -138,7 +160,7 @@ export async function cancelWaitlistEntry(waitlistId: string, staffId: string, r
  * Revoke an active offer — un-reserve the room and revert the waitlist entry
  * back to ACTIVE. The customer stays on the waitlist but the room is freed.
  */
-export async function revokeWaitlistOffer(waitlistId: string, staffId: string) {
+export async function revokeWaitlistOffer(waitlistId: string, staffId: string, broadcaster?: Broadcaster) {
   return db.transaction(async (tx) => {
     const waitlistResult = await tx.execute<Record<string, unknown>>(sql`SELECT id, visit_id, checkin_block_id, desired_tier, resource_id, status FROM waitlist WHERE id = ${waitlistId} FOR UPDATE`);
     if (waitlistResult.rows.length === 0) throw new HttpError(404, 'Waitlist entry not found');
@@ -152,6 +174,14 @@ export async function revokeWaitlistOffer(waitlistId: string, staffId: string) {
     await tx.execute(sql`UPDATE inventory_reservations SET released_at = NOW(), release_reason = 'REVOKED' WHERE released_at IS NULL AND kind = 'UPGRADE_HOLD' AND waitlist_id = ${waitlistId}`);
 
     await insertAuditLogDrizzle(tx, { staffId, action: 'WAITLIST_OFFERED', entityType: 'waitlist', entityId: waitlistId, oldValue: { status: 'OFFERED', resourceId: waitlist.resource_id }, newValue: { status: 'ACTIVE', reason: 'Offer revoked by staff' } });
+
+    if (broadcaster) {
+      broadcaster.broadcast({
+        type: 'WAITLIST_UPDATED',
+        payload: { waitlistId, status: 'ACTIVE' },
+        timestamp: new Date().toISOString()
+      });
+    }
 
     return { waitlistId, status: 'ACTIVE' as const };
   });

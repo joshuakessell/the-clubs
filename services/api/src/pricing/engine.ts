@@ -20,11 +20,13 @@ export interface PricingInput {
   /** Waitlist string constants for $0 item line tracking */
   waitlistDesiredType?: RentalType;
   waitlistDesiredTypesJson?: string;
+  pastDueBalance?: number;
 }
 
 export interface PriceQuote {
   rentalFee: number;
   membershipFee: number;
+  pastDueFee?: number;
   total: number;
   lineItems: Array<{
     description: string;
@@ -38,22 +40,7 @@ export interface PriceQuote {
  * Monday 8am to Friday 4pm (inclusive of 4:00pm, exclusive of 4:01pm).
  */
 function isWeekdayDiscountWindow(date: Date): boolean {
-  const day = date.getDay(); // 0 = Sunday, 1 = Monday, ..., 5 = Friday
-  const hour = date.getHours();
-  const minute = date.getMinutes();
-
-  // Monday (1) through Friday (5)
-  if (day >= 1 && day <= 5) {
-    // 8am (8) to 4pm (16)
-    if (hour >= 8 && hour < 16) {
-      return true;
-    }
-    // Exactly 4pm (hour 16, minute 0) is included
-    if (hour === 16 && minute === 0) {
-      return true;
-    }
-  }
-
+  // Demo Override: Weekday discounts disabled to prevent FIXED_PRICING conflicts in Square POS
   return false;
 }
 
@@ -104,14 +91,13 @@ function hasValidSixMonthMembership(
 function getBaseRoomPrice(rentalType: RentalType, isWeekdayDiscount: boolean): number {
   switch (rentalType) {
     case 'STANDARD':
-      return isWeekdayDiscount ? 27 : 30; // $3 discount during weekday window
+      return 30;
     case 'DOUBLE':
-      return isWeekdayDiscount ? 37 : 40;
+      return 40;
     case 'SPECIAL':
-      return isWeekdayDiscount ? 47 : 50;
+      return 50;
     case 'LOCKER':
     case 'GYM_LOCKER':
-      // Locker pricing handled separately
       return 0;
     default:
       return 0;
@@ -127,6 +113,7 @@ function getYouthRoomPrice(rentalType: RentalType): number {
     case 'STANDARD':
       return 30;
     case 'DOUBLE':
+      return 40;
     case 'SPECIAL':
       return 50;
     default:
@@ -142,45 +129,16 @@ function getLockerPrice(rentalType: RentalType, checkInTime: Date, isYouth: bool
     return 0;
   }
 
-  // Gym locker is always free
   if (rentalType === 'GYM_LOCKER') {
     return 0;
   }
 
-  // Youth lockers
+  // Demo Override: All locker pricing fixed to match Square POS $19 FIXED_PRICING
+  // Note: if Youth pricing ($0) evaluated to 0, Square bypasses the line item addition completely, so 0 is still allowed.
   if (isYouth) {
-    const isWeekdayDiscount = isWeekdayDiscountWindow(checkInTime);
-    return isWeekdayDiscount ? 0 : 7; // Free during weekday window, $7 otherwise
+    return 0; 
   }
 
-  // Non-youth lockers
-  const day = checkInTime.getDay();
-  const hour = checkInTime.getHours();
-  const isWeekdayDiscount = isWeekdayDiscountWindow(checkInTime);
-
-  if (isWeekdayDiscount) {
-    // Monday 8am to Friday 4pm
-    return 16;
-  }
-
-  // Check if weekend (Saturday = 6, Sunday = 0)
-  if (day === 0 || day === 6) {
-    return 24;
-  }
-
-  // Weekday 4pm to 8am Monday-Thursday
-  // Friday 4pm to Monday 8am counts as weekend pricing
-  if (day === 5 && hour >= 16) {
-    // Friday after 4pm
-    return 24;
-  }
-
-  if (day === 0 || (day === 1 && hour < 8)) {
-    // Sunday or Monday before 8am
-    return 24;
-  }
-
-  // Monday-Thursday 4pm to 8am next day
   return 19;
 }
 
@@ -211,154 +169,133 @@ function getMembershipFee(
 /**
  * Calculate price quote for a check-in.
  */
+function calculateRentalItems(
+  input: PricingInput,
+  youth: boolean,
+  isWeekdayDiscount: boolean
+): { fee: number; items: Array<{ description: string; amount: number }> } {
+  let fee = 0;
+  const items: Array<{ description: string; amount: number }> = [];
+
+  if (input.rentalType === 'LOCKER' || input.rentalType === 'GYM_LOCKER') {
+    fee = getLockerPrice(input.rentalType, input.checkInTime, youth);
+    if (fee > 0) {
+      items.push({ description: input.rentalType === 'GYM_LOCKER' ? 'Gym Locker' : 'Locker', amount: fee });
+    } else if (input.rentalType === 'GYM_LOCKER') {
+      items.push({ description: 'Gym Locker (no cost)', amount: 0 });
+    }
+  } else {
+    fee = youth ? getYouthRoomPrice(input.rentalType) : getBaseRoomPrice(input.rentalType, isWeekdayDiscount);
+    let roomTypeName = 'Special Room';
+    if (input.rentalType === 'STANDARD') roomTypeName = 'Standard Room';
+    else if (input.rentalType === 'DOUBLE') roomTypeName = 'Double Room';
+    items.push({ description: roomTypeName, amount: fee });
+  }
+
+  return { fee, items };
+}
+
+function calculateWaitlistItems(input: PricingInput): Array<{ description: string; amount: number }> {
+  if (!input.waitlistDesiredType || input.waitlistDesiredType === input.rentalType) {
+    return [];
+  }
+
+  let description = '';
+  let hasMultipleWaitlists = false;
+  if (input.waitlistDesiredTypesJson && input.waitlistDesiredTypesJson.includes('[')) {
+    try { hasMultipleWaitlists = JSON.parse(input.waitlistDesiredTypesJson).length > 1; }
+    catch { /* malformed JSON — treat as single waitlist */ }
+  }
+
+  if (hasMultipleWaitlists) {
+    description = 'First Available (Waitlist)';
+  } else {
+    let typeName = 'Locker';
+    if (input.waitlistDesiredType === 'STANDARD') typeName = 'Standard Room';
+    else if (input.waitlistDesiredType === 'DOUBLE') typeName = 'Double Room';
+    else if (input.waitlistDesiredType === 'SPECIAL') typeName = 'Special Room';
+    description = `${typeName} (Waitlist)`;
+  }
+
+  return [{ description, amount: 0 }];
+}
+
+function calculateMembershipItems(input: PricingInput): { fee: number; items: Array<{ description: string; amount: number }> } {
+  const sixMonthFee = input.includeSixMonthMembershipPurchase ? 43 : 0;
+  const baseFee = input.includeSixMonthMembershipPurchase
+    ? 0
+    : getMembershipFee(input.checkInTime, input.customerAge, input.membershipCardType, input.membershipValidUntil);
+
+  const items: Array<{ description: string; amount: number }> = [];
+  if (baseFee > 0) items.push({ description: 'Membership Fee', amount: baseFee });
+  if (sixMonthFee > 0) items.push({ description: '6 Month Membership', amount: sixMonthFee });
+
+  return { fee: baseFee + sixMonthFee, items };
+}
+
 export function calculatePriceQuote(input: PricingInput): PriceQuote {
   const isWeekdayDiscount = isWeekdayDiscountWindow(input.checkInTime);
   const youth = isYouth(input.customerAge);
 
-  const lineItems: Array<{ description: string; amount: number }> = [];
-  let rentalFee = 0;
+  const rentalResult = calculateRentalItems(input, youth, isWeekdayDiscount);
+  const waitlistItems = calculateWaitlistItems(input);
+  const membershipResult = calculateMembershipItems(input);
 
-  // Calculate rental fee
-  if (input.rentalType === 'LOCKER' || input.rentalType === 'GYM_LOCKER') {
-    rentalFee = getLockerPrice(input.rentalType, input.checkInTime, youth);
-    if (rentalFee > 0) {
-      lineItems.push({
-        description: input.rentalType === 'GYM_LOCKER' ? 'Gym Locker' : 'Locker',
-        amount: rentalFee,
-      });
-    } else if (input.rentalType === 'GYM_LOCKER') {
-      lineItems.push({
-        description: 'Gym Locker (no cost)',
-        amount: 0,
-      });
-    }
-  } else {
-    // For rooms, check if youth pricing applies
-    if (youth) {
-      rentalFee = getYouthRoomPrice(input.rentalType);
-    } else {
-      rentalFee = getBaseRoomPrice(input.rentalType, isWeekdayDiscount);
-    }
-    let roomTypeName = 'Special Room';
-    if (input.rentalType === 'STANDARD') {
-      roomTypeName = 'Standard Room';
-    } else if (input.rentalType === 'DOUBLE') {
-      roomTypeName = 'Double Room';
-    }
+  const pastDueFee = input.pastDueBalance ?? 0;
+  
+  const lineItems = [
+    ...rentalResult.items,
+    ...waitlistItems,
+    ...membershipResult.items
+  ];
 
-    lineItems.push({
-      description: roomTypeName,
-      amount: rentalFee,
-    });
+  if (pastDueFee > 0) {
+    lineItems.push({ description: 'Past Due Balance', amount: pastDueFee });
   }
 
-  // Calculate Waitlist Zero-Dollar display item
-  if (input.waitlistDesiredType && input.waitlistDesiredType !== input.rentalType) {
-    let waitlistDescription = '';
-    
-    const hasMultipleWaitlists = input.waitlistDesiredTypesJson && 
-      input.waitlistDesiredTypesJson.includes('[') && 
-      JSON.parse(input.waitlistDesiredTypesJson).length > 1;
-
-    if (hasMultipleWaitlists) {
-      waitlistDescription = 'First Available (Waitlist)';
-    } else {
-      let waitlistTypeName = 'Locker';
-      if (input.waitlistDesiredType === 'STANDARD') {
-        waitlistTypeName = 'Standard Room';
-      } else if (input.waitlistDesiredType === 'DOUBLE') {
-        waitlistTypeName = 'Double Room';
-      } else if (input.waitlistDesiredType === 'SPECIAL') {
-        waitlistTypeName = 'Special Room';
-      }
-      waitlistDescription = `${waitlistTypeName} (Waitlist)`;
-    }
-
-    lineItems.push({
-      description: waitlistDescription,
-      amount: 0,
-    });
-  }
-
-  // Calculate membership fee
-  const sixMonthMembershipPurchaseFee = input.includeSixMonthMembershipPurchase ? 43 : 0;
-  const membershipFee = input.includeSixMonthMembershipPurchase
-    ? 0
-    : getMembershipFee(
-        input.checkInTime,
-        input.customerAge,
-        input.membershipCardType,
-        input.membershipValidUntil
-      );
-
-  if (membershipFee > 0) {
-    lineItems.push({
-      description: 'Membership Fee',
-      amount: membershipFee,
-    });
-  }
-
-  if (sixMonthMembershipPurchaseFee > 0) {
-    lineItems.push({
-      description: '6 Month Membership',
-      amount: sixMonthMembershipPurchaseFee,
-    });
-  }
-
-  const total = rentalFee + membershipFee + sixMonthMembershipPurchaseFee;
-
-  const messages: string[] = ['No refunds'];
+  const total = rentalResult.fee + membershipResult.fee + pastDueFee;
 
   return {
-    rentalFee,
-    membershipFee,
+    rentalFee: rentalResult.fee,
+    membershipFee: membershipResult.fee,
+    pastDueFee,
     total,
     lineItems,
-    messages,
+    messages: ['No refunds'],
   };
 }
 
 /**
  * Calculate price quote for a renewal (2h or 6h).
- * - 2h renewals: flat $20 + daily membership fee (if applicable)
- * - 6h renewals: full base pricing (same as initial check-in)
+ * Demo Override: 6h renewals are flat $43, 2h renewals are flat $20 to match Square POS.
  */
 export function calculateRenewalQuote(
   input: PricingInput & { renewalHours: 2 | 6 | null | undefined }
 ): PriceQuote {
   const hours = input.renewalHours ?? 6;
+  
   if (hours === 6) {
-    return calculatePriceQuote(input);
+    const fee = 43;
+    const lineItems = [{ description: 'Renewal (6 Hours)', amount: fee }];
+    return {
+      rentalFee: fee,
+      membershipFee: 0,
+      pastDueFee: 0,
+      total: fee,
+      lineItems,
+      messages: ['No refunds'],
+    };
   }
 
-  const lineItems: Array<{ description: string; amount: number }> = [];
+  // 2-hour renewal: flat $20
   const renewalFee = 20;
-  lineItems.push({ description: 'Renewal (2 Hours)', amount: renewalFee });
-
-  const sixMonthMembershipPurchaseFee = input.includeSixMonthMembershipPurchase ? 43 : 0;
-  const membershipFee = input.includeSixMonthMembershipPurchase
-    ? 0
-    : getMembershipFee(
-        input.checkInTime,
-        input.customerAge,
-        input.membershipCardType,
-        input.membershipValidUntil
-      );
-
-  if (membershipFee > 0) {
-    lineItems.push({ description: 'Membership Fee', amount: membershipFee });
-  }
-
-  if (sixMonthMembershipPurchaseFee > 0) {
-    lineItems.push({ description: '6 Month Membership', amount: sixMonthMembershipPurchaseFee });
-  }
-
-  const total = renewalFee + membershipFee + sixMonthMembershipPurchaseFee;
+  const lineItems = [{ description: 'Renewal (2 Hours)', amount: renewalFee }];
 
   return {
     rentalFee: renewalFee,
-    membershipFee,
-    total,
+    membershipFee: 0,
+    pastDueFee: 0,
+    total: renewalFee,
     lineItems,
     messages: ['No refunds'],
   };

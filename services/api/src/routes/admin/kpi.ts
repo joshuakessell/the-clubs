@@ -71,6 +71,17 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
         );
         const waitingListCount = Number.parseInt((waitlistResult.rows[0] as any)?.count || '0', 10);
 
+        // Staff on duty — active timeclock sessions today
+        const staffOnDutyResult = await db.execute<Record<string, unknown>>(
+          sql`SELECT COUNT(DISTINCT employee_id)::int AS on_duty,
+              COALESCE(SUM(EXTRACT(EPOCH FROM (NOW() - clock_in_at)) / 3600), 0)::numeric(10,1) AS total_hours
+              FROM timeclock_sessions
+              WHERE clock_in_at >= CURRENT_DATE
+                AND clock_out_at IS NULL`
+        );
+        const staffOnDutyCount = Number.parseInt(String((staffOnDutyResult.rows[0] as any)?.on_duty || '0'), 10);
+        const staffTotalHoursToday = Number.parseFloat(String((staffOnDutyResult.rows[0] as any)?.total_hours || '0'));
+
         type AdminKpi = {
           roomsOccupied: number;
           roomsUnoccupied: number;
@@ -83,6 +94,8 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
           todayRevenue: number;
           activeSessionCount: number;
           overdueCount: number;
+          staffOnDutyCount: number;
+          staffTotalHoursToday: number;
         };
 
         const kpi: AdminKpi = {
@@ -97,6 +110,8 @@ export function registerAdminKpiRoutes(fastify: FastifyInstance): void {
           todayRevenue,
           activeSessionCount,
           overdueCount,
+          staffOnDutyCount,
+          staffTotalHoursToday,
         };
 
         for (const row of roomStatusResult.rows as unknown as { status: string; count: string }[]) {

@@ -19,9 +19,9 @@ vi.mock('../src/auth/middleware.js', async () => {
     );
     if (existing.rows.length > 0) {
       return {
-        staffId: existing.rows[0]!.id,
-        name: existing.rows[0]!.name,
-        role: existing.rows[0]!.role,
+        staffId: existing.rows[0].id,
+        name: existing.rows[0].name,
+        role: existing.rows[0].role,
       };
     }
     const created = await query<{ id: string; name: string; role: 'STAFF' | 'ADMIN' }>(
@@ -29,7 +29,7 @@ vi.mock('../src/auth/middleware.js', async () => {
        VALUES ('Test Staff', 'STAFF', 'test-hash', true)
        RETURNING id, name, role`
     );
-    const row = created.rows[0]!;
+    const row = created.rows[0];
     return { staffId: row.id, name: row.name, role: row.role };
   }
   return {
@@ -65,7 +65,7 @@ describe('Upgrade payment flow attaches charges', () => {
   beforeAll(async () => {
     pool = new pg.Pool({
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -123,7 +123,7 @@ describe('Upgrade payment flow attaches charges', () => {
       `INSERT INTO visits (customer_id, started_at, ended_at)
        VALUES ($1, NOW() - INTERVAL '1 hour', NULL)
        RETURNING id`,
-      [customer.rows[0]!.id]
+      [customer.rows[0].id]
     );
     const laneSession = await pool.query<{ id: string }>(
       `INSERT INTO lane_sessions (lane_id, status, price_quote_json)
@@ -145,14 +145,14 @@ describe('Upgrade payment flow attaches charges', () => {
        VALUES ($1, 20, 0, 0, 0, 20, 'USD', 'PAID', $2)
        RETURNING id`,
       [
-        laneSession.rows[0]!.id,
+        laneSession.rows[0].id,
         JSON.stringify({ lineItems: [{ description: 'Locker', amount: 20 }] }),
       ]
     );
 
     await pool.query(`UPDATE lane_sessions SET order_id = $1 WHERE id = $2`, [
-      originalIntent.rows[0]!.id,
-      laneSession.rows[0]!.id,
+      originalIntent.rows[0].id,
+      laneSession.rows[0].id,
     ]);
 
     const room = await pool.query<{ id: string }>(
@@ -165,22 +165,22 @@ describe('Upgrade payment flow attaches charges', () => {
       `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, session_id)
        VALUES ($1, 'INITIAL', NOW() - INTERVAL '1 hour', NOW() + INTERVAL '3 hour', 'LOCKER', $2)
        RETURNING id`,
-      [visit.rows[0]!.id, laneSession.rows[0]!.id]
+      [visit.rows[0].id, laneSession.rows[0].id]
     );
 
     const waitlist = await pool.query<{ id: string }>(
       `INSERT INTO waitlist (visit_id, checkin_block_id, desired_tier, backup_tier, status, resource_id, offered_at)
        VALUES ($1, $2, 'STANDARD', 'LOCKER', 'OFFERED', $3, NOW())
        RETURNING id`,
-      [visit.rows[0]!.id, block.rows[0]!.id, room.rows[0]!.id]
+      [visit.rows[0].id, block.rows[0].id, room.rows[0].id]
     );
 
     const fulfillRes = await app.inject({
       method: 'POST',
       url: '/v1/upgrades/fulfill',
       payload: {
-        waitlistId: waitlist.rows[0]!.id,
-        resourceId: room.rows[0]!.id,
+        waitlistId: waitlist.rows[0].id,
+        resourceId: room.rows[0].id,
         acknowledgedDisclaimer: true,
       },
     });
@@ -208,7 +208,7 @@ describe('Upgrade payment flow attaches charges', () => {
       method: 'POST',
       url: '/v1/upgrades/complete',
       payload: {
-        waitlistId: waitlist.rows[0]!.id,
+        waitlistId: waitlist.rows[0].id,
         orderId: fulfillJson.orderId,
       },
     });

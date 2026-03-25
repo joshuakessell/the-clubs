@@ -283,16 +283,14 @@ export async function finalizeCloseout(
 export async function verifyEmployeePin(employeeId: string, pin: string, deviceId: string) {
   await ensureDeviceEnabled(deviceId);
 
-  const isDemoMode = process.env.DEMO_MODE === 'true';
-
-  const result = isDemoMode
-    ? await db.execute<Record<string, unknown>>(sql`SELECT id, name, role, pin_hash, active FROM staff WHERE id = ${employeeId} AND active = true LIMIT 1`)
-    : await db.execute<Record<string, unknown>>(sql`SELECT id, name, role, pin_hash, active FROM staff WHERE id = ${employeeId} AND pin_hash IS NOT NULL AND active = true LIMIT 1`);
+  const result = await db.execute<Record<string, unknown>>(
+    sql`SELECT id, name, role, pin_hash, active FROM staff WHERE id = ${employeeId} AND pin_hash IS NOT NULL AND active = true LIMIT 1`
+  );
 
   if (result.rows.length === 0) return { verified: false, reason: 'Employee not found or inactive' as const };
   const employee = result.rows[0] as unknown as EmployeeRow;
 
-  if (!isDemoMode && (!employee.pin_hash || !(await verifyPin(pin, employee.pin_hash)))) {
+  if (!employee.pin_hash || !(await verifyPin(pin, employee.pin_hash))) {
     return { verified: false, reason: 'Wrong PIN' as const };
   }
 
@@ -632,12 +630,12 @@ export async function cleanupAbandonedSessions(): Promise<{
   }>;
 }> {
   const expiredSessions = await db.execute<{ id: string; register_number: number }>(
-    sql`SELECT id, register_number FROM register_sessions WHERE signed_out_at IS NULL AND last_activity_at < NOW() - INTERVAL '15 minutes'`
+    sql`SELECT id, register_number FROM register_sessions WHERE signed_out_at IS NULL AND last_activity_at < NOW() - INTERVAL '4 hours'`
   );
   if (expiredSessions.rows.length === 0) return { count: 0, broadcastPayloads: [] };
 
   await db.execute(
-    sql`UPDATE register_sessions SET signed_out_at = NOW() WHERE signed_out_at IS NULL AND last_activity_at < NOW() - INTERVAL '15 minutes'`
+    sql`UPDATE register_sessions SET signed_out_at = NOW() WHERE signed_out_at IS NULL AND last_activity_at < NOW() - INTERVAL '4 hours'`
   );
 
   const broadcastPayloads = expiredSessions.rows.map((session) => ({

@@ -15,11 +15,11 @@ vi.mock('../src/auth/middleware.js', async () => {
     const existing = await query<{ id: string; name: string; role: string }>(
       `SELECT id, name, role FROM staff WHERE active = true ORDER BY created_at ASC LIMIT 1`
     );
-    if (existing.rows.length > 0) return { staffId: existing.rows[0]!.id, name: existing.rows[0]!.name, role: existing.rows[0]!.role };
+    if (existing.rows.length > 0) return { staffId: existing.rows[0].id, name: existing.rows[0].name, role: existing.rows[0].role };
     const created = await query<{ id: string; name: string; role: string }>(
       `INSERT INTO staff (name, role, pin_hash, active) VALUES ('Test Staff', 'STAFF', 'test-hash', true) RETURNING id, name, role`
     );
-    return { staffId: created.rows[0]!.id, name: created.rows[0]!.name, role: created.rows[0]!.role };
+    return { staffId: created.rows[0].id, name: created.rows[0].name, role: created.rows[0].role };
   }
   return {
     requireAuth: async (request: any) => { request.staff = await ensureStaff(); },

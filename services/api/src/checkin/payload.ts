@@ -1,4 +1,5 @@
 import type { CustomerIdType, SessionUpdatedPayload } from '@the-clubs/shared';
+import { getRoomTierFromNumber } from '@the-clubs/shared';
 import { getIdScanIssue } from './identity';
 import { type CustomerRow, type LaneSessionRow, type OrderRow, LANE_SESSION_COLS, ORDER_COLS } from './types';
 import { toDate, toNumber } from './utils';
@@ -225,7 +226,7 @@ export async function buildFullSessionUpdatedPayload(
 
   const customerMembershipValidUntil = formatMembershipValidUntil(customer?.membership_valid_until);
 
-  const { waitlistPosition, waitlistEstimatedReadyAt } = await fetchWaitlistEstimates(session.waitlist_desired_type, session.waitlist_desired_types_json);
+  const { waitlistPosition, waitlistEstimatedReadyAt, waitlistStandbyOnly } = await fetchWaitlistEstimates(session.waitlist_desired_type, session.waitlist_desired_types_json);
 
   let waitlistDisclaimerAck = false;
   if (isRecord(session.disclaimers_ack_json)) {
@@ -283,6 +284,7 @@ export async function buildFullSessionUpdatedPayload(
     waitlistRequestedResourceType: session.waitlist_requested_resource_type || undefined,
     waitlistPosition,
     waitlistEstimatedReadyAt,
+    waitlistStandbyOnly,
     blockEndsAt: formatTimestamp(blockForSession?.ends_at) ?? activeBlockEndsAt,
     checkoutAt: formatTimestamp(blockForSession?.ends_at),
     renewalHours:
@@ -391,6 +393,7 @@ function buildCheckinRental(
     membershipCardType: customer?.membership_card_type as 'NONE' | 'SIX_MONTH' | undefined,
     membershipValidUntil: toDate(customer?.membership_valid_until) || undefined,
     includeSixMonthMembershipPurchase: session.membership_choice === 'SIX_MONTH',
+    pastDueBalance: toNumber(customer?.past_due_balance) || undefined,
   });
   
   const label = rentalLabel[rentalType] ?? rentalType;
@@ -550,26 +553,66 @@ async function fetchAssignedResourceNumber(
 async function fetchWaitlistEstimates(
   desiredType: string | null,
   desiredTypesJson: unknown
-): Promise<{ waitlistPosition?: number; waitlistEstimatedReadyAt?: string }> {
+): Promise<{ waitlistPosition?: number; waitlistEstimatedReadyAt?: string; waitlistStandbyOnly?: boolean }> {
   if (!desiredType) return {};
 
   const allDesiredTypes = extractWaitlistDesiredTypes(desiredTypesJson) || [desiredType];
+  const isFirstAvailable = allDesiredTypes.length >= 3;
 
+  // 1) Count queue position — how many people are ahead for the same tier(s)
   const queueLengthResult = await db.execute<{ count: string }>(sql`
-    SELECT COUNT(*) as count 
-     FROM waitlist
-     WHERE status IN ('ACTIVE', 'OFFERED')
-     AND desired_tier IN (${sql.join(allDesiredTypes.map(t => sql`${t}::rental_type`), sql`, `)})
+    SELECT COUNT(*) as count
+    FROM waitlist
+    WHERE status IN ('ACTIVE', 'OFFERED')
+      AND desired_tier IN (${sql.join(allDesiredTypes.map(t => sql`${t}::rental_type`), sql`, `)})
+  `);
+  const queuePosition = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10) + 1;
+
+  // 2) Fetch all active room occupancies sorted by checkout time (soonest first)
+  const blocksResult = await db.execute<{ ends_at: Date; room_number: string }>(sql`
+    SELECT cb.ends_at, r.number AS room_number
+    FROM checkin_blocks cb
+    JOIN visits v ON v.id = cb.visit_id
+    JOIN inventory_resources r ON r.id = cb.resource_id
+    WHERE cb.ends_at > NOW()
+      AND v.ended_at IS NULL
+      AND r.kind = 'room'
+    ORDER BY cb.ends_at ASC
   `);
 
-  const baseQueueLength = Number.parseInt(queueLengthResult.rows[0]?.count || '0', 10);
-  const waitlistPosition = baseQueueLength + 1; // Simplistic approximation for new entries
+  // 3) Filter by desired tier(s) and find the Nth checkout
+  const tierSet = new Set(allDesiredTypes);
+  const matchingCheckouts: Date[] = [];
 
-  const estimatedWaitMinutes = waitlistPosition * 20;
-  const readyAt = new Date(Date.now() + estimatedWaitMinutes * 60000);
-  
-  return {
-    waitlistPosition,
-    waitlistEstimatedReadyAt: readyAt.toISOString()
-  };
+  for (const row of blocksResult.rows) {
+    const roomNum = Number.parseInt(String(row.room_number), 10);
+    if (!Number.isFinite(roomNum)) continue;
+    const roomTier = getRoomTierFromNumber(roomNum);
+    if (!tierSet.has(roomTier)) continue;
+    matchingCheckouts.push(new Date(row.ends_at));
+    if (matchingCheckouts.length >= queuePosition) break;
+  }
+
+  // 4) If queue depth exceeds available rooms for a specific tier → standby only
+  if (matchingCheckouts.length < queuePosition && !isFirstAvailable) {
+    return { waitlistPosition: queuePosition, waitlistStandbyOnly: true };
+  }
+
+  // 5) Compute ETA: Nth checkout + 15 min buffer
+  if (matchingCheckouts.length >= queuePosition) {
+    const nthCheckout = matchingCheckouts[queuePosition - 1];
+    if (nthCheckout) {
+      const estimatedReadyAt = new Date(nthCheckout.getTime() + 15 * 60 * 1000);
+      return { waitlistPosition: queuePosition, waitlistEstimatedReadyAt: estimatedReadyAt.toISOString() };
+    }
+  }
+
+  // First Available with insufficient total rooms — still provide best-effort ETA
+  const lastCheckout = matchingCheckouts.at(-1);
+  if (lastCheckout) {
+    const estimatedReadyAt = new Date(lastCheckout.getTime() + 15 * 60 * 1000);
+    return { waitlistPosition: queuePosition, waitlistEstimatedReadyAt: estimatedReadyAt.toISOString() };
+  }
+
+  return { waitlistPosition: queuePosition };
 }

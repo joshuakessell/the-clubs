@@ -1,0 +1,13 @@
+Item Name,Category,Default Price,Price Notes,Required Details (Modifiers)
+Standard Room,Rentals,$30.00,"$27 on Weekdays, $30 otherwise","Room #; Customer First/Last Name; DOB; Membership #; Expiration"
+Double Room,Rentals,$40.00,"$37 on Weekdays, $40 otherwise","Room #; Customer First/Last Name; DOB; Membership #; Expiration"
+Special Room,Rentals,$50.00,"$47 on Weekdays, $50 otherwise","Room #; Customer First/Last Name; DOB; Membership #; Expiration"
+Locker,Rentals,$19.00,"Varies widely ($0 youth, $16-$24 depending on day/time)","Locker #; Customer First/Last Name; DOB; Membership #; Expiration"
+Gym Locker,Rentals,$0.00,"Always Free","Locker #; Customer First/Last Name; DOB; Membership #; Expiration"
+Membership Fee,Fees,$13.00,"Free for youth (<25) and active 6-mo members","Customer First/Last Name; DOB; Membership #; Expiration"
+6 Month Membership,Memberships,$43.00,"Fixed Price","Customer First/Last Name; DOB; Membership #; Expiration"
+Renewal (2 Hours),Rentals,$20.00,"Flat late renewal extension","Room/Locker #, Customer First/Last Name; DOB; Membership #; Expiration"
+Renewal (6 Hours),Rentals,"Variable","Matches base room daily pricing","Room/Locker #, Customer First/Last Name; DOB; Membership #; Expiration"
+Upgrade Fee,Fees,"Variable","Matches price delta between lockers/rooms","None"
+Late Fee,Fees,"Variable","Determined by the late fee delay schedule","None"
+Past Due Balance,Fees,"Variable","Determined dynamically by customer's prior unpaid balance","None"

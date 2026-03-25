@@ -22,7 +22,7 @@ vi.mock('../src/auth/middleware.js', () => ({
   requireAuth: async (request: any, _reply: any) => {
     request.staff = { staffId: testStaffId, role: 'STAFF', name: 'Test Staff' };
   },
-  optionalAuth: async (request: any, _reply: any) => { void request.staff; },
+  optionalAuth: async (_request: any, _reply: any) => { /* no-op */ },
   requireAdmin: async (_request: any, _reply: any) => {},
   requireReauth: async (request: any, _reply: any) => {
     request.staff = { staffId: testStaffId, role: 'STAFF', name: 'Test Staff' };
@@ -50,7 +50,7 @@ describe('Timestamp safety — toDate() wrapping prevents 500s', () => {
     process.env.KIOSK_TOKEN = TEST_KIOSK_TOKEN;
     const dbConfig = {
       host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432', 10),
+      port: Number.parseInt(process.env.DB_PORT || '5432', 10),
       database: process.env.DB_NAME || 'club_operations',
       user: process.env.DB_USER || 'clubops',
       password: process.env.DB_PASSWORD || 'clubops_dev',
@@ -191,7 +191,7 @@ describe('Timestamp safety — toDate() wrapping prevents 500s', () => {
           `INSERT INTO visits (customer_id, started_at) VALUES ($1, NOW()) RETURNING id`,
           [customerId]
         );
-        const visitId = visitResult.rows[0]!.id;
+        const visitId = visitResult.rows[0].id;
 
         await pool.query(
           `INSERT INTO lane_sessions (
@@ -245,7 +245,7 @@ describe('Timestamp safety — toDate() wrapping prevents 500s', () => {
            RETURNING id`,
           [customerId]
         );
-        const visitId = visitResult.rows[0]!.id;
+        const visitId = visitResult.rows[0].id;
 
         await pool.query(
           `INSERT INTO checkin_blocks (visit_id, block_type, starts_at, ends_at, rental_type, agreement_signed)

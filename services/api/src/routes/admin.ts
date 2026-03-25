@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { registerAdminCustomerRoutes } from './admin/customers';
+import { squareSyncRoutes } from './admin/square-sync';
 import { registerAdminActivityAnalyticsRoutes } from './admin/activity-analytics';
 import { registerAdminActivityLogRoutes } from './admin/activity-log';
 import { registerAdminDeviceRoutes } from './admin/devices';
@@ -17,11 +18,13 @@ import { registerAdminProductRoutes } from './admin/products';
 import { registerAdminMessageRoutes } from './admin/messages';
 import { registerRoomManagementRoutes } from './admin/room-management';
 import { registerAdminDemoCatchupRoutes } from './admin/demo-catchup';
+import { registerCalendarRoutes } from './admin/calendar';
 
 /**
  * Admin-only routes for operations management and metrics.
  */
 export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
+  squareSyncRoutes(fastify);
   registerAdminDemoCatchupRoutes(fastify);
   registerAdminMetricsRoutes(fastify);
 
@@ -51,4 +54,5 @@ export async function adminRoutes(fastify: FastifyInstance): Promise<void> {
   registerAdminProductRoutes(fastify);
   registerAdminMessageRoutes(fastify);
   registerRoomManagementRoutes(fastify);
+  registerCalendarRoutes(fastify);
 }

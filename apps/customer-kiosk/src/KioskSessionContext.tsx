@@ -18,6 +18,7 @@ export type KioskView = 'idle' | 'checkin' | 'addons' | 'agreement' | 'payment' 
 export const LANES = [
   { slug: 'lane-1', laneId: 'register-1', label: 'Lane 1 — Register 1' },
   { slug: 'lane-2', laneId: 'register-2', label: 'Lane 2 — Register 2' },
+  { slug: 'lane-3', laneId: 'register-3', label: 'Lane 3 — Register 3' },
 ];
 
 /** Parse the URL path to extract the lane slug. Returns null if at root. */

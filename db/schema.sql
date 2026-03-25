@@ -143,6 +143,7 @@ CREATE TYPE public.cash_drawer_session_status AS ENUM (
 -- Name: checkout_request_status; Type: TYPE; Schema: public; Owner: -
 --
 
+-- noinspection SqlDuplicateStringLiteral
 CREATE TYPE public.checkout_request_status AS ENUM (
     'SUBMITTED',
     'CLAIMED',
@@ -201,6 +202,7 @@ CREATE TYPE public.key_tag_type AS ENUM (
 -- Name: lane_session_status; Type: TYPE; Schema: public; Owner: -
 --
 
+-- noinspection SqlDuplicateStringLiteral
 CREATE TYPE public.lane_session_status AS ENUM (
     'IDLE',
     'ACTIVE',
@@ -255,6 +257,7 @@ CREATE TYPE public.payment_status AS ENUM (
 -- Name: rental_type; Type: TYPE; Schema: public; Owner: -
 --
 
+-- noinspection SqlDuplicateStringLiteral
 CREATE TYPE public.rental_type AS ENUM (
     'LOCKER',
     'STANDARD',
@@ -268,6 +271,7 @@ CREATE TYPE public.rental_type AS ENUM (
 -- Name: room_status; Type: TYPE; Schema: public; Owner: -
 --
 
+-- noinspection SqlDuplicateStringLiteral
 CREATE TYPE public.room_status AS ENUM (
     'DIRTY',
     'CLEANING',
@@ -568,6 +572,7 @@ CREATE TABLE public.cleaning_events (
 
 CREATE TABLE public.customers (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
+    square_customer_id text,
     name character varying(255) NOT NULL,
     dob date,
     membership_number character varying(50),

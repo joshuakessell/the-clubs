@@ -5,6 +5,7 @@ import { useRegisterStore, type ActiveCheckinInfo } from '../../stores/useRegist
 import { LateFeeModal, type LateFeeDetails } from '../../components/LateFeeModal';
 import { RenewalModal, type RenewalEligibility } from '../../components/RenewalModal';
 import { executeManualCheckout, resolveLateFee } from '../../utils/checkoutApi';
+import { CustomerNotesBar } from './CustomerNotesBar';
 
 /**
  * Fetched customer profile from the API (used as fallback when no sessionPayload from SSE).
@@ -29,7 +30,6 @@ type FetchedProfile = {
  * Start/Cancel Check-In or Checkout controls.
  */
 
-/** Complete checkout and reset register state. */
 async function completeCheckoutAndReset(
   occupancyId: string,
   token: string | undefined,
@@ -37,9 +37,31 @@ async function completeCheckoutAndReset(
   returnTab: string | null,
   selectNavTab: (tab: string) => void,
   payAtCheckout = false,
-  paymentMethod?: 'CREDIT' | 'CASH',
 ) {
-  await executeManualCheckout(occupancyId, token, payAtCheckout, paymentMethod);
+  const laneId = useRegisterStore.getState().laneId ?? 'register';
+  const result = await executeManualCheckout(occupancyId, token, payAtCheckout);
+  
+  if (payAtCheckout && result.squareOrderId) {
+    globalThis.sessionStorage.setItem('square_checkout_lane_id', laneId);
+    globalThis.sessionStorage.setItem('square_checkout_order_id', result.squareOrderId);
+
+    const amountCents = Math.round(result.fee * 100);
+    const appSwitchData = {
+      amount_money: { amount: amountCents.toString(), currency_code: 'USD' },
+      callback_url: `${globalThis.location.origin}/checkout/square-callback`,
+      client_id: import.meta.env.VITE_SQUARE_APPLICATION_ID || 'sq0idp-undefined',
+      version: '1.3',
+      notes: `ORDER_ID:${result.squareOrderId}`,
+      options: {
+        supported_tender_types: ['CREDIT_CARD', 'CASH', 'SQUARE_GIFT_CARD', 'CARD_ON_FILE']
+      }
+    };
+
+    const iosUri = `square-commerce-v1://payment/create?data=${encodeURIComponent(JSON.stringify(appSwitchData))}`;
+    globalThis.location.href = iosUri;
+    return; // Stop execution, App is backgrounding
+  }
+
   const dest = returnTab;
   useRegisterStore.getState().triggerRentalsRefresh();
   useRegisterStore.setState({
@@ -187,11 +209,11 @@ export function ProfileTab() {
     }
   };
 
-  const handleLateFeeSettle = async (payAtCheckout: boolean, paymentMethod?: 'CREDIT' | 'CASH') => {
+  const handleLateFeeSettle = async (payAtCheckout: boolean) => {
     if (!activeCheckinInfo?.occupancyId) return;
     setCheckingOut(true);
     try {
-      await completeCheckoutAndReset(activeCheckinInfo.occupancyId, token, customerName, returnTab, selectNavTab, payAtCheckout, paymentMethod);
+      await completeCheckoutAndReset(activeCheckinInfo.occupancyId, token, customerName, returnTab, selectNavTab, payAtCheckout);
     } catch (err: unknown) {
       useRegisterStore.setState({
         successToastMessage: err instanceof Error ? err.message : 'Checkout failed',
@@ -208,7 +230,7 @@ export function ProfileTab() {
     {/* Customer header */ }
     < div className = "flex items-center gap-3" >
       <div
-          className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold"
+          className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold uppercase"
   style = {{
     backgroundColor: 'var(--color-accent-primary)',
       color: 'var(--color-text-inverse)',
@@ -220,7 +242,7 @@ export function ProfileTab() {
   </div>
   < div >
   <h2
-            className="text-sm font-bold"
+            className="text-sm font-bold uppercase"
 style = {{ fontFamily: 'var(--font-display)', color: 'var(--color-text-primary)' }}
           >
   { displayName }
@@ -243,13 +265,13 @@ style = {{
         }}
       >
   <Field label="Membership #" value = { membershipNumber } />
-    <Field label="Membership Exp." value = { membershipValidUntil ? new Date(membershipValidUntil).toLocaleDateString() : undefined } color = { isMembershipExpired ? 'var(--color-status-error)' : undefined } />
-    <Field label="DOB" value = { dob } />
+    <Field label="Membership Exp." value = { formatDateStr(membershipValidUntil) } color = { isMembershipExpired ? 'var(--color-status-error)' : undefined } />
+    <Field label="DOB" value = { formatDateStr(dob) } />
       <Field label="Language" value={primaryLanguage === 'ES' ? 'Español' : primaryLanguage || undefined} />
-      <Field label="Last Visit" value={lastVisitAt ? new Date(lastVisitAt).toLocaleDateString() : undefined} />
+      <Field label="Last Visit" value={formatDateStr(lastVisitAt)} />
       <Field label="ID Type" value={formatIdType(idType)} />
             < Field label = "ID #" value = { idNumber } />
-              <Field label="ID Exp." value = { idExpirationDate } />
+              <Field label="ID Exp." value = { formatDateStr(idExpirationDate) } />
                 <Field label="Past Due" value = { pastDueBalance? `$${pastDueBalance.toFixed(2)}` : '$0.00'} color = { pastDueBalance? 'var(--color-status-error)': undefined } />
                   </div>
 
@@ -299,6 +321,11 @@ style = {{
   onStartCheckin={handleStartCheckin}
   onCancel={() => void cancelSession()}
 />
+{cid && (
+  <div className="mt-1">
+    <CustomerNotesBar customerId={cid} />
+  </div>
+)}
 </div>
 
       {/* Late fee modal — shown when checkout detects a late fee */}
@@ -306,7 +333,7 @@ style = {{
         <LateFeeModal
           customerLabel={displayName}
           resolved={lateFeeModal}
-          onSettle={(pay, method) => void handleLateFeeSettle(pay, method)}
+          onSettle={(pay) => void handleLateFeeSettle(pay)}
           onDismiss={() => setLateFeeModal(null)}
           isProcessing={checkingOut}
         />
@@ -316,6 +343,17 @@ style = {{
 }
 
 // ── Helpers ──
+
+function formatDateStr(isoStr?: string | null): string | undefined {
+  if (!isoStr) return undefined;
+  // Splits ISO timestamp explicitly avoiding Javascript timezone drifting on raw casts
+  const dateOnly = isoStr.split('T')[0];
+  const parts = dateOnly?.split('-');
+  if (parts?.length === 3) {
+    return `${parts[1]}/${parts[2]}/${parts[0]}`; // MM/DD/YYYY
+  }
+  return isoStr;
+}
 
 const ID_TYPE_LABELS: Record<string, string> = {
   DRIVERS_LICENSE: 'DL',
@@ -371,6 +409,20 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, orderS
 
   const customerName = useRegisterStore((s) => s.customerName);
 
+  let checkoutBtnBg = 'var(--color-status-warning)';
+  let checkoutBtnShadow = '0 0 20px color-mix(in oklch, var(--color-status-warning) 30%, transparent)';
+  let checkoutBtnText = 'Checkout';
+
+  if (checkingOut) {
+    checkoutBtnBg = 'var(--color-surface-overlay)';
+    checkoutBtnShadow = 'none';
+    checkoutBtnText = 'Checking out…';
+  } else if (confirmingCheckout) {
+    checkoutBtnBg = 'var(--color-status-error)';
+    checkoutBtnShadow = '0 0 20px color-mix(in oklch, var(--color-status-error) 30%, transparent)';
+    checkoutBtnText = 'Confirm Checkout?';
+  }
+
   return (
     <>
     <div className="flex gap-3">
@@ -387,19 +439,13 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, orderS
           disabled={checkingOut}
            className="flex-1 rounded-lg px-4 py-1.5 text-sm font-bold transition-colors"
           style={{
-            backgroundColor: checkingOut
-              ? 'var(--color-surface-overlay)'
-              : confirmingCheckout
-                ? 'var(--color-status-error)'
-                : 'var(--color-status-warning)',
+            backgroundColor: checkoutBtnBg,
             color: 'var(--color-text-inverse)',
-            boxShadow: checkingOut ? 'none' : confirmingCheckout
-              ? '0 0 20px color-mix(in oklch, var(--color-status-error) 30%, transparent)'
-              : '0 0 20px color-mix(in oklch, var(--color-status-warning) 30%, transparent)',
+            boxShadow: checkoutBtnShadow,
             opacity: checkingOut ? 0.6 : 1,
           }}
         >
-          {checkingOut ? 'Checking out…' : confirmingCheckout ? 'Confirm Checkout?' : 'Checkout'}
+          {checkoutBtnText}
         </button>
       )}
       {!currentSessionId && !activeCheckinInfo && customerId && (
@@ -434,7 +480,16 @@ function ActionButtons({ activeCheckinInfo, currentSessionId, customerId, orderS
     {activeCheckinInfo && !currentSessionId && renewalEligibility?.eligible && (
       <button
         disabled={checkingOut}
-        onClick={() => setShowRenewalModal(true)}
+        onClick={() => {
+          const hasActiveSession = useRegisterStore.getState().currentSessionId;
+          if (hasActiveSession) {
+            useRegisterStore.getState().setSuccessToastMessage(
+              'A check-in is already in progress. Complete or cancel it first.'
+            );
+            return;
+          }
+          setShowRenewalModal(true);
+        }}
         className="w-full rounded-lg py-1.5 text-sm font-bold flex items-center justify-center gap-2"
         style={{
           backgroundColor: 'color-mix(in oklch, var(--color-brand-primary) 10%, transparent)',

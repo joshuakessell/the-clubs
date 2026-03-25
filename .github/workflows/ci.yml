@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main, dev]
 
-permissions:
-  contents: read
-
 env:
   NODE_VERSION: "24"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -17,6 +14,8 @@ jobs:
   lint-typecheck:
     name: Lint & Typecheck
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
 
@@ -35,15 +34,15 @@ jobs:
 
       - name: Lint
         run: pnpm -r run lint
-        continue-on-error: true
 
       - name: Typecheck
         run: pnpm -r run typecheck
-        continue-on-error: true
 
   test:
     name: Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     services:
       postgres:
         image: postgres:15-alpine
@@ -91,6 +90,8 @@ jobs:
   dependency-audit:
     name: Dependency Audit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v6
 
@@ -104,8 +105,39 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Audit dependencies
-        run: pnpm audit --audit-level moderate
-        continue-on-error: true
+      - name: Audit dependencies (critical)
+        run: pnpm audit --audit-level critical
+        id: audit-critical
+
+      - name: Audit dependencies (high)
+        run: pnpm audit --audit-level high
+        id: audit-high
+
+      - name: Report vulnerabilities
+        if: steps.audit-critical.outcome == 'failure' || steps.audit-high.outcome == 'failure'
+        run: |
+          echo "## Vulnerability Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Critical vulnerabilities found. Please review and remediate before merging." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Run \`pnpm audit\` locally to see the full list of vulnerabilities." >> $GITHUB_STEP_SUMMARY
+          exit 1
+
+  secrets-scanning:
+    name: Secrets Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --only-verified
 
 

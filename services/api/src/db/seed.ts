@@ -314,16 +314,16 @@ async function seed() {
     console.log('\nSeeding retail products...');
 
     const retailProducts = [
-      { sku: 'body-wash',     name: 'Body Wash',          price: 15, sortOrder: 1,  imageUrl: '/images/products/body-wash.png' },
-      { sku: 'body-lotion',   name: 'Body Lotion',         price: 12, sortOrder: 2,  imageUrl: '/images/products/body-lotion.png' },
-      { sku: 'charcoal-mask', name: 'Charcoal Face Mask',  price: 20, sortOrder: 3,  imageUrl: '/images/products/charcoal-mask.png' },
-      { sku: 'aroma-roll-on', name: 'Aroma Roll-On',       price: 12, sortOrder: 4,  imageUrl: '/images/products/aroma-roll-on.png' },
-      { sku: 'body-scrub',    name: 'Exfoliating Scrub',   price: 18, sortOrder: 5,  imageUrl: '/images/products/body-scrub.png' },
-      { sku: 'shampoo',       name: 'Shampoo',             price: 14, sortOrder: 6,  imageUrl: '/images/products/shampoo.png' },
-      { sku: 'conditioner',   name: 'Conditioner',         price: 14, sortOrder: 7,  imageUrl: '/images/products/conditioner.png' },
-      { sku: 'lip-balm',      name: 'Lip Balm',            price:  8, sortOrder: 8,  imageUrl: '/images/products/lip-balm.png' },
-      { sku: 'aloe-gel',      name: 'Aloe Vera Gel',       price: 10, sortOrder: 9,  imageUrl: '/images/products/aloe-gel.png' },
-      { sku: 'facial-toner',  name: 'Facial Toner',        price: 16, sortOrder: 10, imageUrl: '/images/products/facial-toner.png' },
+      { sku: 'body-wash',     name: 'Body Wash',          price: 1500, sortOrder: 1,  imageUrl: '/images/products/body-wash.png' },
+      { sku: 'body-lotion',   name: 'Body Lotion',         price: 1200, sortOrder: 2,  imageUrl: '/images/products/body-lotion.png' },
+      { sku: 'charcoal-mask', name: 'Charcoal Face Mask',  price: 2000, sortOrder: 3,  imageUrl: '/images/products/charcoal-mask.png' },
+      { sku: 'aroma-roll-on', name: 'Aroma Roll-On',       price: 1200, sortOrder: 4,  imageUrl: '/images/products/aroma-roll-on.png' },
+      { sku: 'body-scrub',    name: 'Exfoliating Scrub',   price: 1800, sortOrder: 5,  imageUrl: '/images/products/body-scrub.png' },
+      { sku: 'shampoo',       name: 'Shampoo',             price: 1400, sortOrder: 6,  imageUrl: '/images/products/shampoo.png' },
+      { sku: 'conditioner',   name: 'Conditioner',         price: 1400, sortOrder: 7,  imageUrl: '/images/products/conditioner.png' },
+      { sku: 'lip-balm',      name: 'Lip Balm',            price:  800, sortOrder: 8,  imageUrl: '/images/products/lip-balm.png' },
+      { sku: 'aloe-gel',      name: 'Aloe Vera Gel',       price: 1000, sortOrder: 9,  imageUrl: '/images/products/aloe-gel.png' },
+      { sku: 'facial-toner',  name: 'Facial Toner',        price: 1600, sortOrder: 10, imageUrl: '/images/products/facial-toner.png' },
     ];
 
     for (const product of retailProducts) {

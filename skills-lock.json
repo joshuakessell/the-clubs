@@ -1,10 +1,35 @@
 {
   "version": 1,
   "skills": {
-    "preline-theme-generator": {
-      "source": "htmlstreamofficial/preline",
+    "Testing Anti-Patterns": {
+      "source": "bobmatnyc/claude-mpm-skills",
       "sourceType": "github",
-      "computedHash": "945262531988cff7cbdf74ccf341bdc6320988b435213f1fdf0318a4ef2016a7"
+      "computedHash": "341db90a232d2c9c98079f824ab7ebbcb448531342ab580877a6543067a9ef9b"
+    },
+    "ai-image-generation": {
+      "source": "inferen-sh/skills",
+      "sourceType": "github",
+      "computedHash": "e45c0ee94791e67e355130109fd827bd8b4bd0fb1d6b2ff8f782eb566d435174"
+    },
+    "code-review-excellence": {
+      "source": "wshobson/agents",
+      "sourceType": "github",
+      "computedHash": "0f585a4ad2f6d8353069ca9051c6f0e8865abb9d3a6a268d423784c3c3852962"
+    },
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "computedHash": "d31e234f0c90694a670222cdd1dafa853e051d7066beda389f1097c22dadd461"
+    },
+    "postgresql-code-review": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "computedHash": "1167ec9449aa866e16bc7449e05ab4d391cdce95a0b0c5e1155b793160471eb5"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "computedHash": "9c87c315aed143ee3b34bec8117100f5035e0df09e6b23e1ecc772cff434c9ad"
     }
   }
 }

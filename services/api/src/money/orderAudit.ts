@@ -1,6 +1,5 @@
-export type Queryable = {
-  query<T>(queryText: string, params?: unknown[]): Promise<{ rows: T[] }>;
-};
+import { type DrizzleTx } from '../db';
+import { sql } from 'drizzle-orm';
 
 export type OrderLineItemKind = 'RETAIL' | 'ADDON' | 'UPGRADE' | 'LATE_FEE' | 'MANUAL';
 
@@ -266,12 +265,11 @@ export function computeOrderTotals(
 }
 
 export async function ensureOrderWithReceipt(
-  client: Queryable,
+  tx: DrizzleTx,
   input: EnsureOrderInput
 ): Promise<{ order: OrderRow; receipt?: ReceiptRow | null }> {
-  const existingOrder = await client.query<OrderRow>(
-    `SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json FROM orders WHERE metadata_json->>$1 = $2 LIMIT 1`,
-    [input.dedupeKey.field, input.dedupeKey.value]
+  const existingOrder = await tx.execute<OrderRow>(
+    sql`SELECT id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json FROM orders WHERE metadata_json->>${sql.raw(`'${input.dedupeKey.field}'`)} = ${input.dedupeKey.value} LIMIT 1`
   );
 
   let order: OrderRow;
@@ -284,60 +282,34 @@ export async function ensureOrderWithReceipt(
       tender: input.tender ?? undefined,
     };
 
-    const orderInsert = await client.query<OrderRow>(
-      `INSERT INTO orders
+    const orderInsert = await tx.execute<OrderRow>(
+      sql`INSERT INTO orders
        (customer_id, register_session_id, created_by_staff_id, status,
         subtotal, discount, tax, tip, total, currency, metadata_json)
-       VALUES ($1, $2, $3, 'PAID', $4, $5, $6, $7, $8, $9, $10)
-       RETURNING id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json`,
-      [
-        input.customerId ?? null,
-        input.registerSessionId ?? null,
-        input.createdByStaffId ?? null,
-        input.totals.subtotal,
-        input.totals.discount,
-        input.totals.tax,
-        input.totals.tip,
-        input.totals.total,
-        input.currency ?? input.totals.currency,
-        metadata,
-      ]
+       VALUES (${input.customerId ?? null}, ${input.registerSessionId ?? null}, ${input.createdByStaffId ?? null}, 'PAID', ${input.totals.subtotal}, ${input.totals.discount}, ${input.totals.tax}, ${input.totals.tip}, ${input.totals.total}, ${input.currency ?? input.totals.currency}, ${metadata})
+       RETURNING id, customer_id, register_session_id, created_by_staff_id, created_at, status, subtotal, discount, tax, tip, total, currency, metadata_json`
     );
 
     order = orderInsert.rows[0]!;
 
     for (const item of input.lineItems) {
-      await client.query(
-        `INSERT INTO order_line_items
+      await tx.execute(
+        sql`INSERT INTO order_line_items
          (order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          order.id,
-          item.kind,
-          item.sku ?? null,
-          item.name,
-          item.quantity,
-          item.unitPrice,
-          item.discount ?? 0,
-          item.tax ?? 0,
-          item.total ?? item.unitPrice * item.quantity,
-          item.metadata ?? null,
-        ]
+         VALUES (${order.id}, ${item.kind}, ${item.sku ?? null}, ${item.name}, ${item.quantity}, ${item.unitPrice}, ${item.discount ?? 0}, ${item.tax ?? 0}, ${item.total ?? item.unitPrice * item.quantity}, ${item.metadata ?? null})`
       );
     }
   }
 
-  const existingReceipt = await client.query<ReceiptRow>(
-    `SELECT id, receipt_number, issued_at, receipt_json FROM receipts WHERE order_id = $1 LIMIT 1`,
-    [order.id]
+  const existingReceipt = await tx.execute<ReceiptRow>(
+    sql`SELECT id, receipt_number, issued_at, receipt_json FROM receipts WHERE order_id = ${order.id} LIMIT 1`
   );
   if (existingReceipt.rows.length > 0) {
     return { order, receipt: existingReceipt.rows[0]! };
   }
 
-  const lineItems = await client.query<OrderLineItemRow>(
-    `SELECT id, order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json FROM order_line_items WHERE order_id = $1`,
-    [order.id]
+  const lineItems = await tx.execute<OrderLineItemRow>(
+    sql`SELECT id, order_id, kind, sku, name, quantity, unit_price, discount, tax, total, metadata_json FROM order_line_items WHERE order_id = ${order.id}`
   );
 
   const receiptNumber = buildReceiptNumber(order);
@@ -367,11 +339,10 @@ export async function ensureOrderWithReceipt(
     })),
   };
 
-  const receiptInsert = await client.query<ReceiptRow>(
-    `INSERT INTO receipts (order_id, receipt_number, receipt_json)
-     VALUES ($1, $2, $3)
-     RETURNING id, receipt_number, issued_at, receipt_json`,
-    [order.id, receiptNumber, receiptJson]
+  const receiptInsert = await tx.execute<ReceiptRow>(
+    sql`INSERT INTO receipts (order_id, receipt_number, receipt_json)
+     VALUES (${order.id}, ${receiptNumber}, ${receiptJson})
+     RETURNING id, receipt_number, issued_at, receipt_json`
   );
 
   return { order, receipt: receiptInsert.rows[0]! };
