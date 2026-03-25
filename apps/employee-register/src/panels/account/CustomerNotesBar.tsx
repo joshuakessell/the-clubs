@@ -113,12 +113,16 @@ export function CustomerNotesBar({ customerId }: CustomerNotesBarProps) {
               key={n.id} 
               className={`flex flex-col gap-1 rounded-lg border p-3 transition-colors`}
               style={{
-                backgroundColor: isImp ? '#fef2f2' : 'var(--color-surface-overlay)',
-                borderColor: isImp ? '#fca5a5' : 'var(--color-border-subtle)', 
+                backgroundColor: isImp
+                  ? 'color-mix(in oklch, var(--color-status-error) 10%, var(--color-surface-overlay))'
+                  : 'var(--color-surface-overlay)',
+                borderColor: isImp
+                  ? 'color-mix(in oklch, var(--color-status-error) 40%, var(--color-border-subtle))'
+                  : 'var(--color-border-subtle)',
               }}
             >
               <div className="flex items-start justify-between">
-                <span className="text-xs font-bold" style={{ color: isImp ? '#b91c1c' : 'var(--color-text-primary)' }}>
+                <span className="text-xs font-bold" style={{ color: isImp ? 'var(--color-status-error)' : 'var(--color-text-primary)' }}>
                   {isImp && <span className="mr-1">⚠️</span>}
                   {n.createdByStaffName}
                 </span>

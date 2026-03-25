@@ -77,7 +77,7 @@ function useRetailData(token: string | undefined) {
           .map((p: { id: string; name: string; price: number; category?: string; imageUrl?: string }) => ({
             id: p.id,
             name: p.name,
-            price: p.price / 100, // API returns CENTS, convert to dollars for UI
+            price: p.price,
             category: (p.category ?? 'RETAIL').toLowerCase(),
             imageUrl: p.imageUrl ?? undefined,
           }));

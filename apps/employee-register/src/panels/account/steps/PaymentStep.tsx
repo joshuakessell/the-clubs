@@ -10,7 +10,8 @@ export function PaymentStep() {
   const isPaid = sp.orderStatus === 'PAID';
   const isRenewal = sp.mode === 'RENEWAL';
   const [loading, setLoading] = useState(false);
-  const totalCents = Math.round(sp.ledgerTotal ?? sp.paymentTotal ?? 0);
+  const totalDollars = sp.ledgerTotal ?? sp.paymentTotal ?? 0;
+  const totalCents = Math.round(totalDollars * 100);
 
   const handleSquareCheckout = async () => {
     if (!meta.laneId || !meta.token) return;

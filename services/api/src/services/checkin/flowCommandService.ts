@@ -234,7 +234,7 @@ async function extractOrderLineItems(
   if (lineItems.length === 0) {
     const amountInt = Math.round(Number(orderRes.rows[0]?.total ?? 0));
     if (amountInt > 0) {
-      lineItems.push({ description: 'Check-in fee paid', amount: amountInt / 100 });
+      lineItems.push({ description: 'Check-in fee paid', amount: amountInt });
     }
   }
   return lineItems;

@@ -61,8 +61,8 @@ describe('Square Integration Tests', () => {
           // Fourth query: line items
           .mockResolvedValueOnce({
             rows: [
-               { name: 'Locker Rental', total: '200' },
-               { name: 'Water Bottle', total: '150' }
+               { name: 'Locker Rental', total: '19' },
+               { name: 'Water Bottle', total: '3' }
             ]
           })
         } as any;
@@ -80,12 +80,12 @@ describe('Square Integration Tests', () => {
         lineItems: [
           {
             name: 'Locker Rental',
-            amountCents: 200,
+            amount: 19,
             note: 'Customer Name: John Doe\nDOB: 01/01/1990\nLocker #: 42\nMember Number: MEMB-999'
           },
           {
             name: 'Water Bottle',
-            amountCents: 150,
+            amount: 3,
             note: undefined
           }
         ]

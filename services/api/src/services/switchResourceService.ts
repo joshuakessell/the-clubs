@@ -90,7 +90,7 @@ async function processSwitchUpcharge(
     throw declineErr;
   }
 
-  const feeCents = Math.round(additionalFee * 100);
+  const feeInt = Math.round(additionalFee);
   const metadata = {
     type: 'SWITCH_UPCHARGE',
     method: input.paymentOutcome,
@@ -108,11 +108,11 @@ async function processSwitchUpcharge(
     .values({
       createdByStaffId: input.staffId,
       status: 'PAID',
-      subtotal: feeCents.toString(),
+      subtotal: feeInt.toString(),
       discount: '0',
       tax: '0',
       tip: '0',
-      total: feeCents.toString(),
+      total: feeInt.toString(),
       currency: 'USD',
       paidAt: new Date(),
       metadataJson: metadata,
@@ -341,15 +341,15 @@ export async function persistDeclinedSwitchPayment(err: SwitchHttpError) {
     declineReason: err.message,
   };
 
-  const feeCents = Math.round((err.additionalFee ?? 0) * 100);
+  const feeInt = Math.round(err.additionalFee ?? 0);
 
   await db.insert(orders).values({
     status: 'CANCELED',
-    subtotal: feeCents.toString(),
+    subtotal: feeInt.toString(),
     discount: '0',
     tax: '0',
     tip: '0',
-    total: feeCents.toString(),
+    total: feeInt.toString(),
     currency: 'USD',
     metadataJson: metadata,
     quoteJson: metadata,

@@ -80,45 +80,45 @@ export function TopNavbar({ activeTab, onNavigate, employeeName, onSignOut }: To
     <div className="flex flex-col shrink-0">
       {/* ── Top toolbar: Logo + Search + Session ── */}
       <div
-        className="relative flex items-center justify-between border-b px-8"
+        className="relative flex items-center justify-between border-b px-4"
         style={{
           backgroundColor: 'var(--color-surface-raised)',
           borderColor: 'var(--color-border-default)',
-          height: '96px',
-          minHeight: '96px',
+          height: '56px',
+          minHeight: '56px',
         }}
       >
         {/* Brand */}
-        <div className="flex items-center gap-4 shrink-0 relative z-10 w-1/3">
-          <div className="flex h-14 w-14 items-center justify-center overflow-hidden shrink-0">
+        <div className="flex items-center gap-2 shrink-0 relative z-10" style={{ minWidth: 0, maxWidth: '30%' }}>
+          <div className="flex h-9 w-9 items-center justify-center overflow-hidden shrink-0">
             <img
               src={isLightTheme ? '/club-dallas-logo-black.svg' : '/club-dallas-logo.svg'}
               alt="Club Dallas"
-              width="56"
-              height="56"
+              width="36"
+              height="36"
             />
           </div>
-          <span className="text-2xl font-bold uppercase font-(--font-brand) text-(--color-text-primary)">
-            Club Dallas — Register #{laneId?.replaceAll(/\D/g, '') || '1'}
+          <span className="text-sm font-bold uppercase font-(--font-brand) text-(--color-text-primary) truncate">
+            Register #{laneId?.replaceAll(/\D/g, '') || '1'}
           </span>
         </div>
 
         {/* Search field */}
-        <div ref={searchRef} className="absolute left-1/2 -translate-x-1/2 w-[700px] max-w-[50vw] z-50">
+        <div ref={searchRef} className="absolute left-1/2 -translate-x-1/2 w-[440px] max-w-[40vw] z-50">
           <div
-            className="flex items-center gap-3 rounded-xl border px-5"
+            className="flex items-center gap-2 rounded-lg border px-3"
             style={{
-              height: '64px',
+              height: '38px',
               backgroundColor: 'var(--color-surface-input)',
               borderColor: searchFocused ? 'var(--color-accent-primary)' : 'var(--color-border-default)',
               transition: 'border-color 150ms',
             }}
           >
-            <SearchIcon className="w-7 h-7 shrink-0 text-(--color-text-muted)" />
+            <SearchIcon className="w-4 h-4 shrink-0 text-(--color-text-muted)" />
             <input
               type="text"
               className="flex-1 h-full bg-transparent outline-none"
-              style={{ color: 'var(--color-text-primary)', outline: 'none', fontSize: '14px' }}
+              style={{ color: 'var(--color-text-primary)', outline: 'none', fontSize: '13px' }}
               placeholder="Search customer…"
               aria-label="Search customer"
               autoComplete="off"
@@ -127,7 +127,7 @@ export function TopNavbar({ activeTab, onNavigate, employeeName, onSignOut }: To
               onFocus={() => setSearchFocused(true)}
               disabled={isSubmitting}
             />
-            {customerSearchLoading && <Spinner size="md" />}
+            {customerSearchLoading && <Spinner size="sm" />}
           </div>
 
           {/* Search dropdown */}
@@ -175,16 +175,16 @@ export function TopNavbar({ activeTab, onNavigate, employeeName, onSignOut }: To
         </div>
 
         {/* Session info + sign out */}
-        <div className="flex items-center justify-end gap-6 shrink-0 relative z-10 w-1/3">
-          <span className="text-xl font-medium text-(--color-text-secondary)">
+        <div className="flex items-center justify-end gap-3 shrink-0 relative z-10" style={{ minWidth: 0, maxWidth: '30%' }}>
+          <span className="text-sm font-medium text-(--color-text-secondary) truncate">
             {employeeName}
           </span>
           <button
             onClick={onSignOut}
-            className="rounded-lg px-5 py-2.5 text-lg font-bold transition-colors"
+            className="rounded-md px-3 py-1.5 text-xs font-bold transition-colors shrink-0"
             style={{
               color: 'var(--color-status-error)',
-              border: '2px solid color-mix(in oklch, var(--color-status-error) 30%, transparent)',
+              border: '1px solid color-mix(in oklch, var(--color-status-error) 30%, transparent)',
               backgroundColor: 'color-mix(in oklch, var(--color-status-error) 15%, transparent)',
             }}
           >
@@ -199,8 +199,8 @@ export function TopNavbar({ activeTab, onNavigate, employeeName, onSignOut }: To
         style={{
           backgroundColor: 'var(--color-surface-base)',
           borderColor: 'var(--color-border-default)',
-          height: '42px',
-          minHeight: '42px',
+          height: '36px',
+          minHeight: '36px',
           containerType: 'inline-size',
         }}
       >

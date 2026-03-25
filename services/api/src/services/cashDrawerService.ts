@@ -141,9 +141,9 @@ export async function closeDrawerSession(sessionId: string, input: CloseDrawerIn
     let cashPaymentsAppliedToOrders = 0;
     for (const row of orderSums) {
       if (row.paymentMethod === 'CASH') {
-        cashPaymentsAppliedToOrders += Math.round(Number(row.total ?? 0) * 100);
+        cashPaymentsAppliedToOrders += Math.round(Number(row.total ?? 0));
       } else if (row.paymentMethod === 'SPLIT') {
-        cashPaymentsAppliedToOrders += Math.round(Number(row.splitCashAmount ?? 0) * 100);
+        cashPaymentsAppliedToOrders += Math.round(Number(row.splitCashAmount ?? 0));
       }
     }
     const expectedCash = session.openingFloat + paidIn - paidOut - drops + adjustments + cashPaymentsAppliedToOrders;

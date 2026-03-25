@@ -5,7 +5,7 @@ async function run() {
     const res = await createSquareOrder({
       squareCustomerId: null,
       lineItems: [
-        { name: 'Test Item', amountCents: 1500, note: 'Test Note' }
+        { name: 'Test Item', amount: 15, note: 'Test Note' }
       ]
     });
     console.log('Success:', res);

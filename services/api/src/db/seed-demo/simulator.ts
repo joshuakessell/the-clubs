@@ -223,11 +223,11 @@ function sampleEarlyDepartureMinutes(rng: () => number): number {
 /** Room rental pricing in whole dollars */
 function checkinPrice(rentalType: string): number {
   switch (rentalType) {
-    case 'LOCKER': return 20;
-    case 'STANDARD': return 40;
-    case 'DOUBLE': return 55;
-    case 'SPECIAL': return 65;
-    default: return 20;
+    case 'LOCKER': return 19;
+    case 'STANDARD': return 30;
+    case 'DOUBLE': return 40;
+    case 'SPECIAL': return 50;
+    default: return 19;
   }
 }
 

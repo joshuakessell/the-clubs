@@ -110,7 +110,7 @@ export function PastDueOverrideModal({ open, onClose, balanceAmount }: PastDueOv
             Override Past Due Balance
           </h3>
           <p className="text-xs text-(--color-text-muted)">
-            ${(balanceAmount / 100).toFixed(2)} outstanding
+            ${balanceAmount.toFixed(2)} outstanding
           </p>
         </div>
       </div>

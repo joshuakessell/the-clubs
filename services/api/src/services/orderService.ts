@@ -142,7 +142,7 @@ export async function markOrderPaid(orderId: string, staff: StaffContext) {
           customerId: paidOrder.customerId, visitId: (paidOrder.metadataJson as any)?.visitId ?? null,
           entryType, amount: toNumber(item.total), sourceApp: 'EMPLOYEE_REGISTER',
           actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
-          summary: `${item.name} ($${(toNumber(item.total) / 100).toFixed(2)} ${paidOrder.paymentMethod || 'Paid'})`,
+          summary: `${item.name} ($${toNumber(item.total).toFixed(2)} ${paidOrder.paymentMethod || 'Paid'})`,
           metadata: { orderId: paidOrder.id, registerSessionId: paidOrder.registerSessionId, lineItemId: item.id },
           dedupeKey: `LEDGER:ORDER_LINE:${item.id}`,
         });
@@ -154,7 +154,7 @@ export async function markOrderPaid(orderId: string, staff: StaffContext) {
           customerId: paidOrder.customerId, visitId: (paidOrder.metadataJson as any)?.visitId ?? null,
           entryType: 'TIP', amount: tipNum, sourceApp: 'EMPLOYEE_REGISTER',
           actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
-          summary: `Tip ($${(tipNum / 100).toFixed(2)} ${paidOrder.paymentMethod || 'Paid'})`,
+          summary: `Tip ($${tipNum.toFixed(2)} ${paidOrder.paymentMethod || 'Paid'})`,
           metadata: { orderId: paidOrder.id, registerSessionId: paidOrder.registerSessionId },
           dedupeKey: `LEDGER:ORDER_TIP:${paidOrder.id}`,
         });
@@ -163,7 +163,7 @@ export async function markOrderPaid(orderId: string, staff: StaffContext) {
       await insertCustomerActivityEventDrizzle(tx, {
         customerId: paidOrder.customerId, actionType: 'ORDER_PAID', actionCategory: 'PURCHASE', sourceApp: 'EMPLOYEE_REGISTER',
         actorType: 'STAFF', actorStaffId: staff.staffId, actorStaffName: staff.name,
-        summary: `Retail purchase ($${(toNumber(paidOrder.total) / 100).toFixed(2)})`,
+        summary: `Retail purchase ($${toNumber(paidOrder.total).toFixed(2)})`,
         metadata: { orderId: paidOrder.id, total: paidOrder.total },
         dedupeKey: `ACT:ORDER_PAID:${paidOrder.id}`, searchParts: [paidOrder.id],
       });

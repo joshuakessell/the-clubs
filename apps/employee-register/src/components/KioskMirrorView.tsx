@@ -282,7 +282,7 @@ export function KioskMirrorView({ sessionPayload, laneId }: Readonly<KioskMirror
                         textAlign: 'right' as const,
                       }}
                     >
-                      ${(item.amount / 100).toFixed(2)}
+                      ${item.amount.toFixed(2)}
                     </span>
                   </div>
                 ))}
@@ -312,7 +312,7 @@ export function KioskMirrorView({ sessionPayload, laneId }: Readonly<KioskMirror
                         textAlign: 'right' as const,
                       }}
                     >
-                      ${(total / 100).toFixed(2)}
+                      ${total.toFixed(2)}
                     </span>
                   </div>
                 )}

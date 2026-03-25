@@ -288,7 +288,7 @@ export async function createSquarePOSOrder(laneId: string) {
 
         return {
            name: row.name,
-           amountCents: Math.round(Number(row.total)),
+           amount: Math.round(Number(row.total)),
            note: noteText,
            catalogObjectId
         };
@@ -344,7 +344,7 @@ export async function createSquarePOSOrderFromOrder(orderId: string) {
 
         return {
            name: row.name,
-           amountCents: Math.round(Number(row.total)),
+           amount: Math.round(Number(row.total)),
            note: customerName ? `Customer Name: ${customerName}` : undefined,
            catalogObjectId
         };
@@ -579,7 +579,7 @@ export async function createGenericSquarePOSOrder(orderId: string) {
 
         return {
            name: row.name,
-           amountCents: Math.round(Number(row.total)),
+           amount: Math.round(Number(row.total)),
            note: noteText,
            catalogObjectId
         };

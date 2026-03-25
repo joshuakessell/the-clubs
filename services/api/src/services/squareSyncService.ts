@@ -273,7 +273,7 @@ export interface CreateSquareOrderParams {
   squareCustomerId: string | null;
   lineItems: Array<{
     name: string;
-    amountCents: number;
+    amount: number;
     note?: string;
     catalogObjectId?: string;
   }>;
@@ -306,7 +306,7 @@ export async function createSquareOrder(params: CreateSquareOrderParams): Promis
       quantity: '1',
       note: item.note,
       base_price_money: {
-        amount: Math.round(item.amountCents),
+        amount: Math.round(item.amount * 100),
         currency: 'USD'
       }
     };
