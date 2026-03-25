@@ -175,13 +175,13 @@ export function RenewalModal({
                   {processingHours === 2 ? 'Starting…' : '2-Hour Extension'}
                 </span>
                 <span className="text-lg font-bold tabular-nums font-(--font-display)">
-                  ${eligibility.extension2hTotal?.toFixed(2) ?? '20.00'}
+                  ${eligibility.extension2hTotal != null ? (eligibility.extension2hTotal / 100).toFixed(2) : '20.00'}
                 </span>
               </div>
               {eligibility.extension2hCharges?.map((item) => (
                 <div key={item.description} className="flex items-center justify-between text-xs opacity-75">
                   <span>{item.description}</span>
-                  <span className="tabular-nums">${item.amount.toFixed(2)}</span>
+                  <span className="tabular-nums">${(item.amount / 100).toFixed(2)}</span>
                 </div>
               ))}
             </button>
@@ -200,13 +200,13 @@ export function RenewalModal({
                   {processingHours === 6 ? 'Starting…' : '6-Hour Extension'}
                 </span>
                 <span className="text-lg font-bold tabular-nums font-(--font-display)">
-                  ${eligibility.extension6hTotal?.toFixed(2) ?? '0.00'}
+                  ${eligibility.extension6hTotal != null ? (eligibility.extension6hTotal / 100).toFixed(2) : '0.00'}
                 </span>
               </div>
               {eligibility.extension6hCharges?.map((item) => (
                 <div key={item.description} className="flex items-center justify-between text-xs opacity-75">
                   <span>{item.description}</span>
-                  <span className="tabular-nums">${item.amount.toFixed(2)}</span>
+                  <span className="tabular-nums">${(item.amount / 100).toFixed(2)}</span>
                 </div>
               ))}
             </button>

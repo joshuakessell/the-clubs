@@ -76,7 +76,7 @@ export function UpgradePaymentModal({
                   className="flex justify-between text-sm text-(--color-text-muted)"
                 >
                   <span>{item.description}</span>
-                  <span>${item.amount.toFixed(2)}</span>
+                  <span>${(item.amount / 100).toFixed(2)}</span>
                 </div>
               ))}
               {originalTotal !== null && (
@@ -84,7 +84,7 @@ export function UpgradePaymentModal({
                   className="flex justify-between text-sm font-semibold mt-1 pt-1 border-t text-(--color-text-secondary) border-(--color-border-subtle)"
                 >
                   <span>Original total</span>
-                  <span>${originalTotal.toFixed(2)}</span>
+                  <span>${(originalTotal / 100).toFixed(2)}</span>
                 </div>
               )}
             </>
@@ -104,7 +104,7 @@ export function UpgradePaymentModal({
           </div>
           <div className="flex justify-between text-sm font-semibold text-(--color-text-primary)">
             <span>Upgrade Fee</span>
-            <span>${upgradeFee !== null && Number.isFinite(upgradeFee) ? upgradeFee.toFixed(2) : '—'}</span>
+            <span>${upgradeFee !== null && Number.isFinite(upgradeFee) ? (upgradeFee / 100).toFixed(2) : '—'}</span>
           </div>
         </div>
 
@@ -114,7 +114,7 @@ export function UpgradePaymentModal({
         >
           <span className="text-sm font-bold text-(--color-text-primary)">Total Due</span>
           <span className="text-lg font-extrabold text-(--color-status-warning)">
-            ${totalDue.toFixed(2)}
+            ${(totalDue / 100).toFixed(2)}
           </span>
         </div>
 

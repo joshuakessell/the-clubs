@@ -401,8 +401,8 @@ async function fetchCustomerInfoForResponse(
   let ledgerLineItems: Array<{ description: string; amount: number }> | undefined;
   let ledgerTotal: number | undefined;
   if (!hasMembership && computedMode === 'CHECKIN') {
-    ledgerLineItems = [{ description: 'Membership Fee', amount: 13 }];
-    ledgerTotal = 13;
+    ledgerLineItems = [{ description: 'Membership Fee', amount: 1300 }];
+    ledgerTotal = 1300;
   }
 
   return {

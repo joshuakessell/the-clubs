@@ -199,7 +199,7 @@ export function ChargesTab() {
                         className="text-sm font-semibold tabular-nums text-(--color-text-primary)"
                         style={{ color: amountColor }}
                       >
-                        ${item.amount.toFixed(2)}
+                        ${(item.amount / 100).toFixed(2)}
                       </span>
                     {/* Remove button for membership fee items */}
                     {!isMember && isMembershipItem(item) && item.description === '6-Month Membership' && (
@@ -232,7 +232,7 @@ export function ChargesTab() {
               <span
                 className="text-base font-bold tabular-nums text-(--color-accent-primary)"
               >
-                ${total.toFixed(2)}
+                ${(total / 100).toFixed(2)}
               </span>
             </div>
 
@@ -334,7 +334,7 @@ export function ChargesTab() {
                     className="text-sm font-semibold tabular-nums"
                     style={{ color: 'var(--color-text-primary)' }}
                   >
-                    ${item.amount.toFixed(2)}
+                    ${(item.amount / 100).toFixed(2)}
                   </span>
                 </div>
               ))}
@@ -350,7 +350,7 @@ export function ChargesTab() {
               <span
                 className="text-base font-bold tabular-nums text-(--color-accent-primary)"
               >
-                ${visitTotal.toFixed(2)}
+                ${(visitTotal / 100).toFixed(2)}
               </span>
             </div>
           </div>

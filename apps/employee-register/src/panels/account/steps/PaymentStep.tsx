@@ -10,7 +10,7 @@ export function PaymentStep() {
   const isPaid = sp.orderStatus === 'PAID';
   const isRenewal = sp.mode === 'RENEWAL';
   const [loading, setLoading] = useState(false);
-  const totalDollars = Number((sp.ledgerTotal ?? sp.paymentTotal ?? 0).toFixed(2));
+  const totalCents = Math.round(sp.ledgerTotal ?? sp.paymentTotal ?? 0);
 
   const handleSquareCheckout = async () => {
     if (!meta.laneId || !meta.token) return;
@@ -21,9 +21,8 @@ export function PaymentStep() {
       globalThis.sessionStorage.setItem('square_checkout_lane_id', meta.laneId);
       globalThis.sessionStorage.setItem('square_checkout_order_id', orderId);
 
-      const amountCents = Math.round(totalDollars * 100);
       const appSwitchData = {
-        amount_money: { amount: amountCents.toString(), currency_code: 'USD' },
+        amount_money: { amount: totalCents.toString(), currency_code: 'USD' },
         callback_url: `${globalThis.location.origin}/checkout/square-callback`,
         client_id: import.meta.env.VITE_SQUARE_APPLICATION_ID || 'sq0idp-undefined',
         version: '1.3',
@@ -82,7 +81,7 @@ export function PaymentStep() {
 
       {!isPaid && (
         <div className="flex flex-col gap-3">
-          {totalDollars === 0 ? (
+          {totalCents === 0 ? (
             <button
               disabled={loading}
               onClick={async () => {

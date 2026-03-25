@@ -644,7 +644,7 @@ export function UpgradesPanel() {
       globalThis.sessionStorage.setItem('square_checkout_order_id', paymentModal.fulfill.orderId);
 
       const appSwitchData = {
-        amount_money: { amount: Math.round(paymentModal.fulfill.upgradeFee * 100).toString(), currency_code: 'USD' },
+        amount_money: { amount: Math.round(paymentModal.fulfill.upgradeFee).toString(), currency_code: 'USD' },
         callback_url: `${globalThis.location.origin}/checkout/square-callback`,
         client_id: import.meta.env.VITE_SQUARE_APPLICATION_ID || 'sq0idp-undefined',
         version: '1.3',

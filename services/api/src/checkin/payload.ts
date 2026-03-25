@@ -370,9 +370,9 @@ function buildCheckinMembership(
 
   if (hasMembership) return [];
   if (session.membership_choice === 'SIX_MONTH') {
-    return [{ description: '6-Month Membership', amount: 43 }];
+    return [{ description: '6-Month Membership', amount: 4300 }];
   }
-  return [{ description: 'Membership Fee', amount: 13 }];
+  return [{ description: 'Membership Fee', amount: 1300 }];
 }
 
 function buildCheckinRental(

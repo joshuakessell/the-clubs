@@ -280,8 +280,8 @@ async function resolveCustomerLedger(tx: DrizzleTx, customerId: string | null, m
         (mCardType === 'SIX_MONTH' && mValidUntil != null && !isExpired);
 
       if (!hasMembership && computedMode === 'CHECKIN') {
-        ledgerLineItems = [{ description: 'Membership Fee', amount: 13 }];
-        ledgerTotal = 13;
+        ledgerLineItems = [{ description: 'Membership Fee', amount: 1300 }];
+        ledgerTotal = 1300;
       }
     }
   }
