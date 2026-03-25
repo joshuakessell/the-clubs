@@ -201,10 +201,11 @@ function calculateWaitlistItems(input: PricingInput): Array<{ description: strin
   }
 
   let description = '';
-  const hasMultipleWaitlists =
-    input.waitlistDesiredTypesJson &&
-    input.waitlistDesiredTypesJson.includes('[') &&
-    JSON.parse(input.waitlistDesiredTypesJson).length > 1;
+  let hasMultipleWaitlists = false;
+  if (input.waitlistDesiredTypesJson && input.waitlistDesiredTypesJson.includes('[')) {
+    try { hasMultipleWaitlists = JSON.parse(input.waitlistDesiredTypesJson).length > 1; }
+    catch { /* malformed JSON — treat as single waitlist */ }
+  }
 
   if (hasMultipleWaitlists) {
     description = 'First Available (Waitlist)';

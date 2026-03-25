@@ -50,7 +50,7 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
            MAX(v.started_at) as last_visit_at
          FROM customers c
          LEFT JOIN visits v ON v.customer_id = c.id
-         WHERE c.name ILIKE ${'%' + name + '%'}
+         WHERE c.name ILIKE ${'%' + name.replace(/[%_\\]/g, '\\$&') + '%'}
          GROUP BY c.id
          ORDER BY c.name ASC, last_visit_at DESC NULLS LAST
          LIMIT 50`

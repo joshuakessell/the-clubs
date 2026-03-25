@@ -301,7 +301,8 @@ export async function createSquarePOSOrder(laneId: string) {
         lineItems
       });
     } catch (error: any) {
-      throw new HttpError(500, error.message || 'Failed to create Square Order natively');
+      console.error('[paymentService] Square order creation failed:', error.message);
+      throw new HttpError(500, 'Failed to create Square order');
     }
 
     if (!squareOrderId) throw new HttpError(500, 'Square Order ID was null');
@@ -354,7 +355,8 @@ export async function createSquarePOSOrderFromOrder(orderId: string) {
     try {
       squareOrderId = await createSquareOrder({ squareCustomerId, lineItems });
     } catch (error: any) {
-      throw new HttpError(500, error.message || 'Failed to create Square Order natively');
+      console.error('[paymentService] Square order creation failed:', error.message);
+      throw new HttpError(500, 'Failed to create Square order');
     }
 
     if (!squareOrderId) throw new HttpError(500, 'Square Order ID was null');

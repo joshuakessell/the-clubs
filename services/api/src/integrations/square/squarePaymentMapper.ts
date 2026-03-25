@@ -24,10 +24,10 @@ type SquarePayment = {
 
 function toDollars(value: number | string | bigint | null | undefined): number | null {
   if (value === null || value === undefined) return null;
-  if (typeof value === 'bigint') return Math.trunc(Number(value) / 100);
+  if (typeof value === 'bigint') return Math.round(Number(value) / 100);
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
-  return Math.trunc(n / 100);
+  return Math.round(n / 100);
 }
 
 function toMoneyAmount(money?: SquareMoney | null, fallbackCurrency?: string): MoneyAmount | null {

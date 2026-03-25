@@ -409,7 +409,7 @@ async function fulfillWaitlistEntry(client: DbClient, p: {
   wlId: string; roomId: string; visitId: string; oldBlockId: string;
   customerId: string; roomType: string; fulfillAt: Date; scheduledEnd: Date;
   emp: SimStaff; agreement: SimAgreement; customerName: string; membershipNumber: string | null;
-}): Promise<void> {
+}): Promise<string> {
   const newBlockId = randomUUID();
   const offerExpiresAt = new Date(p.fulfillAt.getTime() + 10 * 60 * 1000);
 
@@ -455,6 +455,7 @@ async function fulfillWaitlistEntry(client: DbClient, p: {
      `Waitlist fulfilled ${p.roomType} ${p.emp.name}`,
      `ACT:SIM:UPGRADE_COMPLETED:${p.wlId}`]
   );
+  return newBlockId;
 }
 
 async function insertRenewalBlock(client: DbClient, p: {
@@ -589,19 +590,26 @@ export async function simulateVisitsV2(params: SimulateParams): Promise<number> 
           const stayHours = sampleStayHours(rng);
           const scheduledEnd = new Date(tickTime.getTime() + stayHours * 60 * 60 * 1000);
 
-          await fulfillWaitlistEntry(client, {
+          const newBlockId = await fulfillWaitlistEntry(client, {
             wlId: entry.wlId, roomId, visitId: entry.visitId, oldBlockId: entry.blockId,
             customerId: entry.customerId, roomType, fulfillAt: tickTime, scheduledEnd,
             emp, agreement, customerName: entry.customerName, membershipNumber: entry.membershipNumber,
           });
 
           occupiedRooms.set(roomId, {
-            customerId: entry.customerId, visitId: entry.visitId, blockId: randomUUID(),
+            customerId: entry.customerId, visitId: entry.visitId, blockId: newBlockId,
             checkoutAt: scheduledEnd, rentalType: roomType, resourceId: roomId, checkinAt: tickTime,
           });
           activeVisitEnd.set(entry.customerId, scheduledEnd.getTime());
 
-          // Release the locker
+          // Release the locker (checkout the locker occupancy)
+          const lockerOcc = occupiedLockers.get(entry.lockerId);
+          if (lockerOcc) {
+            await insertCheckoutEvents(client, {
+              at: tickTime, customerId: entry.customerId, visitId: entry.visitId,
+              blockId: lockerOcc.blockId, rentalType: 'LOCKER', emp, resourceId: entry.lockerId,
+            });
+          }
           occupiedLockers.delete(entry.lockerId);
         }
       }

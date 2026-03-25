@@ -248,7 +248,7 @@ async function clearActivityData(): Promise<void> {
     'lane_sessions',
     'lane_session_commands',
     'employee_shifts',
-    'employee_timeclock',
+    'timeclock_sessions',
     'register_sessions',
   ];
   for (const table of tables) {
