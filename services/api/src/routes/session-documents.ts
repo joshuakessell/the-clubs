@@ -254,13 +254,10 @@ export async function sessionDocumentsRoutes(fastify: FastifyInstance): Promise<
             : { signatureImageBase64: row.sig_png_base64 || undefined }),
         });
 
-        reply.raw.writeHead(200, {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="agreement-${documentId.slice(0, 8)}.pdf"`,
-          'Content-Length': pdfBuf.length,
-        });
-        reply.raw.end(pdfBuf);
-        return reply;
+        return reply
+          .header('Content-Disposition', `inline; filename="agreement-${documentId.slice(0, 8)}.pdf"`)
+          .type('application/pdf')
+          .send(pdfBuf);
       } catch (err) {
         request.log.error({ err, documentId }, 'Failed to generate PDF on the fly');
         return reply.status(500).send({ error: 'Failed to generate PDF document' });
