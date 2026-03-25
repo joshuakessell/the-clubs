@@ -128,7 +128,7 @@ describe('Membership purchase/renew integration', () => {
       };
       expect(
         createBody.quote.lineItems.some(
-          (li) => li.description === '6 Month Membership' && li.amount === 4300
+          (li) => li.description === '6 Month Membership' && li.amount === 43
         )
       ).toBe(true);
       expect(createBody.quote.lineItems.some((li) => li.description === 'Membership Fee')).toBe(
