@@ -24,6 +24,7 @@ import { closeDatabase, db, getPool } from '../index';
 import { sql } from 'drizzle-orm';
 import { SeedProgress } from './progress';
 import { ensureDemoStaff } from '../ensureDemoStaff';
+import { generateFixedCustomers } from './customer-fixture';
 
 /**
  * Minimal valid 1x1 PNG used as a placeholder for demo signature images.
@@ -429,48 +430,26 @@ async function seedBaseEntities(now: Date, progress: SeedProgress): Promise<void
     );
   }
 
-  // Seed initial customers (100 members + 200 guests)
-  progress.setMessage('Seeding initial customers');
+  // Seed fixed customer roster (200 deterministic customers)
+  progress.setMessage('Seeding customer roster');
   const existingCustomers = await query<{ count: string }>(`SELECT COUNT(*) as count FROM customers`);
   if (Number.parseInt(existingCustomers.rows[0]?.count || '0', 10) === 0) {
-    const MEMBER_COUNT = 100;
-    const GUEST_COUNT = 200;
-    const rng = seededRng(0x4e414d45);
-    progress.addTotal(MEMBER_COUNT + GUEST_COUNT);
+    const fixedCustomers = generateFixedCustomers(now);
+    progress.addTotal(fixedCustomers.length);
 
-    for (let i = 1; i <= MEMBER_COUNT; i++) {
-      const idx = i - 1;
-      const firstName = FIRST_NAMES[idx % FIRST_NAMES.length];
-      const lastName = LAST_NAMES[Math.floor(idx / FIRST_NAMES.length) % LAST_NAMES.length];
-      const name = `${firstName} ${lastName}`;
-      const membershipNumber = String(i).padStart(6, '0');
-      const dob = new Date(1980 + (idx % 25), (idx * 3) % 12, ((idx * 5) % 27) + 1);
-      const isActive = idx % 2 === 0;
-      const membershipValidUntil = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (isActive ? 90 : -30));
-      const pastDueBalance = idx % 4 === 0 ? 25 : 0;
-      const idStates = ['TX', 'OK', 'LA', 'NM', 'AR'];
-      const idState = idStates[idx % idStates.length];
-      const idNumber = `D${String(idx + 1).padStart(8, '0')}`;
-      const idExpDate = new Date(now.getFullYear() + 2 + (idx % 3), (idx * 7) % 12, ((idx * 11) % 27) + 1);
-
+    for (const c of fixedCustomers) {
       await query(
         `INSERT INTO customers
-           (id, name, dob, membership_number, membership_valid_until, id_number, id_type, id_state, id_expiration_date,
+           (id, name, dob, membership_number, membership_card_type, membership_valid_until,
+            id_number, id_type, id_state, id_expiration_date,
             primary_language, past_due_balance, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'DRIVERS_LICENSE', $7, $8, 'EN', $9, $10, $10)`,
-        [randomUUID(), name, dob, membershipNumber, membershipValidUntil, idNumber, idState, idExpDate, pastDueBalance, now]
-      );
-      progress.tick();
-    }
-
-    for (let i = 0; i < GUEST_COUNT; i++) {
-      const c = generateNewCustomer(rng, now);
-      await query(
-        `INSERT INTO customers
-           (id, name, dob, membership_number, id_number, id_type, id_state, id_expiration_date,
-            primary_language, past_due_balance, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'EN', 0, $9, $9)`,
-        [c.id, c.name, c.dob, c.membershipNumber, c.idNumber, c.idType, c.idState, c.idExpirationDate, now]
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'DRIVERS_LICENSE', $8, $9, $10, 0, $11, $11)`,
+        [
+          randomUUID(), c.name, c.dob,
+          c.membershipNumber, c.membershipCardType, c.membershipValidUntil,
+          c.idNumber, c.idState, c.idExpirationDate,
+          c.primaryLanguage, now,
+        ]
       );
       progress.tick();
     }
@@ -496,6 +475,61 @@ const SHIFT_HOURS: Record<ShiftCode, { start: number; durationH: number }> = {
 const SHIFT_CODES: ShiftCode[] = ['A', 'B', 'C'];
 const MAX_WEEKLY_HOURS = 40;
 const HOURS_PER_SHIFT = 8;
+
+// ---------------------------------------------------------------------------
+// Square Sandbox Customer Sync
+// ---------------------------------------------------------------------------
+
+async function syncCustomersToSquare(progress: SeedProgress) {
+  const token = process.env.SQUARE_ACCESS_TOKEN;
+  if (!token) {
+    progress.log('⚠️  SQUARE_ACCESS_TOKEN not set — skipping Square customer sync');
+    return;
+  }
+
+  const unsyncedRes = await query<{ id: string; name: string; dob: string | null; membership_number: string | null }>(
+    `SELECT id, name, dob, membership_number FROM customers WHERE square_customer_id IS NULL ORDER BY created_at`
+  );
+
+  if (unsyncedRes.rows.length === 0) {
+    progress.log('✅ All customers already synced to Square');
+    return;
+  }
+
+  progress.log(`🔄 Syncing ${unsyncedRes.rows.length} customers to Square sandbox...`);
+  progress.addTotal(unsyncedRes.rows.length);
+
+  let synced = 0;
+  for (const row of unsyncedRes.rows) {
+    const nameParts = row.name.split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : 'Customer';
+    const dobStr = row.dob ? new Date(row.dob).toISOString().split('T')[0] : null;
+
+    try {
+      const { createSquareCustomer } = await import('../../services/squareSyncService');
+      const squareId = await createSquareCustomer({
+        firstName,
+        lastName,
+        dob: dobStr,
+        referenceId: row.membership_number,
+      });
+
+      if (squareId) {
+        await query(
+          `UPDATE customers SET square_customer_id = $1, updated_at = NOW() WHERE id = $2`,
+          [squareId, row.id]
+        );
+        synced++;
+      }
+    } catch (err) {
+      progress.log(`⚠️  Failed to sync "${row.name}" to Square: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    progress.tick();
+  }
+
+  progress.log(`✅ Synced ${synced}/${unsyncedRes.rows.length} customers to Square`);
+}
 
 /** Returns true for Fri (5), Sat (6), Sun (0) */
 function isWeekendDay(dow: number): boolean {
@@ -1518,6 +1552,7 @@ export async function runSimulator(options: { forceReseed?: boolean } = {}): Pro
       progress.log(`✅ Ensured ${staffCount} demo staff with valid PINs`);
       progress.log('🏗️  Seeding base entities (rooms, lockers, customers)...');
       await seedBaseEntities(now, progress);
+      await syncCustomersToSquare(progress);
       await seedShifts(now, progress);
       from = new Date(now.getTime() - SIM_DAYS * 24 * 60 * 60 * 1000);
       progress.log(`📊 Simulating ${SIM_DAYS} days of club activity...`);
