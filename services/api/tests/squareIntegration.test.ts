@@ -61,8 +61,8 @@ describe('Square Integration Tests', () => {
           // Fourth query: line items
           .mockResolvedValueOnce({
             rows: [
-               { name: 'Locker Rental', total: '2.00' },
-               { name: 'Water Bottle', total: '1.50' }
+               { name: 'Locker Rental', total: '200' },
+               { name: 'Water Bottle', total: '150' }
             ]
           })
         } as any;
